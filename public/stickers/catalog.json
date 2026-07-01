@@ -1,0 +1,14 @@
+{
+  "schema": "sullyos.public-emoji-packs.v1",
+  "version": "2026-07-01-blank",
+  "assetBase": "assets/",
+  "packs": [
+    {
+      "id": "pack-a",
+      "name": "a 组表情包",
+      "visibilityDefault": "disabled",
+      "assetBase": "assets/pack-a/",
+      "stickers": []
+    }
+  ]
+}
