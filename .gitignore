@@ -26,3 +26,7 @@ dist-ssr
 
 # xiaohongshu-skills (cloned dependency)
 xiaohongshu-skills/
+
+# Sticker intake / source originals
+sticker-inbox/
+public/stickers/originals/

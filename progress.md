@@ -19,3 +19,15 @@
 - risk:
   - Public pack enablement is intentionally browser-local. Different users and devices can choose different role-pack mappings.
   - Existing legacy TypeScript debt may still make `tsc --noEmit` noisy even when Vite build succeeds.
+
+## 2026-07-01 Naming Contract
+
+- done:
+  - Locked public sticker naming into three layers: stable pack ID, technical sticker/asset file ID, and human/AI display name.
+  - Documented that tags are selection hints, not access control.
+  - Documented image intake rules for large/non-standard downloaded images.
+  - Added ignored intake paths so raw source images do not get committed accidentally.
+
+- next:
+  - When real images arrive, decide whether placeholder `pack-a` remains or is renamed once before first public deployment.
+  - Generate processed assets plus catalog entries, then ask for human review of display names.

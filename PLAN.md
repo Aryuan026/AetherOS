@@ -13,6 +13,8 @@ Public default sticker packs:
 - Let users enable a public pack per character.
 - Keep disabled packs out of the emoji picker and out of AI prompt context.
 - Start with an empty `a 组表情包` pack so images can be added later.
+- Before adding real images, choose whether `pack-a` stays as the stable first pack ID or is renamed once to a meaningful theme/character pack ID.
+- Process raw image batches into URL-safe web assets and catalog metadata before deployment.
 
 ## Holds
 
