@@ -9,11 +9,12 @@
   - Added category visibility mode support so an empty allowlist can mean "visible to nobody" for public packs.
   - Added shared emoji visibility helpers for private chat, group chat, and active messages.
   - Added a chat emoji-panel management entry for enabling/disabling public packs for the current character.
+  - Imported the `theme-starry-baby` public sticker pack with 25 GIF assets under `public/stickers/assets/theme-starry-baby/`.
+  - Filled `public/stickers/catalog.json` with stable `starbaby_001` through `starbaby_025` entries and `星宝-*` display names.
 
 - next:
   - Install dependencies in this clean work copy.
   - Run build verification.
-  - After images are provided, add files under `public/stickers/assets/pack-a/` and fill the catalog sticker entries.
   - Build and sync the new `dist/` to the server static path.
 
 - risk:
@@ -29,5 +30,5 @@
   - Added ignored intake paths so raw source images do not get committed accidentally.
 
 - next:
-  - When real images arrive, decide whether placeholder `pack-a` remains or is renamed once before first public deployment.
-  - Generate processed assets plus catalog entries, then ask for human review of display names.
+  - Build and inspect the bundled `dist/stickers/` output before server sync.
+  - Ask for human review of display names after the first in-app sticker selection test.
