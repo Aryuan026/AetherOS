@@ -13,13 +13,21 @@
   - Filled `public/stickers/catalog.json` with stable `starbaby_001` through `starbaby_025` entries and `星宝-*` display names.
 
 - next:
-  - Install dependencies in this clean work copy.
-  - Run build verification.
-  - Build and sync the new `dist/` to the server static path.
+  - Ask for human review of display names after the first in-app sticker selection test.
+  - Have one fresh browser/user enable `星际小宝系列` for a test character and confirm the sticker appears in the picker.
 
 - risk:
   - Public pack enablement is intentionally browser-local. Different users and devices can choose different role-pack mappings.
   - Existing legacy TypeScript debt may still make `tsc --noEmit` noisy even when Vite build succeeds.
+
+- verified:
+  - `GITHUB_PAGES=1 npm run build` passed for `/sullyos/` subpath deployment.
+  - Server synced `dist/` to `/srv/asherie/sites/science-demos/sullyos`.
+  - Server backup before sync: `/srv/asherie/backups/sullyos-starry-baby-20260701T1530Z`.
+  - Public URL `https://lab.asherie.cloud/sullyos/` returned `200 OK`.
+  - Public catalog `https://lab.asherie.cloud/sullyos/stickers/catalog.json` returned version `2026-07-01-starry-baby-v1`.
+  - Public sticker `starbaby_025.gif` returned `200 OK`.
+  - Playwright browser smoke mounted the SullyOS lock screen with `0` console errors and the known Tailwind CDN warning.
 
 ## 2026-07-01 Naming Contract
 
