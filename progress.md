@@ -1,5 +1,25 @@
 # SullyOS Progress
 
+## 2026-07-02 Haoqi Crow Pack
+
+- done:
+  - Added public pack `theme-haoqi-crow` / `好气鸦`.
+  - Copied 25 original GIF assets into `public/stickers/assets/theme-haoqi-crow/`.
+  - Filled `public/stickers/catalog.json` with stable `haoqiya_001` through `haoqiya_025` entries and `好气鸦-*` display names.
+  - Kept the pack default-disabled so each browser/user must enable it per local character.
+
+- next:
+  - Have one fresh browser/user enable `好气鸦` for a test character and confirm the sticker appears in the picker.
+
+- verified:
+  - Local catalog parse found all four public packs, `100` total sticker entries, and `0` missing assets.
+  - `GITHUB_PAGES=1 npm run build` passed for `/sullyos/` subpath deployment.
+  - Server synced `dist/` to `/srv/asherie/sites/science-demos/sullyos`.
+  - Server backup before sync: `/srv/asherie/backups/sullyos-haoqi-crow-20260702T074343Z`.
+  - Public catalog `https://lab.asherie.cloud/sullyos/stickers/catalog.json` returned version `2026-07-02-haoqi-crow-v1`.
+  - Public sticker `haoqiya_001.gif` returned `200 OK`.
+  - Playwright browser smoke mounted the SullyOS lock screen with `0` console errors and the known Tailwind CDN warning.
+
 ## 2026-07-02 Smiling Snowman Pack
 
 - done:

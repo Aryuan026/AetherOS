@@ -1,6 +1,6 @@
 {
   "schema": "sullyos.public-emoji-packs.v1",
-  "version": "2026-07-02-smiling-snowman-v1",
+  "version": "2026-07-02-haoqi-crow-v1",
   "assetBase": "assets/",
   "packs": [
     {
@@ -1705,6 +1705,540 @@
           },
           "source": {
             "origin_file_name": "no.gif"
+          }
+        }
+      ]
+    },
+    {
+      "id": "theme-haoqi-crow",
+      "name": "好气鸦",
+      "description": "冷淡、吐槽、拒绝、傲娇和小小示好都很适合的一组公共默认 GIF 表情。",
+      "visibilityDefault": "disabled",
+      "assetBase": "assets/theme-haoqi-crow/",
+      "stickers": [
+        {
+          "id": "haoqiya_001",
+          "displayName": "好气鸦-惊叹",
+          "tags": [
+            "好气鸦",
+            "惊叹",
+            "注意",
+            "挑眉",
+            "不爽"
+          ],
+          "asset_file": "haoqiya_001.gif",
+          "prompt": {
+            "meaning": "突然注意到什么，带一点不爽和警觉的惊叹",
+            "tone": "惊叹、注意、挑眉",
+            "use_when": "看到意外消息、需要提醒注意或轻微震惊时",
+            "avoid_when": "对方情绪脆弱时不要用来压迫气氛"
+          },
+          "source": {
+            "origin_file_name": "！.gif"
+          }
+        },
+        {
+          "id": "haoqiya_002",
+          "displayName": "好气鸦-问号",
+          "tags": [
+            "好气鸦",
+            "问号",
+            "疑惑",
+            "不懂",
+            "停顿"
+          ],
+          "asset_file": "haoqiya_002.gif",
+          "prompt": {
+            "meaning": "疑惑地看着对方，像在问你认真的吗",
+            "tone": "问号、疑惑、不懂",
+            "use_when": "没听懂、需要解释、或对内容表示困惑时",
+            "avoid_when": "对方已经认真解释很多时"
+          },
+          "source": {
+            "origin_file_name": "？.gif"
+          }
+        },
+        {
+          "id": "haoqiya_003",
+          "displayName": "好气鸦-沉思",
+          "tags": [
+            "好气鸦",
+            "沉思",
+            "思考",
+            "判断",
+            "审视"
+          ],
+          "asset_file": "haoqiya_003.gif",
+          "prompt": {
+            "meaning": "抱臂沉思，开始认真审视情况",
+            "tone": "沉思、思考、判断",
+            "use_when": "准备分析、权衡、或对某件事产生怀疑时",
+            "avoid_when": "只需要轻松回应时"
+          },
+          "source": {
+            "origin_file_name": "沉思.gif"
+          }
+        },
+        {
+          "id": "haoqiya_004",
+          "displayName": "好气鸦-得意",
+          "tags": [
+            "好气鸦",
+            "得意",
+            "王冠",
+            "骄傲",
+            "胜利"
+          ],
+          "asset_file": "haoqiya_004.gif",
+          "prompt": {
+            "meaning": "戴着王冠坐着，得意又有点小傲娇",
+            "tone": "得意、王冠、骄傲",
+            "use_when": "赢了、做成了、想小小炫耀时",
+            "avoid_when": "对方刚失败或需要安慰时"
+          },
+          "source": {
+            "origin_file_name": "得意.gif"
+          }
+        },
+        {
+          "id": "haoqiya_005",
+          "displayName": "好气鸦-蹭蹭",
+          "tags": [
+            "好气鸦",
+            "蹭蹭",
+            "贴贴",
+            "撒娇",
+            "亲近"
+          ],
+          "asset_file": "haoqiya_005.gif",
+          "prompt": {
+            "meaning": "被小伙伴贴贴蹭蹭，表面冷淡但气氛柔软",
+            "tone": "蹭蹭、贴贴、撒娇",
+            "use_when": "想表达亲近、撒娇、贴贴或被哄好时",
+            "avoid_when": "对方明确不想亲密互动时"
+          },
+          "source": {
+            "origin_file_name": "蹭蹭.gif"
+          }
+        },
+        {
+          "id": "haoqiya_006",
+          "displayName": "好气鸦-干嘛呢",
+          "tags": [
+            "好气鸦",
+            "干嘛呢",
+            "质问",
+            "探头",
+            "不满"
+          ],
+          "asset_file": "haoqiya_006.gif",
+          "prompt": {
+            "meaning": "探头质问：你在干嘛呢",
+            "tone": "干嘛呢、质问、探头",
+            "use_when": "发现对方动作可疑、想调侃追问时",
+            "avoid_when": "真实质问容易引发冲突时"
+          },
+          "source": {
+            "origin_file_name": "干嘛呢.gif"
+          }
+        },
+        {
+          "id": "haoqiya_007",
+          "displayName": "好气鸦-烦",
+          "tags": [
+            "好气鸦",
+            "烦",
+            "背影",
+            "不想理",
+            "情绪"
+          ],
+          "asset_file": "haoqiya_007.gif",
+          "prompt": {
+            "meaning": "背过去表示烦了，不想面对",
+            "tone": "烦、背影、不想理",
+            "use_when": "觉得麻烦、烦躁、想暂停时",
+            "avoid_when": "对方正在求助且需要回应时"
+          },
+          "source": {
+            "origin_file_name": "烦.gif"
+          }
+        },
+        {
+          "id": "haoqiya_008",
+          "displayName": "好气鸦-给你",
+          "tags": [
+            "好气鸦",
+            "给你",
+            "递东西",
+            "分享",
+            "温和"
+          ],
+          "asset_file": "haoqiya_008.gif",
+          "prompt": {
+            "meaning": "平静地把东西给你，冷淡里带一点照顾",
+            "tone": "给你、递东西、分享",
+            "use_when": "想递给对方、分享、或轻轻表达好意时",
+            "avoid_when": "需要强烈情感表达时"
+          },
+          "source": {
+            "origin_file_name": "给你.gif"
+          }
+        },
+        {
+          "id": "haoqiya_009",
+          "displayName": "好气鸦-就这",
+          "tags": [
+            "好气鸦",
+            "就这",
+            "无语",
+            "吐槽",
+            "不屑"
+          ],
+          "asset_file": "haoqiya_009.gif",
+          "prompt": {
+            "meaning": "带汗看着对方：就这？熟练地表示无语",
+            "tone": "就这、无语、吐槽",
+            "use_when": "吐槽小失望、调侃没达到预期时",
+            "avoid_when": "对方认真努力但结果不理想时"
+          },
+          "source": {
+            "origin_file_name": "就这.gif"
+          }
+        },
+        {
+          "id": "haoqiya_010",
+          "displayName": "好气鸦-拒绝",
+          "tags": [
+            "好气鸦",
+            "拒绝",
+            "不行",
+            "冷淡",
+            "边界"
+          ],
+          "asset_file": "haoqiya_010.gif",
+          "prompt": {
+            "meaning": "冷淡地表示拒绝，不打算配合",
+            "tone": "拒绝、不行、冷淡",
+            "use_when": "想明确拒绝、立边界或表达不接受时",
+            "avoid_when": "需要解释原因的严肃沟通里"
+          },
+          "source": {
+            "origin_file_name": "拒绝.gif"
+          }
+        },
+        {
+          "id": "haoqiya_011",
+          "displayName": "好气鸦-可以",
+          "tags": [
+            "好气鸦",
+            "可以",
+            "认可",
+            "通过",
+            "满意"
+          ],
+          "asset_file": "haoqiya_011.gif",
+          "prompt": {
+            "meaning": "双手撑着，表示可以、认可、勉强满意",
+            "tone": "可以、认可、通过",
+            "use_when": "确认方案可行、同意、给出认可时",
+            "avoid_when": "需要热情赞美时可能偏冷"
+          },
+          "source": {
+            "origin_file_name": "可以.gif"
+          }
+        },
+        {
+          "id": "haoqiya_012",
+          "displayName": "好气鸦-来了",
+          "tags": [
+            "好气鸦",
+            "来了",
+            "登场",
+            "出现",
+            "上线"
+          ],
+          "asset_file": "haoqiya_012.gif",
+          "prompt": {
+            "meaning": "沉稳登场：我来了",
+            "tone": "来了、登场、出现",
+            "use_when": "上线、加入聊天、准备开始处理事情时",
+            "avoid_when": "对方需要低调陪伴时"
+          },
+          "source": {
+            "origin_file_name": "来了.gif"
+          }
+        },
+        {
+          "id": "haoqiya_013",
+          "displayName": "好气鸦-懒得理你",
+          "tags": [
+            "好气鸦",
+            "懒得理你",
+            "冷处理",
+            "无视",
+            "不耐烦"
+          ],
+          "asset_file": "haoqiya_013.gif",
+          "prompt": {
+            "meaning": "戴墨镜表示懒得理你，冷处理感很强",
+            "tone": "懒得理你、冷处理、无视",
+            "use_when": "熟人玩笑、表达不想接茬或懒得争时",
+            "avoid_when": "真实冲突中容易显得伤人"
+          },
+          "source": {
+            "origin_file_name": "懒得理你.gif"
+          }
+        },
+        {
+          "id": "haoqiya_014",
+          "displayName": "好气鸦-了不起",
+          "tags": [
+            "好气鸦",
+            "了不起",
+            "反讽",
+            "敷衍",
+            "夸张"
+          ],
+          "asset_file": "haoqiya_014.gif",
+          "prompt": {
+            "meaning": "写着那你真是了不起，带一点反讽夸奖",
+            "tone": "了不起、反讽、敷衍",
+            "use_when": "调侃对方得意、轻微阴阳怪气时",
+            "avoid_when": "对方真的在寻求肯定时"
+          },
+          "source": {
+            "origin_file_name": "了不起.gif"
+          }
+        },
+        {
+          "id": "haoqiya_015",
+          "displayName": "好气鸦-没眼看",
+          "tags": [
+            "好气鸦",
+            "没眼看",
+            "捂眼",
+            "尴尬",
+            "无语"
+          ],
+          "asset_file": "haoqiya_015.gif",
+          "prompt": {
+            "meaning": "捂住眼睛，表示没眼看了",
+            "tone": "没眼看、捂眼、尴尬",
+            "use_when": "遇到尴尬、离谱、看不下去的场面时",
+            "avoid_when": "对方正在真诚分享成果时"
+          },
+          "source": {
+            "origin_file_name": "没眼看.gif"
+          }
+        },
+        {
+          "id": "haoqiya_016",
+          "displayName": "好气鸦-生气",
+          "tags": [
+            "好气鸦",
+            "生气",
+            "火大",
+            "愤怒",
+            "爆炸"
+          ],
+          "asset_file": "haoqiya_016.gif",
+          "prompt": {
+            "meaning": "周围冒火，已经生气到燃起来",
+            "tone": "生气、火大、愤怒",
+            "use_when": "表达火大、不满、被气到时",
+            "avoid_when": "需要冷静沟通或安抚对方时"
+          },
+          "source": {
+            "origin_file_name": "生气.gif"
+          }
+        },
+        {
+          "id": "haoqiya_017",
+          "displayName": "好气鸦-舒服",
+          "tags": [
+            "好气鸦",
+            "舒服",
+            "满足",
+            "放松",
+            "惬意"
+          ],
+          "asset_file": "haoqiya_017.gif",
+          "prompt": {
+            "meaning": "眯眼放松，舒服又满足",
+            "tone": "舒服、满足、放松",
+            "use_when": "事情顺利、被照顾、状态放松时",
+            "avoid_when": "对方正在紧张或难过时"
+          },
+          "source": {
+            "origin_file_name": "舒服.gif"
+          }
+        },
+        {
+          "id": "haoqiya_018",
+          "displayName": "好气鸦-送花",
+          "tags": [
+            "好气鸦",
+            "送花",
+            "示好",
+            "害羞",
+            "和好"
+          ],
+          "asset_file": "haoqiya_018.gif",
+          "prompt": {
+            "meaning": "背过身送花，有点别扭地表达好意",
+            "tone": "送花、示好、害羞",
+            "use_when": "想示好、和好、或冷淡地递出喜欢时",
+            "avoid_when": "对方需要直接明确的道歉时"
+          },
+          "source": {
+            "origin_file_name": "送花.gif"
+          }
+        },
+        {
+          "id": "haoqiya_019",
+          "displayName": "好气鸦-晚安",
+          "tags": [
+            "好气鸦",
+            "晚安",
+            "睡觉",
+            "休息",
+            "告别"
+          ],
+          "asset_file": "haoqiya_019.gif",
+          "prompt": {
+            "meaning": "窝在小巢里说晚安，准备休息",
+            "tone": "晚安、睡觉、休息",
+            "use_when": "睡前告别、提醒休息、温柔收尾时",
+            "avoid_when": "对方还在等待关键回答时"
+          },
+          "source": {
+            "origin_file_name": "晚安.gif"
+          }
+        },
+        {
+          "id": "haoqiya_020",
+          "displayName": "好气鸦-我全都要",
+          "tags": [
+            "好气鸦",
+            "我全都要",
+            "贪心",
+            "选择",
+            "开心"
+          ],
+          "asset_file": "haoqiya_020.gif",
+          "prompt": {
+            "meaning": "闪亮地表示我全都要，不想做选择",
+            "tone": "我全都要、贪心、选择",
+            "use_when": "面对多个喜欢的选项、表达都想要时",
+            "avoid_when": "需要认真取舍或控制成本时"
+          },
+          "source": {
+            "origin_file_name": "我全都要.gif"
+          }
+        },
+        {
+          "id": "haoqiya_021",
+          "displayName": "好气鸦-无聊",
+          "tags": [
+            "好气鸦",
+            "无聊",
+            "趴着",
+            "发呆",
+            "等待"
+          ],
+          "asset_file": "haoqiya_021.gif",
+          "prompt": {
+            "meaning": "趴着发呆，手边有小红心，无聊但可爱",
+            "tone": "无聊、趴着、发呆",
+            "use_when": "等人、没事做、想找话题时",
+            "avoid_when": "对方正在认真输出内容时"
+          },
+          "source": {
+            "origin_file_name": "无聊.gif"
+          }
+        },
+        {
+          "id": "haoqiya_022",
+          "displayName": "好气鸦-无语",
+          "tags": [
+            "好气鸦",
+            "无语",
+            "沉默",
+            "失语",
+            "飘走"
+          ],
+          "asset_file": "haoqiya_022.gif",
+          "prompt": {
+            "meaning": "无语到像被风吹走，表示不想说话",
+            "tone": "无语、沉默、失语",
+            "use_when": "遇到离谱话、短暂失语或冷淡退场时",
+            "avoid_when": "对方需要明确反馈或安慰时"
+          },
+          "source": {
+            "origin_file_name": "无语.gif"
+          }
+        },
+        {
+          "id": "haoqiya_023",
+          "displayName": "好气鸦-心情好",
+          "tags": [
+            "好气鸦",
+            "心情好",
+            "放松",
+            "愉快",
+            "小确幸"
+          ],
+          "asset_file": "haoqiya_023.gif",
+          "prompt": {
+            "meaning": "托腮眯眼，心情不错但仍然很淡定",
+            "tone": "心情好、放松、愉快",
+            "use_when": "想表达状态不错、轻松愉快时",
+            "avoid_when": "需要强烈兴奋氛围时"
+          },
+          "source": {
+            "origin_file_name": "心情好.gif"
+          }
+        },
+        {
+          "id": "haoqiya_024",
+          "displayName": "好气鸦-No",
+          "tags": [
+            "好气鸦",
+            "no",
+            "拒绝",
+            "否定",
+            "不行"
+          ],
+          "asset_file": "haoqiya_024.gif",
+          "prompt": {
+            "meaning": "淡定说 No，明确拒绝",
+            "tone": "no、拒绝、否定",
+            "use_when": "需要短平快拒绝、否定或划边界时",
+            "avoid_when": "需要柔和解释复杂原因时"
+          },
+          "source": {
+            "origin_file_name": "no.gif"
+          }
+        },
+        {
+          "id": "haoqiya_025",
+          "displayName": "好气鸦-优雅",
+          "tags": [
+            "好气鸦",
+            "优雅",
+            "红酒",
+            "从容",
+            "仪式感"
+          ],
+          "asset_file": "haoqiya_025.gif",
+          "prompt": {
+            "meaning": "戴帽举杯，优雅从容地收场",
+            "tone": "优雅、红酒、从容",
+            "use_when": "表达体面、从容、仪式感或淡定享受时",
+            "avoid_when": "对方正在急切求助时"
+          },
+          "source": {
+            "origin_file_name": "优雅.gif"
           }
         }
       ]
