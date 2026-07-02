@@ -10,7 +10,7 @@ import { CharacterProfile, Anniversary, AppID } from '../types';
 // 1. Clock Component (Consumes virtualTime)
 const DesktopClock = React.memo(() => {
     const { virtualTime, theme } = useOS();
-    const contentColor = theme.contentColor || '#ffffff';
+    const contentColor = (theme.contentColor || '#334155').toLowerCase() === '#ffffff' ? '#334155' : (theme.contentColor || '#334155');
     
     const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -20,16 +20,16 @@ const DesktopClock = React.memo(() => {
     const dateNum = now.getDate().toString().padStart(2, '0');
 
     return (
-        <div className="flex flex-col mb-6 mt-6 relative animate-fade-in" style={{ color: contentColor }}>
+        <div className="flex flex-col mb-5 mt-4 relative animate-fade-in" style={{ color: contentColor }}>
              <div className="absolute -top-6 left-1 flex items-center gap-2">
-                 <div className="bg-white/20 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase border border-white/10">
+                 <div className="bg-white/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase border border-white/70 shadow-sm">
                      System Ready
                  </div>
                  <div className="h-[1px] w-20 bg-gradient-to-r from-current to-transparent opacity-40"></div>
              </div>
 
              <div className="flex items-end gap-4">
-                 <div className="text-[6.5rem] leading-[0.85] font-bold tracking-tighter drop-shadow-2xl font-sans">
+                 <div className="text-[5.25rem] leading-[0.9] font-bold tracking-normal drop-shadow-[0_8px_24px_rgba(255,255,255,0.65)] font-sans">
                     {virtualTime.hours.toString().padStart(2, '0')}
                     <span className="opacity-40 font-light mx-1">:</span>
                     {virtualTime.minutes.toString().padStart(2, '0')}
@@ -57,15 +57,16 @@ const CharacterWidget = React.memo(({
     onClick: () => void,
     contentColor: string
 }) => {
+    const labelColor = contentColor.toLowerCase() === '#ffffff' ? '#334155' : contentColor;
     return (
         <div className="mb-4 group animate-fade-in">
              <div 
-                className="relative h-28 w-full overflow-hidden rounded-[1.5rem] bg-white/[0.08] backdrop-blur-2xl border border-white/[0.12] shadow-[0_8px_32px_rgba(0,0,0,0.15),inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-300 active:scale-[0.98] cursor-pointer"
+                className="relative h-28 w-full overflow-hidden rounded-[1.5rem] bg-white/[0.66] backdrop-blur-2xl border border-white/[0.85] shadow-[0_10px_30px_rgba(15,23,42,0.10),inset_0_1px_0_rgba(255,255,255,0.55)] transition-all duration-300 active:scale-[0.98] cursor-pointer"
                 onClick={onClick}
              >
-                 <div className="absolute top-0 right-0 w-32 h-full bg-gradient-to-l from-white/5 to-transparent skew-x-12 pointer-events-none"></div>
+                 <div className="absolute top-0 right-0 w-32 h-full bg-gradient-to-l from-white/50 to-transparent skew-x-12 pointer-events-none"></div>
                  <div className="absolute inset-0 flex items-center p-4 gap-4">
-                     <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden shadow-lg border-2 border-white/20 relative bg-slate-800">
+                     <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden shadow-lg border-2 border-white/80 relative bg-slate-800">
                          {char ? (
                              <img src={char.avatar} className="w-full h-full object-cover" alt="char" loading="lazy" />
                          ) : <div className="w-full h-full bg-white/10 animate-pulse"></div>}
@@ -83,13 +84,13 @@ const CharacterWidget = React.memo(({
                              <h3 className="text-lg font-bold tracking-wide drop-shadow-md truncate" style={{ color: contentColor }}>
                                  {char?.name || 'NO SIGNAL'}
                              </h3>
-                             <div className="px-1.5 py-0.5 bg-white/20 rounded text-[9px] font-bold uppercase tracking-wider" style={{ color: contentColor }}>
+                             <div className="px-1.5 py-0.5 bg-slate-900/5 rounded text-[9px] font-bold uppercase tracking-wider" style={{ color: labelColor }}>
                                  {unreadCount > 0 ? 'NEW MESSAGE' : 'Active'}
                              </div>
                          </div>
                          
                          <div className="relative">
-                             <div className="text-xs line-clamp-2 font-medium leading-relaxed opacity-90" style={{ color: contentColor }}>
+                             <div className="text-xs line-clamp-2 font-medium leading-relaxed opacity-90" style={{ color: labelColor }}>
                                 <span className="opacity-40 mr-1 text-[10px]">▶</span>
                                 {lastMessage}
                              </div>
@@ -110,7 +111,7 @@ const AppGridPage = React.memo(({
     openApp: (id: AppID) => void
 }) => {
     return (
-        <div className="grid grid-cols-4 gap-y-6 gap-x-2 place-items-center animate-fade-in relative">
+        <div className="grid grid-cols-4 gap-y-6 gap-x-2 place-items-center animate-fade-in relative rounded-[2rem] bg-white/[0.36] backdrop-blur-xl border border-white/[0.62] px-3 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.07)]">
              {apps.map(app => (
                  <div 
                     key={app.id} 
@@ -153,7 +154,7 @@ const WidgetsPage = React.memo(({ contentColor, openApp, anniversaries, characte
                   </div>
                   
                   <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-2">
-                      {['S','M','T','W','T','F','S'].map(d => <div key={d} className="text-[10px] font-bold opacity-40" style={{ color: contentColor }}>{d}</div>)}
+                      {['S','M','T','W','T','F','S'].map((d, i) => <div key={`${d}-${i}`} className="text-[10px] font-bold opacity-40" style={{ color: contentColor }}>{d}</div>)}
                   </div>
                   
                   <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center">
@@ -359,8 +360,8 @@ const Launcher: React.FC = () => {
       }
   };
 
-  const contentColor = theme.contentColor || '#ffffff';
-  const launcherBottomInset = 'max(env(safe-area-inset-bottom), 1.25rem)';
+  const contentColor = (theme.contentColor || '#334155').toLowerCase() === '#ffffff' ? '#334155' : (theme.contentColor || '#334155');
+  const launcherBottomInset = 'max(env(safe-area-inset-bottom), 0.75rem)';
   
   const totalUnread = Object.values(unreadMessages).reduce((a, b) => a + b, 0);
   const widgetUnread = widgetChar && unreadMessages[widgetChar.id] ? unreadMessages[widgetChar.id] : 0;
@@ -368,11 +369,8 @@ const Launcher: React.FC = () => {
   return (
     <div className="h-full w-full flex flex-col relative z-10 overflow-hidden font-sans select-none">
       
-      {/* Visual Elements (Decorative Background - Static, low-cost gradients instead of blur) */}
-      <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%)' }}></div>
-          <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%)' }}></div>
-      </div>
+      <div className="absolute inset-0 pointer-events-none bg-white/[0.16]"></div>
+      <div className="absolute inset-x-0 bottom-0 h-56 pointer-events-none bg-gradient-to-t from-white/55 via-white/20 to-transparent"></div>
 
       {/* Scrollable Content Layer */}
       {/* UPDATE: Added snap-always to children to ensure one-page-at-a-time scrolling on mobile swipe */}
@@ -389,7 +387,7 @@ const Launcher: React.FC = () => {
       >
           {/* Render App Pages */}
           {appPages.map((pageApps, idx) => (
-              <div key={idx} className="w-full flex-shrink-0 snap-center snap-always flex flex-col px-6 pt-12 pb-8 h-full" style={{ contentVisibility: 'auto' }}>
+              <div key={idx} className="w-full flex-shrink-0 snap-center snap-always flex flex-col px-6 pt-12 pb-[9.25rem] h-full" style={{ contentVisibility: 'auto' }}>
                   {idx === 0 ? (
                       // Page 1: Clock + Widget + Apps
                       <>
@@ -410,7 +408,7 @@ const Launcher: React.FC = () => {
                       </>
                   ) : (
                       // Page 2+: Widget Grid + Free Decorations + Apps
-                      <div className="pt-10 flex-1 flex flex-col relative">
+                          <div className="pt-10 flex-1 flex flex-col relative">
                           {idx === 1 && (() => {
                             const raw = theme.launcherWidgets || {};
                             const w = { ...raw };
@@ -486,7 +484,7 @@ const Launcher: React.FC = () => {
       {/* Page Indicators */}
       <div
           className="absolute left-0 w-full flex justify-center gap-2 pointer-events-none z-20"
-          style={{ bottom: `calc(${launcherBottomInset} + 5.5rem)` }}
+          style={{ bottom: `calc(${launcherBottomInset} + 7rem)` }}
       >
           {Array.from({ length: totalPages }).map((_, i) => (
               <div 
@@ -502,7 +500,7 @@ const Launcher: React.FC = () => {
            className="mt-auto flex justify-center w-full px-4 relative z-30"
            style={{ paddingBottom: launcherBottomInset }}
       >
-           <div className="bg-white/[0.12] backdrop-blur-3xl rounded-[1.75rem] border border-white/[0.12] shadow-[0_8px_40px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.08)] px-4 py-3 flex gap-3 sm:gap-6 items-center mx-auto max-w-full justify-between overflow-x-auto no-scrollbar transform-gpu">
+           <div className="bg-white/[0.72] backdrop-blur-2xl rounded-[2rem] border border-white/[0.86] shadow-[0_14px_36px_rgba(15,23,42,0.13),inset_0_1px_0_rgba(255,255,255,0.65)] px-4 py-3 flex gap-3 sm:gap-5 items-center mx-auto max-w-full justify-between overflow-x-auto no-scrollbar transform-gpu">
                {dockAppsConfig.map(app => (
                    <div key={app.id} className="relative">
                         <AppIcon app={app} onClick={() => openApp(app.id)} variant="dock" size="md" />

@@ -685,6 +685,8 @@ export interface CharacterProfile {
   description: string;
   systemPrompt: string;
   worldview?: string;
+  isBuiltIn?: boolean;
+  lockPromptEditing?: boolean;
   memories: MemoryFragment[];
   refinedMemories?: Record<string, string>;
   activeMemoryMonths?: string[];

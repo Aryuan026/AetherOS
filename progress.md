@@ -1,5 +1,65 @@
 # SullyOS Progress
 
+## 2026-07-02 Private Fork Packaging Notice
+
+- done:
+  - Expanded `NOTICE.md` with the concise reason for removing the upstream Sully default character from this deployment fork: this build should not redistribute Sully as a packaged character.
+  - Added a short fan-content boundary for built-in characters and presets: they may contain fan-made organization or reinterpretation, are not official, and should be replaced before broad publication.
+  - Added an explicit no-commercial-use boundary covering resale, paid distribution, paid customization, paid-platform operation, monetization, and fake official/authorized presentation.
+  - Folded the same boundary into the README and first-run disclaimer without making the opening popup overly long.
+
+- verified:
+  - Pending build and whitespace check before committing to the private GitHub repository.
+
+## 2026-07-02 Built-In Starter Roles
+
+- done:
+  - Replaced the startup auto-seed path so new/local-empty browsers receive deployment-owned starter roles instead of the legacy Sully preset.
+  - Filtered the legacy `preset-sully-v2` role out of the runtime character list so it no longer appears as the public default role.
+  - Removed the unused legacy Sully preset data block from `OSContext`.
+  - Removed Sully-only furniture presets, room reset controls, and room initialization branches from `RoomApp`.
+  - Added built-in character metadata and locked built-in starter prompts behind the UI.
+  - Hid delete controls for locked built-in characters.
+  - Updated README default-role wording to match the deployment fork.
+  - Added deployment fork maintainer credit as `A-Yuan / Asherie` while keeping upstream NMJ attribution and PolyForm Noncommercial boundary visible.
+
+- pending:
+  - Replace the temporary generic starter roles with the user's final packaged example characters when those cards/prompts are ready.
+
+## 2026-07-02 Open Source Notice
+
+- done:
+  - Checked the maintained work copy and original sample for `LICENSE`, `NOTICE`, README license text, package metadata, and git remotes.
+  - Found no standalone `LICENSE` file in the distributed local sample.
+  - Found the current public upstream repository: `https://github.com/qegj567-cloud/SullyOS`.
+  - Confirmed the public upstream GitHub owner is `qegj567-cloud`, profile name `NMJ`.
+  - Confirmed the current upstream README requires `Copyright (c) 2024-2026 NMJ (SullyOS / 手抓糯米机)`.
+  - Confirmed the current upstream README states PolyForm Noncommercial 1.0.0, superseding the older local sample README's MIT note for this deployment boundary.
+  - Added `NOTICE.md` to document upstream attribution, local modifications, and non-commercial use boundary.
+  - Set package metadata to `SEE LICENSE IN NOTICE.md`.
+  - Updated the first-run opening popup to show open-source attribution, credits, PolyForm Noncommercial boundary, and disclaimer before use.
+  - Kept the user's privately confirmed Xiaohongshu identity out of public attribution because the GitHub upstream identity is sufficient and less invasive.
+
+- verified:
+  - Local source inspection confirmed the original sample has the older README MIT statement and no declared author/remote.
+  - GitHub API returned public upstream repo metadata for `qegj567-cloud/SullyOS`.
+  - GitHub API README decode found the PolyForm Noncommercial section and Required Notice.
+
+## 2026-07-02 Launcher UI Pass
+
+- done:
+  - Improved Launcher readability on the default pastel wallpaper by switching the default content color to slate.
+  - Gave app icons solid light surfaces and per-app icon colors so clickable areas are clearer.
+  - Added a translucent launcher app panel to separate the desktop grid from the background.
+  - Moved the default Dock to phone/message/date/settings: `电话`, `Message`, `见面`, `设置`.
+  - Increased the vertical gap between the page indicator and bottom Dock so the indicator no longer feels blocked.
+  - Fixed duplicate React keys in the calendar weekday row.
+
+- verified:
+  - `npm run build` passed.
+  - Local Playwright smoke opened the Launcher at desktop and 390x844 mobile viewport.
+  - Mobile screenshot confirmed the bottom Dock no longer covers the page indicator.
+
 ## 2026-07-02 Sun Fruit Pack
 
 - done:

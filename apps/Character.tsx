@@ -23,7 +23,10 @@ const CharacterCard: React.FC<{
     char: CharacterProfile;
     onClick: () => void;
     onDelete: (e: React.MouseEvent) => void;
-}> = ({ char, onClick, onDelete }) => (
+}> = ({ char, onClick, onDelete }) => {
+    const isLockedBuiltIn = Boolean(char.isBuiltIn && char.lockPromptEditing);
+
+    return (
     <div
         onClick={onClick}
         className="relative p-4 rounded-3xl border bg-white/40 border-white/40 hover:bg-white/60 hover:scale-[1.01] transition-all duration-300 cursor-pointer group shadow-sm shrink-0"
@@ -36,22 +39,26 @@ const CharacterCard: React.FC<{
             <div className="flex-1 min-w-0">
                 <h3 className="font-medium truncate text-slate-700">
                     {char.name}
+                    {isLockedBuiltIn && <span className="ml-2 align-middle text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">内置</span>}
                 </h3>
                 <p className="text-xs text-slate-400 truncate mt-0.5 font-light">
                     {char.description || '暂无描述'}
                 </p>
             </div>
         </div>
-        <button 
-            onClick={onDelete}
-            className="absolute top-3 right-3 p-2 rounded-full text-slate-300 hover:bg-red-50 hover:text-red-400 active:bg-red-100 active:text-red-500 transition-all z-10"
-        >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-        </button>
+        {!isLockedBuiltIn && (
+            <button
+                onClick={onDelete}
+                className="absolute top-3 right-3 p-2 rounded-full text-slate-300 hover:bg-red-50 hover:text-red-400 active:bg-red-100 active:text-red-500 transition-all z-10"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+        )}
     </div>
-);
+    );
+};
 
 const Character: React.FC = () => {
   const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, addCharacter, updateCharacter, deleteCharacter, apiConfig, addToast, userProfile, customThemes, addCustomTheme, worldbooks } = useOS();
@@ -195,6 +202,8 @@ const Character: React.FC = () => {
           return { ...prev, [field]: value };
       });
   };
+
+  const isPromptLocked = Boolean(formData?.isBuiltIn && formData.lockPromptEditing);
 
   // Worldbook Logic
   const mountWorldbook = (bookId: string) => {
@@ -891,20 +900,24 @@ ${isInitialGeneration ? `
                                </div>
                            </div>
                            
-                           <div>
-                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">核心指令 (System Prompt)</label>
-                               <textarea value={formData.systemPrompt} onChange={(e) => handleChange('systemPrompt', e.target.value)} className="w-full h-40 bg-white rounded-3xl p-5 text-sm shadow-sm resize-none focus:ring-1 focus:ring-primary/20 transition-all" placeholder="设定..." />
-                           </div>
+                           {!isPromptLocked && (
+                               <>
+                                   <div>
+                                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">核心指令 (System Prompt)</label>
+                                       <textarea value={formData.systemPrompt} onChange={(e) => handleChange('systemPrompt', e.target.value)} className="w-full h-40 bg-white rounded-3xl p-5 text-sm shadow-sm resize-none focus:ring-1 focus:ring-primary/20 transition-all" placeholder="设定..." />
+                                   </div>
 
-                           <div>
-                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">世界观 / 设定补充 (Worldview & Lore)</label>
-                               <textarea 
-                                    value={formData.worldview || ''} 
-                                    onChange={(e) => handleChange('worldview', e.target.value)} 
-                                    className="w-full h-24 bg-white rounded-3xl p-5 text-sm shadow-sm resize-none focus:ring-1 focus:ring-primary/20 transition-all" 
-                                    placeholder="在这个世界里，魔法是存在的..." 
-                                />
-                           </div>
+                                   <div>
+                                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">世界观 / 设定补充 (Worldview & Lore)</label>
+                                       <textarea
+                                            value={formData.worldview || ''}
+                                            onChange={(e) => handleChange('worldview', e.target.value)}
+                                            className="w-full h-24 bg-white rounded-3xl p-5 text-sm shadow-sm resize-none focus:ring-1 focus:ring-primary/20 transition-all"
+                                            placeholder="在这个世界里，魔法是存在的..."
+                                        />
+                                   </div>
+                               </>
+                           )}
 
                            <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3">
                                <div className="flex items-center justify-between">

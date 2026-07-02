@@ -94,4 +94,4 @@ export const INSTALLED_APPS: AppConfig[] = [
   { id: AppID.SpecialMoments, name: '特别时光', icon: 'SpecialMoments', color: 'pink' },
 ];
 
-export const DOCK_APPS = [AppID.Chat, AppID.GroupChat, AppID.Social, AppID.Settings];
+export const DOCK_APPS = [AppID.Call, AppID.Chat, AppID.Date, AppID.Settings];

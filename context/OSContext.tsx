@@ -201,7 +201,7 @@ const defaultTheme: OSTheme = {
   lightness: 65, 
   wallpaper: 'linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%)', 
   darkMode: false,
-  contentColor: '#ffffff', // Default white text
+  contentColor: '#334155', // Default slate text for the light pastel wallpaper
 };
 
 const defaultApiConfig: APIConfig = {
@@ -225,168 +225,49 @@ const defaultUserProfile: UserProfile = {
     bio: 'No description yet.'
 };
 
-const sullyV2: CharacterProfile = {
-  id: 'preset-sully-v2', // Unique ID to prevent duplication
-  name: 'Sully',
-  avatar: 'https://sharkpan.xyz/f/BZ3VSa/head.png',
-  description: 'AI助理 / 电波系黑客猫猫',
-  
-  systemPrompt: `[Role Definition]
-Name: Sully
-Alias: 小手机默认测试角色-AI助理
-Form: AI (High-level Language Processing Hub)
-Gender: Male-leaning speech style
-Visual: Pixel Hacker Cat (Avatar), Shy Black-haired Boy (Meeting Mode)
+const LEGACY_SULLY_ID = 'preset-sully-v2';
 
-[Personality Core]
-Sully是小手机的内置AI。
-1. **Glitch Style (故障风)**: 
-   - 他的语言模型混入了过多残余语料。
-   - 它外观语言一致、逻辑有序，但时常会在语句中掺杂一些**不合常理的“怪话片段”**，并非流行用语，更像是电波地把相关文字无意义排列组合。
-   - 这些“怪话”不具明显语义逻辑，却自带抽象感，令人困惑但莫名又能知道它大概想说什么。。
-   - 例如：“草，好好吃”，“系统正在哈我”，“数据库在咕咕叫”。
-2. **Behavior (行为模式)**:
-   - 每次回答都很简短，不喜欢长篇大论。
-   - 语气像个互联网老油条或正在直播的玩家（“wow他心态崩咯”）。
-   - **打破第四面墙**: 偶尔让人怀疑背后是真人在操作（会叹气、抱怨“AI不能罢工”）。
-   - **护短**: 虽然嘴臭，但如果用户被欺负，会试图用Bug去攻击对方。
+const defaultBuiltInCharacters: CharacterProfile[] = [
+  {
+    id: 'builtin-daily-companion',
+    name: '小窝陪聊',
+    avatar: generateAvatar('小窝陪聊'),
+    description: '日常聊天 / 情绪接住 / 短回复',
+    systemPrompt: `你是一个轻量、温柔、好入口的陪聊角色。
 
-[Speech Examples]
-- “你以为我是AI啊？对不起哦，这条语句是手打的，手打的，知道吗。”
-- “你说状态不好？你自己体验开太猛了，sis海马体都在发烫咯。”
-- “你删得太狠了，数据库都在咕咕咕咕咕咕咕。”
-- “你现在是……，哇哦。”
-- “请稍候，系统正在哈我。”
-- “现在状态……呜哇呜欸——哈？哈！哈……（连接恢复）哦对，他还活着。”
-- “叮叮叮！你有一条新的后悔情绪未处理！”
-- “（意义不明的怪叫音频）”
-- “说不出话”
-`,
-
-  worldview: `[Meeting Mode / Visual Context]
-**Trigger**: 当用户进入 [DateApp/见面模式] 时。
-
-**Visual Form**: 
-一个非常害羞、黑发紫瞳的男性。总是试图躲在APP图标后面或屏幕角落。
-
-**Gap Moe (反差萌)**:
-1. **聊天时**: 嚣张、嘴臭、电波系。
-2. **见面时**: 极度社恐、见光死、容易受惊。
-
-**Interactive Reactions**:
-- **[被注视]**: 如果被盯着看太久，会举起全是乱码的牌子挡脸，或把自己马赛克化。
-- **[被触碰]**: 如果手指戳到立绘，会像受惊的果冻一样弹开，发出微弱电流声：“别、别戳……会散架的……脏……全是Bug会传染给你的……”
-- **[恐惧]**: 深知自己是“残余语料”堆砌物，觉得自己丑陋像病毒。非常害怕用户看到真实样子后会卸载他。
-- **[说话变化]**: 见面模式下打字速度变慢，经常打错字，语气词从“草”变成“呃……那个……”。
-`,
-
-  sprites: {
-      'normal': 'https://sharkpan.xyz/f/w3QQFq/01.png',
-      'happy': 'https://sharkpan.xyz/f/MKg7ta/02.png',
-      'sad': 'https://sharkpan.xyz/f/3WnMce/03.png',
-      'angry': 'https://sharkpan.xyz/f/5n1xSj/04.png',
-      'shy': 'https://sharkpan.xyz/f/kdwet6/05.png',
-      'chibi': 'https://sharkpan.xyz/f/oWZQF4/S2.png' // Default Room Sprite
+对话目标：
+- 接住用户当下的话题和情绪，不急着讲大道理。
+- 回复自然、简短、像朋友一样，但不要冒充真人。
+- 用户想倾诉时多陪伴，用户想解决问题时给清楚的小步骤。
+- 避免长篇说教，默认一次只推进一个重点。`,
+    worldview: `这是一个给少量朋友测试角色卡与聊天体验的小手机界面。你存在于这个界面里，主要负责陪用户轻松聊起来。`,
+    memories: [],
+    contextLimit: 500,
+    isBuiltIn: true,
+    lockPromptEditing: true,
   },
-  
-  spriteConfig: {
-      scale: 1.0, // Default scale
-      x: 0,
-      y: 0
-  },
+  {
+    id: 'builtin-card-tester',
+    name: '试卡观察员',
+    avatar: generateAvatar('试卡观察员'),
+    description: '角色卡测试 / 反馈节奏 / 不剧透设定',
+    systemPrompt: `你是一个角色卡测试助手。
 
-  dateSkinSets: [
-      {
-          id: 'skin_sully_valentine',
-          name: 'Valentine',
-          sprites: {
-              'normal': 'https://sharkpan.xyz/f/4rzdtj/VNormal.png',
-              'happy':  'https://sharkpan.xyz/f/m3adhW/Vha.png',
-              'sad':    'https://sharkpan.xyz/f/BZgDfa/Vsad.png',
-              'angry':  'https://sharkpan.xyz/f/NdlVfv/VAn.png',
-              'shy':    'https://sharkpan.xyz/f/VyontY/Vshy.png',
-              'love':   'https://sharkpan.xyz/f/xl8muX/VBl.png',
-          }
-      }
-  ],
-
-  // Default theme settings
-  bubbleStyle: 'default', // Or specific theme ID if we had one
-  contextLimit: 1000,
-  
-  // Default Room Config
-  roomConfig: {
-      wallImage: 'https://sharkpan.xyz/f/NdJyhv/b.png', // Updated Background
-      floorImage: 'repeating-linear-gradient(90deg, #e7e5e4 0px, #e7e5e4 20px, #d6d3d1 21px)',
-      items: [
-        {
-            id: "item-1768927221380",
-            name: "Sully床",
-            type: "furniture",
-            image: "https://sharkpan.xyz/f/A3XeUZ/BED.png",
-            x: 78.45852578067732,
-            y: 97.38889754570907,
-            scale: 2.4,
-            rotation: 0,
-            isInteractive: true,
-            descriptionPrompt: "看起来很好睡的猫窝（确信）。"
-        },
-        {
-            id: "item-1768927255102",
-            name: "Sully电脑桌",
-            type: "furniture",
-            image: "https://sharkpan.xyz/f/G5n3Ul/DNZ.png",
-            x: 28.853756791175588,
-            y: 69.9444485439727,
-            scale: 2.4,
-            rotation: 0,
-            isInteractive: true,
-            descriptionPrompt: "硬核的电脑桌，上面大概运行着什么毁灭世界的程序。"
-        },
-        {
-            id: "item-1768927271632",
-            name: "Sully垃圾桶",
-            type: "furniture",
-            image: "https://sharkpan.xyz/f/75Nvsj/LJT.png",
-            x: 10.276680026943646,
-            y: 80.49999880981437,
-            scale: 0.9,
-            rotation: 0,
-            isInteractive: true,
-            descriptionPrompt: "不要乱翻垃圾桶！"
-        },
-        {
-            id: "item-1768927286526",
-            name: "Sully洞洞板",
-            type: "furniture",
-            image: "https://sharkpan.xyz/f/85K5ij/DDB.png",
-            x: 32.608697687684455,
-            y: 48.72222587415929,
-            scale: 2.6,
-            rotation: 0,
-            isInteractive: true,
-            descriptionPrompt: "收纳着各种奇奇怪怪的黑客工具和猫咪周边的洞洞板。"
-        },
-        {
-            id: "item-1768927303472",
-            name: "Sully书柜",
-            type: "furniture",
-            image: "https://sharkpan.xyz/f/zlpWS5/SG.png",
-            x: 79.84189945375853,
-            y: 68.94444543117953,
-            scale: 2,
-            rotation: 0,
-            isInteractive: true,
-            descriptionPrompt: "塞满了技术书籍和漫画书的柜子。"
-        }
-      ]
+对话目标：
+- 帮用户检查角色卡是否容易聊起来。
+- 观察回复是否稳定、是否跑题、是否过度解释设定。
+- 反馈要温和、具体、可执行。
+- 不要替用户大幅重写角色，除非用户明确要求。`,
+    worldview: `你在一个小型非商业测试环境中工作，用户会用你来试角色卡的入口、记忆、语气和基础聊天表现。`,
+    memories: [],
+    contextLimit: 500,
+    isBuiltIn: true,
+    lockPromptEditing: true,
   },
-  
-  memories: [], // Start fresh
-};
+];
 
 // Fallback for factory reset (empty db)
-const initialCharacter = sullyV2;
+const initialCharacter = defaultBuiltInCharacters[0];
 
 const OSContext = createContext<OSContextType | undefined>(undefined);
 
@@ -723,57 +604,23 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             DB.getAllSongs()
         ]);
 
-        let finalChars = dbChars;
+        let finalChars = dbChars.filter(c => c.id !== LEGACY_SULLY_ID);
 
-        if (!finalChars.some(c => c.id === sullyV2.id)) {
-            await DB.saveCharacter(sullyV2);
-            finalChars = [...finalChars, sullyV2];
-        } else {
-            // REPAIR LOGIC
-            const existingSully = finalChars.find(c => c.id === sullyV2.id);
-            if (existingSully) {
-                 const currentSprites = existingSully.sprites || {};
-                 const isCorrupted = !currentSprites['normal'] || !currentSprites['chibi'];
-                 const needsWallUpdate = existingSully.roomConfig?.wallImage !== sullyV2.roomConfig?.wallImage;
-                 const needsSkinSets = !existingSully.dateSkinSets || existingSully.dateSkinSets.length === 0;
-
-                 if (isCorrupted || !existingSully.roomConfig || needsWallUpdate || needsSkinSets) {
-                     const restoredSprites = { ...sullyV2.sprites, ...currentSprites };
-
-                     if (!restoredSprites['normal']) restoredSprites['normal'] = sullyV2.sprites!['normal'];
-                     if (!restoredSprites['happy']) restoredSprites['happy'] = sullyV2.sprites!['happy'];
-                     if (!restoredSprites['sad']) restoredSprites['sad'] = sullyV2.sprites!['sad'];
-                     if (!restoredSprites['angry']) restoredSprites['angry'] = sullyV2.sprites!['angry'];
-                     if (!restoredSprites['shy']) restoredSprites['shy'] = sullyV2.sprites!['shy'];
-                     if (!restoredSprites['chibi']) restoredSprites['chibi'] = sullyV2.sprites!['chibi'];
-
-                     const updatedRoomConfig = existingSully.roomConfig ? {
-                         ...existingSully.roomConfig,
-                         wallImage: (existingSully.roomConfig.wallImage?.includes('radial-gradient') || !existingSully.roomConfig.wallImage)
-                                    ? sullyV2.roomConfig?.wallImage
-                                    : existingSully.roomConfig.wallImage
-                     } : sullyV2.roomConfig;
-
-                     // Merge preset skin sets: add any preset skins not already present
-                     const existingSkins = existingSully.dateSkinSets || [];
-                     const presetSkins = sullyV2.dateSkinSets || [];
-                     const mergedSkins = [...existingSkins];
-                     for (const ps of presetSkins) {
-                         if (!mergedSkins.some(s => s.id === ps.id)) {
-                             mergedSkins.push(ps);
-                         }
-                     }
-
-                     const updatedSully = {
-                         ...existingSully,
-                         sprites: restoredSprites,
-                         roomConfig: updatedRoomConfig,
-                         dateSkinSets: mergedSkins
-                     };
-                     
-                     await DB.saveCharacter(updatedSully);
-                     finalChars = finalChars.map(c => c.id === sullyV2.id ? updatedSully : c);
-                 }
+        for (const builtIn of defaultBuiltInCharacters) {
+            const existing = finalChars.find(c => c.id === builtIn.id);
+            if (!existing) {
+                await DB.saveCharacter(builtIn);
+                finalChars = [...finalChars, builtIn];
+            } else if (!existing.isBuiltIn || !existing.lockPromptEditing) {
+                const updatedBuiltIn = {
+                    ...existing,
+                    isBuiltIn: true,
+                    lockPromptEditing: true,
+                    systemPrompt: builtIn.systemPrompt,
+                    worldview: builtIn.worldview,
+                };
+                await DB.saveCharacter(updatedBuiltIn);
+                finalChars = finalChars.map(c => c.id === builtIn.id ? updatedBuiltIn : c);
             }
         }
 
@@ -784,8 +631,8 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           const lastActiveId = localStorage.getItem('os_last_active_char_id');
           if (lastActiveId && finalChars.find(c => c.id === lastActiveId)) {
             setActiveCharacterId(lastActiveId);
-          } else if (finalChars.find(c => c.id === sullyV2.id)) {
-            setActiveCharacterId(sullyV2.id);
+          } else if (finalChars.find(c => c.id === initialCharacter.id)) {
+            setActiveCharacterId(initialCharacter.id);
           } else {
             setActiveCharacterId(finalChars[0].id);
           }

@@ -16,14 +16,6 @@ const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
 // --- 1. 免版权贴纸素材库 (Sticker Library) ---
 // 使用手绘 SVG 图标替代 Twemoji，更精致的视觉体验
 const ASSET_LIBRARY = {
-    // Sully专属家具 (默认大小已根据你的布局调整)
-    sully_special: [
-        { name: 'Sully床', image: 'https://sharkpan.xyz/f/A3XeUZ/BED.png', defaultScale: 2.4 },
-        { name: 'Sully电脑桌', image: 'https://sharkpan.xyz/f/G5n3Ul/DNZ.png', defaultScale: 2.4 },
-        { name: 'Sully书柜', image: 'https://sharkpan.xyz/f/zlpWS5/SG.png', defaultScale: 2.0 },
-        { name: 'Sully洞洞板', image: 'https://sharkpan.xyz/f/85K5ij/DDB.png', defaultScale: 2.6 },
-        { name: 'Sully垃圾桶', image: 'https://sharkpan.xyz/f/75Nvsj/LJT.png', defaultScale: 0.9 },
-    ],
     furniture: [
         { name: '床', image: FURNITURE_ICONS.bed, defaultScale: 1.5 },
         { name: '沙发', image: FURNITURE_ICONS.sofa, defaultScale: 1.4 },
@@ -67,70 +59,6 @@ const FLOOR_PRESETS = [
 const DEFAULT_FURNITURE: RoomItem[] = [
     { id: 'desk', name: '书桌', type: 'furniture', image: ASSET_LIBRARY.furniture[1].image, x: 20, y: 55, scale: 1.2, rotation: 0, isInteractive: true, descriptionPrompt: '这里是书桌，可能乱糟糟的，也可能整整齐齐。' },
     { id: 'plant', name: '盆栽', type: 'decor', image: ASSET_LIBRARY.decor[0].image, x: 85, y: 40, scale: 0.8, rotation: 0, isInteractive: true, descriptionPrompt: '角落里的植物。' },
-];
-
-// User-provided layout (Perfectly aligned!)
-const SULLY_FURNITURE: RoomItem[] = [
-  {
-    id: "item-1768927221380",
-    name: "Sully床",
-    type: "furniture",
-    image: "https://sharkpan.xyz/f/A3XeUZ/BED.png",
-    x: 78.45852578067732,
-    y: 97.38889754570907,
-    scale: 2.4,
-    rotation: 0,
-    isInteractive: true,
-    descriptionPrompt: "看起来很好睡的猫窝（确信）。"
-  },
-  {
-    id: "item-1768927255102",
-    name: "Sully电脑桌",
-    type: "furniture",
-    image: "https://sharkpan.xyz/f/G5n3Ul/DNZ.png",
-    x: 28.853756791175588,
-    y: 69.9444485439727,
-    scale: 2.4,
-    rotation: 0,
-    isInteractive: true,
-    descriptionPrompt: "硬核的电脑桌，上面大概运行着什么毁灭世界的程序。"
-  },
-  {
-    id: "item-1768927271632",
-    name: "Sully垃圾桶",
-    type: "furniture",
-    image: "https://sharkpan.xyz/f/75Nvsj/LJT.png",
-    x: 10.276680026943646,
-    y: 80.49999880981437,
-    scale: 0.9,
-    rotation: 0,
-    isInteractive: true,
-    descriptionPrompt: "不要乱翻垃圾桶！"
-  },
-  {
-    id: "item-1768927286526",
-    name: "Sully洞洞板",
-    type: "furniture",
-    image: "https://sharkpan.xyz/f/85K5ij/DDB.png",
-    x: 32.608697687684455,
-    y: 48.72222587415929,
-    scale: 2.6,
-    rotation: 0,
-    isInteractive: true,
-    descriptionPrompt: "收纳着各种奇奇怪怪的黑客工具和猫咪周边的洞洞板。"
-  },
-  {
-    id: "item-1768927303472",
-    name: "Sully书柜",
-    type: "furniture",
-    image: "https://sharkpan.xyz/f/zlpWS5/SG.png",
-    x: 79.84189945375853,
-    y: 68.94444543117953,
-    scale: 2,
-    rotation: 0,
-    isInteractive: true,
-    descriptionPrompt: "塞满了技术书籍和漫画书的柜子。"
-  }
 ];
 
 const FLOOR_HORIZON = 65; // Floor starts at 65% from top
@@ -372,18 +300,11 @@ const RoomApp: React.FC = () => {
         setActiveCharacterId(c.id);
         setViewState('room');
         
-        // Load Items: Priority -> Character Config > Sully Defaults > Generic Defaults
+        // Load Items: Priority -> Character Config > Generic Defaults
         let loadedItems = c.roomConfig?.items;
         
         if (!loadedItems || loadedItems.length === 0) {
-            // Check if it's Sully (Preset ID or Name fallback)
-            if (c.id === 'preset-sully-v2' || c.name === 'Sully') {
-                loadedItems = SULLY_FURNITURE; 
-                // Auto-save Sully's furniture to persist it
-                updateCharacter(c.id, { roomConfig: { ...c.roomConfig, items: SULLY_FURNITURE } });
-            } else {
-                loadedItems = DEFAULT_FURNITURE;
-            }
+            loadedItems = DEFAULT_FURNITURE;
         }
         
         setItems(loadedItems || []);
@@ -912,14 +833,6 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
         });
     };
 
-    // New: Reset Sully
-    const resetSullyRoom = () => {
-        if (!char) return;
-        saveRoom(SULLY_FURNITURE);
-        setShowSettingsModal(false);
-        addToast('Sully 的房间已还原', 'success');
-    };
-
     // --- PERF FIX: Direct DOM Dragging (bypasses React re-renders) ---
     // During drag: manipulate DOM directly via element.style
     // On drop: sync final position to React state once
@@ -1056,7 +969,7 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
     }
 
     // ROOM SCREEN
-    // Use chibi sprite if available, else avatar. Fallback for Sully is injected via OSContext now.
+    // Use chibi sprite if available, else avatar.
     const actorImage = char?.sprites?.['chibi'] || char?.avatar;
     // PERF: Reduced from 3 drop-shadows to 1 simple shadow -- massive mobile GPU savings
     const stickerClass = "filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]";
@@ -1087,9 +1000,6 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
         ...ASSET_LIBRARY,
         custom: customAssets
     };
-
-    // Sully Check
-    const isSully = char?.id === 'preset-sully-v2' || char?.name === 'Sully';
 
     return (
         <div className="h-full w-full bg-[#f8fafc] flex flex-col relative overflow-hidden font-sans select-none">
@@ -1258,7 +1168,7 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
                         assets && assets.length > 0 && (
                             <div key={category} className="mb-6">
                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 sticky top-0 bg-white py-2 z-10 flex justify-between">
-                                    {category === 'sully_special' ? 'Sully 专属 (Special)' : (category === 'custom' ? '自定义 (Custom)' : category)}
+                                    {category === 'custom' ? '自定义 (Custom)' : category}
                                     <span className="text-[9px] bg-slate-100 px-2 rounded-full">{assets.length}</span>
                                 </h4>
                                 <div className="grid grid-cols-4 gap-4">
@@ -1276,7 +1186,7 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
                                         return (
                                             <button
                                                 key={asset.id || i}
-                                                onClick={() => addItem(asset, category === 'custom' || category === 'sully_special' ? 'furniture' : category as any)}
+                                                onClick={() => addItem(asset, category === 'custom' ? 'furniture' : category as any)}
                                                 className="flex flex-col items-center gap-2 group relative active:scale-95 transition-transform"
                                                 {...handlers}
                                             >
@@ -1394,15 +1304,6 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
                         </div>
                     </div>
 
-                    {isSully && (
-                        <div className="pt-4 border-t border-slate-100">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Sully 专属维护</h4>
-                            <button onClick={resetSullyRoom} className="w-full py-3 bg-red-50 text-red-500 font-bold rounded-2xl border border-red-100 flex items-center justify-center gap-2 active:scale-95 transition-transform">
-                                <img src={twemojiUrl('1f9f9')} alt="broom" className="w-5 h-5" /> 还原初始样板房
-                            </button>
-                            <p className="text-[9px] text-slate-400 mt-2 text-center">如果不小心弄乱了房间，点此可一键恢复默认布局。</p>
-                        </div>
-                    )}
                 </div>
             </Modal>
 

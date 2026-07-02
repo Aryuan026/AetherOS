@@ -1,6 +1,7 @@
 {
   "name": "aetheros-simulator",
   "version": "1.0.0",
+  "license": "SEE LICENSE IN NOTICE.md",
   "type": "module",
   "scripts": {
     "dev": "vite",
