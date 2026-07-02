@@ -1,5 +1,25 @@
 # SullyOS Progress
 
+## 2026-07-02 Smiling Snowman Pack
+
+- done:
+  - Added public pack `theme-smiling-snowman` / `微笑雪人系列`.
+  - Copied 25 original GIF assets into `public/stickers/assets/theme-smiling-snowman/`.
+  - Filled `public/stickers/catalog.json` with stable `snowman_001` through `snowman_025` entries and `雪人-*` display names.
+  - Kept the pack default-disabled so each browser/user must enable it per local character.
+
+- next:
+  - Have one fresh browser/user enable `微笑雪人系列` for a test character and confirm the sticker appears in the picker.
+
+- verified:
+  - Local catalog parse found all three public packs, `75` total sticker entries, and `0` missing assets.
+  - `GITHUB_PAGES=1 npm run build` passed for `/sullyos/` subpath deployment.
+  - Server synced `dist/` to `/srv/asherie/sites/science-demos/sullyos`.
+  - Server backup before sync: `/srv/asherie/backups/sullyos-smiling-snowman-20260702T072819Z`.
+  - Public catalog `https://lab.asherie.cloud/sullyos/stickers/catalog.json` returned version `2026-07-02-smiling-snowman-v1`.
+  - Public sticker `snowman_001.gif` returned `200 OK`.
+  - Playwright browser smoke mounted the SullyOS lock screen with `0` console errors and the known Tailwind CDN warning.
+
 ## 2026-07-01
 
 - done:

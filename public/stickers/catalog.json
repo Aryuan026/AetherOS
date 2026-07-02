@@ -1,6 +1,6 @@
 {
   "schema": "sullyos.public-emoji-packs.v1",
-  "version": "2026-07-01-doodle-ji-v1",
+  "version": "2026-07-02-smiling-snowman-v1",
   "assetBase": "assets/",
   "packs": [
     {
@@ -1171,6 +1171,541 @@
             "对方已经觉得被监视或不自在时"
           ],
           "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "theme-smiling-snowman",
+      "name": "微笑雪人系列",
+      "description": "冷静、吐槽、忙碌、确认与轻微拒绝感很强的一组公共默认 GIF 表情。",
+      "visibilityDefault": "disabled",
+      "assetBase": "assets/theme-smiling-snowman/",
+      "stickers": [
+        {
+          "id": "snowman_001",
+          "displayName": "雪人-问号",
+          "tags": [
+            "微笑雪人",
+            "问号",
+            "疑惑",
+            "不懂",
+            "停顿"
+          ],
+          "asset_file": "snowman_001.gif",
+          "prompt": {
+            "meaning": "疑惑、没懂、脑袋上冒出问号",
+            "tone": "问号、疑惑、不懂",
+            "use_when": "对消息感到困惑、需要对方解释时",
+            "avoid_when": "对方已经解释很多遍时可能显得不耐烦"
+          },
+          "source": {
+            "origin_file_name": "？.gif"
+          }
+        },
+        {
+          "id": "snowman_002",
+          "displayName": "雪人-不听",
+          "tags": [
+            "微笑雪人",
+            "不听",
+            "拒绝",
+            "耳机",
+            "屏蔽"
+          ],
+          "asset_file": "snowman_002.gif",
+          "prompt": {
+            "meaning": "戴上耳机拒绝接收信息，我不听我不听",
+            "tone": "不听、拒绝、耳机",
+            "use_when": "想撒娇式拒绝、屏蔽坏消息或开玩笑逃避时",
+            "avoid_when": "对方在讲重要事实或边界时"
+          },
+          "source": {
+            "origin_file_name": "不听.gif"
+          }
+        },
+        {
+          "id": "snowman_003",
+          "displayName": "雪人-熬夜加班",
+          "tags": [
+            "微笑雪人",
+            "熬夜",
+            "加班",
+            "工作",
+            "电脑",
+            "疲惫"
+          ],
+          "asset_file": "snowman_003.gif",
+          "prompt": {
+            "meaning": "熬夜工作、赶稿、写代码或被任务追着跑",
+            "tone": "熬夜、加班、工作",
+            "use_when": "聊到通宵、加班、赶进度、疲惫但还在撑时",
+            "avoid_when": "不适合用来鼓励长期过劳"
+          },
+          "source": {
+            "origin_file_name": "熬夜加班.gif"
+          }
+        },
+        {
+          "id": "snowman_004",
+          "displayName": "雪人-不妥",
+          "tags": [
+            "微笑雪人",
+            "不妥",
+            "否定",
+            "不合适",
+            "提醒"
+          ],
+          "asset_file": "snowman_004.gif",
+          "prompt": {
+            "meaning": "觉得事情不太合适，需要提醒或轻轻否定",
+            "tone": "不妥、否定、不合适",
+            "use_when": "发现方案、说法或行为有点不稳时",
+            "avoid_when": "需要给出详细解释但只发图会显得敷衍时"
+          },
+          "source": {
+            "origin_file_name": "不妥.gif"
+          }
+        },
+        {
+          "id": "snowman_005",
+          "displayName": "雪人-不为所动",
+          "tags": [
+            "微笑雪人",
+            "不为所动",
+            "淡定",
+            "无动于衷",
+            "拒绝"
+          ],
+          "asset_file": "snowman_005.gif",
+          "prompt": {
+            "meaning": "不被打动，不被影响，继续保持冷静",
+            "tone": "不为所动、淡定、无动于衷",
+            "use_when": "面对诱惑、撒娇、催促仍然不动摇时",
+            "avoid_when": "对方真的在求助或示弱时"
+          },
+          "source": {
+            "origin_file_name": "不为所动.gif"
+          }
+        },
+        {
+          "id": "snowman_006",
+          "displayName": "雪人-等会儿回来",
+          "tags": [
+            "微笑雪人",
+            "等会儿回来",
+            "离开",
+            "稍等",
+            "回来"
+          ],
+          "asset_file": "snowman_006.gif",
+          "prompt": {
+            "meaning": "先离开一下，等会儿回来",
+            "tone": "等会儿回来、离开、稍等",
+            "use_when": "需要暂停聊天、临时离开或告诉对方稍等时",
+            "avoid_when": "需要马上响应紧急问题时"
+          },
+          "source": {
+            "origin_file_name": "等会儿回来.gif"
+          }
+        },
+        {
+          "id": "snowman_007",
+          "displayName": "雪人-翻脸了",
+          "tags": [
+            "微笑雪人",
+            "翻脸",
+            "生气",
+            "转冷",
+            "警告"
+          ],
+          "asset_file": "snowman_007.gif",
+          "prompt": {
+            "meaning": "翻脸了，态度突然变冷，带玩笑警告感",
+            "tone": "翻脸、生气、转冷",
+            "use_when": "朋友间表达不满、假装生气或立边界时",
+            "avoid_when": "真实冲突里需要文字解释而不是只发图"
+          },
+          "source": {
+            "origin_file_name": "翻脸了.gif"
+          }
+        },
+        {
+          "id": "snowman_008",
+          "displayName": "雪人-该吃药了",
+          "tags": [
+            "微笑雪人",
+            "吃药",
+            "提醒",
+            "健康",
+            "吐槽"
+          ],
+          "asset_file": "snowman_008.gif",
+          "prompt": {
+            "meaning": "玩笑式提醒休息、吃药或别硬撑",
+            "tone": "吃药、提醒、健康",
+            "use_when": "朋友间用来提醒照顾身体或吐槽状态离谱时",
+            "avoid_when": "不要当作真实医疗建议或诊断"
+          },
+          "source": {
+            "origin_file_name": "该吃药了.gif"
+          }
+        },
+        {
+          "id": "snowman_009",
+          "displayName": "雪人-好的",
+          "tags": [
+            "微笑雪人",
+            "好的",
+            "确认",
+            "收到",
+            "同意"
+          ],
+          "asset_file": "snowman_009.gif",
+          "prompt": {
+            "meaning": "收到、OK、同意安排",
+            "tone": "好的、确认、收到",
+            "use_when": "确认对方消息、轻快回应收到时",
+            "avoid_when": "需要表达强烈情绪或详细承诺时"
+          },
+          "source": {
+            "origin_file_name": "好的.gif"
+          }
+        },
+        {
+          "id": "snowman_010",
+          "displayName": "雪人-喝茶",
+          "tags": [
+            "微笑雪人",
+            "喝茶",
+            "淡定",
+            "围观",
+            "休息"
+          ],
+          "asset_file": "snowman_010.gif",
+          "prompt": {
+            "meaning": "淡定喝茶，先观察或歇一下",
+            "tone": "喝茶、淡定、围观",
+            "use_when": "围观、降温、休息、慢慢看事情发展时",
+            "avoid_when": "对方期待你立刻处理问题时"
+          },
+          "source": {
+            "origin_file_name": "喝茶.gif"
+          }
+        },
+        {
+          "id": "snowman_011",
+          "displayName": "雪人-警觉",
+          "tags": [
+            "微笑雪人",
+            "警觉",
+            "观察",
+            "警惕",
+            "冷静"
+          ],
+          "asset_file": "snowman_011.gif",
+          "prompt": {
+            "meaning": "察觉异常，保持警觉",
+            "tone": "警觉、观察、警惕",
+            "use_when": "发现不对劲、需要谨慎观察时",
+            "avoid_when": "对方只是分享日常小事时"
+          },
+          "source": {
+            "origin_file_name": "警觉.gif"
+          }
+        },
+        {
+          "id": "snowman_012",
+          "displayName": "雪人-冷静分析",
+          "tags": [
+            "微笑雪人",
+            "冷静分析",
+            "思考",
+            "理性",
+            "判断"
+          ],
+          "asset_file": "snowman_012.gif",
+          "prompt": {
+            "meaning": "进入冷静分析模式，开始理性判断",
+            "tone": "冷静分析、思考、理性",
+            "use_when": "准备拆解问题、分析局势或认真判断时",
+            "avoid_when": "对方只是想要情绪陪伴时"
+          },
+          "source": {
+            "origin_file_name": "冷静分析.gif"
+          }
+        },
+        {
+          "id": "snowman_013",
+          "displayName": "雪人-冷漠",
+          "tags": [
+            "微笑雪人",
+            "冷漠",
+            "淡淡",
+            "不理",
+            "安静"
+          ],
+          "asset_file": "snowman_013.gif",
+          "prompt": {
+            "meaning": "冷淡、不想理、情绪降温",
+            "tone": "冷漠、淡淡、不理",
+            "use_when": "表达暂时冷处理、无动于衷或轻微不爽时",
+            "avoid_when": "容易伤到对方的敏感对话里"
+          },
+          "source": {
+            "origin_file_name": "冷漠.gif"
+          }
+        },
+        {
+          "id": "snowman_014",
+          "displayName": "雪人-冷笑",
+          "tags": [
+            "微笑雪人",
+            "冷笑",
+            "看透",
+            "嘲讽",
+            "淡定"
+          ],
+          "asset_file": "snowman_014.gif",
+          "prompt": {
+            "meaning": "淡淡冷笑，看透一切，带一点轻微调侃",
+            "tone": "冷笑、看透、嘲讽",
+            "use_when": "想表达看穿了、保持淡定或轻微吐槽时",
+            "avoid_when": "对方需要安慰或认真共情时"
+          },
+          "source": {
+            "origin_file_name": "冷笑.gif"
+          }
+        },
+        {
+          "id": "snowman_015",
+          "displayName": "雪人-嗯",
+          "tags": [
+            "微笑雪人",
+            "嗯",
+            "确认",
+            "手机",
+            "敷衍"
+          ],
+          "asset_file": "snowman_015.gif",
+          "prompt": {
+            "meaning": "嗯，收到，带一点手机前的淡淡回应",
+            "tone": "嗯、确认、手机",
+            "use_when": "简短确认、轻微敷衍或低能量回复时",
+            "avoid_when": "需要热情肯定或明确承诺时"
+          },
+          "source": {
+            "origin_file_name": "嗯.gif"
+          }
+        },
+        {
+          "id": "snowman_016",
+          "displayName": "雪人-你慌了",
+          "tags": [
+            "微笑雪人",
+            "你慌了",
+            "淡定",
+            "戳破",
+            "调侃"
+          ],
+          "asset_file": "snowman_016.gif",
+          "prompt": {
+            "meaning": "戳破对方慌张，淡定地调侃一句",
+            "tone": "你慌了、淡定、戳破",
+            "use_when": "朋友互相打趣、看出对方紧张时",
+            "avoid_when": "对方真的焦虑或需要安全感时"
+          },
+          "source": {
+            "origin_file_name": "你慌了.gif"
+          }
+        },
+        {
+          "id": "snowman_017",
+          "displayName": "雪人-你醒了",
+          "tags": [
+            "微笑雪人",
+            "你醒了",
+            "探头",
+            "提醒",
+            "发现"
+          ],
+          "asset_file": "snowman_017.gif",
+          "prompt": {
+            "meaning": "探头确认：你终于醒了",
+            "tone": "你醒了、探头、提醒",
+            "use_when": "朋友上线、反应过来、迟迟回复后调侃时",
+            "avoid_when": "对方刚经历疲惫或不舒服时要温柔一点"
+          },
+          "source": {
+            "origin_file_name": "你醒了.gif"
+          }
+        },
+        {
+          "id": "snowman_018",
+          "displayName": "雪人-送花花",
+          "tags": [
+            "微笑雪人",
+            "送花",
+            "示好",
+            "可爱",
+            "和好"
+          ],
+          "asset_file": "snowman_018.gif",
+          "prompt": {
+            "meaning": "递花示好、可爱地表达喜欢或缓和气氛",
+            "tone": "送花、示好、可爱",
+            "use_when": "想表达喜欢、感谢、和好，或给对方一点甜甜支持",
+            "avoid_when": "对方正在严肃拒绝或需要实际方案时"
+          },
+          "source": {
+            "origin_file_name": "送花花.gif"
+          }
+        },
+        {
+          "id": "snowman_019",
+          "displayName": "雪人-叹气",
+          "tags": [
+            "微笑雪人",
+            "叹气",
+            "无奈",
+            "疲惫",
+            "轻叹"
+          ],
+          "asset_file": "snowman_019.gif",
+          "prompt": {
+            "meaning": "无奈叹气，有点累但还算温和",
+            "tone": "叹气、无奈、疲惫",
+            "use_when": "表达疲惫、无奈、事情又来了时",
+            "avoid_when": "需要鼓励或庆祝的场景"
+          },
+          "source": {
+            "origin_file_name": "叹气.gif"
+          }
+        },
+        {
+          "id": "snowman_020",
+          "displayName": "雪人-推眼镜",
+          "tags": [
+            "微笑雪人",
+            "推眼镜",
+            "认真",
+            "分析",
+            "专业"
+          ],
+          "asset_file": "snowman_020.gif",
+          "prompt": {
+            "meaning": "推眼镜，准备认真判断或专业发言",
+            "tone": "推眼镜、认真、分析",
+            "use_when": "准备讲道理、做分析、进入专家模式时",
+            "avoid_when": "只想轻松闲聊不想严肃化时"
+          },
+          "source": {
+            "origin_file_name": "推眼镜.gif"
+          }
+        },
+        {
+          "id": "snowman_021",
+          "displayName": "雪人-无语",
+          "tags": [
+            "微笑雪人",
+            "无语",
+            "沉默",
+            "冷脸",
+            "看不下去"
+          ],
+          "asset_file": "snowman_021.gif",
+          "prompt": {
+            "meaning": "无语、沉默、看不下去",
+            "tone": "无语、沉默、冷脸",
+            "use_when": "遇到离谱内容、短暂失语时",
+            "avoid_when": "对方认真表达脆弱感时"
+          },
+          "source": {
+            "origin_file_name": "无语.gif"
+          }
+        },
+        {
+          "id": "snowman_022",
+          "displayName": "雪人-在忙",
+          "tags": [
+            "微笑雪人",
+            "在忙",
+            "忙碌",
+            "雪球",
+            "工作"
+          ],
+          "asset_file": "snowman_022.gif",
+          "prompt": {
+            "meaning": "事情堆满了，很忙很忙",
+            "tone": "在忙、忙碌、雪球",
+            "use_when": "表示暂时没空、任务很多、被工作埋住时",
+            "avoid_when": "对方需要紧急回应时"
+          },
+          "source": {
+            "origin_file_name": "在忙.gif"
+          }
+        },
+        {
+          "id": "snowman_023",
+          "displayName": "雪人-皱眉",
+          "tags": [
+            "微笑雪人",
+            "皱眉",
+            "不满",
+            "怀疑",
+            "警惕"
+          ],
+          "asset_file": "snowman_023.gif",
+          "prompt": {
+            "meaning": "皱眉，不太满意或觉得有点奇怪",
+            "tone": "皱眉、不满、怀疑",
+            "use_when": "表达怀疑、不满、需要再看看时",
+            "avoid_when": "轻松玩笑里过度使用会显得严厉"
+          },
+          "source": {
+            "origin_file_name": "皱眉.gif"
+          }
+        },
+        {
+          "id": "snowman_024",
+          "displayName": "雪人-仔细观察",
+          "tags": [
+            "微笑雪人",
+            "仔细观察",
+            "放大镜",
+            "查看",
+            "侦查"
+          ],
+          "asset_file": "snowman_024.gif",
+          "prompt": {
+            "meaning": "拿放大镜仔细观察，检查细节",
+            "tone": "仔细观察、放大镜、查看",
+            "use_when": "发现可疑点、要认真看图或审查细节时",
+            "avoid_when": "不适合用于隐私或过度审视别人"
+          },
+          "source": {
+            "origin_file_name": "仔细观察.gif"
+          }
+        },
+        {
+          "id": "snowman_025",
+          "displayName": "雪人-No",
+          "tags": [
+            "微笑雪人",
+            "no",
+            "拒绝",
+            "不行",
+            "否定"
+          ],
+          "asset_file": "snowman_025.gif",
+          "prompt": {
+            "meaning": "明确说不行、不要、No",
+            "tone": "no、拒绝、不行",
+            "use_when": "需要干脆拒绝或划一个轻松边界时",
+            "avoid_when": "需要柔和沟通复杂原因时"
+          },
+          "source": {
+            "origin_file_name": "no.gif"
+          }
         }
       ]
     }
