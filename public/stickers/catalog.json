@@ -1,6 +1,6 @@
 {
   "schema": "sullyos.public-emoji-packs.v1",
-  "version": "2026-07-02-haoqi-crow-v1",
+  "version": "2026-07-02-sun-fruit-v1",
   "assetBase": "assets/",
   "packs": [
     {
@@ -2239,6 +2239,540 @@
           },
           "source": {
             "origin_file_name": "优雅.gif"
+          }
+        }
+      ]
+    },
+    {
+      "id": "theme-sun-fruit",
+      "name": "太阳果",
+      "description": "来自恋与深空语境的一组温暖、撒娇、鼓励、拒绝与日常问候 GIF 表情。",
+      "visibilityDefault": "disabled",
+      "assetBase": "assets/theme-sun-fruit/",
+      "stickers": [
+        {
+          "id": "sunfruit_001",
+          "displayName": "太阳果-惊叹",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "惊叹",
+            "注意",
+            "严肃"
+          ],
+          "asset_file": "sunfruit_001.gif",
+          "prompt": {
+            "meaning": "突然被点醒或注意到什么，表情有点严肃",
+            "tone": "惊叹、注意、严肃",
+            "use_when": "看到意外消息、提醒注意、或轻微震惊时",
+            "avoid_when": "对方需要安慰时不要显得太冷"
+          },
+          "source": {
+            "origin_file_name": "！.gif"
+          }
+        },
+        {
+          "id": "sunfruit_002",
+          "displayName": "太阳果-问号",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "问号",
+            "疑惑",
+            "不懂"
+          ],
+          "asset_file": "sunfruit_002.gif",
+          "prompt": {
+            "meaning": "满脸疑惑地冒出问号，不太理解状况",
+            "tone": "问号、疑惑、不懂",
+            "use_when": "需要对方解释、表达困惑或没听懂时",
+            "avoid_when": "对方已经解释很多遍时"
+          },
+          "source": {
+            "origin_file_name": "？.gif"
+          }
+        },
+        {
+          "id": "sunfruit_003",
+          "displayName": "太阳果-抱抱",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "抱抱",
+            "贴贴",
+            "亲近"
+          ],
+          "asset_file": "sunfruit_003.gif",
+          "prompt": {
+            "meaning": "张开手想抱抱，带一点主动贴近",
+            "tone": "抱抱、贴贴、亲近",
+            "use_when": "想安慰、撒娇、表达亲近或求抱抱时",
+            "avoid_when": "对方明确不想亲密互动时"
+          },
+          "source": {
+            "origin_file_name": "抱抱.gif"
+          }
+        },
+        {
+          "id": "sunfruit_004",
+          "displayName": "太阳果-不可以",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "不可以",
+            "拒绝",
+            "保护"
+          ],
+          "asset_file": "sunfruit_004.gif",
+          "prompt": {
+            "meaning": "抱住小青果说不可以，拒绝但很可爱",
+            "tone": "不可以、拒绝、保护",
+            "use_when": "想温柔拒绝、护住某人或表达不同意时",
+            "avoid_when": "需要正式说明边界原因时"
+          },
+          "source": {
+            "origin_file_name": "不可以.gif"
+          }
+        },
+        {
+          "id": "sunfruit_005",
+          "displayName": "太阳果-否认三连",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "否认",
+            "不是我",
+            "拒绝"
+          ],
+          "asset_file": "sunfruit_005.gif",
+          "prompt": {
+            "meaning": "连连否认，坚决表示不是这样",
+            "tone": "否认、不是我、拒绝",
+            "use_when": "被误会、想否认、或玩笑式撇清时",
+            "avoid_when": "真的需要承担责任或道歉时"
+          },
+          "source": {
+            "origin_file_name": "否认三连.gif"
+          }
+        },
+        {
+          "id": "sunfruit_006",
+          "displayName": "太阳果-好的",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "好的",
+            "确认",
+            "收到"
+          ],
+          "asset_file": "sunfruit_006.gif",
+          "prompt": {
+            "meaning": "表情平静地确认：好的",
+            "tone": "好的、确认、收到",
+            "use_when": "收到安排、同意、轻轻确认时",
+            "avoid_when": "需要热情承诺或详细回复时"
+          },
+          "source": {
+            "origin_file_name": "好的.gif"
+          }
+        },
+        {
+          "id": "sunfruit_007",
+          "displayName": "太阳果-好累",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "好累",
+            "疲惫",
+            "躺平"
+          ],
+          "asset_file": "sunfruit_007.gif",
+          "prompt": {
+            "meaning": "累到躺下，电量见底",
+            "tone": "好累、疲惫、躺平",
+            "use_when": "表达疲惫、想休息、忙完瘫倒时",
+            "avoid_when": "需要鼓励立刻行动时"
+          },
+          "source": {
+            "origin_file_name": "好累.gif"
+          }
+        },
+        {
+          "id": "sunfruit_008",
+          "displayName": "太阳果-好笑",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "好笑",
+            "笑哭",
+            "开心"
+          ],
+          "asset_file": "sunfruit_008.gif",
+          "prompt": {
+            "meaning": "趴着笑出声，觉得很好笑",
+            "tone": "好笑、笑哭、开心",
+            "use_when": "遇到有趣内容、想轻快地笑一下时",
+            "avoid_when": "对方严肃表达痛苦时"
+          },
+          "source": {
+            "origin_file_name": "好笑.gif"
+          }
+        },
+        {
+          "id": "sunfruit_009",
+          "displayName": "太阳果-加油",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "加油",
+            "鼓励",
+            "支持"
+          ],
+          "asset_file": "sunfruit_009.gif",
+          "prompt": {
+            "meaning": "握拳打气，给对方加油",
+            "tone": "加油、鼓励、支持",
+            "use_when": "鼓励、支持、陪对方开始做事时",
+            "avoid_when": "对方说不想被鼓励只想被听见时"
+          },
+          "source": {
+            "origin_file_name": "加油.gif"
+          }
+        },
+        {
+          "id": "sunfruit_010",
+          "displayName": "太阳果-开心",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "开心",
+            "快乐",
+            "花花"
+          ],
+          "asset_file": "sunfruit_010.gif",
+          "prompt": {
+            "meaning": "被花花围住，开心又满足",
+            "tone": "开心、快乐、花花",
+            "use_when": "收到好消息、表达快乐或庆祝小成果时",
+            "avoid_when": "对方正在难过或焦虑时"
+          },
+          "source": {
+            "origin_file_name": "开心.gif"
+          }
+        },
+        {
+          "id": "sunfruit_011",
+          "displayName": "太阳果-考虑一下",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "考虑",
+            "思考",
+            "犹豫"
+          ],
+          "asset_file": "sunfruit_011.gif",
+          "prompt": {
+            "meaning": "认真考虑一下，还没有马上答应",
+            "tone": "考虑、思考、犹豫",
+            "use_when": "需要思考、权衡、暂不确定时",
+            "avoid_when": "需要立刻明确答复时"
+          },
+          "source": {
+            "origin_file_name": "考虑一下.gif"
+          }
+        },
+        {
+          "id": "sunfruit_012",
+          "displayName": "太阳果-老实交代",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "老实交代",
+            "审问",
+            "调侃"
+          ],
+          "asset_file": "sunfruit_012.gif",
+          "prompt": {
+            "meaning": "拿着小青果让对方老实交代",
+            "tone": "老实交代、审问、调侃",
+            "use_when": "玩笑式追问、发现可疑点、想听实话时",
+            "avoid_when": "真实压力场景里可能显得逼问"
+          },
+          "source": {
+            "origin_file_name": "老实交代.gif"
+          }
+        },
+        {
+          "id": "sunfruit_013",
+          "displayName": "太阳果-摸摸头",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "摸摸头",
+            "安慰",
+            "照顾"
+          ],
+          "asset_file": "sunfruit_013.gif",
+          "prompt": {
+            "meaning": "轻轻摸摸小伙伴的头，温柔安抚",
+            "tone": "摸摸头、安慰、照顾",
+            "use_when": "对方委屈、累了、需要安慰时",
+            "avoid_when": "对方不想被哄或需要具体方案时"
+          },
+          "source": {
+            "origin_file_name": "摸摸头.gif"
+          }
+        },
+        {
+          "id": "sunfruit_014",
+          "displayName": "太阳果-庆祝",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "庆祝",
+            "礼炮",
+            "开心"
+          ],
+          "asset_file": "sunfruit_014.gif",
+          "prompt": {
+            "meaning": "拿着礼炮庆祝，气氛轻快",
+            "tone": "庆祝、礼炮、开心",
+            "use_when": "完成目标、收到好消息、值得庆祝时",
+            "avoid_when": "对方还没准备好庆祝时"
+          },
+          "source": {
+            "origin_file_name": "庆祝.gif"
+          }
+        },
+        {
+          "id": "sunfruit_015",
+          "displayName": "太阳果-什么",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "什么",
+            "惊讶",
+            "疑问"
+          ],
+          "asset_file": "sunfruit_015.gif",
+          "prompt": {
+            "meaning": "皱眉表示：什么？",
+            "tone": "什么、惊讶、疑问",
+            "use_when": "听到意外内容、想追问或表达不解时",
+            "avoid_when": "需要温柔承接情绪时"
+          },
+          "source": {
+            "origin_file_name": "什么.gif"
+          }
+        },
+        {
+          "id": "sunfruit_016",
+          "displayName": "太阳果-生气",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "生气",
+            "火大",
+            "不满"
+          ],
+          "asset_file": "sunfruit_016.gif",
+          "prompt": {
+            "meaning": "气到冒烟，明显不高兴",
+            "tone": "生气、火大、不满",
+            "use_when": "表达被气到、不满、想抗议时",
+            "avoid_when": "需要冷静沟通或安抚时"
+          },
+          "source": {
+            "origin_file_name": "生气.gif"
+          }
+        },
+        {
+          "id": "sunfruit_017",
+          "displayName": "太阳果-受伤",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "受伤",
+            "委屈",
+            "心痛"
+          ],
+          "asset_file": "sunfruit_017.gif",
+          "prompt": {
+            "meaning": "靠墙说你伤害了我，委屈受伤",
+            "tone": "受伤、委屈、心痛",
+            "use_when": "玩笑式表达被伤到、委屈或小心碎时",
+            "avoid_when": "真实创伤表达里不要轻飘飘使用"
+          },
+          "source": {
+            "origin_file_name": "受伤.gif"
+          }
+        },
+        {
+          "id": "sunfruit_018",
+          "displayName": "太阳果-送花",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "送花",
+            "示好",
+            "喜欢"
+          ],
+          "asset_file": "sunfruit_018.gif",
+          "prompt": {
+            "meaning": "探出半张脸送花，别扭地示好",
+            "tone": "送花、示好、喜欢",
+            "use_when": "想表达喜欢、和好、感谢或轻轻示好时",
+            "avoid_when": "需要正式道歉或明确承诺时"
+          },
+          "source": {
+            "origin_file_name": "送花.gif"
+          }
+        },
+        {
+          "id": "sunfruit_019",
+          "displayName": "太阳果-算了",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "算了",
+            "放下",
+            "无奈"
+          ],
+          "asset_file": "sunfruit_019.gif",
+          "prompt": {
+            "meaning": "摆摆手算了，带一点无奈放过",
+            "tone": "算了、放下、无奈",
+            "use_when": "不想争了、轻轻放下、结束小纠结时",
+            "avoid_when": "对方还没被理解就劝算了时"
+          },
+          "source": {
+            "origin_file_name": "算了.gif"
+          }
+        },
+        {
+          "id": "sunfruit_020",
+          "displayName": "太阳果-晚安",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "晚安",
+            "睡觉",
+            "休息"
+          ],
+          "asset_file": "sunfruit_020.gif",
+          "prompt": {
+            "meaning": "盖好被子说晚安，准备睡觉",
+            "tone": "晚安、睡觉、休息",
+            "use_when": "睡前告别、提醒休息、温柔收尾时",
+            "avoid_when": "对方还在等关键回答时"
+          },
+          "source": {
+            "origin_file_name": "晚安.gif"
+          }
+        },
+        {
+          "id": "sunfruit_021",
+          "displayName": "太阳果-心碎",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "心碎",
+            "难过",
+            "受伤"
+          ],
+          "asset_file": "sunfruit_021.gif",
+          "prompt": {
+            "meaning": "抱着碎心，心都碎了",
+            "tone": "心碎、难过、受伤",
+            "use_when": "表达失落、受伤、玩笑式心碎时",
+            "avoid_when": "严肃伤心时需要更多文字陪伴"
+          },
+          "source": {
+            "origin_file_name": "心碎.gif"
+          }
+        },
+        {
+          "id": "sunfruit_022",
+          "displayName": "太阳果-晕",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "晕",
+            "混乱",
+            "头晕"
+          ],
+          "asset_file": "sunfruit_022.gif",
+          "prompt": {
+            "meaning": "眼冒星星，晕乎乎反应不过来",
+            "tone": "晕、混乱、头晕",
+            "use_when": "信息太多、被绕晕、短暂混乱时",
+            "avoid_when": "需要专业判断或安全提醒时"
+          },
+          "source": {
+            "origin_file_name": "晕.gif"
+          }
+        },
+        {
+          "id": "sunfruit_023",
+          "displayName": "太阳果-再见",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "再见",
+            "告别",
+            "挥手"
+          ],
+          "asset_file": "sunfruit_023.gif",
+          "prompt": {
+            "meaning": "挥手说再见，轻快下线",
+            "tone": "再见、告别、挥手",
+            "use_when": "聊天结束、短暂离开、礼貌告别时",
+            "avoid_when": "对方仍在等待回复时"
+          },
+          "source": {
+            "origin_file_name": "再见.gif"
+          }
+        },
+        {
+          "id": "sunfruit_024",
+          "displayName": "太阳果-在干嘛",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "在干嘛",
+            "探头",
+            "好奇"
+          ],
+          "asset_file": "sunfruit_024.gif",
+          "prompt": {
+            "meaning": "从木板后探头：在干嘛",
+            "tone": "在干嘛、探头、好奇",
+            "use_when": "主动找人、轻轻开场、想知道对方状态时",
+            "avoid_when": "对方明确说忙或需要安静时"
+          },
+          "source": {
+            "origin_file_name": "在干嘛.gif"
+          }
+        },
+        {
+          "id": "sunfruit_025",
+          "displayName": "太阳果-早安",
+          "tags": [
+            "太阳果",
+            "恋与深空",
+            "早安",
+            "起床",
+            "问候"
+          ],
+          "asset_file": "sunfruit_025.gif",
+          "prompt": {
+            "meaning": "从云朵和太阳里冒出来说早安",
+            "tone": "早安、起床、问候",
+            "use_when": "早晨问候、开启一天、轻快打招呼时",
+            "avoid_when": "深夜或严肃场景不适合"
+          },
+          "source": {
+            "origin_file_name": "早安.gif"
           }
         }
       ]

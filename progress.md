@@ -1,5 +1,26 @@
 # SullyOS Progress
 
+## 2026-07-02 Sun Fruit Pack
+
+- done:
+  - Added public pack `theme-sun-fruit` / `太阳果`.
+  - Copied 25 original GIF assets into `public/stickers/assets/theme-sun-fruit/`.
+  - Filled `public/stickers/catalog.json` with stable `sunfruit_001` through `sunfruit_025` entries and `太阳果-*` display names.
+  - Added `恋与深空` as a source/context tag for this pack's sticker entries.
+  - Kept the pack default-disabled so each browser/user must enable it per local character.
+
+- next:
+  - Have one fresh browser/user enable `太阳果` for a test character and confirm the sticker appears in the picker.
+
+- verified:
+  - Local catalog parse found all five public packs, `125` total sticker entries, and `0` missing assets.
+  - `GITHUB_PAGES=1 npm run build` passed for `/sullyos/` subpath deployment.
+  - Server synced `dist/` to `/srv/asherie/sites/science-demos/sullyos`.
+  - Server backup before sync: `/srv/asherie/backups/sullyos-sun-fruit-20260702T075358Z`.
+  - Public catalog `https://lab.asherie.cloud/sullyos/stickers/catalog.json` returned version `2026-07-02-sun-fruit-v1`.
+  - Public sticker `sunfruit_001.gif` returned `200 OK`.
+  - Playwright browser smoke mounted the SullyOS lock screen with `0` console errors and the known Tailwind CDN warning.
+
 ## 2026-07-02 Haoqi Crow Pack
 
 - done:
