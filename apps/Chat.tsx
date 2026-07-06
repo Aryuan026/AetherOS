@@ -1,28 +1,52 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { Message, MessageType, MemoryFragment, Emoji, EmojiCategory } from '../types';
+import { CompanionWakeupRule, Message, MessageType, MemoryFragment, Emoji, EmojiCategory } from '../types';
 import { processImage } from '../utils/file';
 import { safeResponseJson } from '../utils/safeApi';
 import { formatLifeSimResetCardForContext } from '../utils/lifeSimChatCard';
-import { XhsMcpClient, extractNotesFromMcpData, normalizeNote } from '../utils/xhsMcpClient';
 import MessageItem from '../components/chat/MessageItem';
-import { PRESET_THEMES, DEFAULT_ARCHIVE_PROMPTS } from '../components/chat/ChatConstants';
+import { DEFAULT_CHAT_BACKGROUND_IMAGE, PRESET_THEMES, DEFAULT_ARCHIVE_PROMPTS, DEEP_SPACE_APPEARANCE_PRESET_ID, normalizeChatAppearancePresetId, resolveChatAppearanceTheme } from '../components/chat/ChatConstants';
 import ChatHeader from '../components/chat/ChatHeaderShell';
 import ChatInputArea from '../components/chat/ChatInputArea';
 import ChatModals from '../components/chat/ChatModals';
 import Modal from '../components/os/Modal';
-import ProactiveSettingsModal from '../components/chat/ProactiveSettingsModal';
 import EmotionSettingsModal from '../components/chat/EmotionSettingsModal';
-import ActiveMsg2SettingsModal from '../components/chat/ActiveMsg2SettingsModal';
 import { useChatAI } from '../hooks/useChatAI';
 import { synthesizeSpeech, cleanTextForTts } from '../utils/minimaxTts';
 import { getVisibleEmojiScopeForCharacter } from '../utils/emojiVisibility';
+import {
+    DEFAULT_DIRECT_LINES,
+    createDefaultHeartbeatRules,
+    loadCompanionWakeupSettings,
+    scheduleNextCompanionWakeup,
+} from '../utils/companionWakeups';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
 
+const isStarterSeedMessage = (message: Message) => (
+    message.metadata?.source === 'starter' || typeof message.metadata?.seedId === 'string'
+);
+
+const dedupeStarterMessages = (messages: Message[]) => {
+    const seen = new Set<string>();
+    return messages.filter((message) => {
+        if (!isStarterSeedMessage(message)) return true;
+        const seedKey = [
+            message.charId,
+            message.metadata?.seedId || 'starter',
+            message.role,
+            message.type,
+            message.content.trim(),
+        ].join('::');
+        if (seen.has(seedKey)) return false;
+        seen.add(seedKey);
+        return true;
+    });
+};
+
 const Chat: React.FC = () => {
-    const { characters, activeCharacterId, setActiveCharacterId, updateCharacter, apiConfig, apiPresets, addApiPreset, closeApp, customThemes, removeCustomTheme, addToast, userProfile, lastMsgTimestamp, groups, clearUnread, realtimeConfig, theme: osTheme } = useOS();
+    const { characters, activeCharacterId, setActiveCharacterId, updateCharacter, apiConfig, apiPresets, addApiPreset, closeApp, customThemes, addToast, userProfile, lastMsgTimestamp, groups, clearUnread, realtimeConfig, theme: rawOsTheme } = useOS();
     const [messages, setMessages] = useState<Message[]>([]);
     const [totalMsgCount, setTotalMsgCount] = useState(0);
     const [visibleCount, setVisibleCount] = useState(30);
@@ -57,8 +81,7 @@ const Chat: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<EmojiCategory | null>(null); // For deletion modal
     const [editContent, setEditContent] = useState('');
     const [isSummarizing, setIsSummarizing] = useState(false);
-    const [showProactiveModal, setShowProactiveModal] = useState(false);
-    const [showActiveMsg2Modal, setShowActiveMsg2Modal] = useState(false);
+    const [showReplyModeModal, setShowReplyModeModal] = useState(false);
     const [showEmotionModal, setShowEmotionModal] = useState(false);
 
     // Archive Prompts State
@@ -69,6 +92,7 @@ const Chat: React.FC = () => {
     // --- Multi-Select State ---
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedMsgIds, setSelectedMsgIds] = useState<Set<number>>(new Set());
+    const osTheme = useMemo(() => resolveChatAppearanceTheme(rawOsTheme), [rawOsTheme]);
 
     // --- Translation State (per-character toggle, global language settings) ---
     const [translationEnabled, setTranslationEnabled] = useState(() => {
@@ -85,9 +109,15 @@ const Chat: React.FC = () => {
 
     const char = characters.find(c => c.id === activeCharacterId) || characters[0];
     charRef.current = char; // Keep ref in sync for async callbacks
-    const currentThemeId = char?.bubbleStyle || 'default';
+    const appearancePresetId = normalizeChatAppearancePresetId(osTheme.chatAppearancePreset);
+    const presetThemeId = appearancePresetId === DEEP_SPACE_APPEARANCE_PRESET_ID
+        ? 'default'
+        : appearancePresetId;
+    const currentThemeId = osTheme.chatBubbleThemeId || presetThemeId;
     const activeTheme = useMemo(() => customThemes.find(t => t.id === currentThemeId) || PRESET_THEMES[currentThemeId] || PRESET_THEMES.default, [currentThemeId, customThemes]);
     const draftKey = `chat_draft_${activeCharacterId}`;
+    const autoReplyEnabled = char?.autoReplyEnabled !== false;
+    const [companionWakeupActive, setCompanionWakeupActive] = useState(false);
 
     // Filter categories and emojis by active character's visibility (used for both AI prompt and UI)
     const emojiScope = useMemo(
@@ -102,7 +132,7 @@ const Chat: React.FC = () => {
 
 
     // --- Initialize Hook ---
-    const { isTyping, recallStatus, searchStatus, diaryStatus, emotionStatus, lastTokenUsage, tokenBreakdown, setLastTokenUsage, triggerAI, startProactiveChat, stopProactiveChat, isProactiveActive } = useChatAI({
+    const { isTyping, recallStatus, emotionStatus, lastTokenUsage, tokenBreakdown, setLastTokenUsage, triggerAI } = useChatAI({
         char,
         userProfile,
         apiConfig,
@@ -114,8 +144,77 @@ const Chat: React.FC = () => {
         realtimeConfig,
         translationConfig: translationEnabled
             ? { enabled: true, sourceLang: translateSourceLang, targetLang: translateTargetLang }
-            : undefined
+            : undefined,
+        updateCharacter,
     });
+    const replySignalActive = companionWakeupActive;
+
+    const refreshCompanionWakeupActive = useCallback(async () => {
+        if (!char?.id) {
+            setCompanionWakeupActive(false);
+            return;
+        }
+        const rules = await DB.getCompanionWakeupRulesByCharId(char.id);
+        setCompanionWakeupActive(rules.some(rule => rule.kind === 'heartbeat' && rule.enabled));
+    }, [char?.id]);
+
+    useEffect(() => {
+        void refreshCompanionWakeupActive();
+    }, [refreshCompanionWakeupActive, lastMsgTimestamp]);
+
+    const enableCompanionWakeup = useCallback(async () => {
+        if (!char?.id) return;
+        const settings = loadCompanionWakeupSettings();
+        const now = Date.now();
+        const existing = await DB.getCompanionWakeupRulesByCharId(char.id);
+        const heartbeatRules = existing.filter(rule => rule.kind === 'heartbeat');
+        const rulesToSave: CompanionWakeupRule[] = heartbeatRules.length > 0
+            ? heartbeatRules.map(rule => {
+                const nextRule: CompanionWakeupRule = {
+                    ...rule,
+                    enabled: true,
+                    mode: settings.defaultMode,
+                    lines: settings.defaultMode === 'direct' ? (rule.lines?.length ? rule.lines : DEFAULT_DIRECT_LINES) : undefined,
+                    updatedAt: now,
+                };
+                return {
+                    ...nextRule,
+                    nextTriggerAt: nextRule.nextTriggerAt && nextRule.nextTriggerAt > now
+                        ? nextRule.nextTriggerAt
+                        : scheduleNextCompanionWakeup(nextRule, now),
+                };
+            })
+            : createDefaultHeartbeatRules(char, settings.defaultMode).map(rule => ({
+                ...rule,
+                enabled: true,
+                updatedAt: now,
+            }));
+
+        for (const rule of rulesToSave) {
+            await DB.saveCompanionWakeupRule(rule);
+        }
+        setCompanionWakeupActive(true);
+        addToast(`${char.name} 偶尔会自然来信`, 'success');
+    }, [addToast, char]);
+
+    const disableCompanionWakeup = useCallback(async () => {
+        if (!char?.id) return;
+        const now = Date.now();
+        const rules = await DB.getCompanionWakeupRulesByCharId(char.id);
+        for (const rule of rules.filter(item => item.kind === 'heartbeat')) {
+            await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
+        }
+        setCompanionWakeupActive(false);
+        addToast(`${char.name} 暂时不会主动打扰`, 'info');
+    }, [addToast, char]);
+
+    const handleToggleCompanionWakeup = useCallback(async () => {
+        if (companionWakeupActive) {
+            await disableCompanionWakeup();
+        } else {
+            await enableCompanionWakeup();
+        }
+    }, [companionWakeupActive, disableCompanionWakeup, enableCompanionWakeup]);
 
     // --- Voice TTS for chat messages ---
     interface VoiceData { url: string; originalText: string; spokenText?: string; lang?: string; }
@@ -295,10 +394,10 @@ const Chat: React.FC = () => {
 
             // Use ref to always get the CURRENT char (avoids stale closure)
             const currentChar = charRef.current;
-            const chatScopeMsgs = allMsgs
+            const chatScopeMsgs = dedupeStarterMessages(allMsgs
                 .filter(m => m.metadata?.source !== 'date' && m.metadata?.source !== 'call')
                 .filter(m => !currentChar?.hideBeforeMessageId || m.id >= currentChar.hideBeforeMessageId)
-                .filter(m => !(currentChar?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card'));
+                .filter(m => !(currentChar?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card')));
 
             setTotalMsgCount(chatScopeMsgs.length);
             setMessages(chatScopeMsgs.slice(-requestedVisibleCount));
@@ -311,10 +410,10 @@ const Chat: React.FC = () => {
                 const retryMsgs = await DB.getMessagesByCharId(activeCharacterId);
                 if (activeCharIdRef.current !== charIdAtStart) return;
                 const currentChar = charRef.current;
-                const chatScopeMsgs = retryMsgs
+                const chatScopeMsgs = dedupeStarterMessages(retryMsgs
                     .filter(m => m.metadata?.source !== 'date' && m.metadata?.source !== 'call')
                     .filter(m => !currentChar?.hideBeforeMessageId || m.id >= currentChar.hideBeforeMessageId)
-                    .filter(m => !(currentChar?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card'));
+                    .filter(m => !(currentChar?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card')));
                 setTotalMsgCount(chatScopeMsgs.length);
                 setMessages(chatScopeMsgs.slice(-requestedVisibleCount));
             } catch { /* give up silently */ }
@@ -437,7 +536,7 @@ const Chat: React.FC = () => {
                 scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
             }
         }
-    }, [messages, isTyping, recallStatus, searchStatus, diaryStatus, selectionMode]);
+    }, [messages, isTyping, recallStatus, selectionMode]);
 
     const formatTime = (ts: number) => {
         return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -462,6 +561,7 @@ const Chat: React.FC = () => {
                 charId: char.id,
                 url: text,
                 timestamp: Date.now(),
+                source: 'chat',
                 savedDate: new Date().toISOString().split('T')[0],
                 chatContext: recentChat
             });
@@ -481,34 +581,10 @@ const Chat: React.FC = () => {
 
         await DB.saveMessage(msgPayload);
 
-        // Detect XHS link in user text and create xhs_card via MCP
-        if (type === 'text') {
-            const xhsUrlMatch = text.match(/xiaohongshu\.com\/(?:discovery\/item|explore)\/([a-f0-9]{24})/);
-            const mcpUrl = realtimeConfig?.xhsMcpConfig?.serverUrl;
-            if (xhsUrlMatch && mcpUrl && realtimeConfig?.xhsMcpConfig?.enabled) {
-                const noteUrl = `https://www.xiaohongshu.com/explore/${xhsUrlMatch[1]}`;
-                try {
-                    const result = await XhsMcpClient.getNoteDetail(mcpUrl, noteUrl);
-                    if (result.success && result.data) {
-                        const note = normalizeNote(result.data);
-                        await DB.saveMessage({
-                            charId: char.id,
-                            role: 'user',
-                            type: 'xhs_card',
-                            content: note.title || '小红书笔记',
-                            metadata: { xhsNote: note }
-                        });
-                    }
-                } catch (e) {
-                    console.warn('XHS link fetch via MCP failed:', e);
-                }
-            }
-        }
-
         await reloadMessages(visibleCountRef.current);
         setShowPanel('none');
 
-        if (apiConfig.baseUrl && !isTyping) {
+        if (apiConfig.baseUrl && !isTyping && autoReplyEnabled) {
             const updatedMessages = await DB.getRecentMessagesByCharId(char.id, visibleCountRef.current);
             void triggerAI(updatedMessages);
         }
@@ -558,7 +634,7 @@ const Chat: React.FC = () => {
             case 'delete-emoji-req': {
                 const category = categories.find(c => c.id === payload?.categoryId);
                 if (payload?.source === 'public' || category?.source === 'public') {
-                    addToast('公共表情包由服务器清单维护，不能在本地单独删除', 'info');
+                    addToast('内置表情包由服务器清单维护，不能在本地单独删除', 'info');
                     break;
                 }
                 setSelectedEmoji(payload);
@@ -570,8 +646,9 @@ const Chat: React.FC = () => {
             case 'category-options': setSelectedCategory(payload); setModalType('category-options'); break;
             case 'delete-category-req': setSelectedCategory(payload); setModalType('delete-category'); break;
             case 'emoji-pack-manager': setModalType('emoji-pack-manager'); break;
-            case 'proactive': setShowProactiveModal(true); break;
-            case 'proactive2': setShowActiveMsg2Modal(true); break;
+            case 'proactive':
+                void handleToggleCompanionWakeup();
+                break;
             case 'emotion': setShowEmotionModal(true); break;
         }
     };
@@ -599,7 +676,7 @@ const Chat: React.FC = () => {
         const targetCategory = categories.find(c => c.id === targetCatId);
 
         if (targetCategory?.source === 'public') {
-            addToast('公共表情包请通过服务器 catalog 更新；本地导入可以先新建普通分类', 'error');
+            addToast('内置表情包请通过服务器 catalog 更新；本地导入可以先新建普通分类', 'error');
             return;
         }
 
@@ -1018,12 +1095,12 @@ const Chat: React.FC = () => {
         setSelectedMsgIds(new Set());
     };
 
-    const displayMessages = useMemo(() => messages
+    const displayMessages = useMemo(() => dedupeStarterMessages(messages
         .filter(m => m.metadata?.source !== 'date' && m.metadata?.source !== 'call')
         .filter(m => !m.metadata?.proactiveHint) // Hide proactive system hints
         .filter(m => !char?.hideBeforeMessageId || m.id >= char.hideBeforeMessageId)
         .filter(m => { if (char?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card') return false; return true; })
-        .slice(-visibleCount),
+        ).slice(-visibleCount),
         [messages, char?.id, char?.hideBeforeMessageId, char?.hideSystemLogs, visibleCount]);
 
     const collapsedCount = Math.max(0, totalMsgCount - displayMessages.length);
@@ -1048,6 +1125,9 @@ const Chat: React.FC = () => {
     const handleCharSelectCallback = useCallback((id: string) => { setActiveCharacterId(id); setShowPanel('none'); }, []);
     const chatChromeStyle = osTheme.chatChromeStyle || 'soft';
     const chatBackgroundStyle = osTheme.chatBackgroundStyle || 'plain';
+    const chatBackgroundImage = char.chatBackground || (osTheme.chatBackgroundImage ?? DEFAULT_CHAT_BACKGROUND_IMAGE);
+    const chatImageBackgroundColor = chatBackgroundImage === DEFAULT_CHAT_BACKGROUND_IMAGE ? '#e7e5e4' : '#eef0f3';
+    const isDeepSpaceAppearance = appearancePresetId === DEEP_SPACE_APPEARANCE_PRESET_ID;
     const chatRootClass =
         chatChromeStyle === 'pixel'
             ? 'flex flex-col h-full bg-[#efe1cf] overflow-hidden relative font-sans transition-[background-image,background-color] duration-500'
@@ -1056,12 +1136,14 @@ const Chat: React.FC = () => {
               : chatChromeStyle === 'floating'
                 ? 'flex flex-col h-full bg-[#eef2ff] overflow-hidden relative font-sans transition-[background-image,background-color] duration-500'
                 : 'flex flex-col h-full bg-[#f1f5f9] overflow-hidden relative font-sans transition-[background-image,background-color] duration-500';
-    const chatRootStyle: React.CSSProperties = char.chatBackground
+    const chatRootStyle: React.CSSProperties = chatBackgroundImage
         ? {
-            backgroundImage: `url(${char.chatBackground})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-        }
+            backgroundColor: chatImageBackgroundColor,
+            backgroundImage: `linear-gradient(rgba(245,245,245,0.10), rgba(245,245,245,0.10)), url(${chatBackgroundImage})`,
+            backgroundSize: '100% 100%',
+            backgroundPosition: 'center center',
+            backgroundRepeat: 'no-repeat',
+          }
         : chatBackgroundStyle === 'grid'
           ? {
               backgroundColor: chatChromeStyle === 'pixel' ? '#efe1cf' : '#f8fafc',
@@ -1084,6 +1166,14 @@ const Chat: React.FC = () => {
               : {
                   backgroundImage: 'none',
                 };
+    const chatScrollStyle: React.CSSProperties | undefined = chatBackgroundImage
+        ? {
+            backgroundColor: 'transparent',
+            backgroundImage: 'none',
+        }
+        : (activeTheme.type === 'custom' && activeTheme.user.backgroundImage)
+            ? { backgroundImage: 'none' }
+            : undefined;
 
     return (
         <div 
@@ -1125,8 +1215,6 @@ const Chat: React.FC = () => {
                 translateTargetLang={translateTargetLang}
                 onSetTranslateSourceLang={(lang: string) => { setTranslateSourceLang(lang); localStorage.setItem('chat_translate_source_lang', lang); setShowingTargetIds(new Set()); }}
                 onSetTranslateLang={(lang: string) => { setTranslateTargetLang(lang); localStorage.setItem('chat_translate_lang', lang); setShowingTargetIds(new Set()); }}
-                xhsEnabled={!!char.xhsEnabled}
-                onToggleXhs={() => updateCharacter(char.id, { xhsEnabled: !char.xhsEnabled })}
                 chatVoiceEnabled={!!char.chatVoiceEnabled}
                 onToggleChatVoice={() => updateCharacter(char.id, { chatVoiceEnabled: !char.chatVoiceEnabled })}
                 chatVoiceLang={char.chatVoiceLang || ''}
@@ -1147,6 +1235,7 @@ const Chat: React.FC = () => {
                 tokenBreakdown={tokenBreakdown}
                 onClose={closeApp}
                 onTriggerAI={() => triggerAI(messages)}
+                onOpenReplyControls={() => setShowReplyModeModal(true)}
                 onShowCharsPanel={() => setShowPanel('chars')}
                 onDeleteBuff={(buffId) => {
                     const currentBuffs = char.activeBuffs || [];
@@ -1161,11 +1250,19 @@ const Chat: React.FC = () => {
                 headerDensity={osTheme.chatHeaderDensity}
                 statusStyle={osTheme.chatStatusStyle}
                 chromeStyle={osTheme.chatChromeStyle}
+                useHeaderBackgroundImage={isDeepSpaceAppearance}
+                isAutoReplyEnabled={autoReplyEnabled}
+                isProactiveActive={replySignalActive}
              />
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden pt-6 pb-6 no-scrollbar" style={{ backgroundImage: activeTheme.type === 'custom' && activeTheme.user.backgroundImage ? 'none' : undefined }}>
+            <div
+                ref={scrollRef}
+                className="relative flex-1 overflow-y-auto overflow-x-hidden pt-8 pb-3 no-scrollbar"
+                style={chatScrollStyle}
+            >
+                <div className="pointer-events-none sticky top-0 z-0 h-0" />
                 {collapsedCount > 0 && (
-                    <div className="flex justify-center mb-6">
+                    <div className="relative z-10 flex justify-center mb-6">
                         <button onClick={async () => {
                             const nextVisibleCount = visibleCount + LOAD_BATCH_SIZE;
                             visibleCountRef.current = nextVisibleCount;
@@ -1175,6 +1272,7 @@ const Chat: React.FC = () => {
                     </div>
                 )}
 
+                <div className="relative z-10">
                 {displayMessages.map((m, i) => {
                     const prevMessage = i > 0 ? displayMessages[i - 1] : null;
                     const nextMessage = i < displayMessages.length - 1 ? displayMessages[i + 1] : null;
@@ -1217,25 +1315,16 @@ const Chat: React.FC = () => {
                         />
                     );
                 })}
+                </div>
                 
-                {(isTyping || recallStatus || searchStatus || diaryStatus) && !selectionMode && (
-                    <div className="flex items-end gap-3 px-3 mb-6 animate-fade-in">
-                        <img src={char.avatar} className={`${osTheme.chatAvatarSize === 'small' ? 'w-7 h-7' : osTheme.chatAvatarSize === 'large' ? 'w-12 h-12' : 'w-9 h-9'} ${osTheme.chatAvatarShape === 'square' ? 'rounded-sm' : osTheme.chatAvatarShape === 'rounded' ? 'rounded-xl' : 'rounded-[10px]'} object-cover`} />
+                {(isTyping || recallStatus) && !selectionMode && (
+                    <div className="relative z-10 flex items-end gap-3 px-3 mb-6 animate-fade-in">
+                        <img src={char.avatar} className={`${osTheme.chatAvatarSize === 'small' ? 'w-7 h-7' : osTheme.chatAvatarSize === 'large' ? 'w-12 h-12' : 'w-9 h-9'} ${osTheme.chatAvatarShape === 'square' ? 'rounded-sm' : osTheme.chatAvatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full'} object-cover`} />
                         <div className="bg-white px-4 py-3 rounded-2xl shadow-sm">
-                            {searchStatus ? (
-                                <div className="flex items-center gap-2 text-xs text-emerald-500 font-medium">
-                                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    🔍 {searchStatus}
-                                </div>
-                            ) : recallStatus ? (
+                            {recallStatus ? (
                                 <div className="flex items-center gap-2 text-xs text-indigo-500 font-medium">
                                     <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                                     {recallStatus}
-                                </div>
-                            ) : diaryStatus ? (
-                                <div className="flex items-center gap-2 text-xs text-amber-600 font-medium">
-                                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    📖 {diaryStatus}
                                 </div>
                             ) : (
                                 <div className="flex gap-1"><div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-75"></div><div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-150"></div></div>
@@ -1264,8 +1353,6 @@ const Chat: React.FC = () => {
                     emojis={filteredEmojis}
                     characters={characters} activeCharacterId={activeCharacterId}
                     onCharSelect={handleCharSelectCallback}
-                    customThemes={customThemes} onUpdateTheme={(id) => updateCharacter(char.id, { bubbleStyle: id })}
-                    onRemoveTheme={removeCustomTheme} activeThemeId={currentThemeId}
                     onPanelAction={handlePanelAction}
                     onImageSelect={handleImageSelect}
                     isSummarizing={isSummarizing}
@@ -1273,8 +1360,7 @@ const Chat: React.FC = () => {
                     activeCategory={activeCategory}
                     onReroll={handleReroll}
                     canReroll={canReroll}
-                    isProactiveActive={isProactiveActive}
-                    isActiveMsg2Enabled={!!char.activeMsg2Config?.enabled}
+                    isProactiveActive={replySignalActive}
                     isEmotionEnabled={!!char.emotionConfig?.enabled}
                     inputStyle={osTheme.chatInputStyle}
                     sendButtonStyle={osTheme.chatSendButtonStyle}
@@ -1283,46 +1369,55 @@ const Chat: React.FC = () => {
             </div>
 
 
-            {/* Proactive Settings Modal */}
+            {/* Reply Mode Modal */}
             {char && (
-                <ProactiveSettingsModal
-                    isOpen={showProactiveModal}
-                    onClose={() => setShowProactiveModal(false)}
-                    char={char}
-                    isProactiveActive={isProactiveActive}
-                    onSave={(config) => {
-                        updateCharacter(char.id, { proactiveConfig: config });
-                        if (config.enabled) {
-                            startProactiveChat(config.intervalMinutes);
-                            addToast(`已启动主动消息，每 ${config.intervalMinutes >= 60 ? (config.intervalMinutes / 60) + ' 小时' : config.intervalMinutes + ' 分钟'}发送一次`, 'success');
-                        } else {
-                            stopProactiveChat();
-                            addToast('已关闭主动消息', 'info');
-                        }
-                    }}
-                    onStop={() => {
-                        stopProactiveChat();
-                        updateCharacter(char.id, { proactiveConfig: { ...char.proactiveConfig!, enabled: false } });
-                        addToast('已停止主动消息', 'info');
-                    }}
-                />
-            )}
+                <Modal isOpen={showReplyModeModal} title="回复方式" onClose={() => setShowReplyModeModal(false)}>
+                    <div className="space-y-3">
+                        <button
+                            onClick={() => {
+                                updateCharacter(char.id, { autoReplyEnabled: false });
+                                setShowReplyModeModal(false);
+                                addToast('已切换为手动接话', 'info');
+                            }}
+                            className={`w-full rounded-2xl border px-4 py-3 text-left transition-all active:scale-[0.99] ${!autoReplyEnabled ? 'border-indigo-400 bg-indigo-50 text-indigo-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="font-bold">手动接话</div>
+                                {!autoReplyEnabled && <span className="rounded-full bg-indigo-500 px-2 py-0.5 text-[10px] font-bold text-white">当前</span>}
+                            </div>
+                            <div className={`mt-1 text-xs leading-relaxed ${!autoReplyEnabled ? 'text-indigo-500' : 'text-slate-400'}`}>只在点右上角闪电时生成回复。</div>
+                        </button>
 
-            {/* Active Message 2.0 Modal */}
-            {char && (
-                <ActiveMsg2SettingsModal
-                    isOpen={showActiveMsg2Modal}
-                    onClose={() => setShowActiveMsg2Modal(false)}
-                    char={char}
-                    apiConfig={apiConfig}
-                    userProfile={userProfile}
-                    groups={groups}
-                    realtimeConfig={realtimeConfig}
-                    onSave={(config) => {
-                        updateCharacter(char.id, { activeMsg2Config: config });
-                    }}
-                    addToast={addToast}
-                />
+                        <button
+                            onClick={() => {
+                                updateCharacter(char.id, { autoReplyEnabled: true });
+                                setShowReplyModeModal(false);
+                                addToast('已开启自动回复', 'success');
+                            }}
+                            className={`w-full rounded-2xl border px-4 py-3 text-left transition-all active:scale-[0.99] ${autoReplyEnabled ? 'border-emerald-400 bg-emerald-50 text-emerald-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="font-bold">自动回复</div>
+                                {autoReplyEnabled && <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">当前</span>}
+                            </div>
+                            <div className={`mt-1 text-xs leading-relaxed ${autoReplyEnabled ? 'text-emerald-600' : 'text-slate-400'}`}>你发送消息后自动思考并回复。</div>
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                void handleToggleCompanionWakeup();
+                                setShowReplyModeModal(false);
+                            }}
+                            className={`w-full rounded-2xl border px-4 py-3 text-left transition-all active:scale-[0.99] ${replySignalActive ? 'border-violet-400 bg-violet-50 text-violet-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="font-bold">主动来信</div>
+                                {replySignalActive && <span className="rounded-full bg-violet-500 px-2 py-0.5 text-[10px] font-bold text-white">已允许</span>}
+                            </div>
+                            <div className={`mt-1 text-xs leading-relaxed ${replySignalActive ? 'text-violet-600' : 'text-slate-400'}`}>允许他偶尔自己想起你；再次点击会暂停。</div>
+                        </button>
+                    </div>
+                </Modal>
             )}
 
             {/* Emotion Settings Modal */}

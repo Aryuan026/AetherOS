@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useOS } from '../../context/OSContext';
 import { CharacterProfile, SpriteConfig, SkinSet } from '../../types';
 import { processImage } from '../../utils/file';
+import AppHeader from '../shell/AppHeader';
 
 // 标准情绪列表
 const REQUIRED_EMOTIONS = ['normal', 'happy', 'angry', 'sad', 'shy'];
@@ -181,13 +182,7 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
 
     return (
         <div className="h-full w-full bg-slate-50 flex flex-col">
-            <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 bg-white shrink-0 z-20">
-                <button onClick={onBack} className="p-2 -ml-2 text-slate-600 active:scale-95 transition-transform">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                </button>
-                <span className="font-bold text-slate-700">场景布置</span>
-                <div className="w-8"></div>
-            </div>
+            <AppHeader title="场景布置" onBack={onBack} center />
             
             {/* Live Preview Area */}
             <div className="h-64 bg-black relative overflow-hidden shrink-0 border-b border-slate-200">

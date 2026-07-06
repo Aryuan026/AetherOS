@@ -8,6 +8,7 @@ import { processImage } from '../utils/file';
 import Modal from '../components/os/Modal';
 import { safeResponseJson } from '../utils/safeApi';
 import { Sparkle } from '@phosphor-icons/react';
+import AppHeader from '../components/shell/AppHeader';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -572,23 +573,23 @@ Structure:
     if (mode === 'select') {
         return (
             <div className="h-full w-full bg-amber-50 flex flex-col font-light">
-                <div className="pt-12 pb-4 px-6 border-b border-amber-100 bg-amber-50/80 backdrop-blur-sm sticky top-0 z-20 flex items-center justify-between shrink-0 h-24 box-border">
-                    <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-amber-100/50 active:scale-90 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-amber-900"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                    </button>
-                    <span className="font-bold text-amber-900 text-lg tracking-wide">选择日记本</span>
-                    <div className="w-8"></div>
-                </div>
+                <AppHeader
+                    title="选择日记本"
+                    onBack={closeApp}
+                    center
+                    className="bg-amber-50/85 border-amber-100"
+                    titleClassName="truncate text-lg font-bold tracking-wide text-amber-900"
+                />
                 
-                <div className="p-6 grid grid-cols-2 gap-5 overflow-y-auto pb-20 no-scrollbar">
+                <div className="p-5 grid grid-cols-2 gap-3 overflow-y-auto pb-20 no-scrollbar">
                     {characters.map(c => (
-                        <div key={c.id} onClick={() => handleCharSelect(c)} className="aspect-[3/4] bg-white rounded-r-2xl rounded-l-md border-l-4 border-l-amber-800 shadow-[2px_4px_12px_rgba(0,0,0,0.08)] p-4 flex flex-col items-center justify-center gap-3 cursor-pointer active:scale-95 transition-all relative overflow-hidden group">
+                        <div key={c.id} onClick={() => handleCharSelect(c)} className="h-44 bg-white rounded-r-2xl rounded-l-md border-l-4 border-l-amber-800 shadow-[2px_4px_12px_rgba(0,0,0,0.07)] p-3 flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all relative overflow-hidden group">
                             <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/10 to-transparent"></div>
-                            <div className="w-16 h-16 rounded-full p-[2px] border border-amber-100 bg-amber-50">
+                            <div className="w-12 h-12 rounded-full p-[2px] border border-amber-100 bg-amber-50">
                                 <img src={c.avatar} className="w-full h-full rounded-full object-cover" />
                             </div>
-                            <span className="font-bold text-amber-900 text-sm">{c.name}</span>
-                            <span className="text-[9px] text-amber-600 bg-amber-50 px-2 py-1 rounded-full font-mono uppercase tracking-wide">Journal</span>
+                            <span className="font-bold text-amber-900 text-xs leading-tight truncate max-w-full">{c.name}</span>
+                            <span className="text-[8px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-mono uppercase tracking-wide">Journal</span>
                         </div>
                     ))}
                 </div>

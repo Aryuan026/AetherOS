@@ -1,6 +1,7 @@
 
 import { DB } from './db';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { loadCompanionWakeupSettings, scheduleNextCompanionWakeup } from './companionWakeups';
 
 export const ChatParser = {
     // Return cleaned content and perform side effects
@@ -59,6 +60,53 @@ export const ChatParser = {
         }
         content = content.replace(scheduleRegex, '').trim();
 
+        // COMPANION WINDOW WAKEUP
+        // Format: [wakeup_window | 11:00-12:00 | daily | direct | 午饭提醒 | 提醒用户吃午饭]
+        const wakeupWindowRegex = /\[wakeup_window\s*\|\s*(.*?)\s*\|\s*(daily|once)\s*\|\s*(direct|render)\s*\|\s*(.*?)\s*\|\s*([\s\S]*?)\]/g;
+        const wakeupSettings = loadCompanionWakeupSettings();
+        while ((match = wakeupWindowRegex.exec(content)) !== null) {
+            if (!wakeupSettings.aiCareWindowsEnabled) continue;
+            const windowText = match[1].trim();
+            const repeat = match[2].trim() as 'daily' | 'once';
+            const mode = wakeupSettings.defaultMode;
+            const title = match[4].trim();
+            const value = match[5].trim();
+            const [windowStart, windowEnd] = windowText.split('-').map(part => part.trim());
+            if (windowStart && windowEnd && title && value) {
+                const now = Date.now();
+                const rule = {
+                    id: `wake-ai-${charId}-${now}-${Math.random().toString(36).slice(2, 7)}`,
+                    charId,
+                    title,
+                    enabled: true,
+                    kind: 'window' as const,
+                    mode,
+                    repeat,
+                    windowStart,
+                    windowEnd,
+                    value,
+                    lines: mode === 'direct' ? [value] : undefined,
+                    priority: 'care' as const,
+                    source: 'ai_calendar' as const,
+                    createdAt: now,
+                    updatedAt: now,
+                };
+                await DB.saveCompanionWakeupRule({
+                    ...rule,
+                    nextTriggerAt: scheduleNextCompanionWakeup(rule, now),
+                });
+                addToast(`${charName} 记下了一个日常提醒`, 'info');
+                await DB.saveMessage({
+                    charId,
+                    role: 'system',
+                    type: 'text',
+                    content: `[系统: ${charName} 新增了主动来信 "${title}" (${windowStart}-${windowEnd})]`,
+                    metadata: { hidden: true, source: 'companion_wakeup_rule' },
+                });
+            }
+        }
+        content = content.replace(wakeupWindowRegex, '').trim();
+
         // RECALL tag removal (handling done in main loop logic, but cleaning here just in case)
         content = content.replace(/\[\[RECALL:.*?\]\]/g, '').trim();
 
@@ -90,6 +138,7 @@ export const ChatParser = {
             // Strip residual action/system tags that weren't caught earlier
             .replace(/\[\[(?:ACTION|RECALL|SEARCH|DIARY|READ_DIARY|FS_DIARY|FS_READ_DIARY|DIARY_START|DIARY_END|FS_DIARY_START|FS_DIARY_END)[:\s][\s\S]*?\]\]/g, '')
             .replace(/\[schedule_message[^\]]*\]/g, '')
+            .replace(/\[wakeup_window[^\]]*\]/g, '')
             .replace(/\[\[(?:QU[OA]TE|引用)[：:][\s\S]*?\]\]/g, '')
             .replace(/\[(?:QU[OA]TE|引用)[：:][^\]]*\]/g, '')
             // [回复 "content"]: format (AI mimics history context format)

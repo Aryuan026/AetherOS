@@ -1,9 +1,18 @@
 import React, { useMemo, useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { useOS } from '../context/OSContext';
-import { INSTALLED_APPS, DOCK_APPS } from '../constants';
+import { INSTALLED_APPS, DOCK_APPS, LAUNCHER_APP_GROUPS } from '../constants';
 import AppIcon from '../components/os/AppIcon';
 import { DB } from '../utils/db';
 import { CharacterProfile, Anniversary, AppID } from '../types';
+import { formatBondTimeLabelFromMessages } from '../utils/bondTime';
+import CharacterWidget from '../components/launcher/CharacterWidget';
+import {
+  CharacterWidgetImage,
+  EMPTY_WIDGET_IMAGES,
+  getEnabledWidgetImagesForCharacter,
+  loadCharacterWidgetConfig,
+  loadCustomWidgetStore,
+} from '../utils/characterWidgets';
 
 // --- Isolated Components to prevent full re-renders ---
 
@@ -23,7 +32,7 @@ const DesktopClock = React.memo(() => {
         <div className="flex flex-col mb-5 mt-4 relative animate-fade-in" style={{ color: contentColor }}>
              <div className="absolute -top-6 left-1 flex items-center gap-2">
                  <div className="bg-white/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase border border-white/70 shadow-sm">
-                     System Ready
+                     AetherOS LINK READY
                  </div>
                  <div className="h-[1px] w-20 bg-gradient-to-r from-current to-transparent opacity-40"></div>
              </div>
@@ -43,91 +52,34 @@ const DesktopClock = React.memo(() => {
     );
 });
 
-// 2. Character Widget (Consumes Character Data & Messages)
-const CharacterWidget = React.memo(({ 
-    char, 
-    unreadCount, 
-    lastMessage, 
-    onClick, 
-    contentColor 
+// 2. Grid Page Component
+const AppGridPage = React.memo(({ 
+    apps, 
+    openApp,
 }: { 
-    char: CharacterProfile | null, 
-    unreadCount: number, 
-    lastMessage: string, 
-    onClick: () => void,
-    contentColor: string
+    apps: typeof INSTALLED_APPS, 
+    openApp: (id: AppID) => void,
 }) => {
-    const labelColor = contentColor.toLowerCase() === '#ffffff' ? '#334155' : contentColor;
     return (
-        <div className="mb-4 group animate-fade-in">
-             <div 
-                className="relative h-28 w-full overflow-hidden rounded-[1.5rem] bg-white/[0.66] backdrop-blur-2xl border border-white/[0.85] shadow-[0_10px_30px_rgba(15,23,42,0.10),inset_0_1px_0_rgba(255,255,255,0.55)] transition-all duration-300 active:scale-[0.98] cursor-pointer"
-                onClick={onClick}
-             >
-                 <div className="absolute top-0 right-0 w-32 h-full bg-gradient-to-l from-white/50 to-transparent skew-x-12 pointer-events-none"></div>
-                 <div className="absolute inset-0 flex items-center p-4 gap-4">
-                     <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden shadow-lg border-2 border-white/80 relative bg-slate-800">
-                         {char ? (
-                             <img src={char.avatar} className="w-full h-full object-cover" alt="char" loading="lazy" />
-                         ) : <div className="w-full h-full bg-white/10 animate-pulse"></div>}
-                         {unreadCount > 0 ? (
-                            <div className="absolute bottom-1 right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-[8px] font-bold text-white">
-                                {unreadCount}
-                            </div>
-                         ) : (
-                            <div className="absolute bottom-1 right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-black/20 shadow-sm"></div>
-                         )}
+        <div className="animate-fade-in relative rounded-[2rem] bg-white/[0.36] backdrop-blur-xl border border-white/[0.62] px-3 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.07)]">
+             <div className="grid grid-cols-4 gap-y-5 gap-x-2 place-items-center">
+                 {apps.map(app => (
+                     <div
+                        key={app.id}
+                        className="relative transition-transform duration-200 active:scale-95"
+                     >
+                         <AppIcon
+                            app={app}
+                            onClick={() => openApp(app.id)}
+                         />
                      </div>
-
-                     <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
-                         <div className="flex items-center gap-2">
-                             <h3 className="text-lg font-bold tracking-wide drop-shadow-md truncate" style={{ color: contentColor }}>
-                                 {char?.name || 'NO SIGNAL'}
-                             </h3>
-                             <div className="px-1.5 py-0.5 bg-slate-900/5 rounded text-[9px] font-bold uppercase tracking-wider" style={{ color: labelColor }}>
-                                 {unreadCount > 0 ? 'NEW MESSAGE' : 'Active'}
-                             </div>
-                         </div>
-                         
-                         <div className="relative">
-                             <div className="text-xs line-clamp-2 font-medium leading-relaxed opacity-90" style={{ color: labelColor }}>
-                                <span className="opacity-40 mr-1 text-[10px]">▶</span>
-                                {lastMessage}
-                             </div>
-                         </div>
-                     </div>
-                 </div>
+                 ))}
              </div>
         </div>
     );
 });
 
-// 3. Grid Page Component
-const AppGridPage = React.memo(({ 
-    apps, 
-    openApp 
-}: { 
-    apps: typeof INSTALLED_APPS, 
-    openApp: (id: AppID) => void
-}) => {
-    return (
-        <div className="grid grid-cols-4 gap-y-6 gap-x-2 place-items-center animate-fade-in relative rounded-[2rem] bg-white/[0.36] backdrop-blur-xl border border-white/[0.62] px-3 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.07)]">
-             {apps.map(app => (
-                 <div 
-                    key={app.id} 
-                    className="relative transition-transform duration-200 active:scale-95"
-                 >
-                     <AppIcon 
-                        app={app} 
-                        onClick={() => openApp(app.id)} 
-                     />
-                 </div>
-             ))}
-        </div>
-    );
-});
-
-// 4. Widget Page Component (Calendar)
+// 3. Widget Page Component (Calendar)
 const WidgetsPage = React.memo(({ contentColor, openApp, anniversaries, characters }: any) => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -216,6 +168,7 @@ const Launcher: React.FC = () => {
   const [widgetChar, setWidgetChar] = useState<CharacterProfile | null>(null);
   const [lastMessage, setLastMessage] = useState<string>('');
   const [anniversaries, setAnniversaries] = useState<Anniversary[]>([]);
+  const [widgetImages, setWidgetImages] = useState<CharacterWidgetImage[]>(EMPTY_WIDGET_IMAGES);
 
   const [activePageIndex, setActivePageIndex] = useState(_lastPageIndex);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -237,14 +190,26 @@ const Launcher: React.FC = () => {
     []
   );
 
-  // Split apps into pages of 8 (4 cols x 2 rows fit comfortably below widget)
+  // Group the launcher by product intent instead of raw feature chronology.
   const APPS_PER_PAGE = 8;
   const appPages = useMemo(() => {
-      const pages = [];
-      for (let i = 0; i < gridApps.length; i += APPS_PER_PAGE) {
-          pages.push(gridApps.slice(i, i + APPS_PER_PAGE));
+      const appById = new Map(gridApps.map(app => [app.id, app]));
+      const groupedIds = new Set<AppID>();
+      const pages = LAUNCHER_APP_GROUPS
+          .map(group => {
+              const apps = group.appIds
+                  .map(id => appById.get(id))
+                  .filter(Boolean) as typeof INSTALLED_APPS;
+              apps.forEach(app => groupedIds.add(app.id));
+              return { title: group.title, apps };
+          })
+          .filter(page => page.apps.length > 0);
+
+      const remainingApps = gridApps.filter(app => !groupedIds.has(app.id));
+      for (let i = 0; i < remainingApps.length; i += APPS_PER_PAGE) {
+          pages.push({ title: '更多', apps: remainingApps.slice(i, i + APPS_PER_PAGE) });
       }
-      if (pages.length === 0) pages.push([]);
+      if (pages.length === 0) pages.push({ title: '日常陪伴', apps: [] });
       return pages;
   }, [gridApps]);
 
@@ -270,17 +235,23 @@ const Launcher: React.FC = () => {
                   DB.getAllAnniversaries()
               ]);
               
+              const fallbackStatus = targetChar.isBuiltIn
+                  ? formatBondTimeLabelFromMessages(msgs)
+                  : (targetChar.description || "System Ready.");
+
               if (msgs.length > 0) {
-                  const visibleMsgs = msgs.filter(m => m.role !== 'system');
+                  const visibleMsgs = msgs
+                      .filter(m => m.role !== 'system')
+                      .sort((a, b) => a.timestamp - b.timestamp);
                   if (visibleMsgs.length > 0) {
                       const last = visibleMsgs[visibleMsgs.length - 1];
                       const cleanContent = last.content.replace(/\[.*?\]/g, '').trim();
                       setLastMessage(cleanContent || (last.type === 'image' ? '[图片]' : '[消息]'));
                   } else {
-                      setLastMessage(targetChar.description || "System Ready.");
+                      setLastMessage(fallbackStatus);
                   }
               } else {
-                  setLastMessage(targetChar.description || "System Ready.");
+                  setLastMessage(fallbackStatus);
               }
               setAnniversaries(annis);
           } catch (e) {
@@ -292,6 +263,22 @@ const Launcher: React.FC = () => {
           loadData();
       }
   }, [activeCharacterId, lastMsgTimestamp, isDataLoaded, characters]); // Trigger on characters change
+
+  useEffect(() => {
+      let cancelled = false;
+      if (!isDataLoaded || !widgetChar?.id) {
+          setWidgetImages(EMPTY_WIDGET_IMAGES);
+          return;
+      }
+
+      Promise.all([loadCustomWidgetStore(), loadCharacterWidgetConfig()]).then(([customStore, config]) => {
+          if (!cancelled) setWidgetImages(getEnabledWidgetImagesForCharacter(widgetChar, customStore, config));
+      });
+
+      return () => {
+          cancelled = true;
+      };
+  }, [isDataLoaded, widgetChar?.id]);
 
   // Restore scroll position BEFORE paint to avoid visible flash/slide
   useLayoutEffect(() => {
@@ -398,10 +385,11 @@ const Launcher: React.FC = () => {
                             lastMessage={lastMessage} 
                             onClick={() => openApp(AppID.Chat)}
                             contentColor={contentColor}
+                            widgetImages={widgetImages}
                         />
                         <div className="flex-1">
                             <AppGridPage 
-                                apps={pageApps} 
+                                apps={pageApps.apps}
                                 openApp={openApp}
                             />
                         </div>
@@ -462,7 +450,7 @@ const Launcher: React.FC = () => {
                           })()}
 
                           <AppGridPage
-                                apps={pageApps}
+                                apps={pageApps.apps}
                                 openApp={openApp}
                           />
                           <div className="flex-1"></div>
@@ -480,7 +468,6 @@ const Launcher: React.FC = () => {
           />
 
       </div>
-
       {/* Page Indicators */}
       <div
           className="absolute left-0 w-full flex justify-center gap-2 pointer-events-none z-20"

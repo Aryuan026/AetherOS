@@ -6,6 +6,7 @@ import { ContextBuilder } from '../utils/context';
 import Modal from '../components/os/Modal';
 import { safeResponseJson } from '../utils/safeApi';
 import { User, Phone, ChatCircleDots, ShoppingBag, Hamburger, CircleNotch, Wrench, Compass, GearSix, Tray } from '@phosphor-icons/react';
+import AppHeader, { AppBackButton } from '../components/shell/AppHeader';
 
 const TwemojiImg: React.FC<{ code: string; alt?: string; className?: string }> = ({ code, alt, className = 'w-4 h-4 inline-block' }) => (
   <img src={`https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/${code}.png`} alt={alt || ''} className={className} draggable={false} />
@@ -136,7 +137,7 @@ const CheckPhone: React.FC = () => {
         if (!targetChar) return;
         const newApps = (targetChar.phoneState?.customApps || []).filter(a => a.id !== appId);
         updateCharacter(targetChar.id, {
-            phoneState: { ...targetChar.phoneState, customApps: newApps }
+            phoneState: { records: targetChar.phoneState?.records || [], ...targetChar.phoneState, customApps: newApps }
         });
         addToast('App 已卸载', 'success');
     };
@@ -154,7 +155,7 @@ const CheckPhone: React.FC = () => {
 
         const currentApps = targetChar.phoneState?.customApps || [];
         updateCharacter(targetChar.id, {
-            phoneState: { ...targetChar.phoneState, customApps: [...currentApps, newApp] }
+            phoneState: { records: targetChar.phoneState?.records || [], ...targetChar.phoneState, customApps: [...currentApps, newApp] }
         });
 
         setShowCreateModal(false);
@@ -671,13 +672,13 @@ Format:
     if (view === 'select') {
         return (
             <div className="absolute inset-0 flex flex-col bg-slate-900 font-light overflow-hidden">
-                <div className="h-20 pt-4 flex items-center justify-between px-4 border-b border-slate-800 bg-slate-900/80 sticky top-0 z-10 shrink-0">
-                    <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                    </button>
-                    <span className="font-bold text-white tracking-widest uppercase text-sm">Target Device</span>
-                    <div className="w-8"></div>
-                </div>
+                <AppHeader
+                    title="Target Device"
+                    center
+                    left={<AppBackButton onClick={closeApp} className="text-white hover:bg-white/10" />}
+                    className="bg-slate-900/80 border-slate-800 shadow-none"
+                    titleClassName="truncate text-sm font-bold uppercase tracking-widest text-white"
+                />
                 <div className="flex-1 min-h-0 p-6 grid grid-cols-2 gap-5 overflow-y-auto pb-20 no-scrollbar overscroll-contain content-start">
                     {characters.map(c => (
                         <div key={c.id} onClick={() => handleSelectChar(c)} className="aspect-[3/4] bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col items-center justify-center gap-4 cursor-pointer active:scale-95 transition-all group hover:border-green-500 hover:shadow-[0_0_15px_rgba(34,197,94,0.3)]">

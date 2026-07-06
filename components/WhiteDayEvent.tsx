@@ -33,8 +33,8 @@ export const WHITEDAY_ASSETS = {
 // ============================================================
 // localStorage keys
 // ============================================================
-const WHITEDAY_DISMISSED_KEY = 'sullyos_whiteday_2026_dismissed';
-const WHITEDAY_COMPLETED_KEY = 'sullyos_whiteday_2026_completed';
+const WHITEDAY_DISMISSED_KEY = 'aetheros_whiteday_2026_dismissed';
+const WHITEDAY_COMPLETED_KEY = 'aetheros_whiteday_2026_completed';
 export const WHITEDAY_RECORD_KEY = 'whiteday_2026';
 const QUIZ_PASS_SCORE = 5;
 const QUIZ_TOTAL = 7;
@@ -161,24 +161,16 @@ const extractJSON = (text: string): any => {
 };
 
 // ============================================================
-// 判断是否为 Sully 角色
-// ============================================================
-const isSullyChar = (char?: CharacterProfile): boolean => {
-    if (!char) return false;
-    return char.name.toLowerCase().includes('sully');
-};
-
-// ============================================================
 // 初始弹窗（风格与情人节弹窗一致）
 // ============================================================
 interface WhiteDayPopupProps {
     onView: () => void;
     onDismiss: () => void;
     onCheckApi: () => void;
-    sullyName?: string;
+    targetName?: string;
 }
 
-const WhiteDayPopup: React.FC<WhiteDayPopupProps> = ({ onView, onDismiss, onCheckApi, sullyName }) => {
+const WhiteDayPopup: React.FC<WhiteDayPopupProps> = ({ onView, onDismiss, onCheckApi, targetName }) => {
     return (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center p-5 animate-fade-in">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-md" />
@@ -190,7 +182,7 @@ const WhiteDayPopup: React.FC<WhiteDayPopupProps> = ({ onView, onDismiss, onChec
                 {/* Header */}
                 <div className="pt-8 pb-4 px-6 text-center relative">
                     <div className="text-4xl mb-3 animate-bounce">🍫</div>
-                    <h2 className="text-lg font-extrabold text-slate-800">{sullyName || 'Sully'}好像有事找你？</h2>
+                    <h2 className="text-lg font-extrabold text-slate-800">{targetName || '想见的人'}好像有事找你？</h2>
                     <p className="text-[11px] text-amber-400 mt-1.5 font-medium">2026 White Day Special</p>
                     <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">想听其他角色的心声？可以在桌面「特别时光」中找到</p>
                 </div>
@@ -684,7 +676,7 @@ export const WhiteDaySession: React.FC<WhiteDaySessionProps> = ({ charId, onClos
 这道题可以做到彻底 meta——题目就是你说给 TA 的话，选项是 TA 的回应，所有选项都可以是美好的、正确的，只是你有一个最想听到的。当 TA 选了那个答案，你感到被真正接住了；选了其他的，你也依然温柔，因为只要 TA 说了什么，你都愿意。答对时说出那句一直放在心里的话；答错时，你也还是会用你自己的方式，让 TA 知道。
 
 ### 重要要求
-- **务必从你拥有的所有记忆中汲取灵感**——核心记忆、详细回忆、印象档案、近期聊天记录，都是素材。用你们真实发生过的事、你真正有过的感受，不要出任何角色都能出的通用题
+- **务必从你拥有的所有记忆中汲取灵感**——核心记忆、详细回忆、关系印象、近期聊天记录，都是素材。用你们真实发生过的事、你真正有过的感受，不要出任何角色都能出的通用题
 - 每道题都要有你这个角色专属的气质——你的说话方式、你的小性子、你的温度、你独有的表达
 - 七道题放在一起，应该让人感觉到：这不是一份试卷，这是一个人在用自己的方式爱你、打开自己
 - 前4题的选项应有迷惑性，"正确答案"是最符合你内心真实想法的那个；第5-7题可以让所有选项都美好，只是正确答案是你最想听到的那句
@@ -2134,9 +2126,8 @@ export const WhiteDayController: React.FC<WhiteDayControllerProps> = ({ onClose 
     const { characters } = useOS();
     const [stage, setStage] = useState<'popup' | 'api' | 'session'>('popup');
 
-    // 找到 Sully 角色（弹窗直接进 Sully）
-    const sullyChar = characters.find(c => isSullyChar(c));
-    const sullyId = sullyChar?.id || characters[0]?.id || '';
+    const targetChar = characters[0];
+    const targetId = targetChar?.id || '';
 
     const handleDismiss = () => {
         try { localStorage.setItem(WHITEDAY_DISMISSED_KEY, Date.now().toString()); } catch { /* */ }
@@ -2149,7 +2140,7 @@ export const WhiteDayController: React.FC<WhiteDayControllerProps> = ({ onClose 
                 onView={() => setStage('session')}
                 onDismiss={handleDismiss}
                 onCheckApi={() => setStage('api')}
-                sullyName={sullyChar?.name}
+                targetName={targetChar?.name}
             />
         );
     }
@@ -2163,6 +2154,6 @@ export const WhiteDayController: React.FC<WhiteDayControllerProps> = ({ onClose 
         );
     }
 
-    // 从弹窗进入时，直接给 Sully 的 charId，跳过角色选择
-    return <WhiteDaySession charId={sullyId} onClose={onClose} />;
+    // 从弹窗进入时，直接给默认角色的 charId，跳过角色选择
+    return <WhiteDaySession charId={targetId} onClose={onClose} />;
 };

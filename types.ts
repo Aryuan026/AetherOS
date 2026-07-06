@@ -14,6 +14,7 @@ export enum AppID {
   User = 'user',
   Journal = 'journal',
   Schedule = 'schedule',
+  CompanionPlan = 'companion_plan',
   Room = 'room',
   CheckPhone = 'check_phone',
   Social = 'social',
@@ -23,14 +24,13 @@ export enum AppID {
   Worldbook = 'worldbook', 
   Novel = 'novel', 
   Bank = 'bank', // New App
-  XhsStock = 'xhs_stock', // XHS image stock for publishing
   SpecialMoments = 'special_moments', // Valentine's Day & future events
-  XhsFreeRoam = 'xhs_free_roam', // Character autonomous XHS activity
   Songwriting = 'songwriting', // Songwriting / Lyric creation app
   Call = 'call', // 语音电话测试（MiniMax TTS）
   VoiceDesigner = 'voice_designer', // 捏声音 — MiniMax 音色设计器
   Guidebook = 'guidebook', // 攻略本 — 角色攻略用户小游戏
   LifeSim = 'lifesim', // 模拟人生 — 与角色共同经营的小世界
+  Widget = 'widget', // 首屏小组件管理
 }
 
 export interface SystemLog {
@@ -78,13 +78,16 @@ export interface OSTheme {
   chatAvatarShape?: 'circle' | 'rounded' | 'square';
   chatAvatarSize?: 'small' | 'medium' | 'large';
   chatAvatarMode?: 'grouped' | 'every_message';
-  chatBubbleStyle?: 'modern' | 'flat' | 'outline' | 'shadow' | 'wechat' | 'ios';
+  chatBubbleStyle?: 'modern' | 'flat' | 'outline' | 'shadow' | 'wechat' | 'ios' | 'round' | 'square' | 'deep-space';
+  chatAppearancePreset?: 'deep-space' | 'minimal' | 'wechat' | 'custom';
+  chatBubbleThemeId?: string;
   chatMessageSpacing?: 'compact' | 'default' | 'spacious';
   chatShowTimestamp?: 'always' | 'hover' | 'never';
-  chatHeaderStyle?: 'default' | 'minimal' | 'gradient' | 'wechat' | 'telegram' | 'discord' | 'pixel';
-  chatInputStyle?: 'default' | 'rounded' | 'flat' | 'wechat' | 'ios' | 'telegram' | 'discord' | 'pixel';
+  chatHeaderStyle?: 'default' | 'minimal' | 'wechat' | 'pixel';
+  chatInputStyle?: 'default' | 'rounded' | 'flat' | 'wechat' | 'ios' | 'pixel';
   chatChromeStyle?: 'soft' | 'flat' | 'floating' | 'pixel';
   chatBackgroundStyle?: 'plain' | 'grid' | 'paper' | 'mesh';
+  chatBackgroundImage?: string;
   chatHeaderAlign?: 'left' | 'center';
   chatHeaderDensity?: 'compact' | 'default' | 'airy';
   chatStatusStyle?: 'subtle' | 'pill' | 'dot';
@@ -214,27 +217,6 @@ export interface RealtimeConfig {
   weatherApiKey: string;  // OpenWeatherMap API Key
   weatherCity: string;    // 城市名
 
-  // 新闻配置
-  newsEnabled: boolean;
-  newsApiKey?: string;
-
-  // Notion 配置
-  notionEnabled: boolean;
-  notionApiKey: string;   // Notion Integration Token
-  notionDatabaseId: string; // 日记数据库ID
-  notionNotesDatabaseId?: string; // 用户笔记数据库ID（可选，让角色读取用户的日常笔记）
-
-  // 飞书配置 (中国区 Notion 替代)
-  feishuEnabled: boolean;
-  feishuAppId: string;      // 飞书应用 App ID
-  feishuAppSecret: string;  // 飞书应用 App Secret
-  feishuBaseId: string;     // 多维表格 App Token
-  feishuTableId: string;    // 数据表 Table ID
-
-  // 小红书配置 (MCP / Skills 双模式浏览器自动化)
-  xhsEnabled: boolean;
-  xhsMcpConfig?: XhsMcpConfig;
-
   // 缓存配置
   cacheMinutes: number;
 }
@@ -337,6 +319,8 @@ export interface UserImpression {
 export interface BubbleStyle {
     textColor: string;
     backgroundColor: string;
+    borderColor?: string;
+    boxShadow?: string;
     backgroundImage?: string;
     backgroundImageOpacity?: number;
     borderRadius: number;
@@ -393,8 +377,13 @@ export interface Worldbook {
     title: string;
     content: string; 
     category: string; 
+    activationHint?: string;
+    visibleToCharacterIds?: string[];
     createdAt: number;
     updatedAt: number;
+    isBuiltIn?: boolean;
+    lockEditing?: boolean;
+    builtInVersion?: number;
 }
 
 // --- NOVEL / CO-WRITING TYPES ---
@@ -682,11 +671,15 @@ export interface CharacterProfile {
   id: string;
   name: string;
   avatar: string;
+  callPortrait?: string;
   description: string;
   systemPrompt: string;
   worldview?: string;
   isBuiltIn?: boolean;
   lockPromptEditing?: boolean;
+  builtInVersion?: number;
+  chatSignature?: string;
+  chatSignatureAiEditable?: boolean;
   memories: MemoryFragment[];
   refinedMemories?: Record<string, string>;
   activeMemoryMonths?: string[];
@@ -714,9 +707,6 @@ export interface CharacterProfile {
 
   savedDateState?: DateState;
   specialMomentRecords?: Record<string, SpecialMomentRecord>;
-
-  // 小红书 per-character toggle
-  xhsEnabled?: boolean;
 
   socialProfile?: {
       handle: string;
@@ -769,6 +759,7 @@ export interface CharacterProfile {
   guidebookInsights?: string[];
 
   // 主动消息配置
+  autoReplyEnabled?: boolean;
   proactiveConfig?: {
     enabled: boolean;
     intervalMinutes: number; // 30, 60, 120, 240, etc.
@@ -804,13 +795,14 @@ export interface GroupProfile {
 
 export interface CharacterExportData extends Omit<CharacterProfile, 'id' | 'memories' | 'refinedMemories' | 'activeMemoryMonths' | 'impression'> {
     version: number;
-    type: 'sully_character_card';
+    type: 'aether_character_card';
     embeddedTheme?: ChatTheme;
 }
 
 export interface UserProfile {
     name: string;
     avatar: string;
+    callPortrait?: string;
     bio: string;
 }
 
@@ -820,20 +812,12 @@ export interface Toast {
     type: 'success' | 'error' | 'info';
 }
 
-export interface XhsStockImage {
-    id: string;
-    url: string;           // 图床URL (must be public https)
-    tags: string[];        // 标签 e.g. ['美食','咖啡','下午茶']
-    addedAt: number;       // timestamp
-    usedCount: number;     // 被使用次数
-    lastUsedAt?: number;   // 上次使用时间
-}
-
 export interface GalleryImage {
     id: string;
     charId: string;
     url: string;
     timestamp: number;
+    source?: 'chat' | 'upload';
     review?: string;
     reviewTimestamp?: number;
     savedDate?: string; // YYYY-MM-DD format
@@ -874,6 +858,21 @@ export interface Task {
     isCompleted: boolean;
     completedAt?: number;
     createdAt: number;
+    kind?: 'legacy' | 'companion_plan';
+    description?: string;
+    target?: string;
+    cadence?: 'daily' | 'weekly' | 'flex';
+    checkIns?: CompanionPlanCheckIn[];
+    milestoneNote?: string;
+    milestoneGeneratedAt?: number;
+    lastCheckInAt?: number;
+}
+
+export interface CompanionPlanCheckIn {
+    id: string;
+    at: number;
+    status: 'done' | 'stalled' | 'adjusted';
+    note?: string;
 }
 
 export interface Anniversary {
@@ -883,6 +882,44 @@ export interface Anniversary {
     charId: string;
     aiThought?: string;
     lastThoughtGeneratedAt?: number;
+}
+
+export type CompanionWakeupKind = 'heartbeat' | 'window';
+export type CompanionWakeupMode = 'direct' | 'render';
+export type CompanionWakeupRepeat = 'once' | 'daily';
+export type CompanionWakeupPriority = 'heartbeat' | 'care' | 'calendar';
+
+export interface CompanionWakeupRule {
+    id: string;
+    charId: string;
+    title: string;
+    enabled: boolean;
+    kind: CompanionWakeupKind;
+    mode: CompanionWakeupMode;
+    repeat: CompanionWakeupRepeat;
+    windowStart: string; // HH:mm
+    windowEnd: string;   // HH:mm
+    targetDate?: string; // YYYY-MM-DD for one-time calendar reminders
+    value: string;       // direct: fallback text; render: intent/instruction
+    lines?: string[];    // direct mode line pool
+    priority?: CompanionWakeupPriority;
+    source?: 'user' | 'built_in' | 'ai_calendar' | 'migration';
+    nextTriggerAt?: number;
+    lastTriggeredAt?: number;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface CompanionWakeupLog {
+    id: string;
+    ruleId: string;
+    charId: string;
+    triggeredAt: number;
+    status: 'sent' | 'skipped' | 'error';
+    mode: CompanionWakeupMode;
+    kind: CompanionWakeupKind;
+    message?: string;
+    reason?: string;
 }
 
 export interface SocialComment {
@@ -896,6 +933,9 @@ export interface SocialComment {
 
 export interface SocialPost {
     id: string;
+    kind?: 'moment' | 'news';
+    sourceType?: 'user' | 'character' | 'npc' | 'news';
+    charId?: string | null;
     authorName: string;
     authorAvatar: string;
     title: string;
@@ -908,6 +948,10 @@ export interface SocialPost {
     timestamp: number;
     tags: string[];
     bgStyle?: string; 
+    storySeedStatus?: 'none' | 'candidate' | 'adopted';
+    adoptedAt?: number;
+    replyState?: 'none' | 'pending' | 'generated';
+    replyDueAt?: number;
 }
 
 export interface SubAccount {
@@ -1025,7 +1069,7 @@ export interface GameSession {
     lastPlayedAt: number;
 }
 
-export type MessageType = 'text' | 'image' | 'emoji' | 'interaction' | 'transfer' | 'system' | 'social_card' | 'chat_forward' | 'xhs_card' | 'score_card';
+export type MessageType = 'text' | 'image' | 'emoji' | 'interaction' | 'transfer' | 'system' | 'social_card' | 'chat_forward' | 'score_card';
 
 export interface Message {
     id: number;
@@ -1076,8 +1120,7 @@ export interface FullBackupData {
     apiConfig?: APIConfig;
     apiPresets?: ApiPreset[];
     availableModels?: string[];
-    realtimeConfig?: RealtimeConfig;  // 实时感知配置（天气/新闻/Notion）
-    customIcons?: Record<string, string>;
+    realtimeConfig?: RealtimeConfig;  // 实时感知配置（天气）
     customIcons?: Record<string, string>;
     appearancePresets?: AppearancePreset[];
     characters?: CharacterProfile[];
@@ -1109,7 +1152,7 @@ export interface FullBackupData {
     bankDollhouse?: DollhouseState;
     bankTransactions?: BankTransaction[];
 
-    socialAppData?: {
+    momentsData?: {
         charHandles?: Record<string, SubAccount[]>;
         userProfile?: SocialAppProfile;
         userId?: string;
@@ -1123,9 +1166,6 @@ export interface FullBackupData {
         roomItems?: Record<string, string>;
         backgrounds?: { chat?: string; date?: string; roomWall?: string; roomFloor?: string };
     }[];
-
-    xhsActivities?: XhsActivityRecord[];
-    xhsStockImages?: XhsStockImage[];
 
     // Study Room settings
     studyApiConfig?: Partial<APIConfig>;
@@ -1145,6 +1185,9 @@ export interface FullBackupData {
         dueAt: number;
         createdAt: number;
     }[];
+
+    companionWakeupRules?: CompanionWakeupRule[];
+    companionWakeupLogs?: CompanionWakeupLog[];
 
     // LifeSim
     lifeSimState?: LifeSimState | null;
@@ -1197,46 +1240,6 @@ export interface GuidebookSession {
     endCard?: GuidebookEndCard;
     createdAt: number;
     lastPlayedAt: number;
-}
-
-// --- XHS FREE ROAM / AUTONOMOUS ACTIVITY TYPES ---
-
-export type XhsActionType = 'post' | 'browse' | 'search' | 'comment' | 'save_topic' | 'idle';
-
-export interface XhsActivityRecord {
-    id: string;
-    characterId: string;
-    timestamp: number;
-    actionType: XhsActionType;
-    content: {
-        title?: string;
-        body?: string;
-        tags?: string[];
-        keyword?: string;
-        savedTopics?: { title: string; desc: string; noteId?: string }[];
-        notesViewed?: { noteId: string; title: string; desc: string; author: string; likes: number }[];
-        commentTarget?: { noteId: string; title: string };
-        commentText?: string;
-    };
-    thinking: string;  // Character's internal monologue / reasoning
-    result: 'success' | 'failed' | 'skipped';
-    resultMessage?: string;
-}
-
-export interface XhsFreeRoamSession {
-    id: string;
-    characterId: string;
-    startedAt: number;
-    endedAt?: number;
-    activities: XhsActivityRecord[];
-    summary?: string;  // AI-generated session summary
-}
-
-export interface XhsMcpConfig {
-    enabled: boolean;
-    serverUrl: string;  // MCP: "http://localhost:18060/mcp" | Skills: "http://localhost:18061/api"
-    loggedInUserId?: string;   // 登录用户的 user_id，连接测试成功后自动获取
-    loggedInNickname?: string; // 登录用户的昵称
 }
 
 // ============================================================
@@ -1330,7 +1333,6 @@ export interface SimAction {
     reactionToUser?: string;  // 角色对玩家操作的评价
     narrative?: CharNarrative; // 角色叙事层（LLM回合使用）
     chainFromId?: string;     // 由哪个事件链引发
-    chainFromId?: string;
     storyKind?: SimStoryKind;
     headline?: string;
     involvedNpcIds?: string[];

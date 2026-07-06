@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This is the maintained SullyOS work copy for A-Yuan.
+This is the maintained AetherOS work copy for A-Yuan.
 
 ## Boundary
 

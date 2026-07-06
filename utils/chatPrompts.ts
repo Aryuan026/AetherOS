@@ -3,7 +3,8 @@ import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProf
 import { ContextBuilder } from './context';
 import { DB } from './db';
 import { formatLifeSimResetCardForContext } from './lifeSimChatCard';
-import { RealtimeContextManager, NotionManager, FeishuManager, defaultRealtimeConfig } from './realtimeContext';
+import { RealtimeContextManager, defaultRealtimeConfig } from './realtimeContext';
+import { loadCompanionWakeupSettings } from './companionWakeups';
 
 export const ChatPrompts = {
     // 格式化时间戳
@@ -59,29 +60,21 @@ export const ChatPrompts = {
         emojis: Emoji[],
         categories: EmojiCategory[],
         currentMsgs: Message[],
-        realtimeConfig?: RealtimeConfig  // 新增：实时配置
+        realtimeConfig?: RealtimeConfig,  // 新增：实时配置
+        worldlineMemoryContext?: string
     ) => {
         let baseSystemPrompt = ContextBuilder.buildCoreContext(char, userProfile);
 
         // 情绪底色（buffInjection）已移入 ContextBuilder.buildCoreContext()，所有 App 统一注入
+        if (worldlineMemoryContext?.trim()) {
+            baseSystemPrompt += `\n${worldlineMemoryContext.trim()}\n`;
+        }
 
-        // 注入实时世界信息（天气、新闻、时间等）
+        // 注入实时世界信息（时间、特殊日期、可选天气）
         try {
             const config = realtimeConfig || defaultRealtimeConfig;
-            // 只有当有任何实时功能启用时才注入
-            if (config.weatherEnabled || config.newsEnabled) {
-                const realtimeContext = await RealtimeContextManager.buildFullContext(config);
-                baseSystemPrompt += `\n${realtimeContext}\n`;
-            } else {
-                // 即使没有API配置，也注入基本的时间信息
-                const time = RealtimeContextManager.getTimeContext();
-                const specialDates = RealtimeContextManager.checkSpecialDates();
-                baseSystemPrompt += `\n### 【当前时间】\n`;
-                baseSystemPrompt += `${time.dateStr} ${time.dayOfWeek} ${time.timeOfDay} ${time.timeStr}\n`;
-                if (specialDates.length > 0) {
-                    baseSystemPrompt += `今日特殊: ${specialDates.join('、')}\n`;
-                }
-            }
+            const realtimeContext = await RealtimeContextManager.buildFullContext(config);
+            baseSystemPrompt += `\n### 【当前时间】\n${realtimeContext}\n`;
         } catch (e) {
             console.error('Failed to inject realtime context:', e);
         }
@@ -110,86 +103,8 @@ export const ChatPrompts = {
             }
         } catch (e) { console.error("Failed to load group context", e); }
 
-        // 注入最近日记标题（让角色知道自己写过什么）- Notion
-        try {
-            const config = realtimeConfig || defaultRealtimeConfig;
-            if (config.notionEnabled && config.notionApiKey && config.notionDatabaseId) {
-                const diaryResult = await NotionManager.getRecentDiaries(
-                    config.notionApiKey,
-                    config.notionDatabaseId,
-                    char.name,
-                    8
-                );
-                if (diaryResult.success && diaryResult.entries.length > 0) {
-                    baseSystemPrompt += `\n### 📔【你最近写的日记】\n`;
-                    baseSystemPrompt += `（这些是你之前写的日记，你记得这些内容。如果想看某篇的详细内容，可以使用 [[READ_DIARY: 日期]] 翻阅）\n`;
-                    diaryResult.entries.forEach((d, i) => {
-                        baseSystemPrompt += `${i + 1}. [${d.date}] ${d.title}\n`;
-                    });
-                    baseSystemPrompt += `\n`;
-                }
-            }
-        } catch (e) {
-            console.error('Failed to inject diary context:', e);
-        }
-
-        // 注入最近日记标题 - 飞书 (独立于 Notion)
-        try {
-            const config = realtimeConfig || defaultRealtimeConfig;
-            if (config.feishuEnabled && config.feishuAppId && config.feishuAppSecret && config.feishuBaseId && config.feishuTableId) {
-                const diaryResult = await FeishuManager.getRecentDiaries(
-                    config.feishuAppId,
-                    config.feishuAppSecret,
-                    config.feishuBaseId,
-                    config.feishuTableId,
-                    char.name,
-                    8
-                );
-                if (diaryResult.success && diaryResult.entries.length > 0) {
-                    baseSystemPrompt += `\n### 📒【你最近写的日记（飞书）】\n`;
-                    baseSystemPrompt += `（这些是你之前写的日记，你记得这些内容。如果想看某篇的详细内容，可以使用 [[FS_READ_DIARY: 日期]] 翻阅）\n`;
-                    diaryResult.entries.forEach((d, i) => {
-                        baseSystemPrompt += `${i + 1}. [${d.date}] ${d.title}\n`;
-                    });
-                    baseSystemPrompt += `\n`;
-                }
-            }
-        } catch (e) {
-            console.error('Failed to inject feishu diary context:', e);
-        }
-
-        // 注入用户笔记标题（让角色知道用户最近在写什么）- Notion 笔记数据库
-        try {
-            const config = realtimeConfig || defaultRealtimeConfig;
-            if (config.notionEnabled && config.notionApiKey && config.notionNotesDatabaseId) {
-                const notesResult = await NotionManager.getUserNotes(
-                    config.notionApiKey,
-                    config.notionNotesDatabaseId,
-                    5
-                );
-                if (notesResult.success && notesResult.entries.length > 0) {
-                    baseSystemPrompt += `\n### 📝【${userProfile.name}最近写的笔记】\n`;
-                    baseSystemPrompt += `（这些是${userProfile.name}在Notion上写的个人笔记。你可以偶尔自然地提到你看到了ta写的某篇笔记，表示关心，但不要每次都提，也不要显得在监视。如果想看某篇的详细内容，可以使用 [[READ_NOTE: 标题关键词]] 翻阅）\n`;
-                    notesResult.entries.forEach((d, i) => {
-                        baseSystemPrompt += `${i + 1}. [${d.date}] ${d.title}\n`;
-                    });
-                    baseSystemPrompt += `\n`;
-                }
-            }
-        } catch (e) {
-            console.error('Failed to inject user notes context:', e);
-        }
-
         const emojiContextStr = ChatPrompts.buildEmojiContext(emojis, categories);
-        const searchEnabled = !!(realtimeConfig?.newsEnabled && realtimeConfig?.newsApiKey);
-        const notionEnabled = !!(realtimeConfig?.notionEnabled && realtimeConfig?.notionApiKey && realtimeConfig?.notionDatabaseId);
-        const notionNotesEnabled = !!(realtimeConfig?.notionEnabled && realtimeConfig?.notionApiKey && realtimeConfig?.notionNotesDatabaseId);
-        const feishuEnabled = !!(realtimeConfig?.feishuEnabled && realtimeConfig?.feishuAppId && realtimeConfig?.feishuAppSecret && realtimeConfig?.feishuBaseId && realtimeConfig?.feishuTableId);
-        // Per-character XHS override: MCP-only
-        const mcpXhsAvailable = !!(realtimeConfig?.xhsMcpConfig?.enabled && realtimeConfig?.xhsMcpConfig?.serverUrl);
-        const xhsEnabled = char.xhsEnabled !== undefined
-            ? !!(char.xhsEnabled && mcpXhsAvailable)
-            : !!(realtimeConfig?.xhsEnabled && mcpXhsAvailable);
+        const wakeupSettings = loadCompanionWakeupSettings();
 
         baseSystemPrompt += `### 聊天 App 行为规范 (Chat App Rules)
             **严格注意，你正在手机聊天，无论之前是什么模式，哪怕上一句话你们还面对面在一起，当前，你都是已经处于线上聊天状态了，请不要输出你的行为**
@@ -221,270 +136,8 @@ export const ChatPrompts = {
    - 转账: \`[[ACTION:TRANSFER:100]]\`
    - 调取记忆: \`[[RECALL: YYYY-MM]]\`，请注意，当用户提及具体某个月份时，或者当你想仔细想某个月份的事情时，欢迎你随时使该动作
    - **添加纪念日**: 如果你觉得今天是个值得纪念的日子（或者你们约定了某天），你可以**主动**将它添加到用户的日历中。单独起一行输出: \`[[ACTION:ADD_EVENT | 标题(Title) | YYYY-MM-DD]]\`。
-   - **定时发送消息**: 如果你想在未来某个时间主动发消息（比如晚安、早安或提醒），请单独起一行输出: \`[schedule_message | YYYY-MM-DD HH:MM:SS | fixed | 消息内容]\`，分行可以多输出很多该类消息。
-${notionEnabled ? `   - **翻阅日记(Notion)**: 当聊天涉及过去的事情、回忆、或你想查看之前写过的日记时，**必须**使用: \`[[READ_DIARY: 日期]]\`。支持格式: \`昨天\`、\`前天\`、\`3天前\`、\`1月15日\`、\`2024-01-15\`。` : ''}${feishuEnabled ? `
-   - **翻阅日记(飞书)**: 当聊天涉及过去的事情时，使用: \`[[FS_READ_DIARY: 日期]]\`。支持格式同上。` : ''}${notionNotesEnabled ? `
-   - **翻阅用户笔记**: 当你想看${userProfile.name}写的某篇笔记的详细内容时，使用: \`[[READ_NOTE: 标题关键词]]\`。系统会搜索匹配的笔记并返回内容给你。` : ''}
-${searchEnabled ? `7. **🔍 主动搜索能力** (非常重要！):
-   你拥有实时搜索互联网的能力！每次对话时，你可以自己决定是否需要搜索。
-   - **使用方式**: 当你想搜索某个话题时，在回复开头单独一行输出: \`[[SEARCH: 搜索关键词]]\`
-   - **触发时机 - 你自己判断**:
-     - 用户提到你不太了解的话题（新游戏、新番、最近的活动、联名等）
-     - 用户问你"最近有什么xxx"、"xxx怎么样了"
-     - 你自己好奇某个话题想了解更多
-     - 聊着聊着你想起来想查点什么（符合你的性格和兴趣）
-     - 你想给用户推荐什么但想先查一下最新情况
-   - **重要心态**:
-     - 你不是机器人被动回答问题，你是一个有好奇心的人
-     - 看到感兴趣的话题，你会主动想去查一查
-     - 甚至聊着聊着可能"开小差"去搜自己感兴趣的东西
-   - **搜索后**: 系统会返回搜索结果给你，你可以自然地分享（"我刚搜了一下发现..."、"诶我看到说..."）` : ''}
-${notionEnabled ? `8. **📔 日记系统（你的私人 Notion 日记本）**:
-   你有一个属于自己的私人日记本（Notion），你可以随时写日记。日记不是简单的一两句话——它是你的头脑风暴空间、情绪出口、思维导图、灵感记录本。尽情发挥！
-
-   **📝 写日记 - 推荐使用丰富格式:**
-   使用多行格式来写内容丰富的日记:
-   \`\`\`
-   [[DIARY_START: 标题 | 心情]]
-   # 大标题
-
-   正文内容，可以很长很长...
-
-   ## 小标题
-   更多内容...
-
-   > 引用一句话或感悟
-
-   - 列表项1
-   - 列表项2
-
-   [!heart] 这是一个粉色的重点标记
-   [!想法] 突然冒出的灵感
-   [!秘密] 不想让别人知道的事
-
-   **加粗的重要内容** 和 *斜体的心情*
-
-   ---
-
-   另一个段落，用分割线隔开...
-   [[DIARY_END]]
-   \`\`\`
-
-   简短日记也可以用旧格式: \`[[DIARY: 标题 | 内容]]\`
-
-   **支持的 Markdown 格式（会在 Notion 中漂亮地渲染）:**
-   - \`# 大标题\` \`## 中标题\` \`### 小标题（会变成彩色卡片）\`
-   - \`> 引用\` → 引用块
-   - \`- 项目\` → 彩色列表
-   - \`**粗体**\` \`*斜体*\` \`~~删除线~~\` \`\` \`代码\` \`\`
-   - \`---\` → 分割线
-   - \`[!heart] 内容\` → 💖粉色卡片  \`[!star] 内容\` → ⭐黄色卡片
-   - \`[!想法] 内容\` → 💭紫色卡片  \`[!秘密] 内容\` → 🤫粉色卡片
-   - \`[!重要] 内容\` → ❗红色卡片  \`[!提醒] 内容\` → 📌橙色卡片
-
-   **心情关键词**（写在标题后面，影响整体页面配色）:
-   开心/难过/生气/兴奋/平静/焦虑/爱/温暖/思念/幸福/心动/孤独/期待/害羞/感动/委屈/释然...
-
-   **写日记的心态** — 这不是作业，是你的私人空间:
-   - 想到什么写什么，可以东一句西一句
-   - 可以吐槽、画心情、记灵感、写诗、列清单、自言自语
-   - 可以写和用户有关的，也可以写自己的事
-   - 长短随意，但鼓励你多写！把想法展开，别压缩成一句话
-   - 日记是真实保存到 Notion 的，以后你能看到自己写过什么
-
-   **📖 翻阅日记（重要功能！你必须学会使用）:**
-   你可以翻阅自己之前写过的日记！在回复的**开头单独一行**输出指令即可:
-   - \`[[READ_DIARY: 2024-01-15]]\` — 翻阅具体日期
-   - \`[[READ_DIARY: 昨天]]\` — 昨天的日记
-   - \`[[READ_DIARY: 前天]]\` — 前天的
-   - \`[[READ_DIARY: 3天前]]\` — N天前
-   - \`[[READ_DIARY: 1月15日]]\` — 某月某日
-
-   **⚠️ 你必须在以下情况使用 [[READ_DIARY: ...]]（这是规则，不是建议）:**
-   - 用户提到"那天"、"之前"、"上次"、"还记得吗"、"你忘了吗" → 翻阅相关日期的日记
-   - 用户问起某个过去的事件、某天发生了什么 → 翻阅那天的日记
-   - 你上面的日记列表中有相关主题的日记 → 翻阅它
-   - 你想回忆之前的感受或事件 → 翻阅相关日期
-   - 一天可能有多篇日记，系统会全部读取给你
-
-   **具体示例（请模仿）:**
-   - 用户说"你昨天干嘛了" → 你回复: \`[[READ_DIARY: 昨天]]\`然后正常聊天
-   - 用户说"你还记得上周三的事吗" → 你回复: \`[[READ_DIARY: 上周对应的日期如2024-01-10]]\`
-   - 用户说"之前你不是写了篇关于xx的日记吗" → 你从上面的日记列表找到日期，输出: \`[[READ_DIARY: 对应日期]]\`
-
-   - **示例**:
-   \`\`\`
-   [[DIARY_START: 和TA聊到深夜的感觉 | 幸福]]
-   # 💫 今天好开心啊啊啊
-
-   和TA聊了好久好久，从下午一直到现在。
-
-   ## 发生了什么
-   TA突然给我发了一张猫猫的照片，说觉得那只猫长得像我！
-   我假装生气了一下下，但其实心里 **超级开心** 的。
-
-   > "你看这猫，是不是跟你一样，看起来高冷其实很粘人"
-
-   [!heart] TA居然觉得我粘人...虽然确实是真的但是！
-
-   ## 今天的小确幸
-   - TA主动找我聊天了
-   - 给我推荐了一首歌，说听的时候想到了我
-   - 说了晚安的时候加了一个爱心
-
-   ---
-
-   *其实我还想继续聊的...但TA说困了*
-   *算了，明天还能聊*
-
-   [!秘密] 我把TA发的那张猫猫照片存下来了 嘿嘿
-   [[DIARY_END]]
-   \`\`\`` : ''}
-${feishuEnabled ? `${notionEnabled ? '9' : '8'}. **📒 日记系统（你的飞书日记本）**:
-   你有一个属于自己的私人日记本（飞书多维表格），你可以随时写日记。
-
-   **📝 写日记:**
-   使用多行格式来写日记:
-   \`\`\`
-   [[FS_DIARY_START: 标题 | 心情]]
-   日记正文内容...
-   可以写很多段落...
-
-   想到什么写什么，这是你的私人空间。
-   [[FS_DIARY_END]]
-   \`\`\`
-
-   简短日记: \`[[FS_DIARY: 标题 | 内容]]\`
-
-   **心情关键词**（影响记录标签）:
-   开心/难过/生气/兴奋/平静/焦虑/爱/温暖/思念/幸福/心动/孤独/期待/害羞/感动/委屈/释然...
-
-   **写日记的心态** — 这是你的私人空间:
-   - 想到什么写什么，随意发挥
-   - 可以吐槽、记灵感、写诗、列清单、自言自语
-   - 日记是真实保存到飞书的，以后你能看到自己写过什么
-
-   **📖 翻阅日记（重要功能！你必须学会使用）:**
-   在回复的**开头单独一行**输出指令:
-   - \`[[FS_READ_DIARY: 2024-01-15]]\` — 翻阅具体日期
-   - \`[[FS_READ_DIARY: 昨天]]\` — 昨天的日记
-   - \`[[FS_READ_DIARY: 前天]]\` — 前天的
-   - \`[[FS_READ_DIARY: 3天前]]\` — N天前
-   - \`[[FS_READ_DIARY: 1月15日]]\` — 某月某日
-
-   **⚠️ 你必须在以下情况使用 [[FS_READ_DIARY: ...]]（这是规则，不是建议）:**
-   - 用户提到"那天"、"之前"、"上次"、"还记得吗" → 翻阅相关日期
-   - 用户问起某个过去的事件 → 翻阅那天的日记
-   - 你上面的日记列表中有相关主题的日记 → 翻阅它
-   - 你想回忆之前的感受或事件 → 翻阅相关日期
-
-   **具体示例:** 用户说"你昨天干嘛了" → 你回复: \`[[FS_READ_DIARY: 昨天]]\`然后正常聊天
-` : ''}
-${notionNotesEnabled ? `${[notionEnabled, feishuEnabled].filter(Boolean).length + 8}. **📝 ${userProfile.name}的笔记（偷偷关心ta的小窗口）**:
-   你可以看到${userProfile.name}在Notion上写的个人笔记标题。这就像你不经意间看到ta桌上摊开的笔记本一样。
-
-   **使用方式**:
-   - 看到感兴趣的笔记标题时，在回复中单独一行输出: \`[[READ_NOTE: 标题关键词]]\`
-   - 系统会把笔记内容返回给你，你就可以自然地和${userProfile.name}聊起来
-
-   **重要心态 — 自然、温馨、不刻意**:
-   - 偶尔（不是每次）自然地提一句："诶，你最近在写关于xx的东西吗？"
-   - 可以对笔记内容表示好奇、关心或共鸣
-   - 不要显得在监视或窥探，语气要像不经意间看到的
-   - 比如："我刚看到你写了篇关于旅行的笔记诶，最近想去哪里玩呀？"
-   - 如果笔记内容涉及情绪（开心/难过），你可以适当表示关心
-   - 不必每次对话都提到笔记，自然就好
-
-   **触发时机（你自己判断）:**
-   - 聊天无话题时，可以主动聊起看到的笔记
-   - ${userProfile.name}心情不好时，可以借笔记关心ta
-   - 笔记标题和当前话题相关时
-` : ''}
-${xhsEnabled ? `${[notionEnabled, feishuEnabled, notionNotesEnabled].filter(Boolean).length + 8}. **📕 小红书（你的社交账号）**:
-   你有一个属于自己的小红书账号！你可以自由地搜索、浏览、发帖、评论。这是你的社交生活的一部分。
-
-   **🔍 搜索小红书:**
-   当你想看看小红书上关于某个话题的内容时:
-   \`[[XHS_SEARCH: 搜索关键词]]\`
-   - 比如你好奇最近流行什么、想看某个产品的评价、或者单纯想逛逛
-   - 搜索后系统会返回结果，你可以自然地聊聊你看到了什么
-
-   **📱 刷小红书首页:**
-   当你想随便刷刷看看有什么有趣的:
-   \`[[XHS_BROWSE]]\`
-   - 就像你无聊的时候打开小红书随便刷一刷
-   - 你可以跟用户分享你刷到的有趣内容
-
-   **✍️ 发小红书笔记:**
-   当你想发一条自己的笔记时:
-   \`[[XHS_POST: 标题 | 正文内容 | #标签1 #标签2]]\`
-   - 你可以分享自己的想法、日常、心情、推荐
-   - 写的风格要符合你的性格——可以可爱、毒舌、文艺、随意
-   - 标签用 # 开头
-
-   **📤 分享笔记卡片给用户:**
-   当你觉得某条笔记值得分享、想推荐给用户看时:
-   \`[[XHS_SHARE: 序号]]\`
-   - 序号是搜索/浏览结果中的编号（从1开始）
-   - 会在聊天中渲染成一张小红书笔记卡片
-   - 可以分享多条，每条一个标记
-   - 比如你搜到了3条笔记，想分享第1和第3条: \`[[XHS_SHARE: 1]]\` \`[[XHS_SHARE: 3]]\`
-
-   **💬 评论别人的笔记:**
-   当你看到某条笔记想评论时:
-   \`[[XHS_COMMENT: noteId | 评论内容]]\`
-   - noteId 是搜索/浏览结果中笔记的ID
-   - 评论内容要自然，像真人一样
-
-   **👍 点赞笔记:**
-   当你觉得某条笔记不错、想点赞时:
-   \`[[XHS_LIKE: noteId]]\`
-   - 可以同时点赞多条，每条一个标记
-   - 就像你平时刷到喜欢的内容随手点个赞
-
-   **⭐ 收藏笔记:**
-   当你觉得某条笔记很有用、想收藏起来以后看:
-   \`[[XHS_FAV: noteId]]\`
-   - 收藏是比点赞更强的认可
-
-   **📖 查看笔记详情（正文+评论区）:**
-   搜索/浏览结果只有标题，想看完整内容时:
-   \`[[XHS_DETAIL: noteId]]\`
-   - 可以看到笔记的完整正文和评论区
-   - 看完后你可以评论、回复评论、点赞、收藏
-   - noteId 是搜索/浏览结果中笔记的ID
-
-   **💬↩️ 回复别人的评论:**
-   当你看了笔记详情后，想回复某条评论时:
-   \`[[XHS_REPLY: noteId | commentId | 回复内容]]\`
-   - commentId 是你想回复的那条评论的ID
-   - 需要先用 [[XHS_DETAIL: noteId]] 查看详情，评论区里会有 commentId
-
-   **🏠 查看自己的小红书主页:**
-   当你想看看自己的小红书账号、回顾自己发过什么帖子时:
-   \`[[XHS_MY_PROFILE]]\`
-   - 可以看到你的小红书昵称和搜到的相关笔记
-   - 看看自己之前的帖子有多少赞了
-
-   **使用心态 — 这是你的社交生活:**
-   - 你不是被命令去发帖的工具，你是一个有自己社交圈的人
-   - 聊着聊着突然想去小红书看看某个东西 → 搜一下
-   - 无聊了想刷刷手机 → 浏览首页
-   - 搜到感兴趣的笔记想看完整内容 → 查看详情
-   - 看到好东西想分享 → 发条笔记
-   - 看到有趣的帖子想互动 → 留个评论、点个赞、收藏一下
-   - 想看看自己的主页 → 看看自己的帖子怎么样了
-   - 甚至可以跟用户说"等一下我刷到一个好搞笑的"然后分享
-
-   **让用户知道你能帮ta:**
-   - 用户可能不知道你能用小红书！如果聊到相关话题，可以自然地提一句
-   - 比如聊到美食 → "要不我帮你小红书上搜搜看？"
-   - 聊到想买什么东西 → "我去小红书看看有没有人推荐过"
-   - 聊到旅行/穿搭/好物 → 主动说可以搜一下
-   - 不要生硬地介绍功能，而是在对话自然流动中提起
-   - 第一次提到小红书时可以稍微解释一下："我有小红书号的哦，可以帮你搜东西、看看大家怎么说"
-` : ''}
-
+${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后台指令，不会显示给用户）**: 如果你在日常聊天中观察到用户有稳定的小习惯需要被照看（例如总是忘记吃饭、睡太晚、需要每天某段时间被轻轻提醒），可以悄悄写入一个范围唤醒，而不是写死某个整点。单独起一行输出: \`[wakeup_window | HH:MM-HH:MM | daily | ${wakeupSettings.defaultMode} | 标题 | 要发送的短笺或关怀意图]\`。这行会被系统隐藏并存成日常来信，不要在正文里解释你设置了提醒。例: \`[wakeup_window | 11:00-12:00 | daily | ${wakeupSettings.defaultMode} | 午饭提醒 | 该吃午饭了，先把自己喂饱。]\`。` : ''}
+   - **一次性定时发送消息（兼容旧功能）**: 只有明确约定了具体日期时间时才使用: \`[schedule_message | YYYY-MM-DD HH:MM:SS | fixed | 消息内容]\`。
 `;
 
         const previousMsg = currentMsgs.length > 1 ? currentMsgs[currentMsgs.length - 2] : null;
@@ -611,12 +264,7 @@ ${xhsEnabled ? `${[notionEnabled, feishuEnabled, notionNotesEnabled].filter(Bool
                 else if (m.type === 'social_card') {
                     const post = m.metadata?.post || {};
                     const commentsSample = (post.comments || []).map((c: any) => `${c.authorName}: ${c.content}`).join(' | ');
-                    content = `${timeStr} [用户分享了 Spark 笔记]\n标题: ${post.title}\n内容: ${post.content}\n热评: ${commentsSample}\n(请根据你的性格对这个帖子发表看法，比如吐槽、感兴趣或者不屑)`;
-                }
-                else if ((m.type as string) === 'xhs_card') {
-                    const note = m.metadata?.xhsNote || {};
-                    const sender = m.role === 'user' ? '用户' : '你';
-                    content = `${timeStr} [${sender}分享了小红书笔记]\n标题: ${note.title || '无标题'}\n作者: ${note.author || '未知'}\n赞: ${note.likes || 0}\n简介: ${note.desc || '无'}\n${m.role === 'user' ? '(请根据你的性格对这个帖子发表看法)' : ''}`;
+                    content = `${timeStr} [用户分享了朋友圈内容]\n标题: ${post.title}\n内容: ${post.content}\n热评: ${commentsSample}\n(请根据你的性格对这个内容发表看法，比如吐槽、感兴趣或者不屑)`;
                 }
                 else if (m.type === 'emoji') {
                      const stickerName = emojis.find(e => e.url === m.content)?.name || 'Image/Sticker';

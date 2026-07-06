@@ -1,245 +1,211 @@
-
-
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { CaretLeft, CaretRight, PencilSimple, Sparkle, Trash } from '@phosphor-icons/react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { Task, Anniversary, CharacterProfile } from '../types';
+import { Anniversary } from '../types';
 import Modal from '../components/os/Modal';
+import { AppHeaderAddButton } from '../components/shell/AppHeader';
 import { ContextBuilder } from '../utils/context';
 import { safeResponseJson } from '../utils/safeApi';
+import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
+import {
+    buildAnniversaryThoughtPrompt,
+    getDaysUntilTimebookDate,
+    sortTimebookAnniversaries,
+} from '../utils/timebook';
 
-const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
-const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
+const TIMEBOOK_BACKGROUND = '/assets/aetheros/timebook-desk-bg.png';
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-type ThemeMode = 'cyber' | 'soft' | 'minimal';
+type TimebookMemoryRow = Anniversary & {
+    isDefaultFirstMemory?: boolean;
+};
 
-// Theme Configuration Definitions
-const THEMES: Record<ThemeMode, any> = {
-    cyber: {
-        id: 'cyber',
-        bg: 'bg-[#0f172a]',
-        text: 'text-slate-200',
-        textSub: 'text-slate-500',
-        accent: 'text-cyan-400',
-        border: 'border-cyan-900/30',
-        card: 'bg-slate-900/50 backdrop-blur-md border border-slate-700/50',
-        buttonPrimary: 'bg-cyan-600 hover:bg-cyan-500 text-white rounded-none skew-x-[-10deg]',
-        font: 'font-mono',
-        iconDone: 'text-green-500',
-        decoLine: 'bg-slate-800',
-        modalBg: 'bg-[#0f172a] border border-cyan-500',
-        input: 'bg-slate-800 text-white border-none rounded-none',
-        label: 'QUEST LOG',
-        eventLabel: 'SERVER EVENTS'
+type FirstContactSetting = {
+    title: string;
+    date: string;
+    note: string;
+    source: 'inferred' | 'manual' | 'ai_assisted';
+    updatedAt?: number;
+};
+
+const toLocalDateInput = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const BUILT_IN_FIRST_MEMORY_COPY: Record<string, { title: string; note: string }> = {
+    沈星回: {
+        title: '和沈星回相识的那天',
+        note: '这一页先记下开始。后来那些安静经过的夜晚、任务间隙和没说出口的惦念，都可以慢慢写到这里。',
     },
-    soft: {
-        id: 'soft',
-        bg: 'bg-[#fff0f5]', // Lavender Blush
-        text: 'text-slate-700',
-        textSub: 'text-slate-400',
-        accent: 'text-pink-500',
-        border: 'border-pink-100',
-        card: 'bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-sm border border-white',
-        buttonPrimary: 'bg-pink-400 hover:bg-pink-500 text-white rounded-2xl shadow-lg shadow-pink-200',
-        font: 'font-sans',
-        iconDone: 'text-pink-400',
-        decoLine: 'bg-pink-200',
-        modalBg: 'bg-white/90 rounded-[2.5rem]',
-        input: 'bg-pink-50 text-slate-700 border border-pink-100 rounded-xl',
-        label: '心愿单',
-        eventLabel: '纪念日'
+    黎深: {
+        title: '和黎深相识的那天',
+        note: '这一页先记下开始。后来那些被认真提醒过的休息、错过又补上的问候，都可以慢慢写到这里。',
     },
-    minimal: {
-        id: 'minimal',
-        bg: 'bg-[#eef2f6]', // Classic Neumorphism base
-        text: 'text-slate-600',
-        textSub: 'text-slate-400',
-        accent: 'text-indigo-500',
-        border: 'border-transparent',
-        // Neumorphism Outer Shadow
-        card: 'bg-[#eef2f6] rounded-2xl shadow-[6px_6px_12px_#d1d9e6,-6px_-6px_12px_#ffffff]',
-        // Neumorphism Pressed State simulation for buttons usually, but here flat prompt
-        buttonPrimary: 'bg-[#eef2f6] text-slate-600 font-bold rounded-xl shadow-[6px_6px_12px_#d1d9e6,-6px_-6px_12px_#ffffff] active:shadow-[inset_4px_4px_8px_#d1d9e6,inset_-4px_-4px_8px_#ffffff]',
-        font: 'font-sans',
-        iconDone: 'text-slate-400',
-        decoLine: 'bg-slate-300',
-        modalBg: 'bg-[#eef2f6] rounded-2xl shadow-2xl',
-        input: 'bg-[#eef2f6] text-slate-700 rounded-xl shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]',
-        label: 'Focus',
-        eventLabel: 'Timeline'
-    }
+    祁煜: {
+        title: '和祁煜相识的那天',
+        note: '这一页先记下开始。后来那些颜色、潮声、玩笑和忽然被他记住的小事，都可以慢慢写到这里。',
+    },
+    秦彻: {
+        title: '和秦彻相识的那天',
+        note: '这一页先记下开始。后来那些不动声色的靠近、危险边缘的照看，都可以慢慢写到这里。',
+    },
+    夏以昼: {
+        title: '和夏以昼相识的那天',
+        note: '这一页先记下开始。后来那些回家、返航、等你抬头看见他的时刻，都可以慢慢写到这里。',
+    },
+};
+
+const getFirstMemoryCopy = (charName?: string) => (
+    charName && BUILT_IN_FIRST_MEMORY_COPY[charName]
+        ? BUILT_IN_FIRST_MEMORY_COPY[charName]
+        : {
+            title: charName ? `和${charName}相识的那天` : '相识的那天',
+            note: '这一页先记下开始。后来那些很小、很日常、却被认真放在心上的片刻，都会慢慢写到这里。',
+        }
+);
+
+const getFirstContactAssetId = (charId: string) => `timebook_first_contact_${charId}`;
+
+const parseLocalDate = (dateStr: string): Date | null => {
+    if (!dateStr) return null;
+    const date = new Date(`${dateStr}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatDateLabel = (dateStr: string): string => {
+    const date = parseLocalDate(dateStr);
+    if (!date) return dateStr;
+    const year = date.getFullYear();
+    const todayYear = new Date().getFullYear();
+    const prefix = year === todayYear ? '' : `${year}年`;
+    return `${prefix}${date.getMonth() + 1}月${date.getDate()}日`;
+};
+
+const formatMemoryDistance = (dateStr: string): string => {
+    const daysDiff = getDaysUntilTimebookDate(dateStr);
+    if (daysDiff > 0) return `还有${daysDiff}天`;
+    if (daysDiff === 0) return '今天';
+    const daysAgo = Math.abs(daysDiff);
+    if (daysAgo >= 365) return `${Math.floor(daysAgo / 365)}年前`;
+    return `${daysAgo}天前`;
+};
+
+const getTogetherDays = (startDate: string): number => {
+    const startTime = parseLocalDate(startDate)?.getTime() || new Date().setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.max(1, Math.floor((today.getTime() - startTime) / DAY_MS) + 1);
 };
 
 const ScheduleApp: React.FC = () => {
     const { closeApp, characters, activeCharacterId, apiConfig, addToast, userProfile } = useOS();
-    const [tasks, setTasks] = useState<Task[]>([]);
     const [anniversaries, setAnniversaries] = useState<Anniversary[]>([]);
-    const [activeTab, setActiveTab] = useState<'quest' | 'server_events'>('quest');
-    
-    // Processing State for feedback
-    const [processingTaskIds, setProcessingTaskIds] = useState<Set<string>>(new Set());
+    const [firstContact, setFirstContact] = useState<FirstContactSetting>(() => ({
+        ...getFirstMemoryCopy(),
+        date: toLocalDateInput(new Date()),
+        source: 'inferred',
+    }));
+    const [expandedId, setExpandedId] = useState<string | null>(null);
 
-    // Theme State
-    const [currentThemeMode, setCurrentThemeMode] = useState<ThemeMode>('cyber');
-    const theme = THEMES[currentThemeMode];
-
-    // Add Modal States
-    const [showTaskModal, setShowTaskModal] = useState(false);
     const [showAnniModal, setShowAnniModal] = useState(false);
-
-    // Forms
-    const [newTaskTitle, setNewTaskTitle] = useState('');
-    const [newTaskSupervisor, setNewTaskSupervisor] = useState<string>(activeCharacterId || '');
-    
+    const [showFirstContactModal, setShowFirstContactModal] = useState(false);
+    const [editingMemory, setEditingMemory] = useState<Anniversary | null>(null);
+    const [isGeneratingFirstContactNote, setIsGeneratingFirstContactNote] = useState(false);
+    const [draftFirstContactTitle, setDraftFirstContactTitle] = useState('');
+    const [draftFirstContactDate, setDraftFirstContactDate] = useState('');
+    const [draftFirstContactNote, setDraftFirstContactNote] = useState('');
+    const [draftMemoryTitle, setDraftMemoryTitle] = useState('');
+    const [draftMemoryDate, setDraftMemoryDate] = useState('');
+    const [draftMemoryThought, setDraftMemoryThought] = useState('');
     const [newAnniTitle, setNewAnniTitle] = useState('');
     const [newAnniDate, setNewAnniDate] = useState('');
     const [newAnniChar, setNewAnniChar] = useState<string>(activeCharacterId || '');
 
+    const activeCharacter = useMemo(
+        () => characters.find(c => c.id === activeCharacterId) || characters[0],
+        [activeCharacterId, characters]
+    );
+    const activeTimebookCharId = activeCharacter?.id || activeCharacterId || '';
+
     useEffect(() => {
         loadData();
-        // Load theme from local storage if needed, defaulting to cyber
-        const saved = localStorage.getItem('schedule_app_theme');
-        if (saved && THEMES[saved as ThemeMode]) {
-            setCurrentThemeMode(saved as ThemeMode);
-        }
-    }, []);
+    }, [activeTimebookCharId]);
 
-    const toggleTheme = () => {
-        const modes: ThemeMode[] = ['cyber', 'soft', 'minimal'];
-        const nextIndex = (modes.indexOf(currentThemeMode) + 1) % modes.length;
-        const nextMode = modes[nextIndex];
-        setCurrentThemeMode(nextMode);
-        localStorage.setItem('schedule_app_theme', nextMode);
-    };
+    useEffect(() => {
+        if (activeTimebookCharId) {
+            setNewAnniChar(activeTimebookCharId);
+        }
+    }, [activeTimebookCharId]);
 
     const loadData = async () => {
-        const [t, a] = await Promise.all([DB.getAllTasks(), DB.getAllAnniversaries()]);
-        setTasks(t.sort((a, b) => b.createdAt - a.createdAt));
-        setAnniversaries(a.sort((a, b) => a.date.localeCompare(b.date)));
-    };
+        const savedAnniversaries = await DB.getAllAnniversaries();
+        setAnniversaries(sortTimebookAnniversaries(savedAnniversaries));
 
-    // --- AI Logic ---
-
-    const generateTaskReward = async (task: Task) => {
-        const supervisor = characters.find(c => c.id === task.supervisorId);
-        if (!supervisor || !apiConfig.apiKey) {
-            addToast('任务已完成', 'success');
+        if (!activeTimebookCharId) {
+            const fallbackCopy = getFirstMemoryCopy(activeCharacter?.name);
+            setFirstContact({ ...fallbackCopy, date: toLocalDateInput(new Date()), source: 'inferred' });
             return;
         }
 
-        // FEEDBACK: Show loading state immediately
-        // Note: The caller handles setting processingTaskIds, but we can also add a toast
-        addToast(`${supervisor.name} 正在确认你的成果...`, 'info');
-
-        try {
-            // 1. Build Persona Context 
-            // RESTORED: Full context
-            const baseContext = ContextBuilder.buildCoreContext(supervisor, userProfile);
-            
-            const userPrompt = `
-### 场景：任务完成 (Task Completed)
-用户 (${userProfile.name}) 刚刚在现实生活中完成了一个任务/契约： "${task.title}"。
-你是监督人。
-
-### 任务
-请根据你的人设，对用户完成任务这一行为做出反应。
-- 如果你是严厉的：勉强认可，或者催促下一个。
-- 如果你是温柔的：给予温暖的夸奖。
-- 如果你是傲娇的：别扭地表示一下。
-- **关键**：不要问我用什么语气，**你自己**根据你的人设决定。
-
-**输出要求**:
-- 仅输出一句话（类似气泡通知）。
-- **必须使用用户常用语言**。
-- 不要有引号。`;
-
-            // 2. Separate System and User roles
-            const messages = [
-                { role: "system", content: baseContext },
-                { role: "user", content: userPrompt }
-            ];
-
-            const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
-                body: JSON.stringify({
-                    model: apiConfig.model,
-                    messages: messages,
-                    temperature: 0.9, 
-                    max_tokens: 8000 
-                })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API Error ${response.status}: ${errorText.slice(0, 100)}`);
-            }
-
-            const data = await safeResponseJson(response);
-            
-            // Extract content, handling potential reasoning_content or empty standard content
-            let text = data.choices?.[0]?.message?.content?.trim();
-            if (!text && data.choices?.[0]?.message?.reasoning_content) {
-                // If standard content is empty but model "thought" about it, try to use thought or fallback
-                console.warn("AI returned empty content but has reasoning.");
-            }
-            
-            if (text) {
-                text = text.replace(/^["']|["']$/g, '');
-                addToast(`${supervisor.name}: ${text}`, 'success');
-                // Inject into Chat Memory (Localized & Personalized)
-                await DB.saveMessage({
-                    charId: supervisor.id,
-                    role: 'system',
-                    type: 'text',
-                    content: `[系统: ${userProfile.name} 完成了任务 "${task.title}"。${supervisor.name} 评价道: "${text}"]`
-                });
-            } else {
-                console.warn("AI returned empty content", data);
-                addToast('任务完成 (AI 未返回评价)', 'success');
-            }
-
-        } catch (e: any) {
-            console.error("Task Reward Error:", e);
-            addToast(`评价生成失败: ${e.message}`, 'error');
-        }
+        const charAnniversaries = savedAnniversaries.filter(memory => memory.charId === activeTimebookCharId);
+        const earliestAnniversary = sortTimebookAnniversaries(charAnniversaries)[0];
+        const messages = await DB.getMessagesByCharId(activeTimebookCharId);
+        const firstMessage = messages
+            .filter(m => typeof m.timestamp === 'number')
+            .sort((a, b) => a.timestamp - b.timestamp)[0];
+        const inferredDate = earliestAnniversary?.date
+            || (firstMessage ? toLocalDateInput(new Date(firstMessage.timestamp)) : toLocalDateInput(new Date()));
+        const copy = getFirstMemoryCopy(activeCharacter?.name);
+        const savedSetting = await DB.getAssetRaw(getFirstContactAssetId(activeTimebookCharId)) as Partial<FirstContactSetting> | null;
+        const nextFirstContact: FirstContactSetting = {
+            title: savedSetting?.title || copy.title,
+            date: savedSetting?.date || inferredDate,
+            note: savedSetting?.note || copy.note,
+            source: savedSetting?.source || 'inferred',
+            updatedAt: savedSetting?.updatedAt,
+        };
+        setFirstContact(nextFirstContact);
+        setDraftFirstContactTitle(nextFirstContact.title);
+        setDraftFirstContactDate(nextFirstContact.date);
+        setDraftFirstContactNote(nextFirstContact.note);
     };
+
+    const characterMemories = useMemo(() => (
+        activeTimebookCharId
+            ? anniversaries.filter(memory => memory.charId === activeTimebookCharId)
+            : anniversaries
+    ), [activeTimebookCharId, anniversaries]);
+
+    const sortedMemories = useMemo<TimebookMemoryRow[]>(() => {
+        const sorted = sortTimebookAnniversaries(characterMemories).reverse();
+        const firstRow: TimebookMemoryRow = {
+            id: `default-first-memory-${activeTimebookCharId || 'character'}`,
+            title: firstContact.title,
+            date: firstContact.date,
+            charId: activeTimebookCharId,
+            aiThought: firstContact.note,
+            isDefaultFirstMemory: true,
+        };
+        return [firstRow, ...sorted];
+    }, [activeTimebookCharId, characterMemories, firstContact]);
+
+    const togetherDays = useMemo(
+        () => getTogetherDays(firstContact.date),
+        [firstContact.date]
+    );
 
     const generateAnniversaryThought = async (anni: Anniversary) => {
         const char = characters.find(c => c.id === anni.charId);
-        if (!char || !apiConfig.apiKey) return;
+        if (!char || !apiConfig.apiKey || anni.aiThought) return;
 
-        // Check cache (24h)
-        if (anni.aiThought && anni.lastThoughtGeneratedAt && (Date.now() - anni.lastThoughtGeneratedAt < 24 * 60 * 60 * 1000)) {
-            return;
-        }
-
-        // FEEDBACK: Show loading state if explicit call
-        if (Date.now() - (anni.lastThoughtGeneratedAt || 0) > 10000) {
-             addToast(`${char.name} 正在查阅日历...`, 'info');
-        }
-
-        const daysDiff = Math.ceil((new Date(anni.date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-        const dayText = daysDiff > 0 ? `还有 ${daysDiff} 天` : (daysDiff === 0 ? '就是今天!' : `已经过去 ${Math.abs(daysDiff)} 天了`);
-
-        // RESTORED: Full context
         const baseContext = ContextBuilder.buildCoreContext(char, userProfile);
-
-        const userPrompt = `
-### 场景：纪念日提醒
-事件: "${anni.title}"
-时间状态: ${dayText}
-
-### 任务
-请根据你的人设，针对这个日期发表一句简短的感想。
-**输出要求**:
-- 仅输出一句话。
-- **必须使用用户常用语言**。`;
-
         const messages = [
-            { role: "system", content: baseContext },
-            { role: "user", content: userPrompt }
+            { role: 'system', content: baseContext },
+            { role: 'user', content: buildAnniversaryThoughtPrompt(anni) },
         ];
 
         try {
@@ -248,336 +214,409 @@ const ScheduleApp: React.FC = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
                 body: JSON.stringify({
                     model: apiConfig.model,
-                    messages: messages,
-                    temperature: 0.8,
-                    max_tokens: 8000
-                })
+                    messages,
+                    temperature: 0.75,
+                    max_tokens: 360,
+                }),
             });
 
             if (!response.ok) {
-                 const errorText = await response.text();
-                 throw new Error(`API Error ${response.status}: ${errorText.slice(0, 50)}`);
+                const errorText = await response.text();
+                throw new Error(`API Error ${response.status}: ${errorText.slice(0, 80)}`);
             }
 
             const data = await safeResponseJson(response);
             const text = data.choices?.[0]?.message?.content?.trim().replace(/^["']|["']$/g, '');
-            
+
             if (text) {
                 const updatedAnni = { ...anni, aiThought: text, lastThoughtGeneratedAt: Date.now() };
                 await DB.saveAnniversary(updatedAnni);
                 setAnniversaries(prev => prev.map(a => a.id === anni.id ? updatedAnni : a));
-            } else {
-                console.warn("AI returned empty thought", data);
             }
-        } catch (e: any) { 
-            console.error("Anniversary Thought Error:", e);
-            // No toast for background update failure to avoid annoyance
+        } catch (error) {
+            console.warn('Timebook thought generation failed:', error);
         }
     };
 
-    // --- Actions ---
-
-    const handleAddTask = async () => {
-        if (!newTaskTitle.trim()) return;
-        const task: Task = {
-            id: `task-${Date.now()}`,
-            title: newTaskTitle,
-            supervisorId: newTaskSupervisor || characters[0]?.id,
-            tone: 'gentle', // Deprecated but kept for type compatibility
-            isCompleted: false,
-            createdAt: Date.now()
-        };
-        await DB.saveTask(task);
-        setTasks(prev => [task, ...prev]);
-        setShowTaskModal(false);
-        setNewTaskTitle('');
-    };
-
-    const handleToggleTask = async (task: Task) => {
-        const updated = { ...task, isCompleted: !task.isCompleted, completedAt: !task.isCompleted ? Date.now() : undefined };
-        await DB.saveTask(updated);
-        setTasks(prev => prev.map(t => t.id === task.id ? updated : t));
-        
-        if (updated.isCompleted) {
-            // Start Visual Loading State on the Item
-            setProcessingTaskIds(prev => new Set(prev).add(task.id));
-            try {
-                await generateTaskReward(updated);
-            } finally {
-                // End Visual Loading State
-                setProcessingTaskIds(prev => {
-                    const next = new Set(prev);
-                    next.delete(task.id);
-                    return next;
-                });
-            }
+    const handleToggleMemory = (anni: TimebookMemoryRow) => {
+        const shouldOpen = expandedId !== anni.id;
+        setExpandedId(shouldOpen ? anni.id : null);
+        if (shouldOpen && !anni.aiThought && !anni.isDefaultFirstMemory) {
+            generateAnniversaryThought(anni);
         }
-    };
-
-    const handleDeleteTask = async (id: string) => {
-        await DB.deleteTask(id);
-        setTasks(prev => prev.filter(t => t.id !== id));
     };
 
     const handleAddAnni = async () => {
         if (!newAnniTitle.trim() || !newAnniDate) return;
+
         const anni: Anniversary = {
             id: `anni-${Date.now()}`,
-            title: newAnniTitle,
+            title: newAnniTitle.trim(),
             date: newAnniDate,
-            charId: newAnniChar || characters[0]?.id
+            charId: newAnniChar || activeCharacterId || characters[0]?.id || 'default',
         };
+
         await DB.saveAnniversary(anni);
-        setAnniversaries(prev => [...prev, anni].sort((a, b) => a.date.localeCompare(b.date)));
+        setAnniversaries(prev => sortTimebookAnniversaries([...prev, anni]));
+        setExpandedId(anni.id);
         setShowAnniModal(false);
         setNewAnniTitle('');
         setNewAnniDate('');
-        
-        // Remove immediate trigger to avoid double calls (useEffect will handle if it's upcoming)
+        addToast('这一页已经夹进时光簿。', 'success');
+    };
+
+    const openFirstContactEditor = () => {
+        setDraftFirstContactTitle(firstContact.title);
+        setDraftFirstContactDate(firstContact.date);
+        setDraftFirstContactNote(firstContact.note);
+        setShowFirstContactModal(true);
+    };
+
+    const handleSaveFirstContact = async (source: FirstContactSetting['source'] = 'manual') => {
+        if (!activeTimebookCharId || !draftFirstContactTitle.trim() || !draftFirstContactDate) return;
+
+        const nextSetting: FirstContactSetting = {
+            title: draftFirstContactTitle.trim(),
+            date: draftFirstContactDate,
+            note: draftFirstContactNote.trim() || getFirstMemoryCopy(activeCharacter?.name).note,
+            source,
+            updatedAt: Date.now(),
+        };
+
+        await DB.saveAssetRaw(getFirstContactAssetId(activeTimebookCharId), nextSetting);
+        setFirstContact(nextSetting);
+        setShowFirstContactModal(false);
+        addToast('初识这一页已经改好了。', 'success');
+    };
+
+    const handleGenerateFirstContactNote = async () => {
+        if (!activeCharacter || !apiConfig.apiKey || isGeneratingFirstContactNote) return;
+
+        setIsGeneratingFirstContactNote(true);
+        try {
+            const memoryHints = sortTimebookAnniversaries(characterMemories)
+                .slice(0, 10)
+                .map(memory => `- ${memory.date}: ${memory.title}${memory.aiThought ? `｜${memory.aiThought}` : ''}`)
+                .join('\n') || '- 暂时没有导入的旧纪念日。';
+            const baseContext = ContextBuilder.buildCoreContext(activeCharacter, userProfile);
+            const messages = [
+                { role: 'system', content: baseContext },
+                {
+                    role: 'user',
+                    content: `### 场景：时光簿初识页\n角色: ${activeCharacter.name}\n初识日期: ${draftFirstContactDate || firstContact.date}\n标题: ${draftFirstContactTitle || firstContact.title}\n已导入的旧回忆:\n${memoryHints}\n\n请根据你的人设和已有回忆，为“初识这一页”补一段很短的页边注。不要替用户决定感受，不要写成总结报告。\n输出要求:\n- 2 到 3 个短句，80 字以内。\n- 只输出正文。\n- 使用用户常用语言。`,
+                },
+            ];
+
+            const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
+                body: JSON.stringify({
+                    model: apiConfig.model,
+                    messages,
+                    temperature: 0.72,
+                    max_tokens: 260,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API Error ${response.status}: ${errorText.slice(0, 80)}`);
+            }
+
+            const data = await safeResponseJson(response);
+            const text = data.choices?.[0]?.message?.content?.trim().replace(/^["']|["']$/g, '');
+            if (text) {
+                setDraftFirstContactNote(text);
+            }
+        } catch (error) {
+            console.warn('First contact note generation failed:', error);
+            addToast('暂时没补写成功，可以先手动写。', 'error');
+        } finally {
+            setIsGeneratingFirstContactNote(false);
+        }
     };
 
     const handleDeleteAnni = async (id: string) => {
         await DB.deleteAnniversary(id);
         setAnniversaries(prev => prev.filter(a => a.id !== id));
+        if (expandedId === id) setExpandedId(null);
     };
 
-    // --- Render Helpers ---
-
-    const getDaysUntil = (dateStr: string) => {
-        const today = new Date();
-        today.setHours(0,0,0,0);
-        const target = new Date(dateStr);
-        target.setHours(0,0,0,0);
-        const diff = target.getTime() - today.getTime();
-        return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    const openMemoryEditor = (memory: Anniversary) => {
+        setEditingMemory(memory);
+        setDraftMemoryTitle(memory.title);
+        setDraftMemoryDate(memory.date);
+        setDraftMemoryThought(memory.aiThought || '');
     };
 
-    const upcomingAnni = useMemo(() => {
-        return anniversaries.filter(a => getDaysUntil(a.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
-    }, [anniversaries]);
+    const handleSaveMemoryEdit = async () => {
+        if (!editingMemory || !draftMemoryTitle.trim() || !draftMemoryDate) return;
 
-    // Trigger thoughts for upcoming anniversary on load
-    useEffect(() => {
-        if (upcomingAnni) {
-            generateAnniversaryThought(upcomingAnni);
-        }
-    }, [upcomingAnni]);
+        const updated: Anniversary = {
+            ...editingMemory,
+            title: draftMemoryTitle.trim(),
+            date: draftMemoryDate,
+            aiThought: draftMemoryThought.trim() || undefined,
+            lastThoughtGeneratedAt: draftMemoryThought.trim()
+                ? (editingMemory.lastThoughtGeneratedAt || Date.now())
+                : undefined,
+        };
+
+        await DB.saveAnniversary(updated);
+        setAnniversaries(prev => sortTimebookAnniversaries(prev.map(item => item.id === updated.id ? updated : item)));
+        setEditingMemory(null);
+        addToast('这一页已经改好了。', 'success');
+    };
 
     return (
-        <div className={`h-full w-full flex flex-col ${theme.font} ${theme.bg} ${theme.text} relative overflow-hidden transition-colors duration-500`}>
-             
-             {/* Tech Background Grid (Only for Cyber) */}
-             {currentThemeMode === 'cyber' && (
-                 <div className="absolute inset-0 pointer-events-none opacity-20" 
-                      style={{ 
-                          backgroundImage: 'linear-gradient(rgba(56, 189, 248, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(56, 189, 248, 0.1) 1px, transparent 1px)', 
-                          backgroundSize: '40px 40px' 
-                      }}>
-                 </div>
-             )}
-             
-             {/* Soft Background Pattern (Only for Soft) */}
-             {currentThemeMode === 'soft' && (
-                 <div className="absolute inset-0 pointer-events-none opacity-30" 
-                      style={{ 
-                          backgroundImage: 'radial-gradient(#fbcfe8 2px, transparent 2px)', 
-                          backgroundSize: '20px 20px' 
-                      }}>
-                 </div>
-             )}
+        <div className="relative h-full w-full overflow-hidden bg-[#d4ad7a] text-[#4b3d35]">
+            <div
+                className="absolute inset-0"
+                style={{
+                    backgroundImage: `url(${TIMEBOOK_BACKGROUND})`,
+                    backgroundPosition: '72% 46%',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundSize: '101% auto',
+                }}
+            />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(255,255,255,0.18),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(80,45,22,0.10))]" />
 
-             {/* Header */}
-             <div className={`pt-12 pb-4 px-6 border-b ${theme.border} backdrop-blur-sm sticky top-0 z-20 flex items-center justify-between shrink-0 h-24 box-border relative transition-colors duration-300`}>
-                <button onClick={closeApp} className={`p-2 -ml-2 rounded-full active:scale-90 transition-transform ${currentThemeMode === 'minimal' ? 'bg-[#eef2f6] shadow-[4px_4px_8px_#d1d9e6,-4px_-4px_8px_#ffffff]' : 'hover:bg-black/5'}`}>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-6 h-6 ${theme.accent}`}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                </button>
-                
-                {/* Tabs */}
-                <div className={`flex gap-1 p-1 rounded-lg ${currentThemeMode === 'cyber' ? 'bg-black/40 border border-cyan-900/50' : (currentThemeMode === 'minimal' ? 'bg-[#eef2f6] shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]' : 'bg-white/50')}`}>
-                    <button onClick={() => setActiveTab('quest')} className={`px-4 py-1.5 rounded text-xs font-bold transition-all ${activeTab === 'quest' ? `${theme.accent} ${currentThemeMode === 'cyber' ? 'bg-cyan-900/50 shadow-sm' : (currentThemeMode === 'minimal' ? 'shadow-[2px_2px_5px_#d1d9e6,-2px_-2px_5px_#ffffff] bg-[#eef2f6]' : 'bg-white shadow-sm')}` : `${theme.textSub}`}`}>{theme.label}</button>
-                    <button onClick={() => setActiveTab('server_events')} className={`px-4 py-1.5 rounded text-xs font-bold transition-all ${activeTab === 'server_events' ? `${theme.accent} ${currentThemeMode === 'cyber' ? 'bg-cyan-900/50 shadow-sm' : (currentThemeMode === 'minimal' ? 'shadow-[2px_2px_5px_#d1d9e6,-2px_-2px_5px_#ffffff] bg-[#eef2f6]' : 'bg-white shadow-sm')}` : `${theme.textSub}`}`}>{theme.eventLabel}</button>
-                </div>
+            <button
+                onClick={closeApp}
+                className="absolute left-5 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/30 text-[#5d544b] shadow-sm backdrop-blur-md transition active:scale-95"
+                style={{ top: SHELL_APP_HEADER_CONTENT_TOP }}
+                aria-label="返回"
+            >
+                <CaretLeft size={23} weight="bold" />
+            </button>
 
-                {/* Right Actions */}
-                <div className="flex gap-2">
-                    {/* Theme Switcher */}
-                    <button onClick={toggleTheme} className={`p-2 rounded-full active:scale-90 transition-transform ${currentThemeMode === 'minimal' ? 'shadow-[4px_4px_8px_#d1d9e6,-4px_-4px_8px_#ffffff]' : 'bg-white/10 hover:bg-white/20'}`}>
-                        {currentThemeMode === 'cyber' && <img src={twemojiUrl('1f47e')} alt="alien" className="w-5 h-5" />}
-                        {currentThemeMode === 'soft' && <img src={twemojiUrl('1f338')} alt="blossom" className="w-5 h-5" />}
-                        {currentThemeMode === 'minimal' && <img src={twemojiUrl('26aa')} alt="circle" className="w-5 h-5" />}
-                    </button>
-                    
-                    {/* Add Button */}
-                    <button onClick={() => activeTab === 'quest' ? setShowTaskModal(true) : setShowAnniModal(true)} className={`p-2 rounded-full active:scale-90 transition-transform ${theme.accent} ${currentThemeMode === 'minimal' ? 'shadow-[4px_4px_8px_#d1d9e6,-4px_-4px_8px_#ffffff]' : 'hover:bg-white/10'}`}>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                    </button>
-                </div>
-                
-                {/* Decoration Line */}
-                {currentThemeMode === 'cyber' && <div className="absolute bottom-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>}
-            </div>
+            <AppHeaderAddButton
+                onClick={() => setShowAnniModal(true)}
+                className="absolute right-5 z-30 bg-[#fff8ed]/62 text-[#9a6a53] shadow-sm backdrop-blur-md"
+                style={{ top: SHELL_APP_HEADER_CONTENT_TOP }}
+                title="添加回忆"
+            />
 
-            <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-8 z-10">
-                
-                {/* Hero Anniversary Card */}
-                {upcomingAnni && (
-                    <div className={`w-full rounded-2xl p-5 relative overflow-hidden group transition-all duration-300 ${currentThemeMode === 'minimal' ? 'bg-[#eef2f6] shadow-[inset_5px_5px_10px_#d1d9e6,inset_-5px_-5px_10px_#ffffff]' : (currentThemeMode === 'soft' ? 'bg-gradient-to-r from-pink-300 to-purple-300 text-white shadow-lg shadow-pink-200' : 'bg-gradient-to-r from-slate-900 to-slate-800 border border-purple-500/30')}`}>
-                        <div className="relative z-10">
-                            <div className="flex justify-between items-start mb-2">
-                                <div className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ${currentThemeMode === 'minimal' ? 'text-slate-400' : 'text-white/80 bg-white/20'}`}>即将到来</div>
-                                <div className="text-3xl font-bold tracking-tighter">{getDaysUntil(upcomingAnni.date)} <span className="text-xs opacity-60 font-normal">天后</span></div>
-                            </div>
-                            <div className="text-xl font-bold mb-4">{upcomingAnni.title}</div>
-                            
-                            {/* AI Thought Bubble */}
-                            <div className={`flex items-start gap-3 p-3 rounded-xl ${currentThemeMode === 'minimal' ? 'bg-[#eef2f6] shadow-[5px_5px_10px_#d1d9e6,-5px_-5px_10px_#ffffff]' : 'bg-white/20 backdrop-blur-md'}`}>
-                                <img src={characters.find(c => c.id === upcomingAnni.charId)?.avatar} className="w-8 h-8 rounded-full object-cover" />
-                                <div className={`text-xs font-medium leading-relaxed italic ${currentThemeMode === 'minimal' ? 'text-slate-500' : 'text-white/90'}`}>
-                                    "{upcomingAnni.aiThought || "加载中..."}"
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
+            <main
+                className="absolute z-20 overflow-hidden rounded-[18px] border border-white/28 bg-[#fffaf0]/26 shadow-[0_10px_22px_rgba(74,48,28,0.055)] backdrop-blur-[0.75px]"
+                style={{
+                    left: '16.4%',
+                    right: '11.7%',
+                    top: '21.3%',
+                    bottom: '20.5%',
+                }}
+            >
+                <div
+                    className="pointer-events-none absolute inset-0 opacity-[0.065]"
+                    style={{
+                        backgroundImage: 'linear-gradient(rgba(184,151,121,0.55) 1px, transparent 1px), linear-gradient(90deg, rgba(184,151,121,0.42) 1px, transparent 1px)',
+                        backgroundSize: '28px 28px',
+                    }}
+                />
+                <section className="relative z-10 flex h-full flex-col px-5 pb-5 pt-5">
+                    <header className="flex shrink-0 items-baseline gap-2 pb-3">
+                        <span className="text-[13px] font-semibold tracking-[0.2em] text-[#8b6d62]">相伴</span>
+                        <span className="font-serif text-[31px] font-semibold leading-none text-[#a75f56]">{togetherDays}</span>
+                        <span className="text-[16px] font-semibold text-[#584940]">天</span>
+                    </header>
 
-                {activeTab === 'quest' && (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2 mb-2 px-1">
-                            <div className={`w-2 h-2 rounded-full animate-pulse ${currentThemeMode === 'cyber' ? 'bg-cyan-500' : (currentThemeMode === 'soft' ? 'bg-pink-400' : 'bg-slate-400')}`}></div>
-                            <h3 className={`text-xs font-bold uppercase tracking-[0.2em] ${theme.accent}`}>进行中任务</h3>
-                        </div>
-                        
-                        {tasks.filter(t => !t.isCompleted).length === 0 && (
-                            <div className={`text-center py-12 border-2 border-dashed rounded-xl ${currentThemeMode === 'cyber' ? 'border-slate-800' : 'border-slate-200'}`}>
-                                <div className={theme.textSub}>暂无任务</div>
-                            </div>
-                        )}
+                    <div className="min-h-0 flex-1 overflow-y-auto pr-1 no-scrollbar">
+                        <div className="space-y-1 pb-4">
+                            {sortedMemories.map(memory => {
+                                const expanded = expandedId === memory.id;
+                                const character = characters.find(c => c.id === memory.charId);
+                                const writerName = character?.name || '他';
 
-                        {tasks.filter(t => !t.isCompleted).map(task => {
-                            const supervisor = characters.find(c => c.id === task.supervisorId);
-                            const isProcessing = processingTaskIds.has(task.id);
-                            
-                            return (
-                                <div key={task.id} className={`${theme.card} p-4 flex items-center gap-4 group relative overflow-hidden transition-all duration-300`}>
-                                    {/* Supervisor Icon */}
-                                    <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 relative border border-white/10">
-                                        {supervisor ? <img src={supervisor.avatar} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" /> : <span className="text-xs">?</span>}
-                                        <div className={`absolute -bottom-0 -right-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${currentThemeMode === 'soft' ? 'bg-white text-pink-500' : 'bg-black text-cyan-500'}`}>!</div>
-                                    </div>
-                                    
-                                    <div className="flex-1">
-                                        <div className={`${theme.text} font-bold text-sm tracking-wide`}>{task.title}</div>
-                                        <div className={`text-[10px] ${theme.textSub} mt-1 font-mono uppercase`}>
-                                            监督人: {supervisor?.name || 'Unknown'}
-                                        </div>
-                                    </div>
-
-                                    {/* Action Button Area */}
-                                    {isProcessing ? (
-                                        <div className="flex items-center gap-2 px-2 py-2">
-                                            <div className={`w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin ${theme.accent}`}></div>
-                                            <span className={`text-[10px] font-bold animate-pulse ${theme.accent}`}>验收中...</span>
-                                        </div>
-                                    ) : (
-                                        <button 
-                                            onClick={() => handleToggleTask(task)}
-                                            className={`px-4 py-2 text-[10px] font-bold uppercase tracking-wider rounded transition-all active:scale-95 ${currentThemeMode === 'minimal' ? 'shadow-[4px_4px_8px_#d1d9e6,-4px_-4px_8px_#ffffff] text-slate-500 active:shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]' : (currentThemeMode === 'soft' ? 'bg-pink-100 text-pink-500' : 'bg-cyan-900/30 text-cyan-400 border border-cyan-800')}`}
+                                return (
+                                    <article key={memory.id} className="border-b border-[#e5d6c8]/70 last:border-b-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleToggleMemory(memory)}
+                                            className="grid w-full grid-cols-[11px_1fr_19px] gap-3 py-3 text-left transition active:scale-[0.99]"
                                         >
-                                            完成
+                                            <span className="mt-[8px] h-2 w-2 rounded-full bg-[#d46d74] shadow-[0_0_0_4px_rgba(212,109,116,0.12)]" />
+                                            <span className="min-w-0">
+                                                <span className="block text-[11px] font-medium leading-none text-[#a58d82]">
+                                                    {formatDateLabel(memory.date)} · {formatMemoryDistance(memory.date)}
+                                                </span>
+                                                <span className="mt-1 block truncate text-[15px] font-semibold leading-6 text-[#514640]">
+                                                    {memory.title}
+                                                </span>
+                                            </span>
+                                            <CaretRight
+                                                size={17}
+                                                weight="bold"
+                                                className={`mt-3 text-[#cf6b72] transition-transform ${expanded ? 'rotate-90' : ''}`}
+                                            />
                                         </button>
-                                    )}
-                                    
-                                    <button onClick={() => handleDeleteTask(task.id)} className="absolute top-2 right-2 text-slate-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1">×</button>
-                                </div>
-                            );
-                        })}
 
-                        {tasks.filter(t => t.isCompleted).length > 0 && (
-                            <div className="pt-8 opacity-50">
-                                <h3 className={`text-xs font-bold uppercase tracking-[0.2em] px-1 mb-4 ${theme.textSub}`}>已完成</h3>
-                                {tasks.filter(t => t.isCompleted).map(task => (
-                                    <div key={task.id} className={`flex items-center gap-3 py-2 px-2 border-b ${currentThemeMode === 'cyber' ? 'border-slate-800/50' : 'border-slate-100'}`}>
-                                        <div className={`${theme.iconDone} text-xs font-mono`}>[DONE]</div>
-                                        <span className={`text-sm line-through ${theme.textSub}`}>{task.title}</span>
-                                        <button onClick={() => handleDeleteTask(task.id)} className="ml-auto text-slate-400 hover:text-red-500 text-xs">DEL</button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {activeTab === 'server_events' && (
-                    <div className={`relative pl-6 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-0 before:w-[1px] ${theme.decoLine}`}>
-                        {/* Anniversaries List */}
-                        <div>
-                             <h3 className={`text-xs font-bold uppercase tracking-widest mb-6 -ml-6 pl-6 ${theme.textSub}`}>时间线事件</h3>
-                             <div className="space-y-4">
-                                 {anniversaries.map(a => (
-                                     <div key={a.id} className="relative group">
-                                         <div className={`absolute -left-[20px] top-4 w-2 h-2 rounded-full z-10 ${currentThemeMode === 'cyber' ? 'bg-black border border-purple-500' : 'bg-pink-400'}`}></div>
-                                         <div className={`${theme.card} p-4 flex justify-between items-center transition-colors`}>
-                                             <div>
-                                                 <div className={`text-sm font-bold ${theme.text}`}>{a.title}</div>
-                                                 <div className={`text-[10px] ${theme.textSub} font-mono mt-1`}>{a.date} · {characters.find(c => c.id === a.charId)?.name}</div>
-                                             </div>
-                                             <button onClick={() => handleDeleteAnni(a.id)} className="text-slate-400 hover:text-red-400 p-2 opacity-0 group-hover:opacity-100 transition-opacity">×</button>
-                                         </div>
-                                     </div>
-                                 ))}
-                             </div>
-                        </div>
-
-                        {/* Completed Tasks History Log */}
-                         <div>
-                             <h3 className={`text-xs font-bold uppercase tracking-widest mb-6 -ml-6 pl-6 pt-4 ${theme.textSub}`}>完成履历</h3>
-                             <div className="space-y-4">
-                                 {tasks.filter(t => t.isCompleted).sort((a,b) => (b.completedAt || 0) - (a.completedAt || 0)).map(t => (
-                                     <div key={t.id} className="relative">
-                                         <div className={`absolute -left-[20px] top-2 w-2 h-2 rounded-full z-10 ${currentThemeMode === 'cyber' ? 'bg-black border border-green-600' : 'bg-slate-300'}`}></div>
-                                         <div className={`text-xs ${theme.textSub} font-mono`}>[{new Date(t.completedAt || 0).toLocaleDateString()}] 任务完成</div>
-                                         <div className={`text-sm ${theme.text} font-bold mt-1 pl-1 border-l-2 ${theme.decoLine}`}>{t.title}</div>
-                                     </div>
-                                 ))}
-                             </div>
-                         </div>
-                    </div>
-                )}
-
-            </div>
-
-            {/* Task Modal */}
-            <Modal isOpen={showTaskModal} title={currentThemeMode === 'cyber' ? "INITIALIZE QUEST" : "新建任务"} onClose={() => setShowTaskModal(false)} footer={<button onClick={handleAddTask} className={`w-full py-3 font-bold transition-all ${theme.buttonPrimary}`}>确认添加</button>}>
-                <div className={`space-y-6 ${currentThemeMode === 'minimal' ? 'p-2' : ''}`}>
-                    <input autoFocus value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="任务目标 (例如: 背单词)" className={`w-full px-4 py-3 text-sm focus:outline-none ${theme.input}`} />
-                    
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">选择监督人</label>
-                        <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                            {characters.map(c => (
-                                <button key={c.id} onClick={() => setNewTaskSupervisor(c.id)} className={`flex flex-col items-center gap-2 p-2 rounded-lg border transition-all min-w-[60px] ${newTaskSupervisor === c.id ? `${currentThemeMode === 'minimal' ? 'shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]' : 'border-current'}` : 'border-transparent opacity-50'}`}>
-                                    <img src={c.avatar} className="w-10 h-10 rounded-md object-cover" />
-                                    <span className={`text-[10px] font-bold whitespace-nowrap ${theme.text}`}>{c.name}</span>
-                                </button>
-                            ))}
+                                        {expanded && (
+                                            <div className="ml-5 -mt-1 mb-3 rounded-[18px] border border-white/60 bg-white/48 px-3.5 py-3 shadow-sm">
+                                                <p className="whitespace-pre-wrap text-[12px] leading-6 text-[#6d5d54]">
+                                                    {memory.aiThought || `${writerName}还没有把这一页写完，但这一天已经先被他夹在纸里。`}
+                                                </p>
+                                                <div className="mt-2.5 flex items-center justify-between text-[10px] text-[#a68c7f]">
+                                                    <span>{writerName}写下的页边注</span>
+                                                    {memory.isDefaultFirstMemory ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={openFirstContactEditor}
+                                                            className="flex items-center gap-1 rounded-full px-2 py-1 text-[#a06b64] transition hover:bg-white/50 active:scale-95"
+                                                        >
+                                                            <PencilSimple size={12} weight="bold" />
+                                                            修改初识
+                                                        </button>
+                                                    ) : (
+                                                        <span className="flex items-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openMemoryEditor(memory)}
+                                                                className="flex items-center gap-1 rounded-full px-2 py-1 text-[#a06b64] transition hover:bg-white/50 active:scale-95"
+                                                            >
+                                                                <PencilSimple size={12} weight="bold" />
+                                                                修改
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteAnni(memory.id)}
+                                                                className="flex items-center gap-1 rounded-full px-2 py-1 text-[#a06b64] transition hover:bg-white/50 active:scale-95"
+                                                            >
+                                                                <Trash size={12} weight="bold" />
+                                                                删除
+                                                            </button>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </article>
+                                );
+                            })}
                         </div>
                     </div>
+                </section>
+            </main>
+
+            <Modal
+                isOpen={showFirstContactModal}
+                title="初识这一页"
+                onClose={() => setShowFirstContactModal(false)}
+                footer={
+                    <button
+                        onClick={() => handleSaveFirstContact('manual')}
+                        className="w-full rounded-2xl bg-[#9d675c] py-3 text-sm font-bold text-white shadow-lg shadow-[#9d675c]/20 transition active:scale-[0.98]"
+                    >
+                        保存初识
+                    </button>
+                }
+            >
+                <div className="space-y-4">
+                    <input
+                        value={draftFirstContactTitle}
+                        onChange={e => setDraftFirstContactTitle(e.target.value)}
+                        placeholder="比如：和他相识的那天"
+                        className="w-full rounded-2xl border border-[#eadbcf] bg-[#fffaf5] px-4 py-3 text-sm text-[#594a42] outline-none placeholder:text-[#b9a49a] focus:border-[#cfa696]"
+                    />
+                    <input
+                        type="date"
+                        value={draftFirstContactDate}
+                        onChange={e => setDraftFirstContactDate(e.target.value)}
+                        className="w-full rounded-2xl border border-[#eadbcf] bg-[#fffaf5] px-4 py-3 text-sm text-[#594a42] outline-none focus:border-[#cfa696]"
+                    />
+                    <textarea
+                        value={draftFirstContactNote}
+                        onChange={e => setDraftFirstContactNote(e.target.value)}
+                        placeholder="写给这一页的页边注"
+                        className="h-28 w-full resize-none rounded-2xl border border-[#eadbcf] bg-[#fffaf5] px-4 py-3 text-sm leading-6 text-[#594a42] outline-none placeholder:text-[#b9a49a] focus:border-[#cfa696]"
+                    />
+                    <button
+                        type="button"
+                        onClick={handleGenerateFirstContactNote}
+                        disabled={isGeneratingFirstContactNote || !apiConfig.apiKey}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#eadbcf] bg-white/70 py-3 text-[12px] font-bold text-[#8f675f] transition active:scale-[0.98] disabled:opacity-45"
+                    >
+                        <Sparkle size={15} weight="bold" />
+                        {isGeneratingFirstContactNote ? '正在补写...' : '按已有回忆补一句'}
+                    </button>
                 </div>
             </Modal>
 
-            {/* Anniversary Modal */}
-            <Modal isOpen={showAnniModal} title={currentThemeMode === 'cyber' ? "REGISTER EVENT" : "添加纪念日"} onClose={() => setShowAnniModal(false)} footer={<button onClick={handleAddAnni} className={`w-full py-3 font-bold transition-all ${theme.buttonPrimary}`}>保存记录</button>}>
-                <div className={`space-y-4 ${currentThemeMode === 'minimal' ? 'p-2' : ''}`}>
-                    <input value={newAnniTitle} onChange={e => setNewAnniTitle(e.target.value)} placeholder="事件名称 (例如: 第一次见面)" className={`w-full px-4 py-3 text-sm focus:outline-none ${theme.input}`} />
-                    <input type="date" value={newAnniDate} onChange={e => setNewAnniDate(e.target.value)} className={`w-full px-4 py-3 text-sm focus:outline-none ${theme.input}`} />
-                    
+            <Modal
+                isOpen={!!editingMemory}
+                title="修改这一页"
+                onClose={() => setEditingMemory(null)}
+                footer={
+                    <button
+                        onClick={handleSaveMemoryEdit}
+                        className="w-full rounded-2xl bg-[#9d675c] py-3 text-sm font-bold text-white shadow-lg shadow-[#9d675c]/20 transition active:scale-[0.98]"
+                    >
+                        保存修改
+                    </button>
+                }
+            >
+                <div className="space-y-4">
+                    <input
+                        value={draftMemoryTitle}
+                        onChange={e => setDraftMemoryTitle(e.target.value)}
+                        placeholder="这一页的标题"
+                        className="w-full rounded-2xl border border-[#eadbcf] bg-[#fffaf5] px-4 py-3 text-sm text-[#594a42] outline-none placeholder:text-[#b9a49a] focus:border-[#cfa696]"
+                    />
+                    <input
+                        type="date"
+                        value={draftMemoryDate}
+                        onChange={e => setDraftMemoryDate(e.target.value)}
+                        className="w-full rounded-2xl border border-[#eadbcf] bg-[#fffaf5] px-4 py-3 text-sm text-[#594a42] outline-none focus:border-[#cfa696]"
+                    />
+                    <textarea
+                        value={draftMemoryThought}
+                        onChange={e => setDraftMemoryThought(e.target.value)}
+                        placeholder="页边注可以留空，打开时再由他补写。"
+                        className="h-28 w-full resize-none rounded-2xl border border-[#eadbcf] bg-[#fffaf5] px-4 py-3 text-sm leading-6 text-[#594a42] outline-none placeholder:text-[#b9a49a] focus:border-[#cfa696]"
+                    />
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={showAnniModal}
+                title="留下这一天"
+                onClose={() => setShowAnniModal(false)}
+                footer={
+                    <button
+                        onClick={handleAddAnni}
+                        className="w-full rounded-2xl bg-[#9d675c] py-3 text-sm font-bold text-white shadow-lg shadow-[#9d675c]/20 transition active:scale-[0.98]"
+                    >
+                        写进时光簿
+                    </button>
+                }
+            >
+                <div className="space-y-4">
+                    <input
+                        value={newAnniTitle}
+                        onChange={e => setNewAnniTitle(e.target.value)}
+                        placeholder="比如：消失的蛋糕在哪里"
+                        className="w-full rounded-2xl border border-[#eadbcf] bg-[#fffaf5] px-4 py-3 text-sm text-[#594a42] outline-none placeholder:text-[#b9a49a] focus:border-[#cfa696]"
+                    />
+                    <input
+                        type="date"
+                        value={newAnniDate}
+                        onChange={e => setNewAnniDate(e.target.value)}
+                        className="w-full rounded-2xl border border-[#eadbcf] bg-[#fffaf5] px-4 py-3 text-sm text-[#594a42] outline-none focus:border-[#cfa696]"
+                    />
+
                     <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">关联对象</label>
-                        <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                        <label className="mb-2 block text-[12px] font-semibold text-[#9b8378]">由谁记下</label>
+                        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                             {characters.map(c => (
-                                <button key={c.id} onClick={() => setNewAnniChar(c.id)} className={`flex flex-col items-center gap-2 p-2 rounded-lg border transition-all min-w-[60px] ${newAnniChar === c.id ? `${currentThemeMode === 'minimal' ? 'shadow-[inset_2px_2px_5px_#d1d9e6,inset_-2px_-2px_5px_#ffffff]' : 'border-current'}` : 'border-transparent opacity-50'}`}>
-                                    <img src={c.avatar} className="w-10 h-10 rounded-md object-cover" />
-                                    <span className={`text-[10px] font-bold whitespace-nowrap ${theme.text}`}>{c.name}</span>
+                                <button
+                                    key={c.id}
+                                    onClick={() => setNewAnniChar(c.id)}
+                                    className={`shrink-0 rounded-full border px-4 py-2 text-[12px] font-semibold transition active:scale-95 ${
+                                        (newAnniChar || activeCharacterId) === c.id
+                                            ? 'border-[#bd7d72] bg-[#fff2ea] text-[#8f5d55]'
+                                            : 'border-[#eadbcf] bg-white/60 text-[#9b8378]'
+                                    }`}
+                                >
+                                    {c.name}
                                 </button>
                             ))}
                         </div>

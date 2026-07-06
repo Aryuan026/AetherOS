@@ -6,10 +6,59 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { safeResponseJson } from '../utils/safeApi';
 import Modal from '../components/os/Modal';
-import ActiveMsgGlobalSettingsModal from '../components/settings/ActiveMsgGlobalSettingsModal';
-import { NotionManager, FeishuManager } from '../utils/realtimeContext';
-import { XhsMcpClient } from '../utils/xhsMcpClient';
-import { Sun, Newspaper, NotePencil, Notebook, Book } from '@phosphor-icons/react';
+import { Sun, Notebook } from '@phosphor-icons/react';
+import AppHeader from '../components/shell/AppHeader';
+import {
+  CompanionWakeupSettings,
+  loadCompanionWakeupSettings,
+  saveCompanionWakeupSettings,
+} from '../utils/companionWakeups';
+import { CompanionWakeupMode } from '../types';
+import {
+  AUTO_MEMORY_UPDATED_EVENT,
+  MEMORY_DM_TURN_MAX,
+  MEMORY_DM_TURN_MIN,
+  MEMORY_DM_TURN_STEP,
+  MEMORY_DM_UPDATED_EVENT,
+  WORLDLINE_MEMORY_RECEIPTS_UPDATED_EVENT,
+  clearAutoMemoryLedger,
+  clearWorldlineMemoryReceipts,
+  loadAutoMemoryLedger,
+  loadAutoMemorySettings,
+  loadMemoryDMSettings,
+  loadWorldlineMemoryReceiptSettings,
+  loadWorldlineMemoryReceipts,
+  runAutoMemoryPass,
+  saveAutoMemorySettings,
+  saveMemoryDMSettings,
+  saveWorldlineMemoryReceiptSettings,
+} from '../utils/memoryCore';
+import type { AutoMemoryLedgerEntry, MemoryDMSettings, WorldlineMemoryReceipt } from '../utils/memoryCore';
+
+const memoryReceiptModeLabel = (mode: WorldlineMemoryReceipt['mode']): string => {
+  if (mode === 'remote_chat') return '聊天';
+  if (mode === 'meet_scene') return '见面';
+  if (mode === 'date_scene') return '约会';
+  if (mode === 'proactive_letter') return '惦念';
+  return '时光簿';
+};
+
+const formatMemoryReceiptTime = (timestamp: number): string => (
+  new Intl.DateTimeFormat('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp))
+);
+
+const getMemoryReceiptTitles = (receipt: WorldlineMemoryReceipt): string[] => (
+  [...receipt.candidateTitles, ...receipt.openThreadTitles].slice(0, 5)
+);
+
+const autoMemoryKindLabel = (kind: AutoMemoryLedgerEntry['kind']): string => (
+  kind === 'timebook_candidate' ? '时光簿' : '沉淀'
+);
 
 const Settings: React.FC = () => {
   const {
@@ -17,7 +66,8 @@ const Settings: React.FC = () => {
       exportSystem, importSystem, addToast, resetSystem,
       apiPresets, addApiPreset, removeApiPreset,
       sysOperation, // Get progress state
-      realtimeConfig, updateRealtimeConfig // 实时感知配置
+      realtimeConfig, updateRealtimeConfig, // 实时感知配置
+      characters, userProfile
   } = useOS();
   
   const [localKey, setLocalKey] = useState(apiConfig.apiKey);
@@ -34,28 +84,20 @@ const Settings: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [showRealtimeModal, setShowRealtimeModal] = useState(false);
-  const [showActiveMsgModal, setShowActiveMsgModal] = useState(false);
+
+  // 主动来信配置
+  const [wakeupSettings, setWakeupSettings] = useState<CompanionWakeupSettings>(() => loadCompanionWakeupSettings());
+  const [memoryReceipts, setMemoryReceipts] = useState<WorldlineMemoryReceipt[]>(() => loadWorldlineMemoryReceipts());
+  const [memoryReceiptSettings, setMemoryReceiptSettings] = useState(() => loadWorldlineMemoryReceiptSettings());
+  const [autoMemorySettings, setAutoMemorySettings] = useState(() => loadAutoMemorySettings());
+  const [memoryDMSettings, setMemoryDMSettings] = useState<MemoryDMSettings>(() => loadMemoryDMSettings());
+  const [autoMemoryLedger, setAutoMemoryLedger] = useState<AutoMemoryLedgerEntry[]>(() => loadAutoMemoryLedger());
+  const [isRunningAutoMemory, setIsRunningAutoMemory] = useState(false);
 
   // 实时感知配置的本地状态
   const [rtWeatherEnabled, setRtWeatherEnabled] = useState(realtimeConfig.weatherEnabled);
   const [rtWeatherKey, setRtWeatherKey] = useState(realtimeConfig.weatherApiKey);
   const [rtWeatherCity, setRtWeatherCity] = useState(realtimeConfig.weatherCity);
-  const [rtNewsEnabled, setRtNewsEnabled] = useState(realtimeConfig.newsEnabled);
-  const [rtNewsApiKey, setRtNewsApiKey] = useState(realtimeConfig.newsApiKey || '');
-  const [rtNotionEnabled, setRtNotionEnabled] = useState(realtimeConfig.notionEnabled);
-  const [rtNotionKey, setRtNotionKey] = useState(realtimeConfig.notionApiKey);
-  const [rtNotionDbId, setRtNotionDbId] = useState(realtimeConfig.notionDatabaseId);
-  const [rtNotionNotesDbId, setRtNotionNotesDbId] = useState(realtimeConfig.notionNotesDatabaseId || '');
-  const [rtFeishuEnabled, setRtFeishuEnabled] = useState(realtimeConfig.feishuEnabled);
-  const [rtFeishuAppId, setRtFeishuAppId] = useState(realtimeConfig.feishuAppId);
-  const [rtFeishuAppSecret, setRtFeishuAppSecret] = useState(realtimeConfig.feishuAppSecret);
-  const [rtFeishuBaseId, setRtFeishuBaseId] = useState(realtimeConfig.feishuBaseId);
-  const [rtFeishuTableId, setRtFeishuTableId] = useState(realtimeConfig.feishuTableId);
-  const [rtXhsEnabled, setRtXhsEnabled] = useState(realtimeConfig.xhsEnabled);
-  const [rtXhsMcpEnabled, setRtXhsMcpEnabled] = useState(realtimeConfig.xhsMcpConfig?.enabled || false);
-  const [rtXhsMcpUrl, setRtXhsMcpUrl] = useState(realtimeConfig.xhsMcpConfig?.serverUrl || 'http://localhost:18060/mcp');
-  const [rtXhsNickname, setRtXhsNickname] = useState(realtimeConfig.xhsMcpConfig?.loggedInNickname || '');
-  const [rtXhsUserId, setRtXhsUserId] = useState(realtimeConfig.xhsMcpConfig?.loggedInUserId || '');
   const [rtTestStatus, setRtTestStatus] = useState('');
   
   // For web download link
@@ -109,6 +151,98 @@ const Settings: React.FC = () => {
     setTimeout(() => setStatusMsg(''), 2000);
   };
 
+  const updateWakeupSettings = (updates: Partial<CompanionWakeupSettings>) => {
+      const next = saveCompanionWakeupSettings(updates);
+      setWakeupSettings(next);
+      addToast('惦念已收好', 'success');
+  };
+
+  useEffect(() => {
+      const handleMemoryReceiptUpdate = () => {
+          setMemoryReceipts(loadWorldlineMemoryReceipts());
+          setMemoryReceiptSettings(loadWorldlineMemoryReceiptSettings());
+      };
+
+      window.addEventListener(WORLDLINE_MEMORY_RECEIPTS_UPDATED_EVENT, handleMemoryReceiptUpdate);
+      return () => window.removeEventListener(WORLDLINE_MEMORY_RECEIPTS_UPDATED_EVENT, handleMemoryReceiptUpdate);
+  }, []);
+
+  useEffect(() => {
+      const handleAutoMemoryUpdate = () => {
+          setAutoMemorySettings(loadAutoMemorySettings());
+          setAutoMemoryLedger(loadAutoMemoryLedger());
+      };
+
+      window.addEventListener(AUTO_MEMORY_UPDATED_EVENT, handleAutoMemoryUpdate);
+      return () => window.removeEventListener(AUTO_MEMORY_UPDATED_EVENT, handleAutoMemoryUpdate);
+  }, []);
+
+  useEffect(() => {
+      const handleMemoryDMUpdate = () => {
+          setMemoryDMSettings(loadMemoryDMSettings());
+      };
+
+      window.addEventListener(MEMORY_DM_UPDATED_EVENT, handleMemoryDMUpdate);
+      return () => window.removeEventListener(MEMORY_DM_UPDATED_EVENT, handleMemoryDMUpdate);
+  }, []);
+
+  const updateAutoMemorySettings = (updates: Partial<typeof autoMemorySettings>) => {
+      const next = saveAutoMemorySettings(updates);
+      setAutoMemorySettings(next);
+      addToast('自动记忆已收好', 'success');
+  };
+
+  const updateMemoryDMSettings = (updates: Partial<MemoryDMSettings>) => {
+      const next = saveMemoryDMSettings(updates);
+      setMemoryDMSettings(next);
+      addToast('角色记忆已收好', 'success');
+  };
+
+  const handleRunAutoMemoryOnce = async () => {
+      if (isRunningAutoMemory) return;
+      setIsRunningAutoMemory(true);
+      try {
+          const result = await runAutoMemoryPass({
+              characters,
+              userProfile,
+              trigger: 'manual',
+              includeToday: true,
+              settings: { ...loadAutoMemorySettings(), dailyChatMode: 'off' },
+          });
+          setAutoMemoryLedger(loadAutoMemoryLedger());
+          const total = result.savedTimebookCount;
+          addToast(total > 0 ? `拾起了 ${total} 个瞬间` : '这次没有新的碎片', total > 0 ? 'success' : 'info');
+      } catch (error: any) {
+          addToast(`补记失败: ${error.message || 'unknown'}`, 'error');
+      } finally {
+          setIsRunningAutoMemory(false);
+      }
+  };
+
+  const updateMemoryReceiptSettings = (enabled: boolean) => {
+      const next = saveWorldlineMemoryReceiptSettings({ enabled });
+      setMemoryReceiptSettings(next);
+      addToast(enabled ? '回声记录已开启' : '回声记录已暂停', 'info');
+  };
+
+  const refreshMemoryReceipts = () => {
+      setMemoryReceipts(loadWorldlineMemoryReceipts());
+      setMemoryReceiptSettings(loadWorldlineMemoryReceiptSettings());
+      addToast('记忆记录已刷新', 'info');
+  };
+
+  const handleClearMemoryReceipts = () => {
+      clearWorldlineMemoryReceipts();
+      setMemoryReceipts([]);
+      addToast('记忆记录已清空', 'info');
+  };
+
+  const handleClearAutoMemoryLedger = () => {
+      clearAutoMemoryLedger();
+      setAutoMemoryLedger([]);
+      addToast('沉淀记录已清空', 'info');
+  };
+
   const fetchModels = async () => {
     if (!localUrl) { setStatusMsg('请先填写 URL'); return; }
     setIsLoadingModels(true);
@@ -149,7 +283,7 @@ const Settings: React.FC = () => {
               reader.readAsDataURL(blob);
               reader.onloadend = async () => {
                   const base64data = String(reader.result);
-                  const fileName = `Sully_Backup_${mode}_${Date.now()}.zip`;
+                  const fileName = `AetherOS_Backup_${mode}_${Date.now()}.zip`;
                   
                   try {
                       await Filesystem.writeFile({
@@ -162,7 +296,7 @@ const Settings: React.FC = () => {
                           path: fileName,
                       });
                       await Share.share({
-                          title: `Sully Backup`,
+                          title: `AetherOS Backup`,
                           files: [uriResult.uri],
                       });
                   } catch (e) {
@@ -179,7 +313,7 @@ const Settings: React.FC = () => {
               // Auto click
               const a = document.createElement('a');
               a.href = url;
-              a.download = `Sully_Backup_${mode}_${new Date().toISOString().slice(0,10)}.zip`;
+              a.download = `AetherOS_Backup_${mode}_${new Date().toISOString().slice(0,10)}.zip`;
               document.body.appendChild(a);
               a.click();
               document.body.removeChild(a);
@@ -213,25 +347,7 @@ const Settings: React.FC = () => {
           weatherEnabled: rtWeatherEnabled,
           weatherApiKey: rtWeatherKey,
           weatherCity: rtWeatherCity,
-          newsEnabled: rtNewsEnabled,
-          newsApiKey: rtNewsApiKey,
-          notionEnabled: rtNotionEnabled,
-          notionApiKey: rtNotionKey,
-          notionDatabaseId: rtNotionDbId,
-          notionNotesDatabaseId: rtNotionNotesDbId || undefined,
-          feishuEnabled: rtFeishuEnabled,
-          feishuAppId: rtFeishuAppId,
-          feishuAppSecret: rtFeishuAppSecret,
-          feishuBaseId: rtFeishuBaseId,
-          feishuTableId: rtFeishuTableId,
-          xhsEnabled: rtXhsEnabled,
-          xhsMcpConfig: {
-              enabled: rtXhsMcpEnabled,
-              serverUrl: rtXhsMcpUrl,
-              loggedInNickname: rtXhsNickname || undefined,
-              loggedInUserId: rtXhsUserId || undefined,
-              userXsecToken: realtimeConfig.xhsMcpConfig?.userXsecToken, // 保留自动获取的 token
-          }
+          cacheMinutes: realtimeConfig.cacheMinutes ?? 30,
       });
       addToast('实时感知配置已保存', 'success');
       setShowRealtimeModal(false);
@@ -258,71 +374,10 @@ const Settings: React.FC = () => {
       }
   };
 
-  // 测试Notion连接
-  const testNotionApi = async () => {
-      if (!rtNotionKey || !rtNotionDbId) {
-          setRtTestStatus('请填写 Notion API Key 和 Database ID');
-          return;
-      }
-      setRtTestStatus('正在测试 Notion 连接...');
-      try {
-          const result = await NotionManager.testConnection(rtNotionKey, rtNotionDbId);
-          setRtTestStatus(result.message);
-      } catch (e: any) {
-          setRtTestStatus(`网络错误: ${e.message}`);
-      }
-  };
-
-  // 测试飞书连接
-  const testFeishuApi = async () => {
-      if (!rtFeishuAppId || !rtFeishuAppSecret || !rtFeishuBaseId || !rtFeishuTableId) {
-          setRtTestStatus('请填写飞书 App ID、App Secret、多维表格 ID 和数据表 ID');
-          return;
-      }
-      setRtTestStatus('正在测试飞书连接...');
-      try {
-          const result = await FeishuManager.testConnection(rtFeishuAppId, rtFeishuAppSecret, rtFeishuBaseId, rtFeishuTableId);
-          setRtTestStatus(result.message);
-      } catch (e: any) {
-          setRtTestStatus(`网络错误: ${e.message}`);
-      }
-  };
-
-  // 测试小红书 Bridge 连接
-  const testXhsMcp = async () => {
-      if (!rtXhsMcpUrl) {
-          setRtTestStatus('请填写 Bridge Server URL');
-          return;
-      }
-      setRtTestStatus('正在连接 MCP Server...');
-      try {
-          const result = await XhsMcpClient.testConnection(rtXhsMcpUrl);
-          if (result.connected) {
-              const toolCount = result.tools?.length || 0;
-              const tokenInfo = result.xsecToken ? ' | xsecToken 已获取' : '';
-              const loginInfo = result.loggedIn
-                  ? ` | ${result.nickname ? `账号: ${result.nickname}` : '已登录'}${result.userId ? ` (ID: ${result.userId})` : ''}${tokenInfo}`
-                  : ' | 未登录，请先在浏览器中登录小红书';
-              setRtTestStatus(`连接成功! ${toolCount} 个功能可用${loginInfo}`);
-              // 自动填充：只在用户未手动填写时覆盖
-              if (result.nickname && !rtXhsNickname) setRtXhsNickname(result.nickname);
-              if (result.userId && !rtXhsUserId) setRtXhsUserId(result.userId);
-              updateRealtimeConfig({
-                  xhsMcpConfig: {
-                      enabled: rtXhsMcpEnabled,
-                      serverUrl: rtXhsMcpUrl,
-                      loggedInNickname: rtXhsNickname || result.nickname,
-                      loggedInUserId: rtXhsUserId || result.userId,
-                      userXsecToken: result.xsecToken,
-                  }
-              });
-          } else {
-              setRtTestStatus(`连接失败: ${result.error}`);
-          }
-      } catch (e: any) {
-          setRtTestStatus(`网络错误: ${e.message}`);
-      }
-  };
+  const latestMemoryReceipt = memoryReceipts[0];
+  const olderMemoryReceipts = memoryReceipts.slice(1, 6);
+  const latestAutoMemory = autoMemoryLedger[0];
+  const olderAutoMemories = autoMemoryLedger.slice(1, 5);
 
   return (
     <div className="h-full w-full bg-slate-50/50 flex flex-col font-light relative">
@@ -342,22 +397,12 @@ const Settings: React.FC = () => {
           </div>
       )}
 
-      {/* Header */}
-      <div className="h-20 bg-white/70 backdrop-blur-md flex items-end pb-3 px-4 border-b border-white/40 shrink-0 z-10 sticky top-0">
-        <div className="flex items-center gap-2 w-full">
-            <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                </svg>
-            </button>
-            <h1 className="text-xl font-medium text-slate-700 tracking-wide">系统设置</h1>
-        </div>
-      </div>
+      <AppHeader title="系统设置" onBack={closeApp} />
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-6 no-scrollbar pb-20">
+      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6 no-scrollbar pb-20">
         
         {/* 数据备份区域 */}
-        <section className="bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50">
+        <section className="order-10 bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50">
             <div className="flex items-center gap-2 mb-4">
                 <div className="p-2 bg-blue-100 rounded-xl text-blue-600">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" /></svg>
@@ -415,7 +460,7 @@ const Settings: React.FC = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
                         </svg>
                     </div>
-                    <h2 className="text-sm font-semibold text-slate-600 tracking-wider">API 配置</h2>
+                    <h2 className="text-sm font-semibold text-slate-600 tracking-wider">对话 AI</h2>
                 </div>
                 <button onClick={() => setShowPresetModal(true)} className="text-[10px] bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-transform">
                     保存为预设
@@ -483,6 +528,289 @@ const Settings: React.FC = () => {
             </div>
         </section>
 
+        {/* 主动来信设置区域 */}
+        <section className="bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50">
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                    <div className="p-2 bg-amber-100/70 rounded-xl text-amber-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0l-7.5-4.615a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 className="text-sm font-semibold text-slate-600 tracking-wider">主动来信</h2>
+                        <p className="text-[11px] text-slate-400 mt-0.5">自然惦念和生活照看</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <div className="bg-white/70 border border-slate-100 rounded-2xl p-4">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                            <div className="text-sm font-bold text-slate-700">自然惦念</div>
+                        </div>
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 whitespace-nowrap shrink-0">聊天页开启</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        {(['direct', 'render'] as CompanionWakeupMode[]).map(mode => (
+                            <button
+                                key={mode}
+                                onClick={() => updateWakeupSettings({ defaultMode: mode })}
+                                className={`py-2.5 rounded-xl text-xs font-bold leading-tight transition-all ${wakeupSettings.defaultMode === mode ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}
+                            >
+                                {mode === 'direct' ? '藏好的话' : '此刻的话'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="bg-white/70 border border-slate-100 rounded-2xl p-4">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <div className="text-sm font-bold text-slate-700">生活照看</div>
+                        </div>
+                        <button
+                            onClick={() => updateWakeupSettings({ aiCareWindowsEnabled: !wakeupSettings.aiCareWindowsEnabled })}
+                            className={`w-11 h-6 rounded-full relative transition-colors shrink-0 ${wakeupSettings.aiCareWindowsEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                        >
+                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${wakeupSettings.aiCareWindowsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {/* 自动记忆 */}
+        <section className="bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50">
+            <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex items-start gap-2">
+                    <div className="p-2 bg-rose-100/70 rounded-xl text-rose-600">
+                        <Notebook size={18} weight="fill" />
+                    </div>
+                    <div>
+                        <h2 className="text-sm font-semibold text-slate-600 tracking-wider">自动记忆</h2>
+                    </div>
+                </div>
+                <button
+                    onClick={() => updateMemoryReceiptSettings(!memoryReceiptSettings.enabled)}
+                    className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-colors ${memoryReceiptSettings.enabled ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-400'}`}
+                >
+                    {memoryReceiptSettings.enabled ? '回声记录中' : '回声已暂停'}
+                </button>
+            </div>
+
+            <div className="mb-3 rounded-2xl border border-rose-100/70 bg-white/70 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                        <div className="text-sm font-bold text-slate-700">时光簿</div>
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                            {autoMemorySettings.timebookCandidateMode === 'silent' ? '节点自动写入' : '手动整理'}
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleRunAutoMemoryOnce}
+                        disabled={isRunningAutoMemory}
+                        className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition active:scale-95 disabled:opacity-50"
+                    >
+                        {isRunningAutoMemory ? '拾取中' : '拾取一次'}
+                    </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50/80 px-3 py-2">
+                    <div>
+                        <div className="text-xs font-bold text-slate-600">节点写入</div>
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                            {autoMemorySettings.timebookCandidateMode === 'silent' ? '自动' : '手动'}
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => updateAutoMemorySettings({
+                            timebookCandidateMode: autoMemorySettings.timebookCandidateMode === 'silent' ? 'off' : 'silent'
+                        })}
+                        className={`h-6 w-11 shrink-0 rounded-full relative transition-colors ${autoMemorySettings.timebookCandidateMode === 'silent' ? 'bg-rose-500' : 'bg-slate-300'}`}
+                    >
+                        <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${autoMemorySettings.timebookCandidateMode === 'silent' ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50/80 px-3 py-2">
+                    <div>
+                        <div className="text-xs font-bold text-slate-600">角色记忆</div>
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                            {memoryDMSettings.enabled ? `每 ${memoryDMSettings.turnsPerPass} 轮整理` : '手动归档'}
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => updateMemoryDMSettings({ enabled: !memoryDMSettings.enabled })}
+                        className={`h-6 w-11 shrink-0 rounded-full relative transition-colors ${memoryDMSettings.enabled ? 'bg-rose-500' : 'bg-slate-300'}`}
+                    >
+                        <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${memoryDMSettings.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                </div>
+
+                <div className="mt-3 rounded-2xl bg-slate-50/80 px-3 py-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="text-xs font-bold text-slate-600">整理间隔</div>
+                        <div className="text-[11px] font-bold text-rose-500">{memoryDMSettings.turnsPerPass} 轮</div>
+                    </div>
+                    <input
+                        type="range"
+                        min={MEMORY_DM_TURN_MIN}
+                        max={MEMORY_DM_TURN_MAX}
+                        step={MEMORY_DM_TURN_STEP}
+                        value={memoryDMSettings.turnsPerPass}
+                        onChange={(event) => updateMemoryDMSettings({ turnsPerPass: Number(event.target.value) })}
+                        className="h-2 w-full cursor-pointer accent-rose-500"
+                    />
+                    <div className="mt-1 flex justify-between text-[9px] font-bold text-slate-300">
+                        <span>{MEMORY_DM_TURN_MIN}</span>
+                        <span>60</span>
+                        <span>{MEMORY_DM_TURN_MAX}</span>
+                    </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-slate-100 bg-white p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="text-sm font-bold text-slate-700">最近沉淀</div>
+                        <button
+                            onClick={handleClearAutoMemoryLedger}
+                            className="rounded-xl bg-slate-100 px-2.5 py-1.5 text-[10px] font-bold text-slate-500 transition active:scale-95"
+                        >
+                            清空
+                        </button>
+                    </div>
+                    {!latestAutoMemory ? (
+                        <div className="rounded-xl bg-slate-50 px-3 py-4 text-center text-[11px] text-slate-400">
+                            还没有自动写入。
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="mb-1 flex items-center justify-between gap-2">
+                                    <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-rose-600">
+                                        {autoMemoryKindLabel(latestAutoMemory.kind)}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">
+                                        {formatMemoryReceiptTime(latestAutoMemory.at)}
+                                    </span>
+                                </div>
+                                <div className="text-xs font-bold text-slate-700">{latestAutoMemory.title}</div>
+                                {latestAutoMemory.summary && (
+                                    <div className="mt-1 max-h-10 overflow-hidden text-[11px] leading-relaxed text-slate-500">
+                                        {latestAutoMemory.summary}
+                                    </div>
+                                )}
+                            </div>
+                            {olderAutoMemories.length > 0 && (
+                                <details className="rounded-xl bg-slate-50/80 px-3 py-2 text-[11px] text-slate-500">
+                                    <summary className="cursor-pointer font-bold text-slate-400">更早沉淀</summary>
+                                    <div className="mt-2 space-y-1.5">
+                                        {olderAutoMemories.map(entry => (
+                                            <div key={entry.id} className="flex items-center justify-between gap-2">
+                                                <span className="truncate">{autoMemoryKindLabel(entry.kind)} · {entry.charName}</span>
+                                                <span className="shrink-0 text-slate-400">{entry.sourceDate || '刚刚'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </details>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="rounded-2xl border border-rose-100/70 bg-white/70 p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="text-sm font-bold text-slate-700">记忆回声</div>
+                    {latestMemoryReceipt && (
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                            {formatMemoryReceiptTime(latestMemoryReceipt.at)}
+                        </span>
+                    )}
+                </div>
+
+                <div className="flex gap-2 mb-3">
+                    <button onClick={refreshMemoryReceipts} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold active:scale-95 transition-transform">
+                        刷新
+                    </button>
+                    <button onClick={handleClearMemoryReceipts} className="px-3 py-2 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold active:scale-95 transition-transform">
+                        清空记录
+                    </button>
+                </div>
+
+                {!latestMemoryReceipt ? (
+                    <div className="rounded-2xl bg-slate-50/80 border border-slate-100 px-4 py-5 text-center">
+                        <div className="text-sm font-bold text-slate-500 mb-1">还没有回声</div>
+                        <div className="text-[11px] text-slate-400 leading-relaxed">
+                            去聊天或见面里说一句，再回来刷新。
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        <div className="rounded-2xl bg-white border border-slate-100 p-3 shadow-sm">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="rounded-full bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600 shrink-0">
+                                        {memoryReceiptModeLabel(latestMemoryReceipt.mode)}
+                                    </span>
+                                    <span className="text-xs font-bold text-slate-700 truncate">
+                                        {latestMemoryReceipt.charName}
+                                    </span>
+                                </div>
+                                <span className="text-[10px] text-slate-400 shrink-0">
+                                    {latestMemoryReceipt.delivered ? `${latestMemoryReceipt.candidateCount} 条线索` : '未命中'}
+                                </span>
+                            </div>
+
+                            <div className="text-[11px] text-slate-500 leading-relaxed">
+                                {latestMemoryReceipt.delivered
+                                    ? `递入 ${latestMemoryReceipt.candidateCount} 条线索，${latestMemoryReceipt.openThreadCount} 个回响。`
+                                    : '这次没有可递入的线索。'}
+                            </div>
+
+                            {getMemoryReceiptTitles(latestMemoryReceipt).length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {getMemoryReceiptTitles(latestMemoryReceipt).map((title, index) => (
+                                        <span key={`${latestMemoryReceipt.id}-${title}-${index}`} className="rounded-full bg-slate-50 px-2 py-1 text-[10px] text-slate-500 border border-slate-100">
+                                            {title}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {latestMemoryReceipt.markdownPreview && (
+                                <details className="mt-2 text-[11px] text-slate-400">
+                                    <summary className="cursor-pointer font-bold text-slate-400">片段</summary>
+                                    <p className="mt-1 leading-relaxed">{latestMemoryReceipt.markdownPreview}</p>
+                                </details>
+                            )}
+
+                            {latestMemoryReceipt.warnings.length > 0 && (
+                                <div className="mt-2 text-[10px] text-amber-600 bg-amber-50 rounded-xl px-2 py-1">
+                                    {latestMemoryReceipt.warnings.length} 条读取提醒
+                                </div>
+                            )}
+                        </div>
+
+                        {olderMemoryReceipts.length > 0 && (
+                            <details className="rounded-2xl bg-slate-50/80 border border-slate-100 px-3 py-2 text-[11px] text-slate-500">
+                                <summary className="cursor-pointer font-bold text-slate-400">过往回声</summary>
+                                <div className="mt-2 space-y-1.5">
+                                    {olderMemoryReceipts.map(receipt => (
+                                        <div key={receipt.id} className="flex items-center justify-between gap-2">
+                                            <span className="truncate">{memoryReceiptModeLabel(receipt.mode)} · {receipt.charName}</span>
+                                            <span className="shrink-0 text-slate-400">{receipt.delivered ? `${receipt.candidateCount} 条` : '未命中'}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
+                        )}
+                    </div>
+                )}
+            </div>
+        </section>
+
         {/* 实时感知配置区域 */}
         <section className="bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50">
             <div className="flex items-center justify-between mb-4">
@@ -500,58 +828,22 @@ const Settings: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-500 mb-3 leading-relaxed">
-                让AI角色感知真实世界：天气、新闻热点、当前时间。角色可以根据天气关心你、聊聊最近的热点话题。
+                当前时间会自动进入聊天上下文；天气为可选感知。
             </p>
 
-            <div className="grid grid-cols-5 gap-2 text-center">
+            <div className="grid grid-cols-2 gap-2 text-center">
+                <div className="py-3 rounded-xl text-xs font-bold bg-violet-50 text-violet-600">
+                    <div className="text-lg mb-1"><img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/23f0.png" className="w-5 h-5 inline" alt="" /></div>
+                    时间
+                </div>
                 <div className={`py-3 rounded-xl text-xs font-bold ${rtWeatherEnabled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}`}>
                     <div className="text-lg mb-1">{rtWeatherEnabled ? <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/2600.png" className="w-5 h-5 inline" alt="" /> : <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f32b.png" className="w-5 h-5 inline" alt="" />}</div>
                     天气
                 </div>
-                <div className={`py-3 rounded-xl text-xs font-bold ${rtNewsEnabled ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'}`}>
-                    <div className="text-lg mb-1">{rtNewsEnabled ? <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4f0.png" className="w-5 h-5 inline" alt="" /> : <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4c4.png" className="w-5 h-5 inline" alt="" />}</div>
-                    新闻
-                </div>
-                <div className={`py-3 rounded-xl text-xs font-bold ${rtNotionEnabled ? 'bg-orange-50 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
-                    <div className="text-lg mb-1">{rtNotionEnabled ? <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4dd.png" className="w-5 h-5 inline" alt="" /> : <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4cb.png" className="w-5 h-5 inline" alt="" />}</div>
-                    Notion
-                </div>
-                <div className={`py-3 rounded-xl text-xs font-bold ${rtFeishuEnabled ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-50 text-slate-400'}`}>
-                    <div className="text-lg mb-1">{rtFeishuEnabled ? <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4d2.png" className="w-5 h-5 inline" alt="" /> : <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4cb.png" className="w-5 h-5 inline" alt="" />}</div>
-                    飞书
-                </div>
-                <div className={`py-3 rounded-xl text-xs font-bold ${rtXhsEnabled ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
-                    <div className="text-lg mb-1">{rtXhsEnabled ? <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4d5.png" className="w-5 h-5 inline" alt="" /> : <img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4cb.png" className="w-5 h-5 inline" alt="" />}</div>
-                    小红书
-                </div>
             </div>
         </section>
 
-        <section className="bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50">
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <div className="p-2 bg-fuchsia-100/60 rounded-xl text-fuchsia-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75h9A2.25 2.25 0 0 1 18.75 6v12a2.25 2.25 0 0 1-2.25 2.25h-9A2.25 2.25 0 0 1 5.25 18V6A2.25 2.25 0 0 1 7.5 3.75Zm0 0V2.25m9 1.5V2.25M8.25 8.25h7.5m-7.5 3h7.5m-7.5 3h4.5" />
-                        </svg>
-                    </div>
-                    <h2 className="text-sm font-semibold text-slate-600 tracking-wider">主动消息 2.0</h2>
-                </div>
-                <button onClick={() => setShowActiveMsgModal(true)} className="text-[10px] bg-fuchsia-100 text-fuchsia-600 px-3 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-transform">
-                    配置
-                </button>
-            </div>
-
-            <p className="text-xs text-slate-500 mb-3 leading-relaxed">
-                新增一套云端调度 + Web Push 的主动消息标准实现。它不会替换掉你现在的本地主动消息，而是在原功能旁边增加一个 2.0 入口。
-            </p>
-
-            <button onClick={() => setShowActiveMsgModal(true)} className="w-full py-3 rounded-2xl font-bold text-white shadow-lg bg-fuchsia-500 active:scale-95 transition-all">
-                打开主动消息 2.0 设置
-            </button>
-        </section>
-
-        <div className="text-center text-[10px] text-slate-300 pb-8 font-mono tracking-widest uppercase">
+        <div className="order-11 text-center text-[10px] text-slate-300 pb-8 font-mono tracking-widest uppercase">
             v2.2 (Realtime Awareness)
         </div>
       </div>
@@ -588,7 +880,7 @@ const Settings: React.FC = () => {
               </div>
               <p className="text-sm font-bold text-slate-700">备份文件已生成！</p>
               <p className="text-xs text-slate-500">如果浏览器没有自动下载，请点击下方链接。</p>
-              {downloadUrl && <a href={downloadUrl} download="Sully_Backup.zip" className="text-primary text-sm underline block py-2">点击手动下载 .zip</a>}
+              {downloadUrl && <a href={downloadUrl} download="AetherOS_Backup.zip" className="text-primary text-sm underline block py-2">点击手动下载 .zip</a>}
           </div>
       </Modal>
 
@@ -627,164 +919,6 @@ const Settings: React.FC = () => {
                   )}
               </div>
 
-              {/* 新闻配置 */}
-              <div className="bg-blue-50/50 p-4 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                          <Newspaper size={20} weight="fill" />
-                          <span className="text-sm font-bold text-blue-700">新闻热点</span>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" checked={rtNewsEnabled} onChange={e => setRtNewsEnabled(e.target.checked)} className="sr-only peer" />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
-                      </label>
-                  </div>
-                  {rtNewsEnabled && (
-                      <div className="space-y-2">
-                          <p className="text-xs text-blue-600/70">默认使用 Hacker News（英文科技新闻）。配置 Brave API 可获取中文新闻。</p>
-                          <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Brave Search API Key (推荐)</label>
-                              <input type="password" value={rtNewsApiKey} onChange={e => setRtNewsApiKey(e.target.value)} className="w-full bg-white/80 border border-blue-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="获取: brave.com/search/api" />
-                          </div>
-                          <p className="text-[10px] text-blue-500/70">
-                              免费2000次/月，支持中文新闻。<br/>
-                              不配置则用 Hacker News（英文科技新闻）。
-                          </p>
-                      </div>
-                  )}
-              </div>
-
-              {/* Notion 配置 */}
-              <div className="bg-orange-50/50 p-4 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                          <NotePencil size={20} weight="fill" />
-                          <span className="text-sm font-bold text-orange-700">Notion 日记</span>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" checked={rtNotionEnabled} onChange={e => setRtNotionEnabled(e.target.checked)} className="sr-only peer" />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                      </label>
-                  </div>
-                  {rtNotionEnabled && (
-                      <div className="space-y-2">
-                          <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Notion Integration Token</label>
-                              <input type="password" value={rtNotionKey} onChange={e => setRtNotionKey(e.target.value)} className="w-full bg-white/80 border border-orange-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="secret_..." />
-                          </div>
-                          <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Database ID</label>
-                              <input type="text" value={rtNotionDbId} onChange={e => setRtNotionDbId(e.target.value)} className="w-full bg-white/80 border border-orange-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="从数据库URL复制" />
-                          </div>
-                          <button onClick={testNotionApi} className="w-full py-2 bg-orange-100 text-orange-600 text-xs font-bold rounded-xl active:scale-95 transition-transform">测试Notion连接</button>
-                          <div className="border-t border-orange-200/50 pt-2 mt-2">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">笔记数据库 ID（可选）</label>
-                              <input type="text" value={rtNotionNotesDbId} onChange={e => setRtNotionNotesDbId(e.target.value)} className="w-full bg-white/80 border border-orange-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="用户日常笔记的数据库ID" />
-                              <p className="text-[10px] text-orange-500/60 leading-relaxed mt-1">
-                                  填写后角色可以偶尔看到你的笔记标题，温馨地提起你写的内容。留空则不启用。
-                              </p>
-                          </div>
-                          <p className="text-[10px] text-orange-500/70 leading-relaxed">
-                              1. 在 <a href="https://www.notion.so/my-integrations" target="_blank" className="underline">Notion开发者</a> 创建Integration<br/>
-                              2. 创建一个日记数据库，添加"Name"(标题)和"Date"(日期)属性<br/>
-                              3. 在数据库右上角菜单中 Connect 你的 Integration
-                          </p>
-                      </div>
-                  )}
-              </div>
-
-              {/* 飞书配置 (中国区替代) */}
-              <div className="bg-indigo-50/50 p-4 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                          <Notebook size={20} weight="fill" />
-                          <span className="text-sm font-bold text-indigo-700">飞书日记</span>
-                          <span className="text-[9px] bg-indigo-100 text-indigo-500 px-1.5 py-0.5 rounded-full">中国区</span>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" checked={rtFeishuEnabled} onChange={e => setRtFeishuEnabled(e.target.checked)} className="sr-only peer" />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
-                      </label>
-                  </div>
-                  <p className="text-[10px] text-indigo-500/70 leading-relaxed">
-                      Notion 的中国区替代方案，无需翻墙。使用飞书多维表格存储日记。
-                  </p>
-                  {rtFeishuEnabled && (
-                      <div className="space-y-2">
-                          <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">飞书 App ID</label>
-                              <input type="text" value={rtFeishuAppId} onChange={e => setRtFeishuAppId(e.target.value)} className="w-full bg-white/80 border border-indigo-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="cli_xxxxxxxx" />
-                          </div>
-                          <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">飞书 App Secret</label>
-                              <input type="password" value={rtFeishuAppSecret} onChange={e => setRtFeishuAppSecret(e.target.value)} className="w-full bg-white/80 border border-indigo-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="xxxxxxxxxxxxxxxx" />
-                          </div>
-                          <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">多维表格 App Token</label>
-                              <input type="text" value={rtFeishuBaseId} onChange={e => setRtFeishuBaseId(e.target.value)} className="w-full bg-white/80 border border-indigo-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="从多维表格URL中获取" />
-                          </div>
-                          <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">数据表 Table ID</label>
-                              <input type="text" value={rtFeishuTableId} onChange={e => setRtFeishuTableId(e.target.value)} className="w-full bg-white/80 border border-indigo-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="tblxxxxxxxx" />
-                          </div>
-                          <button onClick={testFeishuApi} className="w-full py-2 bg-indigo-100 text-indigo-600 text-xs font-bold rounded-xl active:scale-95 transition-transform">测试飞书连接</button>
-                          <p className="text-[10px] text-indigo-500/70 leading-relaxed">
-                              1. 在 <a href="https://open.feishu.cn/app" target="_blank" className="underline">飞书开放平台</a> 创建企业自建应用，获取 App ID 和 Secret<br/>
-                              2. 在应用权限中添加「多维表格」相关权限<br/>
-                              3. 创建一个多维表格，添加字段: 标题(文本)、内容(文本)、日期(日期)、心情(文本)、角色(文本)<br/>
-                              4. 从多维表格 URL 中获取 App Token 和 Table ID
-                          </p>
-                      </div>
-                  )}
-              </div>
-
-              {/* 小红书自动化 */}
-              <div className="bg-red-50/50 p-4 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                          <Book size={20} weight="fill" />
-                          <span className="text-sm font-bold text-red-700">小红书</span>
-                          <span className="text-[9px] bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">浏览器自动化</span>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" checked={rtXhsMcpEnabled} onChange={e => { setRtXhsMcpEnabled(e.target.checked); setRtXhsEnabled(e.target.checked); }} className="sr-only peer" />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-500"></div>
-                      </label>
-                  </div>
-                  <p className="text-[10px] text-red-500/70 leading-relaxed">
-                      角色可以搜索、浏览、发帖、评论小红书。支持两种后端，根据 URL 自动切换。
-                  </p>
-                  {rtXhsMcpEnabled && (
-                      <div className="space-y-2">
-                          <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">服务器 URL</label>
-                              <input value={rtXhsMcpUrl} onChange={e => setRtXhsMcpUrl(e.target.value)} className="w-full bg-white/80 border border-red-200 rounded-xl px-3 py-2 text-[11px] font-mono" placeholder="http://localhost:18060/mcp" />
-                          </div>
-                          <button onClick={testXhsMcp} className="w-full py-2 bg-red-100 text-red-600 text-xs font-bold rounded-xl active:scale-95 transition-transform">测试连接</button>
-                          <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">小红书昵称</label>
-                                  <input value={rtXhsNickname} onChange={e => setRtXhsNickname(e.target.value)} className="w-full bg-white/80 border border-red-200 rounded-xl px-3 py-2 text-[11px]" placeholder="手动填写" />
-                              </div>
-                              <div>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">用户 ID</label>
-                                  <input value={rtXhsUserId} onChange={e => setRtXhsUserId(e.target.value)} className="w-full bg-white/80 border border-red-200 rounded-xl px-3 py-2 text-[11px] font-mono" placeholder="可选，用于查看主页" />
-                              </div>
-                          </div>
-                          <p className="text-[10px] text-red-500/70 leading-relaxed">
-                              <b>MCP 模式（默认，推荐）:</b> 下载 xiaohongshu-mcp + 运行脚本即可<br/>
-                              URL 填: http://localhost:18060/mcp（通过代理则 18061/mcp）<br/>
-                              <br/>
-                              <b>Skills 模式（高级）:</b> 额外支持视频发布、长文<br/>
-                              URL 填: http://localhost:18061/api<br/>
-                              需安装 Python + xiaohongshu-skills + 运行 xhs-bridge.mjs<br/>
-                              <br/>
-                              系统根据 URL 结尾自动判断模式（/mcp 或 /api）
-                          </p>
-                      </div>
-                  )}
-              </div>
-
               {/* 测试状态 */}
               {rtTestStatus && (
                   <div className={`p-3 rounded-xl text-xs font-medium text-center ${rtTestStatus.includes('成功') ? 'bg-emerald-100 text-emerald-700' : rtTestStatus.includes('失败') || rtTestStatus.includes('错误') ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
@@ -793,13 +927,6 @@ const Settings: React.FC = () => {
               )}
           </div>
       </Modal>
-
-      {/* 确认重置 Modal */}
-      <ActiveMsgGlobalSettingsModal
-          isOpen={showActiveMsgModal}
-          onClose={() => setShowActiveMsgModal(false)}
-          addToast={addToast}
-      />
 
       <Modal
           isOpen={showResetConfirm}

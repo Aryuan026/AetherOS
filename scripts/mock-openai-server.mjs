@@ -14,7 +14,7 @@ for (let i = 2; i < process.argv.length; i += 1) {
 
 const host = args.get('host') || process.env.HOST || '127.0.0.1';
 const port = Number(args.get('port') || process.env.PORT || 8787);
-const modelId = args.get('model') || process.env.MODEL || 'sullyos-mock';
+const modelId = args.get('model') || process.env.MODEL || 'aetheros-mock';
 
 function sendJson(res, status, data) {
   const body = JSON.stringify(data);
@@ -71,7 +71,7 @@ function makeChatCompletion(payload) {
   const excerpt = lastUserText ? lastUserText.slice(0, 80) : '我没有收到用户正文，但接口已经连通。';
   const reply = [
     `本地 mock 接口收到啦：${excerpt}`,
-    '这条回复来自 SullyOS 本地测试接口，说明前端请求、AI 返回、气泡显示这一条线已经通了。',
+    '这条回复来自 AetherOS 本地测试接口，说明前端请求、AI 返回、气泡显示这一条线已经通了。',
   ].join('\n');
 
   return {
@@ -120,7 +120,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-    sendJson(res, 200, { ok: true, service: 'sullyos-mock-openai', model: modelId });
+    sendJson(res, 200, { ok: true, service: 'aetheros-mock-openai', model: modelId });
     return;
   }
 
@@ -151,7 +151,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, host, () => {
   console.log(`[mock-openai] listening on http://${host}:${port}`);
-  console.log(`[mock-openai] base URL for SullyOS: http://${host}:${port}/v1`);
+  console.log(`[mock-openai] base URL for AetherOS: http://${host}:${port}/v1`);
 });
 
 process.on('SIGINT', () => {

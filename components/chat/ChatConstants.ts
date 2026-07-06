@@ -1,12 +1,314 @@
 
-import { ChatTheme } from '../../types';
+import type React from 'react';
+import { ChatTheme, OSTheme, BubbleStyle } from '../../types';
+
+export const DEFAULT_CHAT_BACKGROUND_IMAGE = '/assets/aetheros/chat-default-bg.jpg';
+export const DEFAULT_QIYU_AVATAR = '/assets/aetheros/qiyu-avatar.jpg';
+export const DEEP_SPACE_APPEARANCE_PRESET_ID = 'deep-space';
+export const CUSTOM_APPEARANCE_PRESET_ID = 'custom';
+const LEGACY_MOONLIT_PRESET_ID = 'moonlit';
+const LEGACY_SOFT_NOTE_PRESET_ID = 'soft-note';
+const LEGACY_PIXEL_SIGNAL_PRESET_ID = 'pixel-signal';
+type ChatAppearancePresetId = NonNullable<OSTheme['chatAppearancePreset']>;
+
+export const DEEP_SPACE_CHAT_APPEARANCE: Partial<OSTheme> = {
+    chatAppearancePreset: DEEP_SPACE_APPEARANCE_PRESET_ID,
+    chatBubbleThemeId: 'default',
+    chatChromeStyle: 'flat',
+    chatBackgroundStyle: 'plain',
+    chatBackgroundImage: DEFAULT_CHAT_BACKGROUND_IMAGE,
+    chatHeaderStyle: 'wechat',
+    chatHeaderAlign: 'center',
+    chatHeaderDensity: 'compact',
+    chatStatusStyle: 'subtle',
+    chatAvatarShape: 'circle',
+    chatAvatarSize: 'large',
+    chatAvatarMode: 'every_message',
+    chatBubbleStyle: 'deep-space',
+    chatMessageSpacing: 'default',
+    chatInputStyle: 'wechat',
+    chatSendButtonStyle: 'circle',
+    chatShowTimestamp: 'hover',
+};
+
+export const CHAT_APPEARANCE_PRESETS: Array<{
+    id: ChatAppearancePresetId;
+    name: string;
+    config: Partial<OSTheme>;
+}> = [
+    {
+        id: 'deep-space',
+        name: '深空',
+        config: DEEP_SPACE_CHAT_APPEARANCE,
+    },
+    {
+        id: 'minimal',
+        name: '极简',
+        config: {
+            chatAppearancePreset: 'minimal',
+            chatBubbleThemeId: 'minimal',
+            hue: 211,
+            saturation: 100,
+            lightness: 50,
+            chatChromeStyle: 'soft',
+            chatBackgroundStyle: 'plain',
+            chatBackgroundImage: '',
+            chatHeaderStyle: 'minimal',
+            chatHeaderAlign: 'center',
+            chatHeaderDensity: 'compact',
+            chatStatusStyle: 'subtle',
+            chatAvatarShape: 'circle',
+            chatAvatarSize: 'medium',
+            chatAvatarMode: 'grouped',
+            chatBubbleStyle: 'round',
+            chatMessageSpacing: 'default',
+            chatInputStyle: 'ios',
+            chatSendButtonStyle: 'circle',
+            chatShowTimestamp: 'hover',
+        },
+    },
+    {
+        id: 'wechat',
+        name: '微信',
+        config: {
+            chatAppearancePreset: 'wechat',
+            chatBubbleThemeId: 'wechat',
+            chatChromeStyle: 'flat',
+            chatBackgroundStyle: 'plain',
+            chatBackgroundImage: '',
+            chatHeaderStyle: 'wechat',
+            chatHeaderAlign: 'left',
+            chatHeaderDensity: 'compact',
+            chatStatusStyle: 'subtle',
+            chatAvatarShape: 'rounded',
+            chatAvatarSize: 'medium',
+            chatAvatarMode: 'grouped',
+            chatBubbleStyle: 'wechat',
+            chatMessageSpacing: 'default',
+            chatInputStyle: 'wechat',
+            chatSendButtonStyle: 'pill',
+            chatShowTimestamp: 'hover',
+        },
+    },
+    {
+        id: 'custom',
+        name: '自定义',
+        config: {
+            chatAppearancePreset: 'custom',
+            chatBubbleThemeId: 'custom',
+            chatChromeStyle: 'soft',
+            chatBackgroundStyle: 'plain',
+            chatBackgroundImage: '',
+            chatHeaderStyle: 'minimal',
+            chatHeaderAlign: 'left',
+            chatHeaderDensity: 'compact',
+            chatStatusStyle: 'subtle',
+            chatAvatarShape: 'circle',
+            chatAvatarSize: 'medium',
+            chatAvatarMode: 'grouped',
+            chatBubbleStyle: 'modern',
+            chatMessageSpacing: 'default',
+            chatInputStyle: 'rounded',
+            chatSendButtonStyle: 'circle',
+            chatShowTimestamp: 'hover',
+        },
+    },
+];
+
+export const normalizeChatAppearancePresetId = (
+    presetId:
+        | OSTheme['chatAppearancePreset']
+        | typeof LEGACY_MOONLIT_PRESET_ID
+        | typeof LEGACY_SOFT_NOTE_PRESET_ID
+        | typeof LEGACY_PIXEL_SIGNAL_PRESET_ID
+        | undefined
+): ChatAppearancePresetId => {
+    if (presetId === LEGACY_MOONLIT_PRESET_ID) return 'minimal';
+    if (presetId === LEGACY_SOFT_NOTE_PRESET_ID || presetId === LEGACY_PIXEL_SIGNAL_PRESET_ID) return CUSTOM_APPEARANCE_PRESET_ID;
+    return presetId || DEEP_SPACE_APPEARANCE_PRESET_ID;
+};
+
+export const resolveChatAppearanceTheme = (theme: OSTheme): OSTheme => {
+    const rawPresetId = theme.chatAppearancePreset as
+        | OSTheme['chatAppearancePreset']
+        | typeof LEGACY_MOONLIT_PRESET_ID
+        | typeof LEGACY_SOFT_NOTE_PRESET_ID
+        | typeof LEGACY_PIXEL_SIGNAL_PRESET_ID
+        | undefined;
+    const presetId = normalizeChatAppearancePresetId(rawPresetId);
+    if (rawPresetId === LEGACY_SOFT_NOTE_PRESET_ID || rawPresetId === LEGACY_PIXEL_SIGNAL_PRESET_ID) {
+        const customPreset = CHAT_APPEARANCE_PRESETS.find(preset => preset.id === CUSTOM_APPEARANCE_PRESET_ID);
+        return {
+            ...theme,
+            ...customPreset?.config,
+        };
+    }
+    if (presetId !== DEEP_SPACE_APPEARANCE_PRESET_ID) return theme;
+
+    return {
+        ...theme,
+        ...DEEP_SPACE_CHAT_APPEARANCE,
+        chatBackgroundImage: theme.chatBackgroundImage ?? DEFAULT_CHAT_BACKGROUND_IMAGE,
+    };
+};
+
+type ChatBubbleVariant = NonNullable<OSTheme['chatBubbleStyle']>;
+
+const groupedBubbleRadius = (
+    radius: number,
+    isUser: boolean,
+    bubbleVariant: ChatBubbleVariant,
+    isFirstInGroup: boolean,
+    isLastInGroup: boolean
+): React.CSSProperties => {
+    if (bubbleVariant === 'round') {
+        return { borderRadius: `${radius}px` };
+    }
+
+    if (bubbleVariant === 'square') {
+        return { borderRadius: `${Math.min(radius, 6)}px` };
+    }
+
+    if (bubbleVariant === 'wechat') {
+        return { borderRadius: `${radius}px` };
+    }
+
+    if (bubbleVariant === 'deep-space') {
+        return isUser
+            ? { borderRadius: `${radius}px`, borderTopRightRadius: 2 }
+            : { borderRadius: `${radius}px`, borderTopLeftRadius: 2 };
+    }
+
+    if (!isFirstInGroup && !isLastInGroup) {
+        return isUser
+            ? { borderRadius: `${radius}px`, borderTopRightRadius: 4, borderBottomRightRadius: 4 }
+            : { borderRadius: `${radius}px`, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 };
+    }
+    if (isFirstInGroup && !isLastInGroup) {
+        return isUser
+            ? { borderRadius: `${radius}px`, borderBottomRightRadius: 4 }
+            : { borderRadius: `${radius}px`, borderBottomLeftRadius: 4 };
+    }
+    if (!isFirstInGroup && isLastInGroup) {
+        return isUser
+            ? { borderRadius: `${radius}px`, borderTopRightRadius: 4 }
+            : { borderRadius: `${radius}px`, borderTopLeftRadius: 4 };
+    }
+
+    return isUser
+        ? { borderRadius: `${radius}px`, borderBottomRightRadius: 2 }
+        : { borderRadius: `${radius}px`, borderBottomLeftRadius: 2 };
+};
+
+export const getChatBubbleContainerStyle = ({
+    styleConfig,
+    isUser,
+    bubbleVariant,
+    isFirstInGroup = true,
+    isLastInGroup = true,
+}: {
+    styleConfig: BubbleStyle;
+    isUser: boolean;
+    bubbleVariant?: ChatBubbleVariant;
+    isFirstInGroup?: boolean;
+    isLastInGroup?: boolean;
+}): React.CSSProperties => {
+    const variant = bubbleVariant || 'modern';
+    const radius = styleConfig.borderRadius;
+    const radiusStyle = groupedBubbleRadius(radius, isUser, variant, isFirstInGroup, isLastInGroup);
+    const borderColor = styleConfig.borderColor || styleConfig.backgroundColor;
+
+    const base: React.CSSProperties = {
+        background: variant === 'outline' ? 'transparent' : styleConfig.backgroundColor,
+        opacity: variant === 'wechat' ? 1 : styleConfig.opacity,
+        ...radiusStyle,
+    };
+
+    if (variant === 'outline') {
+        return {
+            ...base,
+            border: `2px solid ${borderColor}`,
+            boxShadow: styleConfig.boxShadow || 'none',
+        };
+    }
+
+    if (variant === 'wechat') {
+        return {
+            ...base,
+            border: 'none',
+            boxShadow: styleConfig.boxShadow || '0 1px 2px rgba(15,23,42,0.05)',
+        };
+    }
+
+    if (variant === 'deep-space') {
+        return {
+            ...base,
+            border: styleConfig.borderColor ? `1px solid ${styleConfig.borderColor}` : '1px solid rgba(255,255,255,0.95)',
+            boxShadow: styleConfig.boxShadow || '0 4px 10px rgba(15,23,42,0.06)',
+        };
+    }
+
+    if (variant === 'round' || variant === 'square') {
+        return {
+            ...base,
+            border: styleConfig.borderColor ? `1px solid ${styleConfig.borderColor}` : 'none',
+            boxShadow: styleConfig.boxShadow || 'none',
+        };
+    }
+
+    if (variant === 'shadow') {
+        return {
+            ...base,
+            border: borderColor ? `1px solid ${borderColor}` : undefined,
+            boxShadow: styleConfig.boxShadow || '0 4px 12px rgba(0,0,0,0.12)',
+        };
+    }
+
+    if (variant === 'flat') {
+        return {
+            ...base,
+            border: borderColor ? `1px solid ${borderColor}` : undefined,
+            boxShadow: styleConfig.boxShadow || 'none',
+        };
+    }
+
+    if (variant === 'ios') {
+        return {
+            ...base,
+            border: `1px solid ${styleConfig.borderColor || 'rgba(255,255,255,0.75)'}`,
+            boxShadow: styleConfig.boxShadow || 'none',
+            backdropFilter: 'blur(12px)',
+        };
+    }
+
+    return {
+        ...base,
+        border: styleConfig.borderColor ? `1px solid ${styleConfig.borderColor}` : '1px solid rgba(0,0,0,0.05)',
+        boxShadow: styleConfig.boxShadow || '0 6px 14px rgba(148,163,184,0.12)',
+    };
+};
 
 // Built-in presets map to the new data structure for consistency
 export const PRESET_THEMES: Record<string, ChatTheme> = {
     default: {
-        id: 'default', name: 'Indigo', type: 'preset',
-        user: { textColor: '#ffffff', backgroundColor: '#6366f1', borderRadius: 20, opacity: 1, backgroundImageOpacity: 0.5 }, 
-        ai: { textColor: '#1e293b', backgroundColor: '#ffffff', borderRadius: 20, opacity: 1, backgroundImageOpacity: 0.5 }
+        id: 'default', name: '深空', type: 'preset',
+        user: { textColor: '#4e4038', backgroundColor: '#f7e6cf', borderColor: 'rgba(210,167,120,0.95)', boxShadow: '0 4px 10px rgba(15,23,42,0.06)', borderRadius: 22, opacity: 1, backgroundImageOpacity: 0.5 },
+        ai: { textColor: '#1f2933', backgroundColor: '#ffffff', borderColor: 'rgba(255,255,255,0.95)', boxShadow: '0 4px 10px rgba(15,23,42,0.06)', borderRadius: 22, opacity: 1, backgroundImageOpacity: 0.5 }
+    },
+    minimal: {
+        id: 'minimal', name: '极简', type: 'preset',
+        user: { textColor: '#ffffff', backgroundColor: '#0a84ff', borderColor: 'rgba(10,132,255,0.98)', boxShadow: 'none', borderRadius: 16, opacity: 1, backgroundImageOpacity: 0.5 },
+        ai: { textColor: '#111827', backgroundColor: '#e9e9eb', borderColor: '#e9e9eb', boxShadow: 'none', borderRadius: 16, opacity: 1, backgroundImageOpacity: 0.5 }
+    },
+    wechat: {
+        id: 'wechat', name: '微信', type: 'preset',
+        user: { textColor: '#111827', backgroundColor: '#95ec69', borderColor: 'transparent', boxShadow: '0 1px 2px rgba(15,23,42,0.04)', borderRadius: 7, opacity: 1, backgroundImageOpacity: 0.5 },
+        ai: { textColor: '#111827', backgroundColor: '#f1f1f1', borderColor: 'transparent', boxShadow: '0 1px 2px rgba(15,23,42,0.04)', borderRadius: 7, opacity: 1, backgroundImageOpacity: 0.5 }
+    },
+    custom: {
+        id: 'custom', name: '自定义', type: 'preset',
+        user: { textColor: '#ffffff', backgroundColor: '#7c6df2', borderColor: '#6d5ee8', boxShadow: '0 6px 14px rgba(124,109,242,0.16)', borderRadius: 18, opacity: 1, backgroundImageOpacity: 0.5 },
+        ai: { textColor: '#1f2937', backgroundColor: '#ffffff', borderColor: '#e5e7eb', boxShadow: '0 6px 14px rgba(148,163,184,0.12)', borderRadius: 18, opacity: 1, backgroundImageOpacity: 0.5 }
     },
     dream: {
         id: 'dream', name: 'Dream', type: 'preset',

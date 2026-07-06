@@ -14,6 +14,7 @@ import { safeResponseJson } from './safeApi';
 import { ActiveMsgStore } from './activeMsgStore';
 import { KeepAlive } from './keepAlive';
 import { getVisibleEmojiScopeForCharacter } from './emojiVisibility';
+import { selectWorldlineMemoryContext } from './memoryCore';
 
 const ACTIVE_MSG_VAPID_PUBLIC_KEY = import.meta.env.VITE_AMSG_VAPID_PUBLIC_KEY || '';
 const ACTIVE_MSG_API_BASE_OVERRIDE = (import.meta.env.VITE_AMSG_API_BASE_URL || '').trim();
@@ -255,6 +256,14 @@ const buildCompletePrompt = async (
   const emojis = await DB.getEmojis();
   const categories = await DB.getEmojiCategories();
   const emojiScope = getVisibleEmojiScopeForCharacter(emojis, categories, char.id);
+  const worldlineMemory = await selectWorldlineMemoryContext({
+    char,
+    user: userProfile,
+    mode: 'proactive_letter',
+    currentMessages: recentMessages,
+    query: config.promptHint || timeSinceUser,
+    budgetChars: 1000,
+  });
   const systemPrompt = await ChatPrompts.buildSystemPrompt(
     char,
     userProfile,
@@ -263,6 +272,7 @@ const buildCompletePrompt = async (
     emojiScope.categories,
     recentMessages,
     realtimeConfig,
+    worldlineMemory.markdown,
   );
   const { apiMessages } = ChatPrompts.buildMessageHistory(
     recentMessages,
@@ -583,7 +593,6 @@ export const ActiveMsgClient = {
     return response.data as { uuid: string; status: string; nextSendAt?: string };
   },
 };
-
 
 
 

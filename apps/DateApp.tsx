@@ -5,13 +5,15 @@ import { DB } from '../utils/db';
 import { CharacterProfile, Message, DateState } from '../types';
 import { ContextBuilder } from '../utils/context';
 import { safeResponseJson } from '../utils/safeApi';
+import { selectWorldlineMemoryContext } from '../utils/memoryCore';
 import Modal from '../components/os/Modal';
 import DateSession from '../components/date/DateSession';
 import DateSettings from '../components/date/DateSettings';
+import AppHeader from '../components/shell/AppHeader';
 import { BookOpen } from '@phosphor-icons/react';
 
 const DateApp: React.FC = () => {
-    const { closeApp, characters, activeCharacterId, setActiveCharacterId, apiConfig, addToast, updateCharacter, virtualTime, userProfile } = useOS();
+    const { closeApp, characters, activeCharacterId, setActiveCharacterId, apiConfig, addToast, updateCharacter, virtualTime, userProfile, setShellStatusBarVariantOverride } = useOS();
     
     // Modes: 'select' -> 'peek' -> 'session' | 'settings' | 'history'
     const [mode, setMode] = useState<'select' | 'peek' | 'session' | 'settings' | 'history'>('select');
@@ -37,6 +39,12 @@ const DateApp: React.FC = () => {
     const [editContent, setEditContent] = useState('');
 
     const char = characters.find(c => c.id === activeCharacterId);
+
+    useEffect(() => {
+        const isImmersiveMode = mode === 'peek' || mode === 'session';
+        setShellStatusBarVariantOverride(isImmersiveMode ? 'dark' : null);
+        return () => setShellStatusBarVariantOverride(null);
+    }, [mode, setShellStatusBarVariantOverride]);
 
     // --- Data Loading ---
     const loadDateMessages = async () => {
@@ -164,7 +172,15 @@ const DateApp: React.FC = () => {
             }).join('\n');
             
             const timeStr = `${virtualTime.day} ${formatTime()}`;
-            const baseContext = ContextBuilder.buildCoreContext(c, userProfile, false); 
+            const worldlineMemory = await selectWorldlineMemoryContext({
+                char: c,
+                user: userProfile,
+                mode: 'meet_scene',
+                currentMessages: msgs,
+                query: '用户正在进入见面场景，生成角色此刻状态。',
+                budgetChars: 900,
+            });
+            const baseContext = `${ContextBuilder.buildCoreContext(c, userProfile, false)}${worldlineMemory.markdown ? `\n${worldlineMemory.markdown}\n` : ''}`;
 
             // 强制分隔符，让 AI 意识到这是新的一场戏
             const contextSeparator = gapHint ? `\n\n--- [TIME SKIP: ${gapHint}] ---\n\n` : `\n\n--- [NEW SCENE START] ---\n\n`;
@@ -240,7 +256,15 @@ const DateApp: React.FC = () => {
             };
         });
 
-        let systemPrompt = ContextBuilder.buildCoreContext(char, userProfile);
+        const worldlineMemory = await selectWorldlineMemoryContext({
+            char,
+            user: userProfile,
+            mode: 'date_scene',
+            currentMessages: allMsgs,
+            query: text,
+            budgetChars: 1200,
+        });
+        let systemPrompt = `${ContextBuilder.buildCoreContext(char, userProfile)}${worldlineMemory.markdown ? `\n${worldlineMemory.markdown}\n` : ''}`;
         const REQUIRED_EMOTIONS = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotions = [...REQUIRED_EMOTIONS, ...(char.customDateSprites || [])];
 
@@ -330,7 +354,15 @@ const DateApp: React.FC = () => {
             content: m.type === 'image' ? '[User sent an image]' : m.content
         }));
 
-        let systemPrompt = ContextBuilder.buildCoreContext(char, userProfile);
+        const worldlineMemoryR = await selectWorldlineMemoryContext({
+            char,
+            user: userProfile,
+            mode: 'date_scene',
+            currentMessages: validMsgs,
+            query: String(lastUserMsg.content || ''),
+            budgetChars: 1200,
+        });
+        let systemPrompt = `${ContextBuilder.buildCoreContext(char, userProfile)}${worldlineMemoryR.markdown ? `\n${worldlineMemoryR.markdown}\n` : ''}`;
         const REQUIRED_EMOTIONS_R = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotionsR = [...REQUIRED_EMOTIONS_R, ...(char.customDateSprites || [])];
         systemPrompt += `### [Visual Novel Mode: 视觉小说脚本模式]
@@ -459,13 +491,7 @@ const DateApp: React.FC = () => {
     if (mode === 'select' || !char) {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-light">
-                <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 bg-white sticky top-0 z-10">
-                    <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-slate-100">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                    </button>
-                    <span className="font-bold text-slate-700">选择见面对象</span>
-                    <div className="w-8"></div>
-                </div>
+                <AppHeader title="选择见面对象" onBack={closeApp} center />
                 <div className="p-4 grid grid-cols-2 gap-4 overflow-y-auto">
                     {characters.map(c => (
                         <div key={c.id} onClick={() => handleCharClick(c)} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 active:scale-95 transition-transform flex flex-col items-center gap-3 relative group">
@@ -491,11 +517,7 @@ const DateApp: React.FC = () => {
     if (mode === 'history') {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-light">
-                <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 bg-white sticky top-0 z-10">
-                    <button onClick={handleBack} className="p-2 -ml-2 rounded-full hover:bg-slate-100"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg></button>
-                    <span className="font-bold text-slate-700">见面记录</span>
-                    <div className="w-8"></div>
-                </div>
+                <AppHeader title="见面记录" onBack={handleBack} center />
                 <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-20">
                     {historySessions.length === 0 ? <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2"><BookOpen size={48} className="opacity-50" /><span className="text-xs">暂无见面记录</span></div> : historySessions.map((session, idx) => (
                         <div key={idx} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">

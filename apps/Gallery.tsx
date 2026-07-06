@@ -5,6 +5,7 @@ import { DB } from '../utils/db';
 import { GalleryImage, CharacterProfile } from '../types';
 import { safeResponseJson } from '../utils/safeApi';
 import ConfirmDialog from '../components/os/ConfirmDialog';
+import AppHeader from '../components/shell/AppHeader';
 
 const Gallery: React.FC = () => {
     const { closeApp, characters, apiConfig, addToast } = useOS();
@@ -14,6 +15,7 @@ const Gallery: React.FC = () => {
     const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
     const [isReviewing, setIsReviewing] = useState(false);
     const [showChatContext, setShowChatContext] = useState(false);
+    const uploadInputRef = useRef<HTMLInputElement>(null);
 
     // Long-press delete state
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,6 +53,54 @@ const Gallery: React.FC = () => {
     const handleImageClick = (img: GalleryImage) => {
         setSelectedImage(img);
         setView('detail');
+    };
+
+    const readImageFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
+        reader.readAsDataURL(file);
+    });
+
+    const handleUploadFiles = async (fileList: FileList | null) => {
+        if (!activeCharId || !fileList?.length) return;
+        const files = Array.from(fileList).filter(file => file.type.startsWith('image/'));
+        if (files.length === 0) {
+            addToast('请选择图片文件', 'error');
+            return;
+        }
+
+        const now = Date.now();
+        const savedDate = new Date().toISOString().split('T')[0];
+        const uploaded: GalleryImage[] = [];
+
+        try {
+            for (let index = 0; index < files.length; index += 1) {
+                const file = files[index];
+                const url = await readImageFile(file);
+                if (!url) continue;
+                const image: GalleryImage = {
+                    id: `img-upload-${now}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+                    charId: activeCharId,
+                    url,
+                    timestamp: now + index,
+                    source: 'upload',
+                    savedDate,
+                };
+                await DB.saveGalleryImage(image);
+                uploaded.push(image);
+            }
+
+            if (uploaded.length > 0) {
+                setImages(prev => [...uploaded, ...prev].sort((a, b) => b.timestamp - a.timestamp));
+                setAlbumCounts(prev => ({ ...prev, [activeCharId]: (prev[activeCharId] || 0) + uploaded.length }));
+                addToast(uploaded.length > 1 ? `${uploaded.length} 张照片已收进相册` : '照片已收进相册', 'success');
+            }
+        } catch (e: any) {
+            addToast(e?.message || '图片上传失败', 'error');
+        } finally {
+            if (uploadInputRef.current) uploadInputRef.current.value = '';
+        }
     };
 
     const handleBack = () => {
@@ -288,6 +338,9 @@ CRITICAL: Stay in character. If there's conversation context, your comment shoul
                 <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-3 py-20">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-14 h-14 opacity-40"><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
                     <span className="text-sm">还没有照片</span>
+                    <button onClick={() => uploadInputRef.current?.click()} className="mt-1 px-4 py-2 rounded-full bg-slate-900 text-white text-xs font-bold active:scale-95 transition-transform">
+                        加照片
+                    </button>
                 </div>
             ) : (
                 <div className="grid grid-cols-3 gap-1">
@@ -399,18 +452,28 @@ CRITICAL: Stay in character. If there's conversation context, your comment shoul
     return (
         <div className="h-full w-full bg-slate-50 flex flex-col font-light relative">
             <ConfirmDialog isOpen={!!confirmDialog} title={confirmDialog?.title || ''} message={confirmDialog?.message || ''} variant={confirmDialog?.variant} confirmText="确认" onConfirm={confirmDialog?.onConfirm || (() => setConfirmDialog(null))} onCancel={() => setConfirmDialog(null)} />
+            <input
+                ref={uploadInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(event) => handleUploadFiles(event.target.files)}
+            />
 
             {/* Header */}
             {view !== 'detail' && (
-                <div className="h-16 bg-white/80 backdrop-blur-xl flex items-center px-4 border-b border-slate-100/60 shrink-0 z-10 sticky top-0">
-                    <button onClick={handleBack} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                    </button>
-                    <h1 className="text-lg font-semibold text-slate-800 ml-2 tracking-tight">
-                        {view === 'albums' ? '相册' : characters.find(c => c.id === activeCharId)?.name || '相册'}
-                    </h1>
-                    {view === 'grid' && <span className="text-xs text-slate-400 ml-2 font-mono">{images.length}</span>}
-                </div>
+                <AppHeader
+                    title={view === 'albums' ? '相册' : characters.find(c => c.id === activeCharId)?.name || '相册'}
+                    subtitle={view === 'grid' ? `${images.length} 张照片` : undefined}
+                    onBack={handleBack}
+                    className="bg-white/82 border-slate-100/60"
+                    right={view === 'grid' ? (
+                        <button onClick={() => uploadInputRef.current?.click()} className="ml-auto px-3 py-1.5 rounded-full bg-slate-900 text-white text-[11px] font-bold shadow-sm active:scale-95 transition-transform">
+                            加照片
+                        </button>
+                    ) : null}
+                />
             )}
 
             {view === 'albums' && <div className="flex-1 overflow-y-auto min-h-0">{renderAlbums()}</div>}

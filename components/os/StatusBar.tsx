@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useOS } from '../../context/OSContext';
 import Modal from './Modal';
+import { SHELL_STATUS_BAR_HEIGHT, SHELL_STATUS_BAR_RESERVED_HEIGHT, SHELL_STATUS_BAR_TOP } from '../shell/shellLayout';
 
 // TypeScript definition for Web Battery API
 interface BatteryManager extends EventTarget {
@@ -15,7 +16,17 @@ interface NavigatorWithBattery extends Navigator {
   getBattery?: () => Promise<BatteryManager>;
 }
 
-const StatusBar: React.FC = () => {
+interface StatusBarProps {
+  variant?: 'launcher' | 'app' | 'dark';
+}
+
+const readableLauncherColor = (color?: string) => {
+  const normalized = (color || '').trim().toLowerCase();
+  if (!normalized || normalized === '#fff' || normalized === '#ffffff' || normalized === 'white') return '#334155';
+  return color || '#334155';
+};
+
+const StatusBar: React.FC<StatusBarProps> = ({ variant = 'app' }) => {
   const { virtualTime, theme, systemLogs, clearLogs } = useOS();
   const [batteryLevel, setBatteryLevel] = useState<number>(100);
   const [isCharging, setIsCharging] = useState<boolean>(false);
@@ -24,8 +35,11 @@ const StatusBar: React.FC = () => {
   // Format numbers to have leading zeros
   const format = (n: number) => n.toString().padStart(2, '0');
 
-  // Use content color from theme
-  const textColor = theme.contentColor || '#ffffff';
+  const textColor = variant === 'launcher'
+    ? readableLauncherColor(theme.contentColor)
+    : variant === 'dark'
+      ? '#f8fafc'
+      : '#334155';
 
   useEffect(() => {
     const initBattery = async () => {
@@ -62,12 +76,13 @@ const StatusBar: React.FC = () => {
   return (
     <>
       <div 
-          className="w-full flex justify-between items-start px-6 text-[11px] font-bold z-50 absolute top-0 left-0 bg-transparent transition-colors duration-500 select-none pointer-events-none"
+          data-shell-status-bar
+          className="w-full flex justify-between items-start px-6 text-[11px] font-bold z-[70] absolute top-0 left-0 bg-transparent transition-colors duration-500 select-none pointer-events-none"
           style={{ 
               color: textColor,
-              paddingTop: 'max(4px, env(safe-area-inset-top))',
-              height: 'auto',
-              minHeight: '2rem'
+              paddingTop: SHELL_STATUS_BAR_TOP,
+              height: SHELL_STATUS_BAR_RESERVED_HEIGHT,
+              lineHeight: SHELL_STATUS_BAR_HEIGHT,
           }}
       >
         <div className="w-1/3 pl-2 flex items-center gap-2 pointer-events-auto">
@@ -104,7 +119,7 @@ const StatusBar: React.FC = () => {
           <button 
               onClick={() => setShowLogModal(true)} 
               className="fixed left-1/2 -translate-x-1/2 z-[60] bg-red-500/90 text-white rounded-full px-4 py-1.5 text-[10px] font-bold shadow-lg animate-pulse flex items-center gap-1.5 backdrop-blur-md border border-white/20 pointer-events-auto"
-              style={{ top: 'calc(env(safe-area-inset-top) + 2.5rem)' }}
+              style={{ top: `calc(${SHELL_STATUS_BAR_RESERVED_HEIGHT} + 0.5rem)` }}
           >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
                   <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />

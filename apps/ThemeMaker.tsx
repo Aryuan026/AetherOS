@@ -5,6 +5,13 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useOS } from '../context/OSContext';
 import { ChatTheme, BubbleStyle } from '../types';
 import { processImage } from '../utils/file';
+import { ChatAppearanceEditor } from '../components/appearance/ChatAppearanceEditor';
+import {
+    CHAT_APPEARANCE_PRESETS,
+    CUSTOM_APPEARANCE_PRESET_ID,
+    normalizeChatAppearancePresetId,
+} from '../components/chat/ChatConstants';
+import AppHeader from '../components/shell/AppHeader';
 
 const cloneTheme = (theme: ChatTheme): ChatTheme => {
     if (typeof structuredClone === 'function') {
@@ -43,24 +50,24 @@ const CSS_EXAMPLES = [
     {
         name: '毛玻璃 (Glass)',
         code: `/* Glassmorphism for bubbles */
-.sully-bubble-user, .sully-bubble-ai {
+.aether-bubble-user, .aether-bubble-ai {
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.4);
   box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
-.sully-bubble-user { background: rgba(99, 102, 241, 0.7) !important; }
-.sully-bubble-ai { background: rgba(255, 255, 255, 0.7) !important; }`
+.aether-bubble-user { background: rgba(99, 102, 241, 0.7) !important; }
+.aether-bubble-ai { background: rgba(255, 255, 255, 0.7) !important; }`
     },
     {
         name: '霓虹 (Neon)',
         code: `/* Glowing Neon Borders */
-.sully-bubble-user {
+.aether-bubble-user {
   border: 2px solid #a855f7;
   box-shadow: 0 0 10px #a855f7;
   background: #2e1065 !important;
   color: #fff !important;
 }
-.sully-bubble-ai {
+.aether-bubble-ai {
   border: 2px solid #3b82f6;
   box-shadow: 0 0 10px #3b82f6;
   background: #172554 !important;
@@ -70,7 +77,7 @@ const CSS_EXAMPLES = [
     {
         name: '像素 (Pixel)',
         code: `/* Pixel Art Style — Refined */
-.sully-bubble-user, .sully-bubble-ai {
+.aether-bubble-user, .aether-bubble-ai {
   border-radius: 0px !important;
   border: 3px solid #2d2d2d;
   box-shadow: 4px 4px 0px #2d2d2d, inset -2px -2px 0px rgba(0,0,0,0.12), inset 2px 2px 0px rgba(255,255,255,0.25);
@@ -78,12 +85,12 @@ const CSS_EXAMPLES = [
   image-rendering: pixelated;
   letter-spacing: 0.02em;
 }
-.sully-bubble-user {
+.aether-bubble-user {
   background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%) !important;
   border-color: #4338ca;
   box-shadow: 4px 4px 0px #4338ca, inset -2px -2px 0px rgba(0,0,0,0.15), inset 2px 2px 0px rgba(255,255,255,0.2);
 }
-.sully-bubble-ai {
+.aether-bubble-ai {
   background: linear-gradient(135deg, #f8f8f8 0%, #e8e8e8 100%) !important;
   border-color: #bbb;
   box-shadow: 4px 4px 0px #bbb, inset -2px -2px 0px rgba(0,0,0,0.06), inset 2px 2px 0px rgba(255,255,255,0.8);
@@ -189,7 +196,7 @@ const injectPaddingCss = (css: string, verticalPadding: number) => {
     const horizontalPadding = Math.round(verticalPadding * 1.6); // Aspect ratio for bubble
     const rule = `
 ${PADDING_MARKER_START}
-.sully-bubble-user, .sully-bubble-ai {
+.aether-bubble-user, .aether-bubble-ai {
   padding: ${verticalPadding}px ${horizontalPadding}px !important;
 }
 ${PADDING_MARKER_END}`;
@@ -213,8 +220,8 @@ const SHADOW_MARKER_END = '/* SHADOW_AUTO_END */';
 const injectShadowCss = (css: string, userShadow: string, aiShadow: string) => {
     const rule = `
 ${SHADOW_MARKER_START}
-.sully-bubble-user { box-shadow: ${userShadow} !important; }
-.sully-bubble-ai { box-shadow: ${aiShadow} !important; }
+.aether-bubble-user { box-shadow: ${userShadow} !important; }
+.aether-bubble-ai { box-shadow: ${aiShadow} !important; }
 ${SHADOW_MARKER_END}`;
 
     const regex = new RegExp(`${SHADOW_MARKER_START.replace(/\*/g, '\\*')}[\\s\\S]*?${SHADOW_MARKER_END.replace(/\*/g, '\\*')}`);
@@ -269,16 +276,7 @@ type CssValidationResult = {
     importantCount: number;
 };
 
-const TARGET_SELECTOR_REGEX = /^\.sully-bubble-(user|ai)\b/;
-
-const isValidHttpImageUrl = (value: string) => {
-    try {
-        const parsed = new URL(value);
-        return parsed.protocol === 'https:' || parsed.protocol === 'http:';
-    } catch {
-        return false;
-    }
-};
+const TARGET_SELECTOR_REGEX = /^\.aether-bubble-(user|ai)\b/;
 
 const findLineNumberByIndex = (input: string, index: number) => input.slice(0, index).split('\n').length;
 
@@ -327,21 +325,22 @@ const validateCustomCss = (css: string): CssValidationResult => {
     });
     braceStack.forEach(index => pushError('存在未闭合的 `{`，请补全规则块。', findLineNumberByIndex(source, index)));
 
-    // Scope check: only allow .sully-bubble-user / .sully-bubble-ai
+    // Scope check: only allow .aether-bubble-user / .aether-bubble-ai
     // Ignore comments first to avoid false positives like:
-    // /* comment */ .sully-bubble-user { ... }
+    // /* comment */ .aether-bubble-user { ... }
     const sourceWithoutComments = source.replace(/\/\*[\s\S]*?\*\//g, '');
     const selectorRegex = /([^{}]+)\{/g;
     let selectorMatch = selectorRegex.exec(sourceWithoutComments);
     while (selectorMatch) {
         const selectorGroup = selectorMatch[1].trim();
+        const selectorIndex = selectorMatch.index;
         if (!selectorGroup.startsWith('@')) {
             const selectorList = selectorGroup.split(',').map(item => item.trim()).filter(Boolean);
             selectorList.forEach(selector => {
                 if (!TARGET_SELECTOR_REGEX.test(selector)) {
                     pushError(
-                        `选择器 \`${selector}\` 超出限定范围，仅允许以 .sully-bubble-user / .sully-bubble-ai 开头。`,
-                        findLineNumberByIndex(sourceWithoutComments, selectorMatch.index)
+                        `选择器 \`${selector}\` 超出限定范围，仅允许以 .aether-bubble-user / .aether-bubble-ai 开头。`,
+                        findLineNumberByIndex(sourceWithoutComments, selectorIndex)
                     );
                 }
             });
@@ -390,25 +389,25 @@ const CSS_SCOPE_SNIPPETS: CssSnippet[] = [
         id: 'scope-shadow',
         name: '阴影',
         description: '给两侧气泡添加柔和投影',
-        code: `.sully-bubble-user, .sully-bubble-ai {\n  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);\n}`
+        code: `.aether-bubble-user, .aether-bubble-ai {\n  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);\n}`
     },
     {
         id: 'scope-stroke',
         name: '描边',
         description: '统一边框轮廓',
-        code: `.sully-bubble-user, .sully-bubble-ai {\n  border: 1px solid rgba(148, 163, 184, 0.45);\n}`
+        code: `.aether-bubble-user, .aether-bubble-ai {\n  border: 1px solid rgba(148, 163, 184, 0.45);\n}`
     },
     {
         id: 'scope-gradient',
         name: '渐变',
         description: '区分用户与角色气泡层次',
-        code: `.sully-bubble-user {\n  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;\n}\n.sully-bubble-ai {\n  background: linear-gradient(135deg, #ffffff, #e2e8f0) !important;\n}`
+        code: `.aether-bubble-user {\n  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;\n}\n.aether-bubble-ai {\n  background: linear-gradient(135deg, #ffffff, #e2e8f0) !important;\n}`
     },
     {
         id: 'scope-glass',
         name: '玻璃',
         description: '毛玻璃 + 高光边框',
-        code: `.sully-bubble-user, .sully-bubble-ai {\n  backdrop-filter: blur(10px);\n  border: 1px solid rgba(255, 255, 255, 0.45);\n}\n.sully-bubble-user {\n  background: rgba(99, 102, 241, 0.62) !important;\n}\n.sully-bubble-ai {\n  background: rgba(255, 255, 255, 0.62) !important;\n}`
+        code: `.aether-bubble-user, .aether-bubble-ai {\n  backdrop-filter: blur(10px);\n  border: 1px solid rgba(255, 255, 255, 0.45);\n}\n.aether-bubble-user {\n  background: rgba(99, 102, 241, 0.62) !important;\n}\n.aether-bubble-ai {\n  background: rgba(255, 255, 255, 0.62) !important;\n}`
     }
 ];
 
@@ -542,15 +541,14 @@ const PREVIEW_SCENES: PreviewScene[] = [
 ];
 
 const ThemeMaker: React.FC = () => {
-    const { closeApp, addCustomTheme, addToast } = useOS();
+    const { closeApp, addCustomTheme, addToast, theme: osTheme, updateTheme: updateOSTheme } = useOS();
     const [initialThemeId] = useState(() => `theme-${Date.now()}`);
     const [editingTheme, setEditingTheme] = useState<ChatTheme>({ ...DEFAULT_THEME, id: initialThemeId });
+    const [workspace, setWorkspace] = useState<'chat' | 'custom' | 'avatar'>('chat');
     const [activeTab, setActiveTab] = useState<'user' | 'ai' | 'css'>('user');
-    const [toolSection, setToolSection] = useState<'base' | 'sticker' | 'avatar'>('base'); 
     const [previewSceneId, setPreviewSceneId] = useState(PREVIEW_SCENES[0].id);
     const [showPreviewBgImage, setShowPreviewBgImage] = useState(true);
     const [isPreviewDark, setIsPreviewDark] = useState(false);
-    const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
     const [userFollowAi, setUserFollowAi] = useState(false);
     const [lastSavedTheme, setLastSavedTheme] = useState<ChatTheme>(() => cloneTheme({ ...DEFAULT_THEME, id: initialThemeId }));
     const [isDirty, setIsDirty] = useState(false);
@@ -564,17 +562,17 @@ const ThemeMaker: React.FC = () => {
     const [previewToggleTarget, setPreviewToggleTarget] = useState<'A' | 'B'>('A');
     const [lastUsableCss, setLastUsableCss] = useState('');
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
-    const [assetUrlDraft, setAssetUrlDraft] = useState<Record<'bg' | 'deco' | 'avatarDeco', string>>({ bg: '', deco: '', avatarDeco: '' });
     
     // Local state for sliders
     const [paddingVal, setPaddingVal] = useState(12);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const decorationInputRef = useRef<HTMLInputElement>(null);
     const avatarDecoInputRef = useRef<HTMLInputElement>(null);
     const cssTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     const activeStyle = editingTheme[activeTab === 'css' ? 'user' : activeTab];
+    const activeAppearancePresetId = normalizeChatAppearancePresetId(osTheme.chatAppearancePreset);
+    const isCustomAppearance = activeAppearancePresetId === CUSTOM_APPEARANCE_PRESET_ID;
     const CONTRAST_LOW_THRESHOLD = 4.5;
     const CONTRAST_CRITICAL_THRESHOLD = 3;
     const HIGH_BG_IMAGE_OPACITY = 0.75;
@@ -585,6 +583,12 @@ const ThemeMaker: React.FC = () => {
             setLastUsableCss(editingTheme.customCss || '');
         }
     }, [cssValidation.isValid, editingTheme.customCss]);
+
+    useEffect(() => {
+        if (workspace === 'custom' && !isCustomAppearance) {
+            setWorkspace('chat');
+        }
+    }, [isCustomAppearance, workspace]);
 
     const updateTheme = (
         updater: (prev: ChatTheme) => ChatTheme,
@@ -617,12 +621,38 @@ const ThemeMaker: React.FC = () => {
         setActiveTab(target);
     };
 
-    const requestToolSectionSwitch = (target: 'base' | 'sticker' | 'avatar') => {
-        if (target === toolSection) return;
-        setToolSection(target);
+    const requestClose = () => withDiscardGuard(() => closeApp());
+    const requestBack = () => {
+        if (workspace === 'chat') {
+            requestClose();
+            return;
+        }
+        withDiscardGuard(() => setWorkspace('chat'));
     };
 
-    const requestClose = () => withDiscardGuard(() => closeApp());
+    const activateCustomAppearance = () => {
+        const customPreset = CHAT_APPEARANCE_PRESETS.find(preset => preset.id === CUSTOM_APPEARANCE_PRESET_ID);
+        updateOSTheme({
+            ...customPreset?.config,
+            chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
+            chatBubbleThemeId: CUSTOM_APPEARANCE_PRESET_ID,
+        });
+        setActiveTab('user');
+        setWorkspace('custom');
+    };
+
+    const openAvatarAccessories = () => {
+        if (!isCustomAppearance) {
+            const customPreset = CHAT_APPEARANCE_PRESETS.find(preset => preset.id === CUSTOM_APPEARANCE_PRESET_ID);
+            updateOSTheme({
+                ...customPreset?.config,
+                chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
+                chatBubbleThemeId: CUSTOM_APPEARANCE_PRESET_ID,
+            });
+        }
+        setActiveTab(activeTab === 'ai' ? 'ai' : 'user');
+        setWorkspace('avatar');
+    };
 
     // Initialize padding state from CSS on load
     useEffect(() => {
@@ -661,11 +691,10 @@ const ThemeMaker: React.FC = () => {
         updateTheme(prev => ({ ...prev, customCss: newCss }));
     };
 
-    const handleImageUpload = async (file: File, type: 'bg' | 'deco' | 'avatarDeco') => {
+    const handleImageUpload = async (file: File, type: 'bg' | 'avatarDeco') => {
         try {
             const result = await processImage(file);
             if (type === 'bg') updateStyle('backgroundImage', result);
-            else if (type === 'deco') updateStyle('decoration', result);
             else if (type === 'avatarDeco') updateStyle('avatarDecoration', result);
             addToast('图片上传成功', 'success');
         } catch (e: any) {
@@ -673,31 +702,16 @@ const ThemeMaker: React.FC = () => {
         }
     };
 
-    const handleUrlApply = (type: 'bg' | 'deco' | 'avatarDeco') => {
-        const url = assetUrlDraft[type].trim();
-        if (!url) {
-            addToast('请输入图床 URL', 'error');
-            return;
-        }
-        if (!isValidHttpImageUrl(url)) {
-            addToast('URL 无效，请填写 http(s) 图床地址', 'error');
-            return;
-        }
-
-        if (type === 'bg') updateStyle('backgroundImage', url);
-        else if (type === 'deco') updateStyle('decoration', url);
-        else updateStyle('avatarDecoration', url);
-
-        setAssetUrlDraft(prev => ({ ...prev, [type]: '' }));
-        addToast('已应用图床图片', 'success');
-    };
-
     const doSaveTheme = (exitAfterSave: boolean) => {
         addCustomTheme(editingTheme);
+        updateOSTheme({
+            chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
+            chatBubbleThemeId: editingTheme.id,
+        });
         setLastSavedTheme(cloneTheme(editingTheme));
         setIsDirty(false);
         setIsAppliedToPreview(true);
-        addToast('已保存并应用到当前聊天预览', 'success');
+        addToast('已保存并应用到聊天气泡', 'success');
         if (exitAfterSave) closeApp();
     };
 
@@ -927,7 +941,7 @@ const ThemeMaker: React.FC = () => {
                     )}
 
                     <div
-                        className={`relative px-5 py-3 shadow-sm border border-black/5 text-sm overflow-visible ${isUser ? 'sully-bubble-user' : 'sully-bubble-ai'} ${isActive ? 'ring-2 ring-primary/70' : ''}`}
+                        className={`relative px-5 py-3 shadow-sm border border-black/5 text-sm overflow-visible ${isUser ? 'aether-bubble-user' : 'aether-bubble-ai'} ${isActive ? 'ring-2 ring-primary/70' : ''}`}
                         style={containerStyle}
                     >
                         {showPreviewBgImage && style.backgroundImage && (
@@ -974,31 +988,79 @@ const ThemeMaker: React.FC = () => {
 
     return (
         <div className="h-full w-full bg-slate-50 flex flex-col font-light relative">
-            {/* Header */}
-            <div className="h-20 bg-white/70 backdrop-blur-md flex items-end pb-3 px-4 border-b border-white/40 shrink-0 z-20 justify-between">
-                <div className="flex items-center gap-2">
-                    <button onClick={requestClose} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                        </svg>
-                    </button>
-                    <div className="flex flex-col">
-                        <h1 className="text-xl font-medium text-slate-700">气泡工坊</h1>
-                        <div className="text-[10px] flex items-center gap-1.5 text-slate-500">
-                            <span className={`inline-flex w-2 h-2 rounded-full ${isAppliedToPreview && !isDirty ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
-                            {isAppliedToPreview && !isDirty ? '已应用到当前聊天预览' : '预览未应用最新改动'}
-                        </div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
+            <AppHeader
+                title="聊天装扮"
+                subtitle={
+                    <span className="flex items-center gap-1.5">
+                        <span className={`inline-flex w-2 h-2 rounded-full ${isAppliedToPreview && !isDirty ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                        {workspace === 'chat'
+                            ? '聊天主题'
+                            : workspace === 'avatar'
+                              ? '头像框挂件'
+                              : (isAppliedToPreview && !isDirty ? '已应用到真实聊天气泡' : '自定义气泡')}
+                    </span>
+                }
+                onBack={requestBack}
+                right={(workspace === 'custom' || workspace === 'avatar') ? (
                     <button onClick={() => saveTheme({ exitAfterSave: false })} className="px-4 py-1.5 bg-primary text-white rounded-full text-xs font-bold shadow-lg shadow-primary/30 active:scale-95 transition-all">
                         保存并应用
                     </button>
-                </div>
-            </div>
+                ) : null}
+            />
 
+            {workspace === 'chat' ? (
+                <div className="flex-1 overflow-y-auto p-5 no-scrollbar">
+                    <ChatAppearanceEditor theme={osTheme} updateTheme={updateOSTheme} onCustomPresetSelect={activateCustomAppearance} />
+                    <section className="mt-5 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                        <div className="mb-3">
+                            <h2 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">头像框挂件</h2>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={openAvatarAccessories}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-xs font-bold text-slate-600 transition-all active:scale-[0.98] hover:border-primary/30 hover:bg-white"
+                        >
+                            管理头像框挂件
+                        </button>
+                    </section>
+                </div>
+            ) : workspace === 'avatar' ? (
+                <div className="flex-1 overflow-y-auto p-5 no-scrollbar">
+                    <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                        <div className="mb-4 flex gap-3">
+                            <button onClick={() => setActiveTab('user')} className={`flex-1 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all ${activeTab !== 'ai' ? 'bg-primary text-white shadow-sm shadow-primary/20' : 'bg-slate-100 text-slate-500'}`}>用户头像</button>
+                            <button onClick={() => setActiveTab('ai')} className={`flex-1 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all ${activeTab === 'ai' ? 'bg-primary text-white shadow-sm shadow-primary/20' : 'bg-slate-100 text-slate-500'}`}>角色头像</button>
+                        </div>
+                        <div onClick={() => avatarDecoInputRef.current?.click()} className="cursor-pointer group relative h-24 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 hover:border-primary/50 hover:text-primary transition-all">
+                             {activeStyle.avatarDecoration ? <img src={activeStyle.avatarDecoration} className="h-14 w-14 object-contain" /> : <span className="text-xs font-bold">+ 上传头像框/挂件</span>}
+                             <input type="file" ref={avatarDecoInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'avatarDeco')} />
+                             {activeStyle.avatarDecoration && <button onClick={(e) => { e.stopPropagation(); updateStyle('avatarDecoration', undefined); }} className="absolute top-2 right-2 text-[10px] bg-red-100 text-red-500 px-2 py-0.5 rounded-full">移除</button>}
+                        </div>
+                        {activeStyle.avatarDecoration && (
+                            <div className="mt-5 space-y-4">
+                                <div>
+                                    <label className="mb-2 block text-[10px] font-bold uppercase text-slate-400">位置</label>
+                                    <div className="flex gap-3">
+                                        <input type="range" min="-50" max="150" value={activeStyle.avatarDecorationX ?? 50} onChange={(e) => updateStyle('avatarDecorationX', parseInt(e.target.value))} className="flex-1 h-1.5 bg-slate-200 rounded-full accent-primary" />
+                                        <input type="range" min="-50" max="150" value={activeStyle.avatarDecorationY ?? 50} onChange={(e) => updateStyle('avatarDecorationY', parseInt(e.target.value))} className="flex-1 h-1.5 bg-slate-200 rounded-full accent-primary" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-[10px] font-bold uppercase text-slate-400">缩放 ({activeStyle.avatarDecorationScale ?? 1}x)</label>
+                                    <input type="range" min="0.5" max="3" step="0.1" value={activeStyle.avatarDecorationScale ?? 1} onChange={(e) => updateStyle('avatarDecorationScale', parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full accent-primary" />
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-[10px] font-bold uppercase text-slate-400">旋转 ({activeStyle.avatarDecorationRotate ?? 0}°)</label>
+                                    <input type="range" min="-180" max="180" value={activeStyle.avatarDecorationRotate ?? 0} onChange={(e) => updateStyle('avatarDecorationRotate', parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full accent-primary" />
+                                </div>
+                            </div>
+                        )}
+                    </section>
+                </div>
+            ) : (
+            <>
             {/* Preview Area (Realistic Chat Row) */}
-            <div className={`${isPreviewFullscreen ? 'fixed inset-0 z-[120]' : 'flex-1'} relative overflow-hidden flex flex-col p-4 justify-center items-center gap-4 ${isPreviewDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
+            <div className={`${isPreviewFullscreen ? 'fixed inset-0 z-[120]' : 'shrink-0 min-h-[220px]'} relative overflow-hidden flex flex-col p-4 justify-center items-center gap-3 ${isPreviewDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
                 <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
                 {currentScene.wallpaper && (
                     <div className="absolute inset-0" style={{ background: currentScene.wallpaper, opacity: isPreviewDark ? 0.9 : 0.45 }} />
@@ -1007,54 +1069,8 @@ const ThemeMaker: React.FC = () => {
                 {/* Live CSS Injection for Preview */}
                 {editingTheme.customCss && <style>{editingTheme.customCss}</style>}
 
-                <div className="w-full max-w-sm relative z-10 bg-white/70 dark:bg-black/20 backdrop-blur-sm rounded-2xl p-3 border border-white/30 shadow-sm">
-                    <div className={`absolute right-3 top-3 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-sm ${overallContrastScore.grade === 'A' ? 'bg-emerald-100 text-emerald-700' : overallContrastScore.grade === 'B' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
-                        可读性 {overallContrastScore.grade}
-                    </div>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                        {PREVIEW_SCENES.map(scene => (
-                            <button
-                                key={scene.id}
-                                onClick={() => setPreviewSceneId(scene.id)}
-                                className={`px-2.5 py-1 rounded-full text-[11px] transition-all ${previewSceneId === scene.id ? 'bg-primary text-white shadow' : 'bg-white/80 text-slate-500 hover:bg-white'}`}
-                            >
-                                {scene.name}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 text-[11px] text-slate-500 mb-2">
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" checked={showPreviewBgImage} onChange={(e) => setShowPreviewBgImage(e.target.checked)} className="accent-primary" />
-                            显示背景图层
-                        </label>
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" checked={isPreviewDark} onChange={(e) => setIsPreviewDark(e.target.checked)} className="accent-primary" />
-                            深色聊天背景
-                        </label>
-                    </div>
-
-                    <div className="flex items-center justify-end">
-                        <button
-                            onClick={() => setIsPreviewFullscreen(prev => !prev)}
-                            className="px-2.5 py-1 rounded-full text-[11px] bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
-                        >
-                            {isPreviewFullscreen ? '退出全屏预览' : '全屏预览'}
-                        </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                        <span className="text-slate-500">A/B 对比：</span>
-                        <button onClick={() => setPreviewCompareMode('single')} className={`px-2 py-1 rounded-full ${previewCompareMode === 'single' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>单预览</button>
-                        <button onClick={() => setPreviewCompareMode('split')} className={`px-2 py-1 rounded-full ${previewCompareMode === 'split' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>左右分屏</button>
-                        <button onClick={() => setPreviewCompareMode('toggle')} className={`px-2 py-1 rounded-full ${previewCompareMode === 'toggle' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>一键切换</button>
-                        {previewCompareMode === 'toggle' && (
-                            <div className="flex items-center gap-1">
-                                <button onClick={() => setPreviewToggleTarget('A')} className={`px-2 py-1 rounded ${previewToggleTarget === 'A' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>A 当前编辑</button>
-                                <button onClick={() => setPreviewToggleTarget('B')} className={`px-2 py-1 rounded ${previewToggleTarget === 'B' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>B 上次保存</button>
-                            </div>
-                        )}
-                    </div>
+                <div className={`w-full max-w-sm relative z-10 rounded-2xl px-3 py-2 text-[11px] font-bold shadow-sm ${overallContrastScore.grade === 'A' ? 'bg-emerald-100 text-emerald-700' : overallContrastScore.grade === 'B' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                    可读性 {overallContrastScore.grade}
                 </div>
 
                 {/* Simulated Chat Conversation */}
@@ -1077,43 +1093,30 @@ const ThemeMaker: React.FC = () => {
                     </div>
                 )}
                 
-                <div className={`text-[10px] absolute bottom-2 ${isPreviewDark ? 'text-slate-400' : 'text-slate-500'}`}>A 为当前编辑，B 为上次保存版本</div>
             </div>
 
             {/* Editor Controls */}
             {!isPreviewFullscreen && (
-            <div className="bg-white rounded-t-[2.5rem] shadow-[0_-5px_30px_rgba(0,0,0,0.08)] z-30 flex flex-col h-[55%] ring-1 ring-slate-100">
+            <div className="bg-white border-t border-slate-100 z-30 flex flex-col flex-1 min-h-0">
                 {/* Main Tabs (User / AI / CSS) */}
-                <div className="flex px-8 pt-6 pb-2 gap-6 overflow-x-auto no-scrollbar">
+                <div className="flex px-6 pt-5 pb-2 gap-3 overflow-x-auto no-scrollbar">
                     <button onClick={() => requestTabSwitch('user')} className={`text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'user' ? 'text-slate-800' : 'text-slate-300'}`}>用户气泡</button>
                     <button onClick={() => requestTabSwitch('ai')} className={`text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'ai' ? 'text-slate-800' : 'text-slate-300'}`}>角色气泡</button>
-                    <button onClick={() => requestTabSwitch('css')} className={`text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1 ${activeTab === 'css' ? 'text-indigo-600' : 'text-slate-300'}`}>
-                        <span>⚡</span> 自定义CSS
-                    </button>
                 </div>
 
-                <div className="px-8 pb-2 flex items-center gap-2">
+                <div className="px-6 pb-2 flex items-center gap-2">
                     <button onClick={handleUndo} disabled={undoStack.length === 0} className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 disabled:opacity-40">撤销</button>
                     <button onClick={handleRedo} disabled={redoStack.length === 0} className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 disabled:opacity-40">重做</button>
                 </div>
 
-                {/* Conditional Sub-Tool Tabs */}
-                {activeTab !== 'css' && (
-                    <div className="flex px-6 border-b border-slate-100 mb-2 overflow-x-auto no-scrollbar">
-                        <button onClick={() => requestToolSectionSwitch('base')} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all shrink-0 ${toolSection === 'base' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>基础样式</button>
-                        <button onClick={() => requestToolSectionSwitch('sticker')} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all shrink-0 ${toolSection === 'sticker' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>气泡贴纸</button>
-                        <button onClick={() => requestToolSectionSwitch('avatar')} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all shrink-0 ${toolSection === 'avatar' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>头像挂件</button>
-                    </div>
-                )}
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar pb-20">
+                <div className="flex-1 overflow-y-auto p-5 space-y-5 no-scrollbar pb-20">
                     
                     {/* --- CSS EDITOR --- */}
                     {activeTab === 'css' && (
                         <div className="space-y-6 animate-fade-in h-full flex flex-col">
                             <div className="text-[10px] text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed space-y-2">
                                 <span className="font-bold block mb-1 text-slate-500">CSS 增强模式</span>
-                                可使用CSS类名 <code className="bg-slate-200 px-1 rounded">.sully-bubble-user</code> 和 <code className="bg-slate-200 px-1 rounded">.sully-bubble-ai</code> 来统一定制气泡样式。
+                                可使用CSS类名 <code className="bg-slate-200 px-1 rounded">.aether-bubble-user</code> 和 <code className="bg-slate-200 px-1 rounded">.aether-bubble-ai</code> 来统一定制气泡样式。
                                 <br/>支持使用 <code className="text-red-400">!important</code> 覆盖可视化编辑器的设置。
                                 <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-2 text-[10px] text-indigo-700">
                                     <div className="font-semibold">优先级说明：可视化参数 vs CSS 覆盖</div>
@@ -1159,7 +1162,7 @@ const ThemeMaker: React.FC = () => {
                             )}
 
                             <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">限定作用域插入器（仅 .sully-bubble-user/.sully-bubble-ai）</label>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">限定作用域插入器（仅 .aether-bubble-user/.aether-bubble-ai）</label>
                                 <div className="grid grid-cols-2 gap-2">
                                     {CSS_SCOPE_SNIPPETS.map(snippet => (
                                         <button
@@ -1192,7 +1195,7 @@ const ThemeMaker: React.FC = () => {
                     )}
 
                     {/* --- BASE STYLE TOOLS --- */}
-                    {activeTab !== 'css' && toolSection === 'base' && (
+                    {activeTab !== 'css' && (
                         <div className="space-y-6 animate-fade-in"> 
                             {/* Name Input (Only on Base) */}
                             <div>
@@ -1200,38 +1203,7 @@ const ThemeMaker: React.FC = () => {
                                 <input value={editingTheme.name} onChange={(e) => updateTheme(prev => ({ ...prev, name: e.target.value }), { trackHistory: false })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-primary/50 transition-all outline-none" placeholder="我的个性主题" />
                             </div>
 
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">风格模板卡片</label>
-                                    <button onClick={randomizeMonochrome} className="text-[10px] px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100">随机生成（同色系）</button>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {STYLE_TEMPLATES.map(template => (
-                                        <button
-                                            key={template.id}
-                                            onClick={() => applyTemplate(template)}
-                                            className="text-left p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:border-primary/30 hover:bg-primary/5 transition-all"
-                                        >
-                                            <div className="text-xs font-semibold text-slate-700">{template.name}</div>
-                                            <div className="text-[10px] text-slate-500 mt-1">{template.description}</div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                <div className="text-[10px] font-bold text-slate-400 uppercase mb-2">快速联动</div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <label className="text-xs text-slate-600 flex items-center gap-2">
-                                        <input type="checkbox" checked={userFollowAi} onChange={(e) => setUserFollowAi(e.target.checked)} className="accent-primary" />
-                                        用户气泡跟随角色气泡
-                                    </label>
-                                    <button onClick={mirrorToOtherBubble} className="text-[10px] px-2.5 py-1 rounded-full bg-white border border-slate-200 hover:border-primary/30">镜像参数到另一个气泡</button>
-                                </div>
-                            </div>
-
-                            {activeTab !== 'css' && (
-                                <div className={`rounded-xl border p-3 ${showLowContrastWarning ? 'border-amber-200 bg-amber-50/80' : 'border-emerald-200 bg-emerald-50/70'}`}>
+                            <div className={`rounded-xl border p-3 ${showLowContrastWarning ? 'border-amber-200 bg-amber-50/80' : 'border-emerald-200 bg-emerald-50/70'}`}>
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
                                             <div className="text-[11px] font-semibold text-slate-700">实时可读性评分：{activeContrastScore.grade}（{activeContrastScore.ratio.toFixed(2)}:1）</div>
@@ -1250,8 +1222,7 @@ const ThemeMaker: React.FC = () => {
                                             组合风险：背景图透明层较强 + 对比度不足，可能在复杂壁纸上难以阅读。
                                         </div>
                                     )}
-                                </div>
-                            )}
+                            </div>
 
                             {/* Colors & Opacity */}
                             <div className="grid grid-cols-2 gap-4">
@@ -1321,18 +1292,6 @@ const ThemeMaker: React.FC = () => {
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'bg')} />
                                 {activeStyle.backgroundImage && <button onClick={(e) => { e.stopPropagation(); updateStyle('backgroundImage', undefined); }} className="absolute top-2 right-2 text-[10px] bg-red-100 text-red-500 px-2 py-0.5 rounded-full z-20">移除</button>}
                             </div>
-                            <div className="flex gap-2">
-                                <input
-                                    type="url"
-                                    value={assetUrlDraft.bg}
-                                    onChange={(e) => setAssetUrlDraft(prev => ({ ...prev, bg: e.target.value }))}
-                                    onClick={(e) => e.stopPropagation()}
-                                    placeholder="或粘贴图床 URL"
-                                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                />
-                                <button onClick={() => handleUrlApply('bg')} className="px-3 py-2 rounded-lg bg-slate-100 text-xs font-semibold text-slate-600 hover:bg-slate-200">应用</button>
-                            </div>
-
                             {/* Background Image Opacity */}
                             {activeStyle.backgroundImage && (
                                 <div>
@@ -1340,146 +1299,13 @@ const ThemeMaker: React.FC = () => {
                                     <input type="range" min="0" max="1" step="0.05" value={activeStyle.backgroundImageOpacity ?? 0.5} onChange={(e) => updateStyle('backgroundImageOpacity', parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-primary" />
                                 </div>
                             )}
-                            {/* Voice Bar Style */}
-                            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M7 4a3 3 0 0 1 6 0v6a3 3 0 1 1-6 0V4Z" /><path d="M5.5 9.643a.75.75 0 0 0-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5h-1.5v-1.546A6.001 6.001 0 0 0 16 10v-.357a.75.75 0 0 0-1.5 0V10a4.5 4.5 0 0 1-9 0v-.357Z" /></svg>
-                                    语音条样式
-                                </h3>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">背景色</label>
-                                        <div className="flex items-center gap-2">
-                                            <input type="color" value={activeStyle.voiceBarBg || '#f1f5f9'} onChange={(e) => updateStyle('voiceBarBg', e.target.value)} className="w-7 h-7 rounded-lg border-0 cursor-pointer" />
-                                            <span className="text-[10px] text-slate-400 font-mono">{activeStyle.voiceBarBg || '默认'}</span>
-                                            {activeStyle.voiceBarBg && <button onClick={() => updateStyle('voiceBarBg', undefined)} className="text-[9px] text-red-400">重置</button>}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">播放时背景</label>
-                                        <div className="flex items-center gap-2">
-                                            <input type="color" value={activeStyle.voiceBarActiveBg || '#d1fae5'} onChange={(e) => updateStyle('voiceBarActiveBg', e.target.value)} className="w-7 h-7 rounded-lg border-0 cursor-pointer" />
-                                            <span className="text-[10px] text-slate-400 font-mono">{activeStyle.voiceBarActiveBg || '默认'}</span>
-                                            {activeStyle.voiceBarActiveBg && <button onClick={() => updateStyle('voiceBarActiveBg', undefined)} className="text-[9px] text-red-400">重置</button>}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">按钮颜色</label>
-                                        <div className="flex items-center gap-2">
-                                            <input type="color" value={activeStyle.voiceBarBtnColor || '#10b981'} onChange={(e) => updateStyle('voiceBarBtnColor', e.target.value)} className="w-7 h-7 rounded-lg border-0 cursor-pointer" />
-                                            <span className="text-[10px] text-slate-400 font-mono">{activeStyle.voiceBarBtnColor || '默认'}</span>
-                                            {activeStyle.voiceBarBtnColor && <button onClick={() => updateStyle('voiceBarBtnColor', undefined)} className="text-[9px] text-red-400">重置</button>}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">波形颜色</label>
-                                        <div className="flex items-center gap-2">
-                                            <input type="color" value={activeStyle.voiceBarWaveColor || '#10b981'} onChange={(e) => updateStyle('voiceBarWaveColor', e.target.value)} className="w-7 h-7 rounded-lg border-0 cursor-pointer" />
-                                            <span className="text-[10px] text-slate-400 font-mono">{activeStyle.voiceBarWaveColor || '默认'}</span>
-                                            {activeStyle.voiceBarWaveColor && <button onClick={() => updateStyle('voiceBarWaveColor', undefined)} className="text-[9px] text-red-400">重置</button>}
-                                        </div>
-                                    </div>
-                                    <div className="col-span-2">
-                                        <label className="text-[10px] text-slate-400 block mb-1">文字颜色</label>
-                                        <div className="flex items-center gap-2">
-                                            <input type="color" value={activeStyle.voiceBarTextColor || '#475569'} onChange={(e) => updateStyle('voiceBarTextColor', e.target.value)} className="w-7 h-7 rounded-lg border-0 cursor-pointer" />
-                                            <span className="text-[10px] text-slate-400 font-mono">{activeStyle.voiceBarTextColor || '默认'}</span>
-                                            {activeStyle.voiceBarTextColor && <button onClick={() => updateStyle('voiceBarTextColor', undefined)} className="text-[9px] text-red-400">重置</button>}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* --- STICKER TOOLS --- */}
-                    {activeTab !== 'css' && toolSection === 'sticker' && (
-                        <div className="space-y-6 animate-fade-in">
-                            <div onClick={() => decorationInputRef.current?.click()} className="cursor-pointer group relative h-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 hover:border-primary/50 hover:text-primary transition-all">
-                                 {activeStyle.decoration ? <img src={activeStyle.decoration} className="h-10 w-10 object-contain" /> : <span className="text-xs font-bold">+ 上传气泡角标/贴纸</span>}
-                                 <input type="file" ref={decorationInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'deco')} />
-                                 {activeStyle.decoration && <button onClick={(e) => { e.stopPropagation(); updateStyle('decoration', undefined); }} className="absolute top-2 right-2 text-[10px] bg-red-100 text-red-500 px-2 py-0.5 rounded-full">移除</button>}
-                            </div>
-                            <div className="flex gap-2 -mt-4">
-                                <input
-                                    type="url"
-                                    value={assetUrlDraft.deco}
-                                    onChange={(e) => setAssetUrlDraft(prev => ({ ...prev, deco: e.target.value }))}
-                                    placeholder="或粘贴贴纸图床 URL"
-                                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                />
-                                <button onClick={() => handleUrlApply('deco')} className="px-3 py-2 rounded-lg bg-slate-100 text-xs font-semibold text-slate-600 hover:bg-slate-200">应用</button>
-                            </div>
-
-                            {activeStyle.decoration && (
-                                <details className="rounded-xl border border-slate-200 bg-slate-50 p-3" open={showAdvancedSettings}>
-                                    <summary onClick={(e) => { e.preventDefault(); setShowAdvancedSettings(prev => !prev); }} className="text-xs font-semibold text-slate-600 cursor-pointer">高级设置 · 贴纸坐标与旋转</summary>
-                                    {showAdvancedSettings && (
-                                        <div className="grid grid-cols-2 gap-x-6 gap-y-6 pt-4">
-                                            <div className="col-span-2"><label className="text-[10px] text-slate-400 uppercase block mb-2">位置坐标 (X / Y)</label>
-                                                <div className="flex gap-3">
-                                                    <input type="range" min="-50" max="150" value={activeStyle.decorationX ?? 90} onChange={(e) => updateStyle('decorationX', parseInt(e.target.value))} className="flex-1 h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                                    <input type="range" min="-50" max="150" value={activeStyle.decorationY ?? -10} onChange={(e) => updateStyle('decorationY', parseInt(e.target.value))} className="flex-1 h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                                </div>
-                                            </div>
-                                            <div><label className="text-[10px] text-slate-400 uppercase block mb-2">缩放 ({activeStyle.decorationScale ?? 1}x)</label>
-                                                <input type="range" min="0.2" max="3" step="0.1" value={activeStyle.decorationScale ?? 1} onChange={(e) => updateStyle('decorationScale', parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                            </div>
-                                            <div><label className="text-[10px] text-slate-400 uppercase block mb-2">旋转 ({activeStyle.decorationRotate ?? 0}°)</label>
-                                                <input type="range" min="-180" max="180" value={activeStyle.decorationRotate ?? 0} onChange={(e) => updateStyle('decorationRotate', parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                            </div>
-                                        </div>
-                                    )}
-                                </details>
-                            )}
-                        </div>
-                    )}
-
-                    {/* --- AVATAR TOOLS --- */}
-                    {activeTab !== 'css' && toolSection === 'avatar' && (
-                        <div className="space-y-6 animate-fade-in">
-                            <div onClick={() => avatarDecoInputRef.current?.click()} className="cursor-pointer group relative h-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 hover:border-primary/50 hover:text-primary transition-all">
-                                 {activeStyle.avatarDecoration ? <img src={activeStyle.avatarDecoration} className="h-10 w-10 object-contain" /> : <span className="text-xs font-bold">+ 上传头像框/挂件</span>}
-                                 <input type="file" ref={avatarDecoInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'avatarDeco')} />
-                                 {activeStyle.avatarDecoration && <button onClick={(e) => { e.stopPropagation(); updateStyle('avatarDecoration', undefined); }} className="absolute top-2 right-2 text-[10px] bg-red-100 text-red-500 px-2 py-0.5 rounded-full">移除</button>}
-                            </div>
-                            <div className="flex gap-2 -mt-4">
-                                <input
-                                    type="url"
-                                    value={assetUrlDraft.avatarDeco}
-                                    onChange={(e) => setAssetUrlDraft(prev => ({ ...prev, avatarDeco: e.target.value }))}
-                                    placeholder="或粘贴挂件图床 URL"
-                                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                />
-                                <button onClick={() => handleUrlApply('avatarDeco')} className="px-3 py-2 rounded-lg bg-slate-100 text-xs font-semibold text-slate-600 hover:bg-slate-200">应用</button>
-                            </div>
-
-                            {activeStyle.avatarDecoration && (
-                                <details className="rounded-xl border border-slate-200 bg-slate-50 p-3" open={showAdvancedSettings}>
-                                    <summary onClick={(e) => { e.preventDefault(); setShowAdvancedSettings(prev => !prev); }} className="text-xs font-semibold text-slate-600 cursor-pointer">高级设置 · 挂件偏移与旋转</summary>
-                                    {showAdvancedSettings && (
-                                        <div className="grid grid-cols-2 gap-x-6 gap-y-6 pt-4">
-                                            <div className="col-span-2"><label className="text-[10px] text-slate-400 uppercase block mb-2">中心偏移 (Offset X / Y)</label>
-                                                <div className="flex gap-3">
-                                                    <input type="range" min="-50" max="150" value={activeStyle.avatarDecorationX ?? 50} onChange={(e) => updateStyle('avatarDecorationX', parseInt(e.target.value))} className="flex-1 h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                                    <input type="range" min="-50" max="150" value={activeStyle.avatarDecorationY ?? 50} onChange={(e) => updateStyle('avatarDecorationY', parseInt(e.target.value))} className="flex-1 h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                                </div>
-                                            </div>
-                                            <div><label className="text-[10px] text-slate-400 uppercase block mb-2">缩放 ({activeStyle.avatarDecorationScale ?? 1}x)</label>
-                                                <input type="range" min="0.5" max="3" step="0.1" value={activeStyle.avatarDecorationScale ?? 1} onChange={(e) => updateStyle('avatarDecorationScale', parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                            </div>
-                                            <div><label className="text-[10px] text-slate-400 uppercase block mb-2">旋转 ({activeStyle.avatarDecorationRotate ?? 0}°)</label>
-                                                <input type="range" min="-180" max="180" value={activeStyle.avatarDecorationRotate ?? 0} onChange={(e) => updateStyle('avatarDecorationRotate', parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                            </div>
-                                        </div>
-                                    )}
-                                </details>
-                            )}
                         </div>
                     )}
 
                 </div>
             </div>
+            )}
+            </>
             )}
 
             {/* Discard unsaved changes confirm */}

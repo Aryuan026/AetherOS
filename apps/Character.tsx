@@ -2,9 +2,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useOS } from '../context/OSContext';
 import { AppID, CharacterProfile, CharacterExportData, UserImpression, MemoryFragment } from '../types';
-import { SlidersHorizontal, SpeakerHigh, Books, BookOpen } from '@phosphor-icons/react';
+import { SlidersHorizontal, SpeakerHigh, Books, BookOpen, Heart } from '@phosphor-icons/react';
 import Modal from '../components/os/Modal';
 import { processImage } from '../utils/file';
+import { CALL_PORTRAIT_UPLOAD_HELP, SUPPORTED_UPLOAD_IMAGE_ACCEPT } from '../utils/uploadGuidance';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -18,38 +19,96 @@ import { safeResponseJson } from '../utils/safeApi';
 import { fetchMiniMaxVoices, MiniMaxVoiceItem } from '../utils/minimaxVoice';
 import { resolveMiniMaxApiKey } from '../utils/minimaxApiKey';
 import { normalizeUserImpression } from '../utils/impression';
+import { formatBondTimeLabelFromMessages } from '../utils/bondTime';
+import AppHeader, { AppHeaderAddButton, AppHeaderIconButton } from '../components/shell/AppHeader';
+
+const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
+const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
+    'builtin-deepspace-optional-male-leads-npc-index',
+    'builtin-deepspace-user-circle',
+    'builtin-deepspace-optional-hunter-npc-index',
+    'builtin-deepspace-story-xavier',
+    'builtin-deepspace-story-zayne',
+    'builtin-deepspace-story-qiyu',
+    'builtin-deepspace-story-sylus',
+    'builtin-deepspace-story-caleb',
+    'builtin-deepspace-story-crossover',
+]);
+const BUILT_IN_WORLDBOOK_DISPLAY_ORDER = new Map([
+    ['builtin-deepspace-optional-male-leads-npc-index', 10],
+    ['builtin-deepspace-story-crossover', 11],
+    ['builtin-deepspace-user-circle', 20],
+    ['builtin-deepspace-optional-hunter-npc-index', 30],
+]);
+const worldbookCollator = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+
+const isOptionalBuiltInWorldbook = (id?: string) => Boolean(id && OPTIONAL_BUILT_IN_WORLDBOOK_IDS.has(id));
+const isWorldbookVisibleForCharacter = (wb: { visibleToCharacterIds?: string[] }, charId?: string) => (
+    !wb.visibleToCharacterIds?.length || Boolean(charId && wb.visibleToCharacterIds.includes(charId))
+);
+
+const compareWorldbookEntries = <T extends { id: string; title: string }>(a: T, b: T) => {
+    const orderA = BUILT_IN_WORLDBOOK_DISPLAY_ORDER.get(a.id) ?? 1000;
+    const orderB = BUILT_IN_WORLDBOOK_DISPLAY_ORDER.get(b.id) ?? 1000;
+    return (
+        orderA - orderB ||
+        worldbookCollator.compare(a.title, b.title) ||
+        worldbookCollator.compare(a.id, b.id)
+    );
+};
+
+const compareWorldbookCategories = (a: string, b: string) => {
+    if (a === '深空世界书' && b !== '深空世界书') return -1;
+    if (b === '深空世界书' && a !== '深空世界书') return 1;
+    return worldbookCollator.compare(a, b);
+};
 
 const CharacterCard: React.FC<{
     char: CharacterProfile;
+    subtitle?: string;
+    isActive: boolean;
     onClick: () => void;
+    onSetWanted: (e: React.MouseEvent) => void;
     onDelete: (e: React.MouseEvent) => void;
-}> = ({ char, onClick, onDelete }) => {
+}> = ({ char, subtitle, isActive, onClick, onSetWanted, onDelete }) => {
     const isLockedBuiltIn = Boolean(char.isBuiltIn && char.lockPromptEditing);
 
     return (
     <div
         onClick={onClick}
-        className="relative p-4 rounded-3xl border bg-white/40 border-white/40 hover:bg-white/60 hover:scale-[1.01] transition-all duration-300 cursor-pointer group shadow-sm shrink-0"
+        className="relative p-3.5 rounded-3xl border bg-white/40 border-white/40 hover:bg-white/60 hover:scale-[1.01] transition-all duration-300 cursor-pointer group shadow-sm shrink-0"
     >
-        <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-slate-100 border border-white/50 overflow-hidden relative shadow-inner">
+        <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-full bg-slate-100 border border-white/50 overflow-hidden relative shadow-inner">
                 <div className="absolute inset-0 bg-slate-100/50"></div> 
                 <img src={char.avatar} className="w-full h-full object-cover relative z-10" alt={char.name} />
             </div>
-            <div className="flex-1 min-w-0">
-                <h3 className="font-medium truncate text-slate-700">
+            <div className="flex-1 min-w-0 pt-1">
+                <h3 className="font-semibold truncate text-slate-700 leading-tight">
                     {char.name}
                     {isLockedBuiltIn && <span className="ml-2 align-middle text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">内置</span>}
                 </h3>
-                <p className="text-xs text-slate-400 truncate mt-0.5 font-light">
-                    {char.description || '暂无描述'}
+                <p className="text-xs text-slate-400 truncate mt-1 font-light">
+                    {subtitle || char.description || '暂无描述'}
                 </p>
             </div>
+            <button
+                onClick={onSetWanted}
+                className={`shrink-0 h-9 px-3 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 ${
+                    isActive
+                        ? 'bg-rose-500 text-white shadow-sm shadow-rose-200'
+                        : 'bg-white/70 text-slate-500 border border-white/70 hover:bg-white hover:text-rose-500'
+                }`}
+                title={isActive ? '当前首屏想见的人' : '设为首屏想见的人'}
+            >
+                <Heart size={13} weight={isActive ? 'fill' : 'bold'} />
+                {isActive ? '想见的人' : '设为想见'}
+            </button>
         </div>
         {!isLockedBuiltIn && (
             <button
                 onClick={onDelete}
-                className="absolute top-3 right-3 p-2 rounded-full text-slate-300 hover:bg-red-50 hover:text-red-400 active:bg-red-100 active:text-red-500 transition-all z-10"
+                className="absolute -top-1 -right-1 p-1.5 rounded-full bg-white/80 text-slate-300 hover:bg-red-50 hover:text-red-400 active:bg-red-100 active:text-red-500 transition-all z-10 shadow-sm"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -61,13 +120,15 @@ const CharacterCard: React.FC<{
 };
 
 const Character: React.FC = () => {
-  const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, addCharacter, updateCharacter, deleteCharacter, apiConfig, addToast, userProfile, customThemes, addCustomTheme, worldbooks } = useOS();
+  const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, addCharacter, updateCharacter, deleteCharacter, apiConfig, addToast, userProfile, customThemes, addCustomTheme, worldbooks, lastMsgTimestamp } = useOS();
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [detailTab, setDetailTab] = useState<'identity' | 'memory' | 'impression'>('identity');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<CharacterProfile | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isCallPortraitCompressing, setIsCallPortraitCompressing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const callPortraitInputRef = useRef<HTMLInputElement>(null);
   const cardImportRef = useRef<HTMLInputElement>(null);
   
   // Race Condition Guards
@@ -79,6 +140,7 @@ const Character: React.FC = () => {
   const [showBatchModal, setShowBatchModal] = useState(false); 
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<string | null>(null);
   const [showWorldbookModal, setShowWorldbookModal] = useState(false); // New Modal
+  const [viewingWorldbook, setViewingWorldbook] = useState<NonNullable<CharacterProfile['mountedWorldbooks']>[number] | null>(null);
 
   const [importText, setImportText] = useState('');
   const [exportText, setExportText] = useState('');
@@ -104,6 +166,17 @@ const Character: React.FC = () => {
       voice_cloning: [],
       voice_generation: [],
   });
+  const [bondTimeLabels, setBondTimeLabels] = useState<Record<string, string>>({});
+  const builtInCharacterIdsKey = characters.filter(char => char.isBuiltIn).map(char => char.id).join('|');
+
+  const handleSetWantedCharacter = (char: CharacterProfile) => {
+      if (activeCharacterId === char.id) {
+          addToast(`${char.name} 已经是首屏想见的人`, 'info');
+          return;
+      }
+      setActiveCharacterId(char.id);
+      addToast(`首屏想见的人已切换为 ${char.name}`, 'success');
+  };
 
   const handleLoadMiniMaxVoices = async () => {
       const minimaxApiKey = resolveMiniMaxApiKey(apiConfig);
@@ -156,6 +229,32 @@ const Character: React.FC = () => {
       if (savedId) setSelectedPromptId(savedId);
   }, []);
 
+  useEffect(() => {
+      let cancelled = false;
+      const loadBondTimeLabels = async () => {
+          const builtInChars = characters.filter(char => char.isBuiltIn);
+          if (builtInChars.length === 0) {
+              if (!cancelled) setBondTimeLabels({});
+              return;
+          }
+
+          const entries = await Promise.all(builtInChars.map(async (char) => {
+              try {
+                  const messages = await DB.getMessagesByCharId(char.id);
+                  return [char.id, formatBondTimeLabelFromMessages(messages)] as const;
+              } catch (error) {
+                  console.error('[Character] failed to load bond time', char.id, error);
+                  return [char.id, '牵绊时间 0 天'] as const;
+              }
+          }));
+
+          if (!cancelled) setBondTimeLabels(Object.fromEntries(entries));
+      };
+
+      loadBondTimeLabels();
+      return () => { cancelled = true; };
+  }, [builtInCharacterIdsKey, lastMsgTimestamp]);
+
   // Sync Ref with State
   useEffect(() => {
       editingIdRef.current = editingId;
@@ -204,35 +303,59 @@ const Character: React.FC = () => {
   };
 
   const isPromptLocked = Boolean(formData?.isBuiltIn && formData.lockPromptEditing);
+  const canConfigureWorldbooks = Boolean(formData && (!isPromptLocked || formData.isBuiltIn));
+  const formBondTimeLabel = formData?.isBuiltIn ? (bondTimeLabels[formData.id] || '牵绊时间 0 天') : '';
+  const getCharacterSubtitle = (char: CharacterProfile) => (
+      char.isBuiltIn ? (bondTimeLabels[char.id] || '牵绊时间 0 天') : undefined
+  );
+  const getLibraryWorldbook = (bookId?: string) => worldbooks.find(book => book.id === bookId);
+  const isBuiltInLibraryWorldbook = (bookId?: string) => Boolean(getLibraryWorldbook(bookId)?.isBuiltIn);
+  const canToggleWorldbook = (bookId?: string) => {
+      if (!bookId) return false;
+      if (!isPromptLocked) return true;
+      return isOptionalBuiltInWorldbook(bookId);
+  };
+  const isFixedBuiltInWorldbook = (bookId?: string) => (
+      Boolean(formData?.isBuiltIn) &&
+      Boolean(bookId) &&
+      !isOptionalBuiltInWorldbook(bookId)
+  );
+  const toMountedWorldbookEntry = (book: { id: string; title: string; content: string; category?: string }) => ({
+      id: book.id,
+      title: book.title,
+      content: book.content,
+      category: book.category,
+  });
 
   // Worldbook Logic
   const mountWorldbook = (bookId: string) => {
       if (!formData) return;
+      if (!canToggleWorldbook(bookId)) {
+          addToast('内置基础世界书固定启用，可选资料包可单独切换', 'info');
+          return;
+      }
       const book = worldbooks.find(b => b.id === bookId);
       if (!book) return;
 
       const currentBooks = formData.mountedWorldbooks || [];
       if (currentBooks.some(b => b.id === book.id)) {
-          addToast('已挂载该世界书', 'info');
+          addToast('已启用该资料包', 'info');
           return;
       }
 
-      // CACHE THE CONTENT, include category
-      const newBookEntry = { 
-          id: book.id, 
-          title: book.title, 
-          content: book.content,
-          category: book.category 
-      };
+      const newBookEntry = toMountedWorldbookEntry(book);
       handleChange('mountedWorldbooks', [...currentBooks, newBookEntry]);
-      setShowWorldbookModal(false);
-      addToast(`已挂载: ${book.title}`, 'success');
+      addToast(`已启用: ${book.title}`, 'success');
   };
 
   // New: Mount entire category
   const mountCategory = (category: string) => {
+      if (isPromptLocked) return;
       if (!formData) return;
-      const booksToMount = worldbooks.filter(b => (b.category || '未分类设定 (General)') === category);
+      const booksToMount = worldbooks.filter(b => (
+          (b.category || DEFAULT_WORLDBOOK_CATEGORY) === category &&
+          !isOptionalBuiltInWorldbook(b.id)
+      ));
       if (booksToMount.length === 0) return;
 
       const currentBooks = formData.mountedWorldbooks || [];
@@ -262,8 +385,24 @@ const Character: React.FC = () => {
 
   const unmountWorldbook = (bookId: string) => {
       if (!formData) return;
+      if (!canToggleWorldbook(bookId)) {
+          addToast('内置基础世界书固定启用，不能停用', 'info');
+          return;
+      }
       const currentBooks = formData.mountedWorldbooks || [];
       handleChange('mountedWorldbooks', currentBooks.filter(b => b.id !== bookId));
+      const book = getLibraryWorldbook(bookId);
+      addToast(`已停用: ${book?.title || '资料包'}`, 'success');
+  };
+
+  const copyWorldbookContent = async () => {
+      if (!viewingWorldbook) return;
+      try {
+          await navigator.clipboard.writeText(viewingWorldbook.content || '');
+          addToast('世界书内容已复制', 'success');
+      } catch {
+          addToast('复制失败，请手动选中文本', 'error');
+      }
   };
 
   // ... (Other handlers unchanged)
@@ -290,6 +429,28 @@ const Character: React.FC = () => {
               if (fileInputRef.current) fileInputRef.current.value = '';
           }
       }
+  };
+
+  const handleCallPortraitFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          try {
+              setIsCallPortraitCompressing(true);
+              const processedBase64 = await processImage(file);
+              handleChange('callPortrait', processedBase64);
+              addToast('通话立绘上传成功', 'success');
+          } catch (error: any) {
+              addToast(error.message || '图片处理失败', 'error');
+          } finally {
+              setIsCallPortraitCompressing(false);
+              if (callPortraitInputRef.current) callPortraitInputRef.current.value = '';
+          }
+      }
+  };
+
+  const clearCallPortrait = () => {
+      handleChange('callPortrait', undefined);
+      addToast('通话立绘已改为跟随角色头像/皮肤', 'info');
   };
   
   const handleRefineMonth = async (year: string, month: string, rawText: string, formattedPrompt?: string) => {
@@ -681,14 +842,14 @@ ${isInitialGeneration ? `
           
           content = content.replace(/```json/g, '').replace(/```/g, '').trim();
           const parsed = normalizeUserImpression(JSON.parse(content));
-          if (!parsed) throw new Error('印象生成结果不完整');
+          if (!parsed) throw new Error('关系印象生成结果不完整');
 
           if (editingIdRef.current === targetId) {
               handleChange('impression', parsed);
-              addToast(isInitialGeneration ? '印象档案已生成' : '印象档案已更新', 'success');
+              addToast(isInitialGeneration ? '关系印象已生成' : '关系印象已更新', 'success');
           } else {
               updateCharacter(targetId, { impression: parsed });
-              addToast('后台任务完成：印象已更新到原角色', 'success');
+              addToast('后台任务完成：关系印象已更新到原角色', 'success');
           }
 
       } catch (e: any) {
@@ -709,6 +870,10 @@ ${isInitialGeneration ? `
 
   const handleExportCard = async () => {
       if (!formData) return;
+      if (formData.isBuiltIn && formData.lockPromptEditing) {
+          addToast('内置角色卡不可导出', 'info');
+          return;
+      }
       
       const {
           id, memories, refinedMemories, activeMemoryMonths, impression, guidebookInsights,
@@ -718,7 +883,7 @@ ${isInitialGeneration ? `
       const exportData: CharacterExportData = {
           ...cardProps,
           version: 1,
-          type: 'sully_character_card'
+          type: 'aether_character_card'
       };
 
       if (formData.bubbleStyle) {
@@ -801,7 +966,7 @@ ${isInitialGeneration ? `
               const json = ev.target?.result as string;
               const data: CharacterExportData = JSON.parse(json);
               
-              if (data.type !== 'sully_character_card') {
+              if (data.type !== 'aether_character_card') {
                   throw new Error('无效的角色卡文件');
               }
 
@@ -841,63 +1006,123 @@ ${isInitialGeneration ? `
     <div className="h-full w-full bg-slate-50/30 font-light relative">
        {view === 'list' ? (
            <div className="flex flex-col h-full animate-fade-in">
-               {/* INCREASED PADDING TOP HERE */}
-               <div className="px-6 pt-16 pb-4 shrink-0 flex items-center justify-between">
-                   <div><h1 className="text-2xl font-light text-slate-800 tracking-tight">神经链接</h1><p className="text-xs text-slate-400 mt-1">已建立 {characters.length} 个角色连接</p></div>
-                   <div className="flex gap-2">
-                        <button onClick={() => cardImportRef.current?.click()} className="p-2 rounded-full bg-white/40 hover:bg-white/80 transition-colors text-slate-600" title="导入角色卡">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-                            </svg>
-                        </button>
-                        <input type="file" ref={cardImportRef} className="hidden" accept=".json" onChange={handleImportCard} />
-                        
-                        <button onClick={closeApp} className="p-2 rounded-full bg-white/40 hover:bg-white/80 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg></button>
-                   </div>
-               </div>
-               <div className="flex-1 overflow-y-auto px-5 pb-20 no-scrollbar flex flex-col gap-3">
+               <AppHeader
+                   title="通讯录"
+                   subtitle={`选择想见的人 · 已保存 ${characters.length} 位`}
+                   onBack={closeApp}
+                   className="bg-white/60 border-white/40"
+                   titleClassName="truncate text-xl font-light tracking-tight text-slate-800"
+                   subtitleClassName="mt-0.5 truncate text-xs font-normal text-slate-400"
+                   right={(
+                       <div className="flex items-center gap-2">
+                       <AppHeaderIconButton onClick={() => cardImportRef.current?.click()} className="bg-white/60 hover:bg-white/90 text-slate-600" title="导入角色卡">
+                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-[18px] h-[18px]">
+                               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M7.5 7.5 12 12m0 0 4.5-4.5M12 12V3" />
+                           </svg>
+                       </AppHeaderIconButton>
+                       <AppHeaderAddButton onClick={addCharacter} className="bg-rose-500 text-white hover:bg-rose-400 shadow-sm shadow-rose-200" title="新建角色" />
+                       </div>
+                   )}
+               />
+               <input type="file" ref={cardImportRef} className="hidden" accept=".json" onChange={handleImportCard} />
+               <div className="flex-1 overflow-y-auto px-5 pt-3 pb-20 no-scrollbar flex flex-col gap-3">
                    {characters.map(char => (
                        <CharacterCard 
                            key={char.id} 
                            char={char} 
+                           subtitle={getCharacterSubtitle(char)}
+                           isActive={char.id === activeCharacterId}
                            onClick={() => { setEditingId(char.id); setView('detail'); }} 
+                           onSetWanted={(e) => {
+                               e.stopPropagation();
+                               handleSetWantedCharacter(char);
+                           }}
                            onDelete={(e) => { 
                                e.stopPropagation(); 
                                setDeleteConfirmTarget(char.id); 
                            }} 
                        />
                    ))}
-                   <button onClick={addCharacter} className="w-full py-4 rounded-3xl border border-dashed border-slate-300 text-slate-400 text-sm hover:bg-white/30 transition-all flex items-center justify-center gap-2 shrink-0">
-                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>新建链接
-                   </button>
                </div>
            </div>
        ) : formData && (
            <div className="flex flex-col h-full animate-fade-in bg-slate-50/50 relative">
-               {/* INCREASED HEIGHT HERE */}
-               <div className="h-32 bg-gradient-to-b from-white/90 to-transparent backdrop-blur-sm flex flex-col justify-end px-5 pb-2 shrink-0 z-40 sticky top-0">
-                   <div className="flex justify-between items-center mb-3">
-                       <button onClick={handleBack} className="p-2 -ml-2 rounded-full hover:bg-white/60 flex items-center gap-1 text-slate-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg><span className="text-sm font-medium">列表</span></button>
-                       <button onClick={() => { setActiveCharacterId(formData.id); openApp(AppID.Chat); }} className="text-xs px-3 py-1.5 bg-primary text-white rounded-full font-bold shadow-sm shadow-primary/30 flex items-center gap-1 active:scale-95 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path d="M3.105 2.288a.75.75 0 0 0-.826.95l1.414 4.926H16.5a.75.75 0 0 1 0 1.5H3.693l-1.414 4.926a.75.75 0 0 0 .826.95 28.897 28.897 0 0 0 15.293-7.155.75.75 0 0 0 0-1.114A28.897 28.897 0 0 0 3.105 2.288Z" /></svg>发消息</button>
-                   </div>
+               <AppHeader
+                   title={formData.name || '角色档案'}
+                   onBack={handleBack}
+                   className="bg-white/70 border-white/45"
+                   titleClassName="truncate text-lg font-semibold tracking-wide text-slate-800"
+                   right={(
+                       <div className="flex items-center gap-2">
+                           <button
+                               onClick={() => handleSetWantedCharacter(formData)}
+                               className={`text-xs px-3 py-1.5 rounded-full font-bold shadow-sm flex items-center gap-1 active:scale-95 transition-all ${
+                                   formData.id === activeCharacterId
+                                       ? 'bg-rose-500 text-white shadow-rose-200'
+                                       : 'bg-white/70 text-slate-500 border border-white/80 hover:text-rose-500'
+                               }`}
+                           >
+                               <Heart size={13} weight={formData.id === activeCharacterId ? 'fill' : 'bold'} />
+                               {formData.id === activeCharacterId ? '想见' : '设为想见'}
+                           </button>
+                           <button onClick={() => { setActiveCharacterId(formData.id); openApp(AppID.Chat); }} className="text-xs px-3 py-1.5 bg-primary text-white rounded-full font-bold shadow-sm shadow-primary/30 flex items-center gap-1 active:scale-95 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path d="M3.105 2.288a.75.75 0 0 0-.826.95l1.414 4.926H16.5a.75.75 0 0 1 0 1.5H3.693l-1.414 4.926a.75.75 0 0 0 .826.95 28.897 28.897 0 0 0 15.293-7.155.75.75 0 0 0 0-1.114A28.897 28.897 0 0 0 3.105 2.288Z" /></svg>发消息</button>
+                       </div>
+                   )}
+               />
+               <div className="shrink-0 z-30 bg-white/58 backdrop-blur-md px-5 pt-1 border-b border-white/40">
                    <div className="flex gap-6 text-sm font-medium text-slate-400 pl-1">
                        <button onClick={() => setDetailTab('identity')} className={`pb-2 transition-colors relative ${detailTab === 'identity' ? 'text-slate-800' : ''}`}>设定{detailTab === 'identity' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
                        <button onClick={() => setDetailTab('memory')} className={`pb-2 transition-colors relative ${detailTab === 'memory' ? 'text-slate-800' : ''}`}>记忆 ({(formData.memories || []).length}){detailTab === 'memory' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
-                       <button onClick={() => setDetailTab('impression')} className={`pb-2 transition-colors relative ${detailTab === 'impression' ? 'text-slate-800' : ''}`}>印象{detailTab === 'impression' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
+                       <button onClick={() => setDetailTab('impression')} className={`pb-2 transition-colors relative ${detailTab === 'impression' ? 'text-slate-800' : ''}`}>关系印象{detailTab === 'impression' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
                    </div>
                </div>
                <div className="flex-1 overflow-y-auto p-5 no-scrollbar pb-10">
                    {detailTab === 'identity' && (
                        <div className="space-y-6 animate-fade-in">
-                           <div className="flex items-center gap-5">
-                               <div className="relative group cursor-pointer w-24 h-24 shrink-0" onClick={() => fileInputRef.current?.click()}>
-                                   <div className="w-full h-full rounded-[2rem] shadow-md bg-white border-4 border-white overflow-hidden relative"><img src={formData.avatar} className={`w-full h-full object-cover ${isCompressing ? 'opacity-50 blur-sm' : ''}`} alt="A" /></div>
-                                   <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+                           <div className="grid grid-cols-[6rem_6rem_minmax(0,1fr)] items-start gap-3">
+                               <div className="relative group cursor-pointer w-24 shrink-0" onClick={() => fileInputRef.current?.click()}>
+                                   <div className="w-24 h-24 rounded-[2rem] shadow-md bg-white border-4 border-white overflow-hidden relative">
+                                       <img src={formData.avatar} className={`w-full h-full object-cover ${isCompressing ? 'opacity-50 blur-sm' : ''}`} alt="A" />
+                                   </div>
+                                   <div className="mt-2 text-center text-[11px] font-semibold text-slate-500">头像</div>
+                                   <input type="file" ref={fileInputRef} className="hidden" accept={SUPPORTED_UPLOAD_IMAGE_ACCEPT} onChange={handleFileChange} />
                                </div>
-                               <div className="flex-1 space-y-3">
+                               <div className="relative group cursor-pointer w-24 shrink-0" onClick={() => callPortraitInputRef.current?.click()}>
+                                   <div className="w-24 h-24 rounded-[2rem] shadow-md bg-white border-4 border-white overflow-hidden relative">
+                                       <img
+                                           src={formData.callPortrait || formData.avatar}
+                                           className={`w-full h-full object-cover ${isCallPortraitCompressing ? 'opacity-50 blur-sm' : ''}`}
+                                           alt="通话立绘"
+                                       />
+                                       {formData.callPortrait && (
+                                           <button
+                                               type="button"
+                                               onClick={(e) => {
+                                                   e.stopPropagation();
+                                                   clearCallPortrait();
+                                               }}
+                                               className="absolute right-1.5 top-1.5 rounded-full bg-slate-900/70 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm"
+                                           >
+                                               清除
+                                           </button>
+                                       )}
+                                   </div>
+                                   <div className="mt-2 text-center text-[11px] font-semibold text-slate-500">通话立绘</div>
+                                   <input type="file" ref={callPortraitInputRef} className="hidden" accept={SUPPORTED_UPLOAD_IMAGE_ACCEPT} onChange={handleCallPortraitFileChange} />
+                               </div>
+                               <div className="min-w-0 space-y-3 pt-1">
                                    <input value={formData.name} onChange={(e) => handleChange('name', e.target.value)} className="w-full bg-transparent py-1 text-xl font-medium text-slate-800 border-b border-slate-200" placeholder="名称" />
-                                   <input value={formData.description} onChange={(e) => handleChange('description', e.target.value)} className="w-full bg-transparent py-1 text-sm text-slate-500 border-b border-slate-200" placeholder="描述" />
+                                   {formData.isBuiltIn ? (
+                                       <div className="w-full py-1 text-sm text-slate-500 border-b border-slate-200">
+                                           {formBondTimeLabel}
+                                       </div>
+                                   ) : (
+                                       <input value={formData.description} onChange={(e) => handleChange('description', e.target.value)} className="w-full bg-transparent py-1 text-sm text-slate-500 border-b border-slate-200" placeholder="描述" />
+                                   )}
                                </div>
+                           </div>
+                           <div className="rounded-2xl border border-white/70 bg-white/62 px-3.5 py-2.5 text-[11px] leading-relaxed text-slate-500 shadow-sm">
+                               {CALL_PORTRAIT_UPLOAD_HELP}
                            </div>
                            
                            {!isPromptLocked && (
@@ -1000,26 +1225,34 @@ ${isInitialGeneration ? `
                                )}
                            </div>
 
-                           {/* Worldbook Section */}
-                           <div>
-                               <div className="flex justify-between items-center mb-2 px-1">
-                                   <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest block flex items-center gap-1"><Books size={12} /> 扩展设定 (Worldbooks)</label>
-                                   <button onClick={() => setShowWorldbookModal(true)} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold hover:bg-indigo-100">+ 挂载</button>
-                                </div>
-                                <div className="space-y-2">
-                                   {formData.mountedWorldbooks && formData.mountedWorldbooks.length > 0 ? (
-                                       formData.mountedWorldbooks.map(wb => (
-                                           <div key={wb.id} className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-indigo-50 shadow-sm group">
-                                               <div className="flex items-center gap-2 min-w-0">
-                                                   <BookOpen size={20} className="shrink-0 text-indigo-400" />
-                                                   <div className="flex flex-col min-w-0">
-                                                       <span className="text-sm font-bold text-slate-700 truncate">{wb.title}</span>
-                                                       {wb.category && <span className="text-[9px] text-slate-400">{wb.category}</span>}
-                                                   </div>
-                                               </div>
-                                               <button onClick={() => unmountWorldbook(wb.id)} className="text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 ml-2">×</button>
-                                           </div>
-                                       ))
+	                           <div>
+	                               <div className="flex justify-between items-center mb-2 px-1">
+	                                   <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest block flex items-center gap-1"><Books size={12} /> 扩展设定 (Worldbooks)</label>
+	                                   {canConfigureWorldbooks && (
+	                                       <button onClick={() => setShowWorldbookModal(true)} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold hover:bg-indigo-100">
+	                                           {isPromptLocked ? '资料包开关' : '+ 挂载'}
+	                                       </button>
+	                                   )}
+	                                </div>
+	                                <div className="space-y-2">
+	                                   {formData.mountedWorldbooks && formData.mountedWorldbooks.length > 0 ? (
+	                                       formData.mountedWorldbooks.map(wb => (
+	                                           <div key={wb.id} className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-indigo-50 shadow-sm group">
+                                               <button
+                                                   onClick={() => setViewingWorldbook(wb)}
+                                                   className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                                               >
+	                                                   <BookOpen size={20} className="shrink-0 text-indigo-400" />
+	                                                   <div className="flex flex-col min-w-0">
+	                                                       <span className="text-sm font-bold text-slate-700 truncate">{wb.title}</span>
+	                                                       <span className="text-[9px] text-slate-400 truncate">{wb.category || '未分类'} · {isFixedBuiltInWorldbook(wb.id) ? '默认启用' : '已启用'} · 点击查看内容</span>
+	                                                   </div>
+	                                               </button>
+	                                               {canToggleWorldbook(wb.id) && (
+	                                                   <button onClick={() => unmountWorldbook(wb.id)} className="text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 ml-2">×</button>
+	                                               )}
+	                                           </div>
+	                                       ))
                                    ) : (
                                        <div className="text-center py-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
                                            暂未挂载任何世界书
@@ -1028,19 +1261,20 @@ ${isInitialGeneration ? `
                                </div>
                            </div>
 
-                           {/* Export Card Button */}
-                           <div className="pt-4">
-                               <button
-                                   onClick={handleExportCard}
-                                   className="w-full py-4 bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-slate-700 active:scale-95 transition-all"
-                               >
-                                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                       <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
-                                   </svg>
-                                   分享 / 导出角色卡
-                               </button>
-                               <p className="text-[10px] text-slate-400 text-center mt-2">导出内容不包含记忆库和聊天记录</p>
-                           </div>
+                           {!isPromptLocked && (
+                               <div className="pt-4">
+                                   <button
+                                       onClick={handleExportCard}
+                                       className="w-full py-4 bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-slate-700 active:scale-95 transition-all"
+                                   >
+                                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                           <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+                                       </svg>
+                                       分享 / 导出角色卡
+                                   </button>
+                                   <p className="text-[10px] text-slate-400 text-center mt-2">导出内容不包含记忆库和聊天记录</p>
+                               </div>
+                           )}
                        </div>
                    )}
                    
@@ -1158,56 +1392,121 @@ ${isInitialGeneration ? `
            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 space-y-2"><div className="text-[10px] text-slate-400">已自动复制到剪贴板。如果分享失败，请直接手动复制。</div><textarea value={exportText} readOnly className="w-full h-40 bg-transparent border-none text-[10px] font-mono text-slate-600 resize-none focus:ring-0 leading-relaxed select-all" onClick={(e) => e.currentTarget.select()}/></div>
        </Modal>
 
-        {/* Worldbook Select Modal */}
-        <Modal 
-            isOpen={showWorldbookModal} 
-            title="挂载世界书" 
-            onClose={() => setShowWorldbookModal(false)} 
-        >
-            <div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-4 p-1">
-                {worldbooks.length === 0 ? (
-                    <div className="text-center text-slate-400 text-xs py-8">
-                        还没有世界书，请去桌面【世界书】App 创建。
-                    </div>
-                ) : (
-                    // Group books for UI
-                    Object.entries(worldbooks.reduce((acc, wb) => {
-                        const cat = wb.category || '未分类设定 (General)';
-                        if (!acc[cat]) acc[cat] = [];
-                        acc[cat].push(wb);
-                        return acc;
-                    }, {} as Record<string, typeof worldbooks>)).map(([category, books]) => (
-                        <div key={category} className="space-y-2">
-                            <div className="flex justify-between items-center px-1">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{category}</h4>
-                                <button 
-                                    onClick={() => mountCategory(category)}
-                                    className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-bold hover:bg-indigo-100"
-                                >
-                                    挂载整组
-                                </button>
-                            </div>
-                            {books.map(wb => {
-                                const isMounted = formData?.mountedWorldbooks?.some(m => m.id === wb.id);
-                                return (
-                                    <button 
-                                        key={wb.id} 
-                                        onClick={() => !isMounted && mountWorldbook(wb.id)}
-                                        disabled={isMounted}
-                                        className={`w-full p-4 rounded-xl border text-left transition-all ${isMounted ? 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed' : 'bg-white border-indigo-100 hover:border-indigo-300 shadow-sm active:scale-95'}`}
-                                    >
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="font-bold text-slate-700 text-sm truncate">{wb.title}</span>
-                                            {isMounted && <span className="text-[10px] text-slate-400">已挂载</span>}
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    ))
-                )}
-            </div>
-        </Modal>
+       <Modal
+           isOpen={!!viewingWorldbook}
+           title={viewingWorldbook?.title || '世界书内容'}
+           onClose={() => setViewingWorldbook(null)}
+           footer={
+               <div className="flex gap-2 w-full">
+                   <button onClick={copyWorldbookContent} className="flex-1 py-3 bg-indigo-50 text-indigo-600 font-bold rounded-2xl">复制全文</button>
+                   <button onClick={() => setViewingWorldbook(null)} className="flex-1 py-3 bg-slate-100 text-slate-500 font-bold rounded-2xl">关闭</button>
+               </div>
+           }
+       >
+           <div className="space-y-3">
+               <div className="text-[10px] text-slate-400 text-center">
+                   {viewingWorldbook?.category || '未分类'} · 只读查看
+               </div>
+               <textarea
+                   value={viewingWorldbook?.content || ''}
+                   readOnly
+                   className="w-full h-72 bg-slate-50 rounded-2xl border border-slate-100 p-4 text-xs text-slate-700 resize-none focus:ring-0 leading-relaxed"
+                   onClick={(e) => e.currentTarget.select()}
+               />
+           </div>
+       </Modal>
+
+	        {/* Worldbook Select Modal */}
+	        <Modal
+	            isOpen={showWorldbookModal && canConfigureWorldbooks}
+	            title={isPromptLocked ? '资料包开关' : '挂载世界书'}
+	            onClose={() => setShowWorldbookModal(false)}
+	        >
+	            <div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-4 p-1">
+	                {(() => {
+	                    const availableWorldbooks = isPromptLocked
+	                        ? worldbooks.filter(wb => wb.isBuiltIn && isOptionalBuiltInWorldbook(wb.id) && isWorldbookVisibleForCharacter(wb, formData?.id))
+	                        : worldbooks;
+
+	                    if (availableWorldbooks.length === 0) {
+	                        return (
+	                            <div className="text-center text-slate-400 text-xs py-8">
+	                                {isPromptLocked ? '暂无可选资料包' : '还没有世界书，请去桌面【世界书】App 创建。'}
+	                            </div>
+	                        );
+	                    }
+
+	                    return Object.entries(availableWorldbooks.reduce((acc, wb) => {
+	                        const cat = wb.category || DEFAULT_WORLDBOOK_CATEGORY;
+	                        if (!acc[cat]) acc[cat] = [];
+	                        acc[cat].push(wb);
+	                        return acc;
+	                    }, {} as Record<string, typeof availableWorldbooks>))
+	                        .sort(([categoryA], [categoryB]) => compareWorldbookCategories(categoryA, categoryB))
+	                        .map(([category, books]) => {
+	                            const sortedBooks = [...books].sort(compareWorldbookEntries);
+	                            const mountableDefaultBooks = sortedBooks.filter(wb => !isOptionalBuiltInWorldbook(wb.id));
+
+	                            return (
+	                        <div key={category} className="space-y-2">
+	                            <div className="flex justify-between items-center px-1">
+	                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{category}</h4>
+	                                {!isPromptLocked && mountableDefaultBooks.length > 0 && (
+	                                    <button
+	                                        onClick={() => mountCategory(category)}
+	                                        className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-bold hover:bg-indigo-100"
+	                                    >
+	                                        {category === '深空世界书' ? '挂载通用 01-04' : '挂载整组'}
+	                                    </button>
+	                                )}
+	                            </div>
+	                            {sortedBooks.map(wb => {
+	                                const isMounted = formData?.mountedWorldbooks?.some(m => m.id === wb.id);
+	                                const isOptional = isOptionalBuiltInWorldbook(wb.id);
+	                                const canToggle = canToggleWorldbook(wb.id);
+	                                return (
+	                                    <div
+	                                        key={wb.id}
+	                                        className={`w-full p-4 rounded-xl border text-left transition-all ${isMounted ? 'bg-indigo-50/50 border-indigo-100' : 'bg-white border-indigo-100 shadow-sm'}`}
+	                                    >
+	                                        <div className="flex items-start justify-between gap-3">
+	                                            <div className="min-w-0">
+	                                                <div className="font-bold text-slate-700 text-sm leading-snug">{wb.title}</div>
+	                                                <div className={`text-[10px] mt-1 ${isMounted ? 'text-indigo-500' : isOptional ? 'text-amber-500' : 'text-slate-400'}`}>
+	                                                    {isMounted ? '已启用' : isOptional ? '可启用' : '未启用'}
+	                                                </div>
+	                                                {wb.activationHint && (
+	                                                    <div className="text-[10px] text-slate-500 leading-relaxed mt-2">
+	                                                        {wb.activationHint}
+	                                                    </div>
+	                                                )}
+	                                            </div>
+	                                            <div className="flex shrink-0 gap-1">
+	                                                <button
+	                                                    onClick={() => setViewingWorldbook(toMountedWorldbookEntry(wb))}
+	                                                    className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-bold hover:bg-slate-200"
+	                                                >
+	                                                    查看
+	                                                </button>
+	                                                {canToggle && (
+	                                                    <button
+	                                                        onClick={() => isMounted ? unmountWorldbook(wb.id) : mountWorldbook(wb.id)}
+	                                                        className={`px-2 py-1 rounded-lg text-[10px] font-bold ${isMounted ? 'bg-white text-red-400 hover:bg-red-50' : 'bg-indigo-500 text-white hover:bg-indigo-600'}`}
+	                                                    >
+	                                                        {isMounted ? '停用' : '启用'}
+	                                                    </button>
+	                                                )}
+	                                            </div>
+	                                        </div>
+	                                    </div>
+	                                );
+	                            })}
+	                        </div>
+	                            );
+	                        })
+	                })()}
+	            </div>
+	        </Modal>
 
         <Modal 
             isOpen={!!deleteConfirmTarget} 

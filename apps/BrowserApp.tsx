@@ -1,10 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useOS } from '../context/OSContext';
-import { processImage } from '../utils/file';
 import { safeResponseJson } from '../utils/safeApi';
-import Modal from '../components/os/Modal';
-import { Camera, ImageSquare, GlobeSimple, MagnifyingGlass, Lightning } from '@phosphor-icons/react';
+import { Camera, ImageSquare, GlobeSimple, MagnifyingGlass } from '@phosphor-icons/react';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -24,7 +22,7 @@ const WebRenderer: React.FC<{ content: string }> = ({ content }) => {
                 if (trimmed.startsWith('## ')) return <h2 key={i} className="text-xl font-bold text-slate-900 mt-3">{trimmed.slice(3)}</h2>;
                 if (trimmed.startsWith('### ')) return <h3 key={i} className="text-lg font-bold text-slate-800 mt-2">{trimmed.slice(4)}</h3>;
                 
-                // Specialized: Note Card (Xiaohongshu style simulation)
+                // Specialized: social note card simulation.
                 // Detected by format: [NOTE_CARD|Title|Author|Likes]
                 const noteMatch = trimmed.match(/\[NOTE_CARD\|(.*?)\|(.*?)\|(.*?)\]/);
                 if (noteMatch) {
@@ -119,16 +117,9 @@ const BrowserApp: React.FC = () => {
     const [currentUrl, setCurrentUrl] = useState('home://start');
     const [pageTitle, setPageTitle] = useState('New Tab');
     const [content, setContent] = useState('');
-    const [searchResults, setSearchResults] = useState<any[] | null>(null); // New: Store raw search results
     const [isLoading, setIsLoading] = useState(false);
     const [history, setHistory] = useState<string[]>(['home://start']);
     const [historyIndex, setHistoryIndex] = useState(0);
-    const [isRealNet, setIsRealNet] = useState(false); // Status indicator
-    
-    // Settings State
-    const [showSettings, setShowSettings] = useState(false);
-    const [braveKey, setBraveKey] = useState(localStorage.getItem('browser_brave_key') || '');
-    const [useRealSearch, setUseRealSearch] = useState(localStorage.getItem('browser_use_real_search') === 'true');
 
     // Refs
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -137,18 +128,9 @@ const BrowserApp: React.FC = () => {
     useEffect(() => {
         if (currentUrl === 'home://start') {
             setContent(""); 
-            setSearchResults(null);
             setPageTitle("New Tab");
-            setIsRealNet(false);
         }
     }, [currentUrl]);
-
-    const handleSaveSettings = () => {
-        localStorage.setItem('browser_brave_key', braveKey);
-        localStorage.setItem('browser_use_real_search', String(useRealSearch));
-        setShowSettings(false);
-        addToast('浏览器设置已保存', 'success');
-    };
 
     // --- Navigation Logic ---
 
@@ -176,7 +158,6 @@ const BrowserApp: React.FC = () => {
         if (targetUrl === 'home://start') {
             setPageTitle("New Tab");
             setContent("");
-            setSearchResults(null);
             return;
         }
 
@@ -193,7 +174,6 @@ const BrowserApp: React.FC = () => {
             if (prevUrl === 'home://start') {
                 setPageTitle("New Tab");
                 setContent("");
-                setSearchResults(null);
             } else {
                 loadPageContent(prevUrl);
             }
@@ -224,8 +204,6 @@ const BrowserApp: React.FC = () => {
         }
 
         setIsLoading(true);
-        setIsRealNet(false); 
-        setSearchResults(null); // Clear previous results
         setContent(''); // Clear previous content
         
         // Scroll to top
@@ -233,37 +211,9 @@ const BrowserApp: React.FC = () => {
 
         try {
             const isSearch = url.includes('search?q=');
-            
-            // Experimental: Real Search (Skip AI Brain)
-            if (isSearch && useRealSearch && braveKey) {
-                const query = decodeURIComponent(url.split('q=')[1] || '');
-                try {
-                    // Attempt to fetch from Brave Search
-                    const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${query}&count=10`, {
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Subscription-Token': braveKey
-                        }
-                    });
-                    
-                    if (res.ok) {
-                        const data = await safeResponseJson(res);
-                        const results = data.web?.results || [];
-                        
-                        setSearchResults(results); // RAW RESULTS
-                        setIsRealNet(true);
-                        setPageTitle(`${query} - 搜索`);
-                        setIsLoading(false);
-                        return; // STOP HERE! NO AI.
-                    }
-                } catch (e) {
-                    console.warn("Real search failed, falling back to AI simulation", e);
-                }
-            }
 
             // Fallback / AI Simulation for Pages
             // Determine Context for AI
-            const isXiaohongshu = url.includes('xiaohongshu') || url.includes('小红书');
             const isBilibili = url.includes('bilibili') || url.includes('哔哩哔哩');
             
             let systemPrompt = `You are a text-based web browser simulator. 
@@ -271,12 +221,7 @@ Your task is to generate the content of the webpage the user is visiting based o
 Current URL: "${url}"`;
 
             // Special Styling Instructions
-            if (isXiaohongshu) {
-                systemPrompt += `\n\n### Special Mode: Xiaohongshu (Little Red Book)
-You are simulating a social media feed. 
-Use a specialized format for posts: \`[NOTE_CARD|Title|Author Name|Likes Count]\`.
-Generate 6-8 varied, realistic lifestyle posts (fashion, food, travel, tech) relevant to the context.`;
-            } else if (isBilibili) {
+            if (isBilibili) {
                 systemPrompt += `\n\n### Special Mode: Bilibili (Video Site)
 You are simulating a video platform feed.
 Use a specialized format for videos: \`[VIDEO_CARD|Video Title|Uploader Name|View Count]\`.
@@ -340,59 +285,11 @@ Generate realistic results linking to hypothetical URLs.`;
 
     // --- Renderers ---
 
-    const renderSearchResults = () => {
-        if (!searchResults) return null;
-        return (
-            <div className="space-y-4 animate-fade-in pb-10">
-                {searchResults.map((item: any, idx: number) => {
-                    const hostname = new URL(item.url).hostname;
-                    return (
-                        <div 
-                            key={idx} 
-                            onClick={() => navigate(item.url)} 
-                            className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 cursor-pointer active:scale-[0.98] transition-all hover:shadow-md"
-                        >
-                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-1.5">
-                                {item.profile?.img ? (
-                                    <img src={item.profile.img} className="w-4 h-4 rounded-full object-cover"/>
-                                ) : (
-                                    <div className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-400 text-[8px]">
-                                        {hostname[0].toUpperCase()}
-                                    </div>
-                                )}
-                                <span className="font-medium text-slate-700">{item.profile?.name || hostname}</span>
-                                <span className="text-slate-300">•</span>
-                                <span className="truncate max-w-[150px] opacity-70">{item.url}</span>
-                            </div>
-                            
-                            <div className="flex gap-4">
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="text-sm font-bold text-blue-600 mb-1.5 leading-snug line-clamp-2 hover:underline">{item.title}</h3>
-                                    <p className="text-xs text-slate-600 leading-relaxed line-clamp-3">
-                                        {item.age && <span className="text-slate-400 mr-1">{item.age} —</span>}
-                                        {/* Use raw HTML description from Brave to keep bolding tags */}
-                                        <span dangerouslySetInnerHTML={{ __html: item.description }} />
-                                    </p>
-                                </div>
-                                {item.thumbnail?.src && (
-                                    <img src={item.thumbnail.src} className="w-24 h-24 object-cover rounded-lg bg-slate-50 shrink-0 border border-slate-100" loading="lazy" />
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-                <div className="text-center text-[10px] text-slate-300 pt-4 pb-8">
-                    Results provided by Brave Search
-                </div>
-            </div>
-        );
-    };
-
     const renderStartPage = () => (
         <div className="flex flex-col items-center justify-center h-full pb-20 p-4 animate-fade-in">
             <div className="text-5xl font-bold text-slate-300 mb-8 flex flex-col items-center gap-2">
                 <GlobeSimple size={48} className="text-slate-300" />
-                <span className="text-2xl tracking-widest uppercase">Sully Browser</span>
+                <span className="text-2xl tracking-widest uppercase">Aether Browser</span>
             </div>
             
             <div className="w-full max-w-sm">
@@ -417,8 +314,8 @@ Generate realistic results linking to hypothetical URLs.`;
                 {[
                     { name: 'Google', icon: twemojiUrl('1f50d'), url: 'google.com' },
                     { name: 'Bilibili', icon: twemojiUrl('1f4fa'), url: 'bilibili.com' },
-                    { name: 'RedBook', icon: twemojiUrl('1f4d5'), url: 'xiaohongshu.com' },
-                    { name: 'Sully', icon: twemojiUrl('1f431'), url: 'sully.personal.blog' },
+                    { name: 'Forum', icon: twemojiUrl('1f4ac'), url: 'aether-forum.local' },
+                    { name: 'AetherOS', icon: twemojiUrl('2728'), url: 'aetheros.local' },
                 ].map((site) => (
                     <button
                         key={site.name}
@@ -431,16 +328,6 @@ Generate realistic results linking to hypothetical URLs.`;
                         <span className="text-[10px] text-slate-500 font-medium">{site.name}</span>
                     </button>
                 ))}
-            </div>
-            
-            <div className="mt-12 text-center">
-                <button 
-                    onClick={() => setShowSettings(true)}
-                    className="text-xs text-slate-400 flex items-center gap-1 hover:text-blue-500 transition-colors"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clipRule="evenodd" /></svg>
-                    配置真实搜索引擎 (Brave API)
-                </button>
             </div>
         </div>
     );
@@ -455,14 +342,11 @@ Generate realistic results linking to hypothetical URLs.`;
                     
                     <div className="flex items-center gap-1.5 overflow-hidden">
                         {/* Status Indicator */}
-                        <div className={`w-2 h-2 rounded-full ${isRealNet ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-slate-300'}`}></div>
+                        <div className="w-2 h-2 rounded-full bg-slate-300"></div>
                         <div className="text-xs font-bold text-slate-800 truncate max-w-[150px]">{pageTitle}</div>
                     </div>
                     
                     <div className="flex items-center gap-2">
-                        <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-slate-600 p-1 rounded-full bg-slate-200/50">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 1 1 0-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 0 1-1.44-4.282m3.102.069a18.03 18.03 0 0 1-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 0 1 8.835 2.535M10.34 6.66a23.847 23.847 0 0 0 8.835-2.535m0 0A23.74 23.74 0 0 0 18.795 3m.38 1.125a23.91 23.91 0 0 1 1.014 5.795 23.92 23.92 0 0 1-1.012 5.795m0-11.589a23.849 23.849 0 0 1-4.92 8.192m4.92-8.192a23.856 23.856 0 0 1 4.92 8.192m0 0a23.856 23.856 0 0 1-4.92 8.192m4.92-8.192a23.91 23.91 0 0 1-1.014 5.795m0-11.589A23.849 23.849 0 0 1 18.795 21M6.75 12h.75" /></svg>
-                        </button>
                         <button onClick={handleRefresh} className={`text-slate-400 hover:text-slate-600 p-1 rounded-full ${isLoading ? 'animate-spin text-blue-500' : ''}`}>
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                         </button>
@@ -476,7 +360,7 @@ Generate realistic results linking to hypothetical URLs.`;
                 >
                     <div className="text-slate-400">
                         {currentUrl.startsWith('https') ? 
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-3 h-3 ${isRealNet ? 'text-green-600' : 'text-slate-400'}`}><path fillRule="evenodd" d="M10 2a.75.75 0 0 1 .75.75v.506a5.001 5.001 0 0 1 .533.025c.947.1 1.95.217 2.883.534.364.124.699.27.995.45.353.214.673.475.775.833.08.277.086.598-.037.84a2.532 2.532 0 0 1-.397.643c-.456.602-1.393.896-1.921 1.018a9.497 9.497 0 0 1-1.077.177 10.37 10.37 0 0 1-1.753.072V17.25h1.75a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1 0-1.5h1.75v-9.39a10.37 10.37 0 0 1-1.754-.073 9.497 9.497 0 0 1-1.076-.176c-.528-.122-1.465-.416-1.92-.1.018a2.532 2.532 0 0 1-.398-.644c-.122-.242-.116-.563-.036-.84.102-.358.422-.619.775-.833.296-.18.63-.326.995-.45.933-.317 1.936-.434 2.883-.534A5.001 5.001 0 0 1 9.25 3.256V2.75A.75.75 0 0 1 10 2Z" clipRule="evenodd" /></svg> 
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-400"><path fillRule="evenodd" d="M10 2a.75.75 0 0 1 .75.75v.506a5.001 5.001 0 0 1 .533.025c.947.1 1.95.217 2.883.534.364.124.699.27.995.45.353.214.673.475.775.833.08.277.086.598-.037.84a2.532 2.532 0 0 1-.397.643c-.456.602-1.393.896-1.921 1.018a9.497 9.497 0 0 1-1.077.177 10.37 10.37 0 0 1-1.753.072V17.25h1.75a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1 0-1.5h1.75v-9.39a10.37 10.37 0 0 1-1.754-.073 9.497 9.497 0 0 1-1.076-.176c-.528-.122-1.465-.416-1.92-.1.018a2.532 2.532 0 0 1-.398-.644c-.122-.242-.116-.563-.036-.84.102-.358.422-.619.775-.833.296-.18.63-.326.995-.45.933-.317 1.936-.434 2.883-.534A5.001 5.001 0 0 1 9.25 3.256V2.75A.75.75 0 0 1 10 2Z" clipRule="evenodd" /></svg>
                             : <MagnifyingGlass size={12} weight="bold" />
                         }
                     </div>
@@ -500,11 +384,7 @@ Generate realistic results linking to hypothetical URLs.`;
                 
                 {currentUrl === 'home://start' ? renderStartPage() : (
                     <div className="p-4 pb-24 min-h-full">
-                        {isRealNet && !searchResults && <div className="text-[10px] text-green-600 font-bold bg-green-50 p-2 rounded mb-4 flex items-center gap-2 border border-green-100"><Lightning size={12} weight="fill" /> 已连接 Brave Search 实时网络</div>}
-                        
-                        {searchResults ? renderSearchResults() : (
-                            <WebRenderer content={content} />
-                        )}
+                        <WebRenderer content={content} />
                     </div>
                 )}
             </div>
@@ -518,41 +398,6 @@ Generate realistic results linking to hypothetical URLs.`;
                 <button className="p-2 text-slate-500 active:scale-90 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6A2.25 2.25 0 0 1 6 3.75h1.5m9 0h-9" /></svg></button>
             </div>
 
-            {/* Settings Modal */}
-            <Modal 
-                isOpen={showSettings} 
-                title="网络设置" 
-                onClose={() => setShowSettings(false)}
-                footer={<button onClick={handleSaveSettings} className="w-full py-3 bg-blue-500 text-white font-bold rounded-2xl">保存配置</button>}
-            >
-                <div className="space-y-4">
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Brave Search API Key</label>
-                        <input 
-                            value={braveKey} 
-                            onChange={e => setBraveKey(e.target.value)} 
-                            placeholder="BSA-..." 
-                            className="w-full bg-slate-100 rounded-xl px-4 py-3 text-sm focus:outline-blue-500 font-mono" 
-                        />
-                        <p className="text-[10px] text-slate-400 mt-2 leading-relaxed bg-slate-50 p-2 rounded">
-                            <span className="font-bold">注意：</span> 配置 Key 后可搜索现实世界的内容（如B站、小红书）。<br/>
-                            但由于安全限制，无法直接渲染原网页。浏览器会利用 AI 将搜索结果重新排版为“仿真页面”。
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <input 
-                            type="checkbox" 
-                            checked={useRealSearch} 
-                            onChange={e => setUseRealSearch(e.target.checked)}
-                            className="w-5 h-5 accent-blue-500 rounded"
-                        />
-                        <div className="flex-1">
-                            <span className="text-sm font-bold text-slate-700 block">启用真实搜索 (Experimental)</span>
-                            <span className="text-[10px] text-slate-400 block">连接 Brave API 获取实时索引。失败时自动回退到 AI 幻想模式。</span>
-                        </div>
-                    </div>
-                </div>
-            </Modal>
         </div>
     );
 };

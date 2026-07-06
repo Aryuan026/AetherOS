@@ -96,7 +96,8 @@ export const ContextBuilder = {
 
         // [NEW] 挂载的世界书 (Mounted Worldbooks) - GROUPED BY CATEGORY
         if (char.mountedWorldbooks && char.mountedWorldbooks.length > 0) {
-            context += `### 扩展设定集 (Worldbooks)\n`;
+            context += `### 已启用资料包\n`;
+            context += `以下只包含当前角色已启用的世界书/资料包。未启用的资料包不得当作当前关系、已知事实或可主动展开的剧情前提；已启用资料也应按当前角色身份、当前聊天事实和用户自设自然取用。\n\n`;
             
             // Group books by category
             const groupedBooks: Record<string, typeof char.mountedWorldbooks> = {};
@@ -110,7 +111,7 @@ export const ContextBuilder = {
             Object.entries(groupedBooks).forEach(([category, books]) => {
                 context += `#### [${category}]\n`;
                 books.forEach(wb => {
-                    context += `**Title: ${wb.title}**\n${wb.content}\n---\n`;
+                    context += `##### ${wb.title}\n${wb.content}\n---\n`;
                 });
                 context += `\n`;
             });
@@ -121,11 +122,11 @@ export const ContextBuilder = {
         context += `- 名字: ${user.name}\n`;
         context += `- 设定/备注: ${user.bio || '无'}\n\n`;
 
-        // 4. [NEW] 印象档案 (Private Impression)
+        // 4. [NEW] 关系印象 (Private Relationship Impression)
         // 这是角色对用户的私密看法，只有角色知道
         const imp = normalizeUserImpression(char.impression);
         if (imp) {
-            context += `### [私密档案: 我眼中的${user.name}] (Private Impression)\n`;
+            context += `### [关系印象: 我眼中的${user.name}] (Private Relationship Impression)\n`;
             context += `(注意：以下内容是你内心对TA的真实看法，不要直接告诉用户，但要基于这些看法来决定你的态度。)\n`;
             context += `- 核心评价: ${imp.personality_core.summary}\n`;
             context += `- 互动模式: ${imp.personality_core.interaction_style}\n`;

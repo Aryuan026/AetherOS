@@ -15,7 +15,7 @@ export const isCategoryVisibleForCharacter = (category: EmojiCategory, character
         return true;
     }
 
-    // Legacy SullyOS behavior: non-empty allowedCharacterIds means restricted,
+    // Legacy catalog behavior: non-empty allowedCharacterIds means restricted,
     // missing/empty means visible to everyone.
     if (allowedIds.length > 0) {
         return allowedIds.includes(characterId);
@@ -88,4 +88,3 @@ export const getVisibleEmojiScopeForGroup = (
 export const categoryHasRestrictedVisibility = (category: EmojiCategory): boolean => (
     category.visibilityMode === 'allowlist' || getAllowedIds(category).length > 0
 );
-

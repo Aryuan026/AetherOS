@@ -3,6 +3,14 @@ import React, { useRef, useState } from 'react';
 import Modal from '../os/Modal';
 import { CharacterProfile, Message, EmojiCategory } from '../../types';
 
+const PUBLIC_EMOJI_PACK_ORDER = new Map<string, number>([
+    ['theme-starry-baby', 0],
+    ['theme-smiling-snowman', 1],
+    ['theme-doodle-ji', 2],
+    ['theme-haoqi-crow', 3],
+    ['theme-sun-fruit', 4],
+]);
+
 interface ChatModalsProps {
     modalType: string;
     setModalType: (v: any) => void;
@@ -74,9 +82,6 @@ interface ChatModalsProps {
     translateTargetLang?: string;
     onSetTranslateSourceLang?: (lang: string) => void;
     onSetTranslateLang?: (lang: string) => void;
-    // XHS toggle
-    xhsEnabled?: boolean;
-    onToggleXhs?: () => void;
     // Voice TTS
     chatVoiceEnabled?: boolean;
     onToggleChatVoice?: () => void;
@@ -106,7 +111,6 @@ const ChatModals: React.FC<ChatModalsProps> = ({
     onSetHistoryStart, onEnterSelectionMode, onReplyMessage, onEditMessageStart, onConfirmEditMessage, onDeleteMessage, onCopyMessage, onDeleteEmoji, onDeleteCategory,
     allCharacters = [], onSaveCategoryVisibility, emojiCategories = [], onTogglePublicEmojiCategory,
     translationEnabled, onToggleTranslation, translateSourceLang, translateTargetLang, onSetTranslateSourceLang, onSetTranslateLang,
-    xhsEnabled, onToggleXhs,
     chatVoiceEnabled, onToggleChatVoice, chatVoiceLang, onSetChatVoiceLang,
     onGenerateVoice, voiceAvailable
 }) => {
@@ -114,7 +118,13 @@ const ChatModals: React.FC<ChatModalsProps> = ({
     const [visibilitySelection, setVisibilitySelection] = useState<Set<string>>(new Set());
     const [historyPage, setHistoryPage] = useState(0);
     const HISTORY_PAGE_SIZE = 50;
-    const publicEmojiCategories = emojiCategories.filter(category => category.source === 'public');
+    const publicEmojiCategories = emojiCategories
+        .filter(category => category.source === 'public')
+        .sort((a, b) => {
+            const orderA = PUBLIC_EMOJI_PACK_ORDER.get(a.packId || '') ?? 1000;
+            const orderB = PUBLIC_EMOJI_PACK_ORDER.get(b.packId || '') ?? 1000;
+            return orderA - orderB || a.name.localeCompare(b.name, 'zh-Hans-CN');
+        });
 
     const openVisibilityModal = () => {
         if (selectedCategory) {
@@ -257,19 +267,6 @@ const ChatModals: React.FC<ChatModalsProps> = ({
                                  </div>
                              </div>
                          )}
-                     </div>
-
-                     {/* XHS Toggle */}
-                     <div className="pt-2 border-t border-slate-100">
-                         <div className="flex justify-between items-center cursor-pointer" onClick={onToggleXhs}>
-                             <label className="text-xs font-bold text-slate-400 uppercase pointer-events-none">小红书</label>
-                             <div className={`w-10 h-6 rounded-full p-1 transition-colors flex items-center ${xhsEnabled ? 'bg-red-400' : 'bg-slate-200'}`}>
-                                 <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${xhsEnabled ? 'translate-x-4' : ''}`}></div>
-                             </div>
-                         </div>
-                         <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                             开启后，角色在聊天中可以搜索、浏览、发帖、评论小红书。需要在全局设置中配置 MCP 或 Cookie。
-                         </p>
                      </div>
 
                      {/* Voice TTS */}
@@ -516,15 +513,12 @@ const ChatModals: React.FC<ChatModalsProps> = ({
             </Modal>
 
             <Modal
-                isOpen={modalType === 'emoji-pack-manager'} title="公共表情包" onClose={() => setModalType('none')}
+                isOpen={modalType === 'emoji-pack-manager'} title="内置表情包" onClose={() => setModalType('none')}
             >
                 <div className="space-y-3">
-                    <p className="text-xs text-slate-400 leading-relaxed">
-                        这里控制当前角色能不能读取和选择服务器内置表情包。关闭后，该角色的聊天提示词和表情面板都不会包含对应分组。
-                    </p>
                     {publicEmojiCategories.length === 0 ? (
                         <div className="py-8 text-center text-sm text-slate-400 bg-slate-50 rounded-2xl">
-                            暂无公共表情包
+                            暂无内置表情包
                         </div>
                     ) : (
                         <div className="space-y-2 max-h-[42vh] overflow-y-auto no-scrollbar">
@@ -542,8 +536,7 @@ const ChatModals: React.FC<ChatModalsProps> = ({
                                         <div className="flex-1 min-w-0">
                                             <div className="font-bold text-sm text-slate-700">{category.name}</div>
                                             <div className="text-[10px] text-slate-400 truncate">
-                                                {enabled ? `${activeCharacter.name} 可使用` : `${activeCharacter.name} 暂不可使用`}
-                                                {category.catalogVersion ? ` · ${category.catalogVersion}` : ''}
+                                                {enabled ? `${activeCharacter.name} 已启用` : `${activeCharacter.name} 暂未使用`}
                                             </div>
                                         </div>
                                     </button>

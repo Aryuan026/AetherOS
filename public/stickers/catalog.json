@@ -1,12 +1,12 @@
 {
-  "schema": "sullyos.public-emoji-packs.v1",
-  "version": "2026-07-02-sun-fruit-v1",
+  "schema": "aetheros.public-emoji-packs.v1",
+  "version": "built-in-character-emoji-defaults-v1",
   "assetBase": "assets/",
   "packs": [
     {
       "id": "theme-starry-baby",
-      "name": "星际小宝系列",
-      "visibilityDefault": "disabled",
+      "name": "星际小宝",
+      "visibilityDefault": "allowlist",
       "assetBase": "assets/theme-starry-baby/",
       "stickers": [
         {
@@ -589,12 +589,15 @@
           ],
           "status": "active"
         }
+      ],
+      "defaultAllowedCharacterIds": [
+        "builtin-xavier"
       ]
     },
     {
       "id": "theme-doodle-ji",
-      "name": "涂鸦叽系列",
-      "visibilityDefault": "disabled",
+      "name": "涂鸦叽",
+      "visibilityDefault": "allowlist",
       "assetBase": "assets/theme-doodle-ji/",
       "stickers": [
         {
@@ -1172,13 +1175,16 @@
           ],
           "status": "active"
         }
+      ],
+      "defaultAllowedCharacterIds": [
+        "builtin-daily-companion"
       ]
     },
     {
       "id": "theme-smiling-snowman",
-      "name": "微笑雪人系列",
-      "description": "冷静、吐槽、忙碌、确认与轻微拒绝感很强的一组公共默认 GIF 表情。",
-      "visibilityDefault": "disabled",
+      "name": "微笑雪人",
+      "description": "冷静、吐槽、忙碌、确认与轻微拒绝感很强的一组内置默认 GIF 表情。",
+      "visibilityDefault": "allowlist",
       "assetBase": "assets/theme-smiling-snowman/",
       "stickers": [
         {
@@ -1707,13 +1713,16 @@
             "origin_file_name": "no.gif"
           }
         }
+      ],
+      "defaultAllowedCharacterIds": [
+        "builtin-zayne"
       ]
     },
     {
       "id": "theme-haoqi-crow",
       "name": "好气鸦",
-      "description": "冷淡、吐槽、拒绝、傲娇和小小示好都很适合的一组公共默认 GIF 表情。",
-      "visibilityDefault": "disabled",
+      "description": "冷淡、吐槽、拒绝、傲娇和小小示好都很适合的一组内置默认 GIF 表情。",
+      "visibilityDefault": "allowlist",
       "assetBase": "assets/theme-haoqi-crow/",
       "stickers": [
         {
@@ -2241,13 +2250,16 @@
             "origin_file_name": "优雅.gif"
           }
         }
+      ],
+      "defaultAllowedCharacterIds": [
+        "builtin-sylus"
       ]
     },
     {
       "id": "theme-sun-fruit",
       "name": "太阳果",
       "description": "来自恋与深空语境的一组温暖、撒娇、鼓励、拒绝与日常问候 GIF 表情。",
-      "visibilityDefault": "disabled",
+      "visibilityDefault": "allowlist",
       "assetBase": "assets/theme-sun-fruit/",
       "stickers": [
         {
@@ -2775,6 +2787,9 @@
             "origin_file_name": "早安.gif"
           }
         }
+      ],
+      "defaultAllowedCharacterIds": [
+        "builtin-caleb"
       ]
     }
   ]

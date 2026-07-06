@@ -4,6 +4,7 @@
 import React, { useRef, useState } from 'react';
 import { Message, ChatTheme } from '../../types';
 import { tryParseLifeSimResetCard } from '../../utils/lifeSimChatCard';
+import { getChatBubbleContainerStyle } from './ChatConstants';
 
 // --- Forward Card with expand/collapse ---
 const ForwardCard: React.FC<{
@@ -203,7 +204,7 @@ interface MessageItemProps {
     avatarShape?: 'circle' | 'rounded' | 'square';
     avatarSize?: 'small' | 'medium' | 'large';
     avatarMode?: 'grouped' | 'every_message';
-    bubbleVariant?: 'modern' | 'flat' | 'outline' | 'shadow' | 'wechat' | 'ios';
+    bubbleVariant?: 'modern' | 'flat' | 'outline' | 'shadow' | 'wechat' | 'ios' | 'round' | 'square' | 'deep-space';
     messageSpacing?: 'compact' | 'default' | 'spacious';
     showTimestamp?: 'always' | 'hover' | 'never';
 }
@@ -231,16 +232,29 @@ const MessageItem = React.memo(({
     avatarSize = 'medium',
     avatarMode = 'grouped',
     bubbleVariant = 'modern',
-    messageSpacing = 'default',
+    messageSpacing = 'compact',
     showTimestamp = 'hover',
 }: MessageItemProps) => {
     const isUser = m.role === 'user';
     const isSystem = m.role === 'system';
-    const spacingClass = messageSpacing === 'compact' ? (isLastInGroup ? 'mb-3' : 'mb-0.5') : messageSpacing === 'spacious' ? (isLastInGroup ? 'mb-8' : 'mb-2.5') : (isLastInGroup ? 'mb-6' : 'mb-1.5');
+    const timestampClass = showTimestamp === 'hover'
+        ? 'pointer-events-none absolute top-full mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity'
+        : 'mt-1';
+    const spacingClass = messageSpacing === 'compact'
+        ? (isLastInGroup ? 'mb-2' : 'mb-0.5')
+        : messageSpacing === 'spacious'
+          ? (isLastInGroup ? 'mb-8' : 'mb-2.5')
+          : (isLastInGroup ? 'mb-5' : 'mb-1');
     const marginBottom = spacingClass;
-    const avatarSizeClass = avatarSize === 'small' ? 'w-7 h-7' : avatarSize === 'large' ? 'w-12 h-12' : 'w-9 h-9';
+    const visualBubbleVariant = activeTheme.id === 'wechat' && bubbleVariant === 'square' ? 'wechat' : bubbleVariant;
+    const isWechatBubble = visualBubbleVariant === 'wechat';
+    const isDeepSpaceBubble = visualBubbleVariant === 'deep-space';
+    const isCompactBubble = isWechatBubble || isDeepSpaceBubble;
+    const avatarSizeClass = isCompactBubble
+        ? 'w-[42px] h-[42px]'
+        : avatarSize === 'small' ? 'w-7 h-7' : avatarSize === 'large' ? 'w-12 h-12' : 'w-9 h-9';
     const avatarRadiusClass = avatarShape === 'square' ? 'rounded-sm' : avatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full';
-    const avatarSizePx = avatarSize === 'small' ? 28 : avatarSize === 'large' ? 48 : 36;
+    const avatarSizePx = isCompactBubble ? 42 : avatarSize === 'small' ? 28 : avatarSize === 'large' ? 48 : 36;
     const shouldShowAvatar = avatarMode === 'every_message' || isLastInGroup;
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const startPos = useRef({ x: 0, y: 0 }); // Track touch start position
@@ -519,8 +533,12 @@ const MessageItem = React.memo(({
         );
     }
 
+    const bubbleMaxWidthClass = isWechatBubble ? 'max-w-[78%]' : 'max-w-[72%]';
+    const bubbleOffsetClass = '';
+    const avatarBubbleGapClass = isCompactBubble ? 'gap-2.5' : 'gap-2';
+
     const commonLayout = (content: React.ReactNode) => (
-            <div className={`flex items-end ${isUser ? 'justify-end' : 'justify-start'} ${marginBottom} px-3 group select-none relative transition-[padding] duration-300 ${selectionMode ? 'pl-12' : ''}`}>
+            <div className={`flex items-start ${isUser ? 'justify-end' : 'justify-start'} ${avatarBubbleGapClass} ${marginBottom} px-4 group select-none relative transition-[padding] duration-300 ${selectionMode ? 'pl-12' : ''}`}>
                 {selectionMode && (
                     <div className="absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer z-20" onClick={() => onToggleSelect(m.id)}>
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-slate-300 bg-white/80'}`}>
@@ -529,33 +547,18 @@ const MessageItem = React.memo(({
                     </div>
                 )}
 
-                {/* Avatar - Absolute Positioned */}
-                {!isUser && (
-                    <div className={`absolute bottom-[1.25rem] z-0 ${selectionMode ? 'left-14' : 'left-3'} transition-all duration-300`}>
-                        {renderAvatar(charAvatar)}
-                    </div>
-                )}
-                
-                {/* 
-                    UPDATED: Limit bubble max-width to 72% for better spacing. 
-                    Added min-w-0 to prevent flexbox overflow issues.
-                    Added explicit margins to clear absolute avatars.
-                */}
-                <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[72%] min-w-0 ${!isUser ? 'ml-12' : 'mr-12'}`} {...interactionProps}>
+                {!isUser && renderAvatar(charAvatar)}
+
+                <div className={`relative flex min-w-0 ${bubbleMaxWidthClass} ${bubbleOffsetClass} flex-col ${isUser ? 'items-end' : 'items-start'}`} {...interactionProps}>
                     <div className={selectionMode ? 'pointer-events-none' : ''}>
                         {content}
                     </div>
                     {isLastInGroup && showTimestamp !== 'never' && (
-                        <div className={`text-[9px] text-slate-400/80 px-1 mt-1 font-medium ${showTimestamp === 'hover' ? 'opacity-0 group-hover:opacity-100 transition-opacity' : ''}`}>{formatTime(m.timestamp)}</div>
+                        <div className={`text-[9px] text-slate-400/80 px-1 font-medium ${timestampClass}`}>{formatTime(m.timestamp)}</div>
                     )}
                 </div>
 
-                {/* User Avatar - Absolute Positioned */}
-                {isUser && (
-                    <div className="absolute right-3 bottom-[1.25rem] z-0">
-                        {renderAvatar(userAvatar)}
-                    </div>
-                )}
+                {isUser && renderAvatar(userAvatar)}
             </div>
     );
 
@@ -567,72 +570,6 @@ const MessageItem = React.memo(({
         if (forwardData) {
             return <ForwardCard forwardData={forwardData} commonLayout={commonLayout} interactionProps={interactionProps} selectionMode={selectionMode} />;
         }
-    }
-
-    // --- XHS Card Rendering (小红书笔记卡片) ---
-    if (m.type === 'xhs_card' && m.metadata?.xhsNote) {
-        const note = m.metadata.xhsNote;
-        return commonLayout(
-            <div className="w-64 bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 cursor-pointer active:opacity-90 transition-opacity">
-                {/* Cover image */}
-                {note.coverUrl ? (
-                    <div className="relative w-full h-36 bg-slate-100 overflow-hidden">
-                        <img
-                            src={note.coverUrl}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                            crossOrigin="anonymous"
-                            onError={(e: any) => {
-                                // 图片加载失败时显示占位图（保持卡片高度）
-                                const img = e.target;
-                                const container = img.parentElement;
-                                if (!container) return;
-                                img.style.display = 'none';
-                                // 避免重复插入占位
-                                if (container.querySelector('.xhs-cover-fallback')) return;
-                                const fallback = document.createElement('div');
-                                fallback.className = 'xhs-cover-fallback w-full h-full bg-gradient-to-br from-red-50 to-pink-100 flex items-center justify-center';
-                                fallback.innerHTML = `<div class="text-center"><div class="mb-1"><img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4d5.png" alt="" class="w-6 h-6 mx-auto" /></div><div class="text-[10px] text-red-300 font-medium">${note.title ? '封面加载失败' : '小红书笔记'}</div></div>`;
-                                container.appendChild(fallback);
-                            }}
-                        />
-                        {note.type === 'video' && (
-                            <div className="absolute top-2 right-2 bg-black/50 rounded-full px-1.5 py-0.5 flex items-center gap-0.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-white"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" /></svg>
-                                <span className="text-[9px] text-white font-medium">视频</span>
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="h-14 bg-gradient-to-r from-red-400 to-pink-500 flex items-center justify-center">
-                        <span className="text-white/80 text-xs font-medium tracking-wide">小红书笔记</span>
-                    </div>
-                )}
-                <div className="p-3">
-                    {/* Title */}
-                    <div className="font-bold text-sm text-slate-800 line-clamp-2 leading-snug mb-1.5">{note.title || '无标题笔记'}</div>
-                    {/* Description */}
-                    {note.desc && <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-2">{note.desc}</p>}
-                    {/* Author + Likes */}
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-                        <div className="flex items-center gap-1.5">
-                            <div className="w-4 h-4 rounded-full bg-gradient-to-br from-red-400 to-pink-400 flex items-center justify-center text-[8px] text-white font-bold">{(note.author || '?')[0]}</div>
-                            <span className="text-[10px] text-slate-500 truncate max-w-[100px]">{note.author || '小红书用户'}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-red-300"><path d="m9.653 16.915-.005-.003-.019-.01a20.759 20.759 0 0 1-1.162-.682 22.045 22.045 0 0 1-2.582-1.9C4.045 12.733 2 10.352 2 7.5a4.5 4.5 0 0 1 8-2.828A4.5 4.5 0 0 1 18 7.5c0 2.852-2.044 5.233-3.885 6.82a22.049 22.049 0 0 1-3.744 2.582l-.019.01-.005.003h-.002a.723.723 0 0 1-.692 0l-.003-.002Z" /></svg>
-                            <span>{note.likes || 0}</span>
-                        </div>
-                    </div>
-                    {/* Footer label */}
-                    <div className="mt-2 pt-1.5 flex items-center gap-1 text-[9px] text-slate-300">
-                        <span className="text-red-400 font-bold">小红书</span> <span>·</span> <span>{note.type === 'video' ? '视频' : '笔记'}{isUser ? '分享' : '推荐'}</span>
-                    </div>
-                </div>
-            </div>
-        );
     }
 
     if (m.type === 'social_card' && m.metadata?.post) {
@@ -652,7 +589,7 @@ const MessageItem = React.memo(({
                     </div>
                     <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{post.content}</p>
                     <div className="mt-2 pt-2 border-t border-slate-50 flex items-center gap-1 text-[10px] text-slate-400">
-                        <span className="text-red-400">Spark</span> • 笔记分享
+                        <span className="text-red-400">朋友圈</span> • 内容分享
                     </div>
                 </div>
             </div>
@@ -861,7 +798,7 @@ const MessageItem = React.memo(({
                     <div className="absolute top-0 right-0 p-4 opacity-20"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-12 h-12"><path d="M10.464 8.746c.227-.18.497-.311.786-.394v2.795a2.252 2.252 0 0 1-.786-.393c-.394-.313-.546-.681-.546-1.004 0-.324.152-.691.546-1.004ZM12.75 15.662v-2.824c.347.085.664.228.921.421.427.32.579.686.579.991 0 .305-.152.671-.579.991a2.534 2.534 0 0 1-.921.42Z" /><path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v.816a3.836 3.836 0 0 0-1.72.756c-.712.566-1.112 1.35-1.112 2.178 0 .829.4 1.612 1.113 2.178.502.4 1.102.647 1.719.756v2.978a2.536 2.536 0 0 1-.921-.421l-.879-.66a.75.75 0 0 0-.9 1.2l.879.66c.533.4 1.169.645 1.821.75V18a.75.75 0 0 0 1.5 0v-.81a4.124 4.124 0 0 0 1.821-.749c.745-.559 1.179-1.344 1.179-2.191 0-.847-.434-1.632-1.179-2.191a4.122 4.122 0 0 0-1.821-.75V8.354c.29.082.559.213.786.393l.415.33a.75.75 0 0 0 .933-1.175l-.415-.33a3.836 3.836 0 0 0-1.719-.755V6Z" clipRule="evenodd" /><path d="M2.25 18a.75.75 0 0 0 0 1.5c5.4 0 10.63.722 15.6 2.075 1.19.324 2.4-.558 2.4-1.82V18.75a.75.75 0 0 0-.75-.75H2.25Z" /></svg></div>
                     <div className="flex items-center gap-3 mb-2">
                         <div className="p-2 bg-white/20 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 7.5a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5Z" /><path fillRule="evenodd" d="M1.5 4.875C1.5 3.839 2.34 3 3.375 3h17.25c1.035 0 1.875.84 1.875 1.875v9.75c0 1.036-.84 1.875-1.875 1.875H3.375A1.875 1.875 0 0 1 1.5 14.625v-9.75ZM8.25 9.75a3.75 3.75 0 1 1 7.5 0 3.75 3.75 0 0 1-7.5 0ZM18.75 9a.75.75 0 0 0-.75.75v.008c0 .414.336.75.75.75h.008a.75.75 0 0 0 .75-.75V9.75a.75.75 0 0 0-.75-.75h-.008ZM4.5 9.75A.75.75 0 0 1 5.25 9h.008a.75.75 0 0 1 .75.75v.008a.75.75 0 0 1-.75-.75H5.25a.75.75 0 0 1-.75-.75V9.75Z" clipRule="evenodd" /><path d="M2.25 18a.75.75 0 0 0 0 1.5c5.4 0 10.63.722 15.6 2.075 1.19.324 2.4-.558 2.4-1.82V18.75a.75.75 0 0 0-.75-.75H2.25Z" /></svg></div>
-                        <span className="font-medium text-white/90">Sully Pay</span>
+                        <span className="font-medium text-white/90">Aether Pay</span>
                     </div>
                     <div className="text-2xl font-bold tracking-tight mb-1">₩ {m.metadata?.amount}</div>
                     <div className="text-[10px] text-white/70">转账给{isUser ? charName : '你'}</div>
@@ -883,40 +820,13 @@ const MessageItem = React.memo(({
         );
     }
 
-    // --- Dynamic Style Generation for Bubble ---
-    const radius = styleConfig.borderRadius;
-    let borderObj: React.CSSProperties = {};
-    
-    // Border Radius Logic
-    if (!isFirstInGroup && !isLastInGroup) {
-        borderObj = isUser 
-            ? { borderRadius: `${radius}px`, borderTopRightRadius: '4px', borderBottomRightRadius: '4px' }
-            : { borderRadius: `${radius}px`, borderTopLeftRadius: '4px', borderBottomLeftRadius: '4px' };
-    } else if (isFirstInGroup && !isLastInGroup) {
-        borderObj = isUser
-            ? { borderRadius: `${radius}px`, borderBottomRightRadius: '4px' }
-            : { borderRadius: `${radius}px`, borderBottomLeftRadius: '4px' };
-    } else if (!isFirstInGroup && isLastInGroup) {
-        borderObj = isUser
-            ? { borderRadius: `${radius}px`, borderTopRightRadius: '4px' }
-            : { borderRadius: `${radius}px`, borderTopLeftRadius: '4px' };
-    } else {
-            borderObj = isUser
-            ? { borderRadius: `${radius}px`, borderBottomRightRadius: '2px' }
-            : { borderRadius: `${radius}px`, borderBottomLeftRadius: '2px' };
-    }
-
-    // Container style (BackgroundColor + Opacity) with bubble variant
-    const containerStyle: React.CSSProperties = {
-        backgroundColor: bubbleVariant === 'outline' ? 'transparent' : styleConfig.backgroundColor,
-        opacity: styleConfig.opacity,
-        ...borderObj,
-        ...(bubbleVariant === 'outline' ? { border: `2px solid ${styleConfig.backgroundColor}`, boxShadow: 'none' } : {}),
-        ...(bubbleVariant === 'shadow' ? { boxShadow: '0 4px 12px rgba(0,0,0,0.12)' } : {}),
-        ...(bubbleVariant === 'flat' ? { boxShadow: 'none' } : {}),
-        ...(bubbleVariant === 'wechat' ? { boxShadow: 'none', border: '1px solid rgba(15,23,42,0.05)' } : {}),
-        ...(bubbleVariant === 'ios' ? { boxShadow: '0 10px 24px rgba(148,163,184,0.16)', border: '1px solid rgba(255,255,255,0.75)', backdropFilter: 'blur(12px)' } : {}),
-    };
+    const containerStyle = getChatBubbleContainerStyle({
+        styleConfig,
+        isUser,
+        bubbleVariant: visualBubbleVariant,
+        isFirstInGroup,
+        isLastInGroup,
+    });
 
     // --- Inline formatting parser: code → bold → italic → plain ---
     const renderInline = (text: string): React.ReactNode[] => {
@@ -1050,8 +960,21 @@ const MessageItem = React.memo(({
     return commonLayout(
         <div className={isVoiceOnlyMsg
             ? 'relative animate-fade-in'
-            : `relative ${bubbleVariant === 'flat' || bubbleVariant === 'outline' || bubbleVariant === 'wechat' ? '' : 'shadow-sm '}px-5 py-3 animate-fade-in ${bubbleVariant === 'outline' ? '' : 'border border-black/5 '}active:scale-[0.98] transition-transform overflow-visible ${isUser ? 'sully-bubble-user' : 'sully-bubble-ai'}`}
+            : `relative ${visualBubbleVariant === 'flat' || visualBubbleVariant === 'outline' || isWechatBubble ? '' : 'shadow-sm '}${isCompactBubble ? 'min-h-[42px] px-4 py-2.5' : 'px-5 py-3'} animate-fade-in ${visualBubbleVariant === 'outline' || isWechatBubble ? '' : 'border border-black/5 '}active:scale-[0.98] transition-transform ${isWechatBubble ? 'overflow-visible' : 'overflow-hidden'} ${isUser ? 'aether-bubble-user' : 'aether-bubble-ai'}`}
             style={isVoiceOnlyMsg ? undefined : containerStyle}>
+
+            {isWechatBubble && !isVoiceOnlyMsg && (
+                <span
+                    aria-hidden="true"
+                    className={`absolute top-[13px] h-[13px] w-[9px] ${isUser ? '-right-[6px]' : '-left-[6px]'}`}
+                    style={{
+                        backgroundColor: styleConfig.backgroundColor,
+                        clipPath: isUser
+                            ? 'polygon(0 0, 100% 50%, 0 100%)'
+                            : 'polygon(100% 0, 0 50%, 100% 100%)',
+                    }}
+                />
+            )}
 
             {/* Layer 1: Background Image with Independent Opacity */}
             {styleConfig.backgroundImage && (
@@ -1089,7 +1012,7 @@ const MessageItem = React.memo(({
 
             {/* Layer 4: Text Content — shown when there's visible text after stripping voice tags */}
             {displayContent && (
-            <div className="relative z-10 text-[15px] leading-relaxed whitespace-pre-wrap break-all select-text" style={{ color: styleConfig.textColor }}>
+            <div className={`relative z-10 ${isCompactBubble ? 'text-[15px] leading-[1.42]' : 'text-[15px] leading-relaxed'} whitespace-pre-wrap break-words [overflow-wrap:anywhere] select-text`} style={{ color: styleConfig.textColor }}>
                 {renderContent(displayContent)}
             </div>
             )}

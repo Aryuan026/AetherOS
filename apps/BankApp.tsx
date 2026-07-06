@@ -36,7 +36,7 @@ const INITIAL_STATE: BankFullState = {
                 hireDate: Date.now(),
                 x: 50,
                 y: 50,
-                personality: 'Sully的专属宠物，负责看店',
+                personality: '系统管家，负责看店',
                 isPet: true,
             }
         ],
@@ -112,14 +112,13 @@ const BankApp: React.FC = () => {
         return nextState;
     };
 
-    const persistDollhouseUpdate = async (updater: DollhouseState | ((prev: DollhouseState) => DollhouseState)): Promise<DollhouseState> => {
+    const persistDollhouseUpdate = async (updater: DollhouseState | ((prev: DollhouseState) => DollhouseState)): Promise<void> => {
         const nextDollhouse = typeof updater === 'function'
             ? (updater as (prev: DollhouseState) => DollhouseState)(dollhouseRef.current)
             : updater;
         dollhouseRef.current = nextDollhouse;
         setDollhouseState(nextDollhouse);
         await DB.saveBankDollhouse(nextDollhouse);
-        return nextDollhouse;
     };
 
     const loadData = async () => {
@@ -167,18 +166,17 @@ const BankApp: React.FC = () => {
             };
         }
 
-        // Migration: Link "系统" staff to its owner via pet-owner matching
+        // Link the default shop staff to the first available character.
         if (characters.length > 0) {
             const systemStaff = currentState.shop.staff.find(s => s.id === 'staff-001');
             if (systemStaff && systemStaff.isPet && (!systemStaff.ownerCharId || systemStaff.ownerCharId === '')) {
-                // Find Sully by name match, fallback to first character
-                const sully = characters.find(c => c.name.toLowerCase().includes('sully')) || characters[0];
+                const ownerChar = characters[0];
                 currentState = {
                     ...currentState,
                     shop: {
                         ...currentState.shop,
                         staff: currentState.shop.staff.map(s =>
-                            s.id === 'staff-001' ? { ...s, ownerCharId: sully.id } : s
+                            s.id === 'staff-001' ? { ...s, ownerCharId: ownerChar.id } : s
                         )
                     }
                 };

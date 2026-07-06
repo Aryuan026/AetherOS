@@ -681,8 +681,9 @@ export const parsePersonaMarkdown = (rawPersona: string) => {
         }
     });
     
-    if (currentSection && currentSection.content.length > 0) {
-        sections.push(currentSection);
+    const finalSection = currentSection as { title: string; content: string[]; icon: string } | null;
+    if (finalSection && finalSection.content.length > 0) {
+        sections.push(finalSection);
     }
     
     return sections;

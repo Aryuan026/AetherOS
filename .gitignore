@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 .npm-cache
+.playwright-cli
 dist
 dist-ssr
 *.local

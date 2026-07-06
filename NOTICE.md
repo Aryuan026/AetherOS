@@ -27,6 +27,8 @@ This deployment fork adds and maintains:
 - Public default sticker packs for small-group character-card testing.
 - Static deployment support for the `/sullyos/` public path.
 - UI readability adjustments for the launcher.
+- Launcher information architecture organized around companion, story-play, and
+  creation / setup layers. See `docs/FORK_DESIGN_NOTES.md`.
 - Built-in starter characters and presets for immediate use, with
   prompt-editing hidden for casual users.
 - Removal of the upstream default Sully character from this deployment build,
@@ -40,8 +42,6 @@ The original README thanks:
 
 - ReiStandard / Active Message 2.0 integration:
   https://github.com/Tosd0/ReiStandard/
-- xiaohongshu-skills:
-  https://github.com/autoclaw-cc/xiaohongshu-skills
 
 ## Use Boundary
 

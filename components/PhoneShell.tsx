@@ -16,6 +16,7 @@ import DateApp from '../apps/DateApp';
 import UserApp from '../apps/UserApp';
 import JournalApp from '../apps/JournalApp'; 
 import ScheduleApp from '../apps/ScheduleApp'; 
+import CompanionPlanApp from '../apps/CompanionPlanApp';
 import RoomApp from '../apps/RoomApp'; 
 import CheckPhone from '../apps/CheckPhone';
 import SocialApp from '../apps/SocialApp'; 
@@ -25,14 +26,13 @@ import GameApp from '../apps/GameApp';
 import WorldbookApp from '../apps/WorldbookApp';
 import NovelApp from '../apps/NovelApp'; 
 import BankApp from '../apps/BankApp';
-import XhsStockApp from '../apps/XhsStockApp';
-import XhsFreeRoamApp from '../apps/XhsFreeRoamApp';
 import BrowserApp from '../apps/BrowserApp';
 import SongwritingApp from '../apps/SongwritingApp';
 import CallApp from '../apps/CallApp';
 import VoiceDesignerApp from '../apps/VoiceDesignerApp';
 import GuidebookApp from '../apps/GuidebookApp';
 import LifeSimApp from '../apps/LifeSimApp';
+import WidgetApp from '../apps/WidgetApp';
 import { SpecialMomentsApp, ValentineController, shouldShowValentinePopup } from './ValentineEvent';
 import { WhiteDayController, shouldShowWhiteDayPopup, isWhiteDay } from './WhiteDayEvent';
 import { AppID } from '../types';
@@ -150,7 +150,7 @@ class AppErrorBoundary extends Component<{ children: React.ReactNode, onCloseApp
 }
 */
 
-const DISCLAIMER_KEY = 'sullyos_disclaimer_accepted';
+const DISCLAIMER_KEY = 'aetheros_disclaimer_accepted';
 
 const DisclaimerPopup: React.FC<{ onAccept: () => void }> = ({ onAccept }) => (
   <div className="fixed inset-0 z-[9999] flex items-center justify-center p-5 animate-fade-in">
@@ -166,20 +166,17 @@ const DisclaimerPopup: React.FC<{ onAccept: () => void }> = ({ onAccept }) => (
       {/* Content */}
       <div className="px-6 pb-4 max-h-[55vh] overflow-y-auto no-scrollbar space-y-3">
         <p className="text-[13px] text-slate-600 leading-relaxed">
-          本站是基于开源项目「手抓糯米机 (SullyOS)」改造部署的<strong className="text-slate-800">非商业自用版本</strong>，用于少量朋友之间测试角色卡与聊天体验。
+          本站是基于开源项目「手抓糯米机 (SullyOS)」的<strong className="text-slate-800">非商业自用版本</strong>，用于少量朋友之间测试角色卡与聊天体验。
         </p>
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-[12px] text-slate-600 leading-relaxed space-y-1.5">
           <p><strong className="text-slate-800">原项目：</strong>手抓糯米机 (SullyOS)</p>
-          <p><strong className="text-slate-800">原作者署名：</strong>NMJ（SullyOS / 手抓糯米机）。本站不冒充原作者。</p>
-          <p><strong className="text-slate-800">改造维护：</strong>A-Yuan / Asherie（本部署版）。</p>
-          <p><strong className="text-slate-800">协议：</strong>当前公开 GitHub 仓声明为 PolyForm Noncommercial 1.0.0，本改造版保留原项目名称、署名、开源说明与致谢。</p>
-          <p><strong className="text-slate-800">改造：</strong>本站追加了 UI 调整、公开默认表情包、内置示例角色与部署适配。</p>
+          <p><strong className="text-slate-800">原作者署名：</strong>NMJ（SullyOS / 手抓糯米机）；Copyright (c) 2024-2026 NMJ (SullyOS / 手抓糯米机)。</p>
+          <p><strong className="text-slate-800">本版本维护：</strong>A-Yuan / Asherie。</p>
         </div>
         <ul className="text-[12px] text-slate-500 leading-relaxed space-y-1.5 list-none">
-          <li className="flex gap-2"><span className="shrink-0">•</span><span>Required Notice: Copyright (c) 2024-2026 NMJ (SullyOS / 手抓糯米机)。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>内置角色/预设可能包含同人化整理与再创作，不代表原作品官方立场；相关权利归原权利方所有。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>禁止出售、转卖、付费分发、付费定制、商业平台运营、引流变现，或伪装为官方/授权内容。</span></li>
-          <li className="flex gap-2"><span className="shrink-0">•</span><span>感谢原 SullyOS 项目，以及 README 中鸣谢的 ReiStandard / 主动消息 2.0 与小红书 Skill 相关工作。</span></li>
+          <li className="flex gap-2"><span className="shrink-0">•</span><span>感谢原 SullyOS 项目，以及 README 中鸣谢的 ReiStandard / 主动消息 2.0 相关工作。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>本软件不提供任何明示或暗示的担保，原作者与改造维护者均不对使用本软件产生的任何后果承担责任。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>用户应自行承担使用本软件的一切风险，包括但不限于数据丢失、设备损坏等。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>本软件生成的任何 AI 内容均不代表作者立场，用户需自行判断内容的准确性与合规性。</span></li>
@@ -210,7 +207,7 @@ const DisclaimerPopup: React.FC<{ onAccept: () => void }> = ({ onAccept }) => (
 );
 
 const PhoneShell: React.FC = () => {
-  const { theme, isLocked, unlock, activeApp, closeApp, virtualTime, isDataLoaded, toasts, unreadMessages, characters, handleBack, suspendedCall, resumeCall, activeCharacterId } = useOS();
+  const { theme, isLocked, unlock, activeApp, closeApp, virtualTime, isDataLoaded, toasts, unreadMessages, characters, handleBack, suspendedCall, resumeCall, activeCharacterId, shellStatusBarVariantOverride } = useOS();
   const useIOSStandaloneLayout = isIOSStandaloneWebApp();
 
   // Disclaimer popup for first-time users
@@ -281,12 +278,12 @@ const PhoneShell: React.FC = () => {
                     const now = new Date();
                     const whiteDayDate = new Date(2026, 2, 14, 10, 0, 0);
                     const WHITEDAY_NOTIF_ID = 31400;
-                    if (isWhiteDay() && !localStorage.getItem('sullyos_whiteday_native_notif_sent')) {
+                    if (isWhiteDay() && !localStorage.getItem('aetheros_whiteday_native_notif_sent')) {
                         await LocalNotifications.schedule({ notifications: [{ title: '白色情人节快乐 💌', body: '今天是特别的日子，有人准备了专属惊喜等你来发现...', id: WHITEDAY_NOTIF_ID, schedule: { at: new Date(Date.now() + 1000) }, smallIcon: 'ic_stat_icon_config_sample' }] });
-                        localStorage.setItem('sullyos_whiteday_native_notif_sent', '1');
-                    } else if (now < whiteDayDate && !localStorage.getItem('sullyos_whiteday_notif_scheduled')) {
+                        localStorage.setItem('aetheros_whiteday_native_notif_sent', '1');
+                    } else if (now < whiteDayDate && !localStorage.getItem('aetheros_whiteday_notif_scheduled')) {
                         await LocalNotifications.schedule({ notifications: [{ title: '白色情人节快乐 💌', body: '今天是特别的日子，有人准备了专属惊喜等你来发现...', id: WHITEDAY_NOTIF_ID, schedule: { at: whiteDayDate }, smallIcon: 'ic_stat_icon_config_sample' }] });
-                        localStorage.setItem('sullyos_whiteday_notif_scheduled', '1');
+                        localStorage.setItem('aetheros_whiteday_notif_scheduled', '1');
                     }
                 } catch { /* native notification skipped */ }
             } catch (e) {
@@ -355,6 +352,12 @@ const PhoneShell: React.FC = () => {
 
   const bgImageValue = getBgStyle(theme.wallpaper);
   const contentColor = theme.contentColor || '#ffffff';
+  const baseStatusBarVariant = activeApp === AppID.Launcher
+      ? 'launcher'
+      : activeApp === AppID.Call || activeApp === AppID.CheckPhone
+        ? 'dark'
+        : 'app';
+  const statusBarVariant = shellStatusBarVariantOverride || baseStatusBarVariant;
 
   if (isLocked) {
     const unreadCount = Object.values(unreadMessages).reduce((a,b) => a+b, 0);
@@ -379,7 +382,7 @@ const PhoneShell: React.FC = () => {
            <div className="text-8xl tracking-tighter opacity-95 font-bold">
              {virtualTime.hours.toString().padStart(2,'0')}<span className="animate-pulse">:</span>{virtualTime.minutes.toString().padStart(2,'0')}
            </div>
-           <div className="text-lg tracking-widest opacity-90 mt-2 uppercase text-xs font-bold">SullyOS Simulation</div>
+           <div className="text-lg tracking-widest opacity-90 mt-2 uppercase text-xs font-bold">AetherOS Simulation</div>
         </div>
 
         {unreadCount > 0 && (
@@ -421,6 +424,7 @@ const PhoneShell: React.FC = () => {
       case AppID.Date: return <DateApp />; 
       case AppID.User: return <UserApp />;
       case AppID.Journal: return <JournalApp />; 
+      case AppID.CompanionPlan: return <CompanionPlanApp />;
       case AppID.Schedule: return <ScheduleApp />;
       case AppID.Room: return <RoomApp />; 
       case AppID.CheckPhone: return <CheckPhone />;
@@ -431,14 +435,13 @@ const PhoneShell: React.FC = () => {
       case AppID.Worldbook: return <WorldbookApp />;
       case AppID.Novel: return <NovelApp />; 
       case AppID.Bank: return <BankApp />;
-      case AppID.XhsStock: return <XhsStockApp />;
-      case AppID.XhsFreeRoam: return <XhsFreeRoamApp />;
       case AppID.Browser: return <BrowserApp />;
       case AppID.Songwriting: return <SongwritingApp />;
       case AppID.Call: return <CallApp />;
       case AppID.VoiceDesigner: return <VoiceDesignerApp />;
       case AppID.Guidebook: return <GuidebookApp />;
       case AppID.LifeSim: return <LifeSimApp />;
+      case AppID.Widget: return <WidgetApp />;
       case AppID.SpecialMoments: return <SpecialMomentsApp />;
       case AppID.Launcher:
       default: return <Launcher />;
@@ -483,7 +486,7 @@ const PhoneShell: React.FC = () => {
 </div>
 
           {/* Overlays: Status Bar (Top) */}
-          {!theme.hideStatusBar && <StatusBar />}
+          {!theme.hideStatusBar && <StatusBar variant={statusBarVariant} />}
           
           {/* Overlays: Suspended Call Bar */}
           {suspendedCall && activeApp !== AppID.Call && (

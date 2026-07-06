@@ -49,7 +49,7 @@ const SongwritingApp: React.FC = () => {
 
     // Write View State
     const [inputText, setInputText] = useState('');
-    const [currentSection, setCurrentSection] = useState<string>('verse');
+    const [currentSection, setCurrentSection] = useState<SongLine['section']>('verse');
     const [isTyping, setIsTyping] = useState(false);
     const [lastTokenUsage, setLastTokenUsage] = useState<number | null>(null);
     const [showStructureGuide, setShowStructureGuide] = useState(false);
@@ -862,11 +862,11 @@ const SongwritingApp: React.FC = () => {
                         <div className="mt-3 rounded-lg bg-white border border-stone-200 p-3">
                             <div className="text-[10px] text-stone-400 mb-2">自定义色调</div>
                             <div className="grid grid-cols-3 gap-2">
-                                {[
+                                {([
                                     { label: '起点', color: customCoverFrom, position: 'from' },
                                     { label: '中间', color: customCoverVia, position: 'via' },
                                     { label: '终点', color: customCoverTo, position: 'to' }
-                                ].map(item => (
+                                ] as const).map(item => (
                                     <label key={item.label} className="text-[10px] text-stone-400 space-y-1">
                                         <span className="block">{item.label}</span>
                                         <input
@@ -1244,7 +1244,7 @@ const SongwritingApp: React.FC = () => {
                     {/* Section Selector */}
                     <div className="flex gap-1.5 px-4 py-2 overflow-x-auto no-scrollbar border-b border-stone-200/60">
                         {Object.entries(SECTION_LABELS).map(([key, info]) => (
-                            <button key={key} onClick={() => setCurrentSection(key)} className={`px-2.5 py-1 rounded text-[10px] whitespace-nowrap transition-all ${currentSection === key ? 'bg-stone-700 text-stone-50 font-medium' : 'text-stone-400 hover:bg-stone-200/50'}`}>
+                            <button key={key} onClick={() => setCurrentSection(key as SongLine['section'])} className={`px-2.5 py-1 rounded text-[10px] whitespace-nowrap transition-all ${currentSection === key ? 'bg-stone-700 text-stone-50 font-medium' : 'text-stone-400 hover:bg-stone-200/50'}`}>
                                 {info.label}
                             </button>
                         ))}

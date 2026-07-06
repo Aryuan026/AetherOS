@@ -1,5 +1,5 @@
 /**
- * 🎭 SullyOS Brain Client
+ * AetherOS Brain Client
  *
  * 小手机端的外置大脑调用模块
  * 负责：判断是否需要外置大脑 + 调用API + 包装结果

@@ -4,6 +4,20 @@ import { Worldbook } from '../types';
 import Modal from '../components/os/Modal';
 import { DiamondsFour, BookOpen } from '@phosphor-icons/react';
 
+const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
+const worldbookCollator = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+
+const compareWorldbooks = (a: Worldbook, b: Worldbook) => (
+    worldbookCollator.compare(a.title, b.title) ||
+    worldbookCollator.compare(a.id, b.id)
+);
+
+const compareCategories = (a: string, b: string) => {
+    if (a === '深空世界书' && b !== '深空世界书') return -1;
+    if (b === '深空世界书' && a !== '深空世界书') return 1;
+    return worldbookCollator.compare(a, b);
+};
+
 const WorldbookApp: React.FC = () => {
     const { closeApp, worldbooks, addWorldbook, updateWorldbook, deleteWorldbook, addToast } = useOS();
     
@@ -19,23 +33,28 @@ const WorldbookApp: React.FC = () => {
     const [tempCategory, setTempCategory] = useState('');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+    const isBuiltInBook = (book?: Worldbook | null) => Boolean(book?.isBuiltIn || book?.lockEditing);
+
     // Grouping Logic
     const groupedBooks = useMemo(() => {
         const groups: Record<string, Worldbook[]> = {};
-        const defaultCat = '未分类设定 (General)';
         
         worldbooks.forEach(wb => {
-            const cat = wb.category || defaultCat;
+            const cat = wb.category || DEFAULT_WORLDBOOK_CATEGORY;
             if (!groups[cat]) groups[cat] = [];
             groups[cat].push(wb);
         });
+
+        Object.values(groups).forEach(books => books.sort(compareWorldbooks));
         
         // Auto-expand the first category if none selected and groups exist
         if (!expandedCategory && Object.keys(groups).length > 0) {
             // setExpandedCategory(Object.keys(groups)[0]); // Optional: Auto open first
         }
         
-        return groups;
+        return Object.fromEntries(
+            Object.entries(groups).sort(([categoryA], [categoryB]) => compareCategories(categoryA, categoryB))
+        );
     }, [worldbooks]);
 
     const handleCreate = () => {
@@ -47,6 +66,11 @@ const WorldbookApp: React.FC = () => {
     };
 
     const handleEdit = (book: Worldbook) => {
+        if (isBuiltInBook(book)) {
+            setPreviewBookId(book.id);
+            addToast('内置世界书只读，可查看内容', 'info');
+            return;
+        }
         setEditingBook(book);
         setTempTitle(book.title);
         setTempContent(book.content);
@@ -63,6 +87,11 @@ const WorldbookApp: React.FC = () => {
         const category = tempCategory.trim() || '未分类设定 (General)';
 
         if (editingBook) {
+            if (isBuiltInBook(editingBook)) {
+                addToast('内置世界书只读，不能编辑', 'info');
+                setIsEditing(false);
+                return;
+            }
             await updateWorldbook(editingBook.id, {
                 title: tempTitle,
                 content: tempContent,
@@ -86,6 +115,10 @@ const WorldbookApp: React.FC = () => {
 
     const requestDelete = (e: React.MouseEvent, book: Worldbook) => {
         e.stopPropagation();
+        if (isBuiltInBook(book)) {
+            addToast('内置世界书只读，不能删除', 'info');
+            return;
+        }
         setEditingBook(book);
         setShowDeleteConfirm(true);
     };
@@ -213,11 +246,17 @@ const WorldbookApp: React.FC = () => {
                         </div>
 
                         {/* Group Items */}
-                        <div className={`space-y-3 pl-2 transition-all duration-300 overflow-hidden ${expandedCategory === category ? 'max-h-[1000px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
-                            {books.map(book => (
+                        <div
+                            className={`space-y-3 pl-2 transition-all duration-300 overflow-hidden ${expandedCategory === category ? 'opacity-100 mt-2' : 'max-h-0 opacity-0'}`}
+                            style={{ maxHeight: expandedCategory === category ? 'none' : 0 }}
+                        >
+                            {books.map(book => {
+                                const builtIn = isBuiltInBook(book);
+
+                                return (
                                 <div key={book.id} className="bg-white/60 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                                     {/* Item Header */}
-                                    <div 
+                                    <div
                                         onClick={() => togglePreview(book.id)}
                                         className="p-4 cursor-pointer flex justify-between items-start"
                                     >
@@ -226,27 +265,31 @@ const WorldbookApp: React.FC = () => {
                                                 <div className={`w-1.5 h-1.5 rounded-full ${previewBookId === book.id ? 'bg-indigo-400' : 'bg-slate-300'}`}></div>
                                                 <h4 className={`text-sm font-bold truncate transition-colors ${previewBookId === book.id ? 'text-indigo-700' : 'text-slate-700'}`}>{book.title}</h4>
                                             </div>
-                                            <div className="text-[10px] text-slate-400 font-mono pl-3.5">
-                                                Updated: {new Date(book.updatedAt).toLocaleDateString()}
+                                            <div className="text-[10px] text-slate-400 pl-3.5">
+                                                {builtIn ? '内置 · 点击查看内容' : `Updated: ${new Date(book.updatedAt).toLocaleDateString()}`}
                                             </div>
                                         </div>
                                         
-                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleEdit(book); }} 
-                                                className="p-2 rounded-full hover:bg-white text-slate-400 hover:text-indigo-600 transition-colors"
-                                                title="编辑"
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                                            </button>
-                                            <button 
-                                                onClick={(e) => requestDelete(e, book)} 
-                                                className="p-2 rounded-full hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
-                                                title="删除"
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                                            </button>
-                                        </div>
+                                        {builtIn ? (
+                                            <span className="shrink-0 text-[10px] bg-indigo-50 text-indigo-500 px-2 py-1 rounded-full font-bold">内置</span>
+                                        ) : (
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleEdit(book); }}
+                                                    className="p-2 rounded-full hover:bg-white text-slate-400 hover:text-indigo-600 transition-colors"
+                                                    title="编辑"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                                                </button>
+                                                <button
+                                                    onClick={(e) => requestDelete(e, book)}
+                                                    className="p-2 rounded-full hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
+                                                    title="删除"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Expanded Content Preview */}
@@ -259,7 +302,8 @@ const WorldbookApp: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 ))}

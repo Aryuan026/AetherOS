@@ -9,8 +9,8 @@
 | 框架 | React 18 + Vite 5 |
 | 平台 | Web + Android（Capacitor 6） |
 | 聊天 API | `safeFetchJson` → OpenAI 兼容 `/chat/completions`，**非流式**（`stream: false`） |
-| 现有 Worker | `worker/index.js`（Cloudflare Worker，做 API 代理/搜索/小红书桥接） |
-| Service Worker | **无** |
+| 现有 Worker | 已移除旧 Cloudflare 代理，当前不依赖外部 worker |
+| Service Worker | 本地 `sw-keep-alive` 已接入，用于长请求保活和本地主动计时 |
 | 后台处理 | **无** |
 
 **关键特征**：每次聊天请求是一个普通的 `fetch` POST，等待完整 JSON 返回。耗时可能几秒到几十秒。非流式意味着我们只需要保证这个 fetch 能完成即可，不需要维持长连接。

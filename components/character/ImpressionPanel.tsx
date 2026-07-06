@@ -77,14 +77,14 @@ const ImpressionPanel: React.FC<ImpressionPanelProps> = ({ impression, isGenerat
                     </svg>
                 </div>
                 <div>
-                    <h3 className="text-lg font-bold text-slate-700">尚未生成印象档案</h3>
-                    <p className="text-sm text-slate-400 mt-2 max-w-xs mx-auto">让 AI 回顾你们的长期记忆和近期互动，生成一份角色视角下的私密印象档案。</p>
+                    <h3 className="text-lg font-bold text-slate-700">尚未生成关系印象</h3>
+                    <p className="text-sm text-slate-400 mt-2 max-w-xs mx-auto">让他回望你们的长期记忆和近期互动，整理一份只属于这段关系的私密印象。</p>
                 </div>
                 <button
                     onClick={() => onGenerate('initial')}
                     className="px-8 py-3 bg-indigo-600 text-white rounded-full font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
                 >
-                    开始深度分析
+                    开始整理
                 </button>
             </div>
         );
@@ -97,8 +97,8 @@ const ImpressionPanel: React.FC<ImpressionPanelProps> = ({ impression, isGenerat
                     <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
                     <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
-                <p className="text-sm text-slate-500 font-medium animate-pulse">正在整理你们的长期互动印象...</p>
-                <p className="text-xs text-slate-400">构建思维侧写 / 梳理情绪轨迹</p>
+                <p className="text-sm text-slate-500 font-medium animate-pulse">正在整理你们的关系印象...</p>
+                <p className="text-xs text-slate-400">回看相处细节 / 梳理靠近的方式</p>
             </div>
         );
     }
@@ -121,7 +121,7 @@ const ImpressionPanel: React.FC<ImpressionPanelProps> = ({ impression, isGenerat
 
             <div className="relative bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-6 text-white shadow-lg overflow-hidden">
                 <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
-                <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3">核心印象</h3>
+                <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3">心底印象</h3>
                 <p className="text-lg font-light leading-relaxed italic opacity-95">"{safeImpression.personality_core.summary}"</p>
 
                 <div className="mt-6 pt-4 border-t border-white/20 grid grid-cols-2 gap-4">
@@ -224,8 +224,8 @@ const ImpressionPanel: React.FC<ImpressionPanelProps> = ({ impression, isGenerat
             {showDeleteConfirm && (
                 <div className="fixed inset-0 z-[999] bg-black/40 backdrop-blur-sm flex items-center justify-center px-6">
                     <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl">
-                        <div className="text-base font-bold text-slate-700">删除印象档案？</div>
-                        <p className="mt-2 text-sm text-slate-500 leading-relaxed">这份深度分析报告将被彻底删除，删除后可以重新生成。</p>
+                        <div className="text-base font-bold text-slate-700">删除关系印象？</div>
+                        <p className="mt-2 text-sm text-slate-500 leading-relaxed">这份关系印象将被彻底删除，删除后可以重新整理。</p>
                         <div className="mt-5 flex gap-3">
                             <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-2.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm">取消</button>
                             <button onClick={() => { setShowDeleteConfirm(false); onDelete?.(); }} className="flex-1 py-2.5 rounded-2xl bg-red-500 text-white font-bold text-sm shadow-lg shadow-red-200">删除</button>
