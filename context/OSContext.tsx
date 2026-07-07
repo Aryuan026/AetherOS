@@ -5,6 +5,7 @@ import { DB } from '../utils/db';
 import { normalizeCharacterImpression } from '../utils/impression';
 import { loadAutoMemorySettings, loadMemoryDMSettings, runAutoMemoryPass, runMemoryDMPass } from '../utils/memoryCore';
 import { DEEP_SPACE_CHAT_APPEARANCE, DEFAULT_QIYU_AVATAR } from '../components/chat/ChatConstants';
+import { normalizePublicAssetUrl } from '../utils/publicAssets';
 import { useCompanionWakeupRuntime } from '../hooks/useCompanionWakeupRuntime';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
@@ -250,6 +251,22 @@ const BUILT_IN_CHARACTER_DISPLAY_ORDER = new Map<string, number>([
     [CALEB_BUILT_IN_ID, 4],
 ]);
 const QIYU_STARTER_SEED_ID = 'qiyu-sms-intro-v1';
+
+const normalizeStoredThemeAssets = (theme: OSTheme): OSTheme => ({
+    ...theme,
+    chatBackgroundImage: normalizePublicAssetUrl(theme.chatBackgroundImage),
+    launcherWidgetImage: normalizePublicAssetUrl(theme.launcherWidgetImage),
+    launcherWidgets: theme.launcherWidgets
+        ? Object.fromEntries(
+            Object.entries(theme.launcherWidgets).map(([slot, value]) => [slot, normalizePublicAssetUrl(value)])
+        )
+        : theme.launcherWidgets,
+});
+
+const normalizeBuiltInAvatar = (existingAvatar: string | undefined, defaultAvatar: string): string => {
+    if (!existingAvatar || existingAvatar.startsWith('/assets/aetheros/')) return defaultAvatar;
+    return normalizePublicAssetUrl(existingAvatar);
+};
 const USER_HUNTER_CIRCLE_WORLDBOOK_ID = 'builtin-deepspace-user-circle';
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
     'builtin-deepspace-optional-male-leads-npc-index',
@@ -1259,6 +1276,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             console.error("Failed to load assets from DB", e);
         }
 
+        loadedTheme = normalizeStoredThemeAssets(loadedTheme);
         setTheme(loadedTheme);
         // Apply font
         applyCustomFont(loadedTheme.customFont);
@@ -1312,7 +1330,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 const updatedBuiltIn = {
                     ...existing,
                     name: builtIn.name,
-                    avatar: existing.avatar || builtIn.avatar,
+                    avatar: normalizeBuiltInAvatar(existing.avatar, builtIn.avatar),
                     description: builtIn.description,
                     chatSignature: existing.chatSignature || builtIn.chatSignature,
                     chatSignatureAiEditable: builtIn.chatSignatureAiEditable ?? existing.chatSignatureAiEditable,

@@ -1,6 +1,7 @@
 import { CharacterProfile } from '../types';
 import { DB } from './db';
 import { processImage } from './file';
+import { publicAsset } from './publicAssets';
 
 export type CharacterWidgetImage = {
     id: string;
@@ -28,14 +29,14 @@ export const CHARACTER_WIDGET_CONFIG_ASSET_ID = 'aetheros_character_widget_confi
 export const MAX_CUSTOM_WIDGET_IMAGES_PER_CHARACTER = 24;
 
 const XAVIER_WIDGET_EXTENSION = {
-    backgroundSrc: '/assets/aetheros/widgets/xavier/xavier-widget-001-strip.jpg',
-    fillLeftSrc: '/assets/aetheros/widgets/xavier/xavier-widget-001-fill-left.jpg',
-    fillRightSrc: '/assets/aetheros/widgets/xavier/xavier-widget-001-fill-right.jpg',
+    backgroundSrc: publicAsset('assets/aetheros/widgets/xavier/xavier-widget-001-strip.jpg'),
+    fillLeftSrc: publicAsset('assets/aetheros/widgets/xavier/xavier-widget-001-fill-left.jpg'),
+    fillRightSrc: publicAsset('assets/aetheros/widgets/xavier/xavier-widget-001-fill-right.jpg'),
 };
 
 const xavierWidget = (index: number): CharacterWidgetImage => ({
     id: `builtin-xavier-widget-${String(index).padStart(3, '0')}`,
-    src: `/assets/aetheros/widgets/xavier/xavier-widget-${String(index).padStart(3, '0')}.jpg`,
+    src: publicAsset(`assets/aetheros/widgets/xavier/xavier-widget-${String(index).padStart(3, '0')}.jpg`),
     ...XAVIER_WIDGET_EXTENSION,
     fit: 'height',
     source: 'builtin',

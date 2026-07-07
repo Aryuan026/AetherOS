@@ -1,9 +1,10 @@
 
 import type React from 'react';
 import { ChatTheme, OSTheme, BubbleStyle } from '../../types';
+import { publicAsset } from '../../utils/publicAssets';
 
-export const DEFAULT_CHAT_BACKGROUND_IMAGE = '/assets/aetheros/chat-default-bg.jpg';
-export const DEFAULT_QIYU_AVATAR = '/assets/aetheros/qiyu-avatar.jpg';
+export const DEFAULT_CHAT_BACKGROUND_IMAGE = publicAsset('assets/aetheros/chat-default-bg.jpg');
+export const DEFAULT_QIYU_AVATAR = publicAsset('assets/aetheros/qiyu-avatar.jpg');
 export const DEEP_SPACE_APPEARANCE_PRESET_ID = 'deep-space';
 export const CUSTOM_APPEARANCE_PRESET_ID = 'custom';
 const LEGACY_MOONLIT_PRESET_ID = 'moonlit';

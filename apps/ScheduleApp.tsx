@@ -13,8 +13,9 @@ import {
     getDaysUntilTimebookDate,
     sortTimebookAnniversaries,
 } from '../utils/timebook';
+import { publicAsset } from '../utils/publicAssets';
 
-const TIMEBOOK_BACKGROUND = '/assets/aetheros/timebook-desk-bg.png';
+const TIMEBOOK_BACKGROUND = publicAsset('assets/aetheros/timebook-desk-bg.png');
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type TimebookMemoryRow = Anniversary & {
