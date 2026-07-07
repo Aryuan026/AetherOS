@@ -1325,12 +1325,20 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 await DB.saveCharacter(builtIn);
                 finalChars = [...finalChars, builtIn];
                 await seedBuiltInStarterMessages(builtIn.id);
-            } else if (!existing.isBuiltIn || !existing.lockPromptEditing || existing.builtInVersion !== builtIn.builtInVersion) {
+            } else {
+                const normalizedAvatar = normalizeBuiltInAvatar(existing.avatar, builtIn.avatar);
+                const needsBuiltInRefresh = !existing.isBuiltIn ||
+                    !existing.lockPromptEditing ||
+                    existing.builtInVersion !== builtIn.builtInVersion ||
+                    normalizedAvatar !== existing.avatar;
+
+                if (!needsBuiltInRefresh) continue;
+
                 const normalizedBubbleStyle = normalizeBuiltInBubbleStyle(existing.bubbleStyle);
                 const updatedBuiltIn = {
                     ...existing,
                     name: builtIn.name,
-                    avatar: normalizeBuiltInAvatar(existing.avatar, builtIn.avatar),
+                    avatar: normalizedAvatar,
                     description: builtIn.description,
                     chatSignature: existing.chatSignature || builtIn.chatSignature,
                     chatSignatureAiEditable: builtIn.chatSignatureAiEditable ?? existing.chatSignatureAiEditable,
