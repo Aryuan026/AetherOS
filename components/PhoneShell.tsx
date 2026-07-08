@@ -176,7 +176,7 @@ const DisclaimerPopup: React.FC<{ onAccept: () => void }> = ({ onAccept }) => (
         <ul className="text-[12px] text-slate-500 leading-relaxed space-y-1.5 list-none">
           <li className="flex gap-2"><span className="shrink-0">•</span><span>内置角色/预设可能包含同人化整理与再创作，不代表原作品官方立场；相关权利归原权利方所有。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>禁止出售、转卖、付费分发、付费定制、商业平台运营、引流变现，或伪装为官方/授权内容。</span></li>
-          <li className="flex gap-2"><span className="shrink-0">•</span><span>感谢原 SullyOS 项目，以及 README 中鸣谢的 ReiStandard / 主动消息 2.0 相关工作。</span></li>
+          <li className="flex gap-2"><span className="shrink-0">•</span><span>感谢原 SullyOS 项目提供的开源基础；本版本的主动来信、记忆递送与界面改造由 AetherOS 分支维护。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>本软件不提供任何明示或暗示的担保，原作者与改造维护者均不对使用本软件产生的任何后果承担责任。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>用户应自行承担使用本软件的一切风险，包括但不限于数据丢失、设备损坏等。</span></li>
           <li className="flex gap-2"><span className="shrink-0">•</span><span>本软件生成的任何 AI 内容均不代表作者立场，用户需自行判断内容的准确性与合规性。</span></li>

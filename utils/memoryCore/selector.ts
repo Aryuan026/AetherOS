@@ -1,7 +1,10 @@
 import type { Anniversary, MemoryFragment, Message } from '../../types';
 import { DB } from '../db';
+import { classifyWorldlineDelivery, extractMemorySearchTerms } from './deliveryProfile';
+import { formatHotStatePrompt, resolveWorldlineHotState } from './hotState';
 import { formatWorldlinePromptBlock } from './promptFormatter';
 import { recordWorldlineMemoryReceipt } from './receipts';
+import { formatVoiceCorePrompt, loadCharacterVoiceCore } from './voiceCore';
 import type {
   ContinuityScope,
   KnowledgeScope,
@@ -23,6 +26,7 @@ const modeOrigin: Record<WorldlinePromptMode, MemoryOrigin> = {
   date_scene: 'date_scene',
   proactive_letter: 'proactive_letter',
   timebook: 'timebook',
+  call: 'daily_chat',
 };
 
 const modeContinuity: Record<WorldlinePromptMode, ContinuityScope> = {
@@ -31,6 +35,7 @@ const modeContinuity: Record<WorldlinePromptMode, ContinuityScope> = {
   date_scene: 'branch',
   proactive_letter: 'relationship',
   timebook: 'relationship',
+  call: 'relationship',
 };
 
 const normalize = (value: unknown): string => String(value || '').replace(/\s+/g, ' ').trim();
@@ -104,7 +109,7 @@ const buildCharacterMemoryCandidates = (
   [...memories]
     .filter(memory => !!normalize(memory.summary))
     .sort((a, b) => normalize(b.date).localeCompare(normalize(a.date)))
-    .slice(0, 3)
+    .slice(0, 40)
     .map((memory, index) => ({
       id: `character-memory:${memory.id}`,
       charId,
@@ -117,7 +122,7 @@ const buildCharacterMemoryCandidates = (
       happenedAt: normalize(memory.date) || undefined,
       sourceRefs: [{ kind: 'character_memory', id: memory.id, label: memory.mood || 'memory' }],
       tags: ['character_memory', memory.mood || 'memory'],
-      weight: 0.78 - index * 0.04,
+      weight: 0.78 - Math.min(index, 20) * 0.015,
     }))
 );
 
@@ -197,10 +202,95 @@ const buildOpenThreads = (
   return threads.slice(0, 2);
 };
 
+const dateRecencyBoost = (date?: string): number => {
+  if (!date) return 0;
+  const timestamp = new Date(date).getTime();
+  if (Number.isNaN(timestamp)) return 0;
+  const days = Math.abs(Date.now() - timestamp) / 86_400_000;
+  if (days <= 3) return 0.18;
+  if (days <= 14) return 0.12;
+  if (days <= 45) return 0.06;
+  return 0;
+};
+
+const candidateSearchText = (candidate: WorldlineMemoryCandidate): string => (
+  `${candidate.title} ${candidate.summary} ${candidate.happenedAt || ''} ${(candidate.tags || []).join(' ')}`
+).toLowerCase();
+
+const modeBoost = (candidate: WorldlineMemoryCandidate, mode: WorldlinePromptMode): number => {
+  if (mode === 'proactive_letter') {
+    if (candidate.knowledge === 'char_private') return 0.2;
+    if (candidate.origin === 'calendar') return 0.18;
+    if (candidate.tags?.includes('recent')) return 0.08;
+    return 0;
+  }
+  if (mode === 'meet_scene' || mode === 'date_scene') {
+    if (candidate.continuity === 'branch') return 0.18;
+    if (candidate.origin === 'timebook') return 0.14;
+    if (candidate.tags?.includes('character_memory')) return 0.08;
+    return 0;
+  }
+  if (mode === 'timebook') {
+    if (candidate.origin === 'timebook') return 0.24;
+    if (candidate.status === 'confirmed') return 0.12;
+    return -0.08;
+  }
+  if (mode === 'call') {
+    if (candidate.knowledge === 'char_private') return 0.16;
+    if (candidate.tags?.includes('recent')) return 0.12;
+    return 0;
+  }
+  return candidate.knowledge === 'char_private' ? 0.1 : 0;
+};
+
+const scoreCandidate = (
+  candidate: WorldlineMemoryCandidate,
+  queryTerms: string[],
+  query: string,
+  mode: WorldlinePromptMode,
+): WorldlineMemoryCandidate => {
+  const haystack = candidateSearchText(candidate);
+  const exactQuery = normalize(query).toLowerCase();
+  const termScore = queryTerms.reduce((sum, term) => {
+    if (!haystack.includes(term)) return sum;
+    return sum + (term.length >= 4 ? 0.18 : 0.09);
+  }, 0);
+  const exactBoost = exactQuery.length >= 4 && haystack.includes(exactQuery) ? 0.35 : 0;
+  const statusBoost = candidate.status === 'confirmed' ? 0.08 : candidate.status === 'soft_canon' ? 0.04 : 0;
+  return {
+    ...candidate,
+    weight: candidate.weight
+      + termScore
+      + exactBoost
+      + dateRecencyBoost(candidate.happenedAt)
+      + statusBoost
+      + modeBoost(candidate, mode),
+  };
+};
+
+const dedupeCandidates = (candidates: WorldlineMemoryCandidate[]): WorldlineMemoryCandidate[] => {
+  const seen = new Set<string>();
+  const result: WorldlineMemoryCandidate[] = [];
+  candidates.forEach(candidate => {
+    const semanticKey = `${normalize(candidate.title).toLowerCase()}::${normalize(candidate.summary).slice(0, 48).toLowerCase()}`;
+    const key = candidate.id || semanticKey;
+    if (seen.has(key) || seen.has(semanticKey)) return;
+    seen.add(key);
+    seen.add(semanticKey);
+    result.push(candidate);
+  });
+  return result;
+};
+
 export const selectWorldlineMemoryContext = async (
   input: WorldlineSelectorInput,
 ): Promise<WorldlinePromptContext> => {
-  const budgetChars = input.budgetChars ?? DEFAULT_BUDGET;
+  const deliveryProfile = classifyWorldlineDelivery({
+    mode: input.mode,
+    query: input.query,
+    budgetChars: input.budgetChars ?? DEFAULT_BUDGET,
+  });
+  const budgetChars = deliveryProfile.budgetChars;
   const warnings: string[] = [];
   let messages = input.currentMessages || [];
 
@@ -228,7 +318,7 @@ export const selectWorldlineMemoryContext = async (
       .filter(item => item.charId === input.char.id)
       .map(candidateFromAnniversary)
       .sort((a, b) => (b.happenedAt || '').localeCompare(a.happenedAt || ''))
-      .slice(0, 2);
+      .slice(0, 24);
     candidates.push(...charAnniversaries);
   } catch (error) {
     warnings.push(`anniversaries_unavailable:${error instanceof Error ? error.message : 'unknown'}`);
@@ -237,15 +327,44 @@ export const selectWorldlineMemoryContext = async (
   candidates.push(...buildCharacterMemoryCandidates(input.char.id, input.char.memories));
   candidates.push(...buildRecentIntersectionCandidates(input.char.id, messages, input.mode));
 
-  const openThreads = buildOpenThreads(messages, input.mode);
-  const uniqueCandidates = [...new Map(
+  const queryTerms = extractMemorySearchTerms(input.query);
+  const openThreads = buildOpenThreads(messages, input.mode)
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, deliveryProfile.openThreadLimit);
+  const uniqueCandidates = dedupeCandidates(
     candidates
       .filter(item => item.status !== 'discarded')
-      .sort((a, b) => b.weight - a.weight)
-      .map(item => [item.id, item]),
-  ).values()].slice(0, 4);
+      .map(item => scoreCandidate(item, queryTerms, input.query || '', input.mode))
+      .sort((a, b) => b.weight - a.weight),
+  ).slice(0, deliveryProfile.candidateLimit);
 
-  const markdown = formatWorldlinePromptBlock(uniqueCandidates, openThreads, budgetChars);
+  const [hotState, voiceCore] = await Promise.all([
+    deliveryProfile.includeHotState
+      ? resolveWorldlineHotState({
+        charId: input.char.id,
+        mode: input.mode,
+        messages,
+      })
+      : Promise.resolve(null),
+    loadCharacterVoiceCore(input.char.id),
+  ]);
+
+  const voiceCorePrompt = formatVoiceCorePrompt(voiceCore, {
+    mode: input.mode,
+    query: input.query,
+    profile: deliveryProfile,
+    budgetChars: Math.min(700, Math.max(240, Math.floor(budgetChars * 0.38))),
+  });
+  const hotStateMarkdown = formatHotStatePrompt(
+    hotState,
+    Math.min(520, Math.max(220, Math.floor(budgetChars * 0.3))),
+  );
+
+  const markdown = formatWorldlinePromptBlock(uniqueCandidates, openThreads, budgetChars, {
+    deliveryProfile,
+    hotStateMarkdown,
+    voiceCoreMarkdown: voiceCorePrompt.markdown,
+  });
 
   const context: WorldlinePromptContext = {
     markdown,
@@ -253,6 +372,9 @@ export const selectWorldlineMemoryContext = async (
     openThreads,
     budgetChars,
     warnings,
+    deliveryProfile,
+    hotState,
+    voiceLineTitles: voiceCorePrompt.usedLines.map(line => line.tags?.[0] || line.kind).slice(0, 8),
   };
 
   recordWorldlineMemoryReceipt(input, context);

@@ -1,5 +1,124 @@
 # AetherOS Progress
 
+## 2026-07-08 Runtime Test Follow-Up
+
+- done:
+  - Confirmed local API and built-in sticker packs can be used in the current
+    test flow.
+  - Loosened consecutive assistant/char bubble spacing so stacked replies are
+    less cramped without changing user-bubble rhythm.
+  - Added chat-side visibility for the current character's `主动来信` heartbeat:
+    the reply-mode panel now shows the next scheduled wakeup time and includes a
+    local `试亮一次` probe that writes a visible companion-wakeup message without
+    changing the formal schedule.
+  - Tightened automatic timebook candidate detection so casual lines like
+    `你喜欢就好` no longer become relationship timeline nodes by keyword alone.
+  - Added MemoryDM routing guidance for phone calls: call atmosphere and
+    background sounds are call texture, not timebook nodes unless the call is
+    itself a relationship milestone.
+  - Kept the phone-call scene text model-generated, while adding an anti-repeat
+    instruction so opening ambience should vary by time/place/mood instead of
+    fossilizing into one fixed water-sound scene.
+  - Made `记忆回声` receipt previews shorter and renamed the raw fragment area to
+    `递送摘记` for human-facing inspection.
+  - Expanded default natural wakeup coverage beyond afternoon/night by adding a
+    daytime `09:30-12:00` heartbeat window while preserving old heartbeat IDs.
+  - Added built-in care-window syncing: when `生活照看` is on and a character's
+    `主动来信` is enabled, lunch/dinner/sleep windows are materialized as real
+    companion-wakeup rules; turning care off pauses those built-in care rules
+    for active characters.
+  - Made `主动来信` act as a real acceptance boundary: enabling it also restores
+    auto reply for that character, and disabling it pauses that character's
+    heartbeat/window wakeup rules.
+  - Added live sync for already-enabled `主动来信` rules so open test windows pick
+    up newly added default daytime/care windows without requiring a manual
+    off/on cycle.
+  - Hardened chat output cleanup against fake image/history logs such as
+    `[你 发送了一张图片：...]`; these are now blocked in the prompt and stripped
+    before message chunking if the model still leaks them.
+  - Made user replies auto-trigger while `主动来信` is active even if the older
+    per-character `autoReplyEnabled` flag has not refreshed yet.
+  - Added the first Reality Sync implementation:
+    `real_anchor`, `rhythm_weather`, and `fiction_free` modes; user-only vs
+    shared-echo weather boundaries; and soft/direct/off care boundaries.
+  - Added a shared `realitySync` prompt layer that sits after character/memory
+    context and before app-format rules, so time/weather are interpreted as
+    world rules rather than loose chat facts.
+  - Added lightweight weather-suspension state in localStorage. Weather changes
+    now become short-lived prompt hooks only when weather type changes or
+    temperature shifts noticeably, with cooldown to avoid weather-broadcast
+    repetition.
+  - Wired Reality Sync into chat, AI-rendered proactive letters, and phone calls.
+  - Updated Settings and README with the new Reality Sync controls/feature note.
+
+- pending:
+  - Observe a real scheduled `主动来信` after the next heartbeat window and user
+    cooldown. Current runtime still skips heartbeat if the user has sent a real
+    message within the recent quiet window.
+  - Add a clearer distinction between "memory was written" and "memory was
+    delivered to this prompt"; delivery receipts are visible, but MemoryDM
+    candidate/apply records still need their own friendly inspector.
+  - After this testing round, remove/quarantine remaining ActiveMsg2/Rei client,
+    Netlify function, package, type, and OSContext listener remnants before the
+    next public push.
+
+- verified:
+  - `npm exec tsc -- --noEmit` passed.
+  - `npm run build` passed. Vite still reports the existing large-bundle warning.
+  - `git diff --check` passed.
+
+## 2026-07-07 Memory Delivery Contract
+
+- done:
+  - Added `docs/MEMORY_DELIVERY_CONTRACT.md` as the next memory-system
+    implementation contract before adding more code.
+  - Defined how stable base context, character voice core, worldline hot state,
+    relationship memory, story material, calendar care, and retrieval packets
+    should be combined per AI-facing surface.
+  - Recorded the planned `藏好的话` warehouse as three separate classes:
+    directly-sendable proactive lines, rewrite seeds, and non-quoted language
+    fingerprints for role voice/personality calibration.
+  - Recorded the need for a short-lived per-character worldline hot-state layer
+    so chat, proactive letters, calls, and meeting scenes can reflect the
+    character's ongoing parallel-world life.
+  - Updated `PLAN.md` and `SCHEMA.md` so future implementation can be checked
+    against the same delivery contract.
+  - Added the first code slice for the contract:
+    `deliveryProfile`, `voiceCore`, and `hotState` modules under
+    `utils/memoryCore/`.
+  - Upgraded `selectWorldlineMemoryContext()` to classify delivery depth,
+    score candidates with query terms, dedupe results, apply surface budgets,
+    and include voice fingerprints / hot-state packets in the prompt block.
+  - Added local asset readers for `aetheros_voice_core_${charId}` and
+    `aetheros_worldline_hot_state_${charId}`, with compatibility fallbacks for
+    earlier planning keys.
+  - Wired the new memory delivery pipeline into calendar wakeup rendering and
+    the phone-call surface. Chat, proactive letters, and meeting/date already
+    use the shared selector and now receive the upgraded packets automatically.
+  - Extended `记忆回声` receipts with delivery tier, hot-state presence, and
+    voice-fingerprint count so runtime tests can verify what entered the prompt.
+  - Updated the first-run open-source notice and README wording so user-facing
+    attribution no longer implies ReiStandard / Active Message 2.0 is the
+    current proactive-letter main path. The current visible path is AetherOS
+    `companion_wakeups` plus the memory delivery chain.
+
+- pending:
+  - Add a user-facing/local import path for real `藏好的话` voice packs after the
+    voice data format from the companion scraping window settles.
+  - Add a visible editor or passive inspector for saved worldline hot state if
+    real testing shows the derived fallback is too opaque.
+  - Surface MemoryDM candidate/apply records beside delivery receipts so users
+    can distinguish "it remembered" from "it used this memory".
+  - Audit and remove or quarantine remaining ActiveMsg2/Rei client, Netlify
+    function, package, type, and OSContext listener remnants before the next
+    public push if they are no longer part of the AetherOS runtime.
+  - Keep vector recall as a later optional augmentation after scoped keyword
+    delivery is testable.
+
+- verified:
+  - `npm run build` passed. Vite still reports the existing large-bundle warning.
+  - `git diff --check` passed.
+
 ## 2026-07-06 AetherOS Naming / Health Check
 
 - done:

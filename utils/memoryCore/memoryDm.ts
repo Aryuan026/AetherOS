@@ -1,5 +1,5 @@
 import type { Anniversary, APIConfig, CharacterProfile, CompanionWakeupRule, MemoryFragment, Message, UserProfile } from '../../types';
-import { loadCompanionWakeupSettings, parseClockMinutes, scheduleNextCompanionWakeup } from '../companionWakeups';
+import { loadCompanionWakeupSettings, parseClockMinutes, resolveCompanionWakeupMode, scheduleNextCompanionWakeup } from '../companionWakeups';
 import { DB } from '../db';
 import { safeResponseJson } from '../safeApi';
 
@@ -314,7 +314,7 @@ const buildCalendarWakeupRule = (charId: string, candidate: MemoryDMCandidate): 
   if (targetDateIsExpired(targetDate, window.end)) return null;
 
   const now = Date.now();
-  const mode = loadCompanionWakeupSettings().defaultMode;
+  const mode = resolveCompanionWakeupMode(loadCompanionWakeupSettings(), { lines: [candidate.summary || candidate.title || '日历提醒'] });
   const title = candidate.title || candidate.summary.slice(0, 18) || '日历提醒';
   const summary = candidate.summary || title;
   const rule: CompanionWakeupRule = {
@@ -372,6 +372,11 @@ ${lines}
 4. relationship_impression：对关系印象的候选更新。只做候选，不直接覆盖。
 5. story_seed：可供未来剧情/见面/咨询台使用的支线素材、传闻、伏笔。只做候选，不当成事实。
 6. discard：无需写入或重复的信息。
+
+通话分流：
+- 通话里的括号、背景声、水声、走路声等只代表当时通话气氛；不要因为它们单独生成 timebook_node。
+- 如果通话里出现值得记住的暧昧反应、口头习惯或用户偏好，优先写入 character_memory。
+- 只有通话本身成为明确关系节点（第一次通话、约定、告白、纪念日、重大转折）时，才允许生成 timebook_node。
 
 去重原则：
 - 已有记忆里明显相同的，不要重复生成。

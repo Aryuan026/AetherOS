@@ -241,10 +241,10 @@ const MessageItem = React.memo(({
         ? 'pointer-events-none absolute top-full mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity'
         : 'mt-1';
     const spacingClass = messageSpacing === 'compact'
-        ? (isLastInGroup ? 'mb-2' : 'mb-0.5')
+        ? (isLastInGroup ? 'mb-2' : (isUser ? 'mb-1' : 'mb-2.5'))
         : messageSpacing === 'spacious'
-          ? (isLastInGroup ? 'mb-8' : 'mb-2.5')
-          : (isLastInGroup ? 'mb-5' : 'mb-1');
+          ? (isLastInGroup ? 'mb-8' : (isUser ? 'mb-2.5' : 'mb-4'))
+          : (isLastInGroup ? 'mb-5' : (isUser ? 'mb-1.5' : 'mb-3'));
     const marginBottom = spacingClass;
     const visualBubbleVariant = activeTheme.id === 'wechat' && bubbleVariant === 'square' ? 'wechat' : bubbleVariant;
     const isWechatBubble = visualBubbleVariant === 'wechat';

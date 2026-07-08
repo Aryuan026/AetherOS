@@ -17,12 +17,62 @@ import { synthesizeSpeech, cleanTextForTts } from '../utils/minimaxTts';
 import { getVisibleEmojiScopeForCharacter } from '../utils/emojiVisibility';
 import {
     DEFAULT_DIRECT_LINES,
-    createDefaultHeartbeatRules,
     loadCompanionWakeupSettings,
+    pickDirectWakeupLine,
+    resolveCompanionWakeupMode,
     scheduleNextCompanionWakeup,
 } from '../utils/companionWakeups';
+import { mergeDefaultHeartbeatRules, syncBuiltInCareWakeupRules } from '../utils/companionWakeupRules';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
+
+type CompanionWakeupStatus = {
+    active: boolean;
+    enabledCount: number;
+    nextTriggerAt?: number;
+    nextTitle?: string;
+};
+
+const emptyCompanionWakeupStatus: CompanionWakeupStatus = {
+    active: false,
+    enabledCount: 0,
+};
+
+const buildCompanionWakeupStatus = (
+    rules: CompanionWakeupRule[],
+    now = Date.now(),
+): CompanionWakeupStatus => {
+    const enabledHeartbeat = rules.filter(rule => rule.kind === 'heartbeat' && rule.enabled);
+    const enabledWakeups = rules.filter(rule => rule.enabled && (rule.kind === 'heartbeat' || rule.kind === 'window'));
+    const upcoming = enabledWakeups
+        .map(rule => ({
+            rule,
+            nextTriggerAt: rule.nextTriggerAt && rule.nextTriggerAt > now
+                ? rule.nextTriggerAt
+                : scheduleNextCompanionWakeup(rule, now),
+        }))
+        .sort((a, b) => a.nextTriggerAt - b.nextTriggerAt);
+
+    return {
+        active: enabledHeartbeat.length > 0,
+        enabledCount: enabledWakeups.length,
+        nextTriggerAt: upcoming[0]?.nextTriggerAt,
+        nextTitle: upcoming[0]?.rule.title,
+    };
+};
+
+const formatCompanionWakeupTime = (timestamp?: number): string => {
+    if (!timestamp) return '尚未排程';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const targetDayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const dayOffset = Math.round((targetDayStart - dayStart) / 86400000);
+    const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    if (dayOffset === 0) return `今天 ${time}`;
+    if (dayOffset === 1) return `明天 ${time}`;
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+};
 
 const isStarterSeedMessage = (message: Message) => (
     message.metadata?.source === 'starter' || typeof message.metadata?.seedId === 'string'
@@ -118,6 +168,7 @@ const Chat: React.FC = () => {
     const draftKey = `chat_draft_${activeCharacterId}`;
     const autoReplyEnabled = char?.autoReplyEnabled !== false;
     const [companionWakeupActive, setCompanionWakeupActive] = useState(false);
+    const [companionWakeupStatus, setCompanionWakeupStatus] = useState<CompanionWakeupStatus>(emptyCompanionWakeupStatus);
 
     // Filter categories and emojis by active character's visibility (used for both AI prompt and UI)
     const emojiScope = useMemo(
@@ -152,15 +203,43 @@ const Chat: React.FC = () => {
     const refreshCompanionWakeupActive = useCallback(async () => {
         if (!char?.id) {
             setCompanionWakeupActive(false);
+            setCompanionWakeupStatus(emptyCompanionWakeupStatus);
             return;
         }
-        const rules = await DB.getCompanionWakeupRulesByCharId(char.id);
-        setCompanionWakeupActive(rules.some(rule => rule.kind === 'heartbeat' && rule.enabled));
-    }, [char?.id]);
+        let rules = await DB.getCompanionWakeupRulesByCharId(char.id);
+        if (rules.some(rule => rule.kind === 'heartbeat' && rule.enabled)) {
+            const settings = loadCompanionWakeupSettings();
+            const now = Date.now();
+            const heartbeats = mergeDefaultHeartbeatRules(char, rules.filter(rule => rule.kind === 'heartbeat'), settings, now);
+            for (const rule of heartbeats) {
+                await DB.saveCompanionWakeupRule(rule);
+            }
+            const careRules = await syncBuiltInCareWakeupRules(char, settings.aiCareWindowsEnabled, settings, rules);
+            rules = [
+                ...rules.filter(rule => (
+                    rule.kind !== 'heartbeat'
+                    && !rule.id.startsWith(`wake-care-built-in-${char.id}-`)
+                )),
+                ...heartbeats,
+                ...careRules,
+            ];
+            if (char.autoReplyEnabled === false) {
+                updateCharacter(char.id, { autoReplyEnabled: true });
+            }
+        }
+        const status = buildCompanionWakeupStatus(rules);
+        setCompanionWakeupActive(status.active);
+        setCompanionWakeupStatus(status);
+    }, [char, updateCharacter]);
 
     useEffect(() => {
         void refreshCompanionWakeupActive();
     }, [refreshCompanionWakeupActive, lastMsgTimestamp]);
+
+    useEffect(() => {
+        if (!char?.id || !companionWakeupActive || char.autoReplyEnabled !== false) return;
+        updateCharacter(char.id, { autoReplyEnabled: true });
+    }, [char?.id, char?.autoReplyEnabled, companionWakeupActive, updateCharacter]);
 
     const enableCompanionWakeup = useCallback(async () => {
         if (!char?.id) return;
@@ -168,43 +247,32 @@ const Chat: React.FC = () => {
         const now = Date.now();
         const existing = await DB.getCompanionWakeupRulesByCharId(char.id);
         const heartbeatRules = existing.filter(rule => rule.kind === 'heartbeat');
-        const rulesToSave: CompanionWakeupRule[] = heartbeatRules.length > 0
-            ? heartbeatRules.map(rule => {
-                const nextRule: CompanionWakeupRule = {
-                    ...rule,
-                    enabled: true,
-                    mode: settings.defaultMode,
-                    lines: settings.defaultMode === 'direct' ? (rule.lines?.length ? rule.lines : DEFAULT_DIRECT_LINES) : undefined,
-                    updatedAt: now,
-                };
-                return {
-                    ...nextRule,
-                    nextTriggerAt: nextRule.nextTriggerAt && nextRule.nextTriggerAt > now
-                        ? nextRule.nextTriggerAt
-                        : scheduleNextCompanionWakeup(nextRule, now),
-                };
-            })
-            : createDefaultHeartbeatRules(char, settings.defaultMode).map(rule => ({
-                ...rule,
-                enabled: true,
-                updatedAt: now,
-            }));
+        const rulesToSave: CompanionWakeupRule[] = mergeDefaultHeartbeatRules(char, heartbeatRules, settings, now);
 
         for (const rule of rulesToSave) {
             await DB.saveCompanionWakeupRule(rule);
         }
-        setCompanionWakeupActive(true);
+        const careRules = settings.aiCareWindowsEnabled
+            ? await syncBuiltInCareWakeupRules(char, true, settings, existing)
+            : [];
+        if (char.autoReplyEnabled === false) {
+            updateCharacter(char.id, { autoReplyEnabled: true });
+        }
+        const status = buildCompanionWakeupStatus([...existing, ...rulesToSave, ...careRules]);
+        setCompanionWakeupActive(status.active);
+        setCompanionWakeupStatus(status);
         addToast(`${char.name} 偶尔会自然来信`, 'success');
-    }, [addToast, char]);
+    }, [addToast, char, updateCharacter]);
 
     const disableCompanionWakeup = useCallback(async () => {
         if (!char?.id) return;
         const now = Date.now();
         const rules = await DB.getCompanionWakeupRulesByCharId(char.id);
-        for (const rule of rules.filter(item => item.kind === 'heartbeat')) {
+        for (const rule of rules.filter(item => item.kind === 'heartbeat' || item.kind === 'window')) {
             await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
         }
         setCompanionWakeupActive(false);
+        setCompanionWakeupStatus(emptyCompanionWakeupStatus);
         addToast(`${char.name} 暂时不会主动打扰`, 'info');
     }, [addToast, char]);
 
@@ -215,6 +283,75 @@ const Chat: React.FC = () => {
             await enableCompanionWakeup();
         }
     }, [companionWakeupActive, disableCompanionWakeup, enableCompanionWakeup]);
+
+    const handleCompanionWakeupProbe = useCallback(async (event?: React.SyntheticEvent) => {
+        event?.stopPropagation();
+        if (!char?.id) return;
+
+        const now = Date.now();
+        const settings = loadCompanionWakeupSettings();
+        let rules = await DB.getCompanionWakeupRulesByCharId(char.id);
+        let heartbeatRules = rules.filter(rule => rule.kind === 'heartbeat');
+
+        if (heartbeatRules.length === 0) {
+            heartbeatRules = mergeDefaultHeartbeatRules(char, [], settings, now);
+            for (const rule of heartbeatRules) {
+                await DB.saveCompanionWakeupRule(rule);
+            }
+            rules = [...rules, ...heartbeatRules];
+        }
+
+        const enabledRule = heartbeatRules.find(rule => rule.enabled) || heartbeatRules[0];
+        if (!enabledRule) return;
+        const mode = resolveCompanionWakeupMode(settings, enabledRule);
+        const effectiveRule: CompanionWakeupRule = {
+            ...enabledRule,
+            enabled: true,
+            mode,
+            lines: mode === 'direct' ? (enabledRule.lines?.length ? enabledRule.lines : DEFAULT_DIRECT_LINES) : enabledRule.lines,
+            updatedAt: now,
+        };
+        await DB.saveCompanionWakeupRule(effectiveRule);
+        if (char.autoReplyEnabled === false) {
+            updateCharacter(char.id, { autoReplyEnabled: true });
+        }
+
+        const content = pickDirectWakeupLine(effectiveRule, char, userProfile, now);
+        const messagePayload: Omit<Message, 'id'> = {
+            charId: char.id,
+            role: 'assistant',
+            type: 'text',
+            content,
+            timestamp: now,
+            metadata: {
+                source: 'companion_wakeup',
+                wakeupRuleId: effectiveRule.id,
+                wakeupKind: effectiveRule.kind,
+                wakeupMode: 'probe',
+                wakeupProbe: true,
+            },
+        };
+        const messageId = await DB.saveMessage(messagePayload);
+        await DB.saveCompanionWakeupLog({
+            id: `wake-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            ruleId: effectiveRule.id,
+            charId: char.id,
+            triggeredAt: now,
+            status: 'sent',
+            mode: effectiveRule.mode,
+            kind: effectiveRule.kind,
+            message: content.slice(0, 120),
+        });
+
+        setCompanionWakeupActive(true);
+        setCompanionWakeupStatus(buildCompanionWakeupStatus(rules.map(rule => rule.id === effectiveRule.id ? effectiveRule : rule), now));
+        setMessages(prev => [...prev, { ...messagePayload, id: messageId }].slice(-visibleCountRef.current));
+        setTotalMsgCount(prev => prev + 1);
+        window.dispatchEvent(new CustomEvent('proactive-message-sent', {
+            detail: { charId: char.id, charName: char.name, body: content.slice(0, 120), ruleId: effectiveRule.id },
+        }));
+        addToast('已试亮一封主动来信', 'success');
+    }, [addToast, char, userProfile]);
 
     // --- Voice TTS for chat messages ---
     interface VoiceData { url: string; originalText: string; spokenText?: string; lang?: string; }
@@ -584,7 +721,7 @@ const Chat: React.FC = () => {
         await reloadMessages(visibleCountRef.current);
         setShowPanel('none');
 
-        if (apiConfig.baseUrl && !isTyping && autoReplyEnabled) {
+        if (apiConfig.baseUrl && !isTyping && (autoReplyEnabled || companionWakeupActive)) {
             const updatedMessages = await DB.getRecentMessagesByCharId(char.id, visibleCountRef.current);
             void triggerAI(updatedMessages);
         }
@@ -1414,7 +1551,27 @@ const Chat: React.FC = () => {
                                 <div className="font-bold">主动来信</div>
                                 {replySignalActive && <span className="rounded-full bg-violet-500 px-2 py-0.5 text-[10px] font-bold text-white">已允许</span>}
                             </div>
-                            <div className={`mt-1 text-xs leading-relaxed ${replySignalActive ? 'text-violet-600' : 'text-slate-400'}`}>允许他偶尔自己想起你；再次点击会暂停。</div>
+                            <div className={`mt-1 text-xs leading-relaxed ${replySignalActive ? 'text-violet-600' : 'text-slate-400'}`}>
+                                {replySignalActive
+                                    ? `下次点亮：${formatCompanionWakeupTime(companionWakeupStatus.nextTriggerAt)}`
+                                    : '允许他偶尔自己想起你；再次点击会暂停。'}
+                            </div>
+                            {replySignalActive && (
+                                <div className="mt-2 flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-semibold text-violet-400">{companionWakeupStatus.nextTitle || '自然惦念'}</span>
+                                    <span
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={handleCompanionWakeupProbe}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter' || event.key === ' ') void handleCompanionWakeupProbe(event);
+                                        }}
+                                        className="rounded-full bg-violet-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm active:scale-95"
+                                    >
+                                        试亮一次
+                                    </span>
+                                </div>
+                            )}
                         </button>
                     </div>
                 </Modal>

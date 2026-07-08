@@ -22,6 +22,12 @@ Worldline memory architecture:
 - Treat chat, meeting scenes, generated dates, timebook entries, proactive letters, and future canon-story surfaces as different media inside one relationship.
 - Keep `ContextBuilder` as the synchronous role/user/worldbook base-context builder.
 - Add `utils/memoryCore/` as the first memory bus: it selects sparse worldline intersections from existing data before prompt assembly.
+- Use `docs/MEMORY_DELIVERY_CONTRACT.md` as the implementation contract before adding more memory code. Each AI-facing surface should declare which stable base, character voice core, worldline hot state, memory packet, story packet, and token budget it receives.
+- Treat the planned `藏好的话` voice warehouse as part of stable character identity:
+  - directly-sendable lines may feed proactive-letter direct mode;
+  - rewrite seeds may guide model-written proactive messages or scenes;
+  - language fingerprints are not sent raw and should calibrate role voice, boundaries, habits, care style, and non-negotiable attitudes.
+- Add a short-lived per-character hot-state layer later, so chat/proactive/date/call surfaces can feel connected to the character's ongoing parallel-world life instead of only recalling archived memories.
 - First slice is read-only and compatibility-first: reuse existing messages, anniversaries, first-contact assets, and a tiny recent slice of `char.memories` before adding new IndexedDB stores.
 - Wire the first selector into chat, meeting/date mode, and proactive-letter generation so UI work later has real code interfaces behind it.
 - Add an automatic sediment layer without broad DB migration:

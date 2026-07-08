@@ -107,6 +107,13 @@ The first worldline-memory slice is code-only and read-only. It introduces
 shared TypeScript contracts under `utils/memoryCore/` without adding new
 IndexedDB stores yet.
 
+`docs/MEMORY_DELIVERY_CONTRACT.md` is the current product/code contract for how
+AI-facing surfaces should combine stable base context, character voice,
+short-lived worldline state, relationship memory, calendar state, and story
+material. The contract is intentionally written before the next code slice so
+new features can be checked against the same delivery map instead of adding
+surface-specific prompt shortcuts.
+
 Current core enums:
 
 ```ts
@@ -155,6 +162,58 @@ The selector currently reuses:
 
 It returns a tiny markdown block plus structured candidates. Future durable
 stores can be added later after UI and prompt behavior are stable:
+
+Future character voice imports should keep three voice-line classes separate:
+
+```ts
+type VoiceLineKind =
+  | 'direct_message'
+  | 'rewrite_seed'
+  | 'language_fingerprint';
+
+interface CharacterVoiceLine {
+  id: string;
+  charId: string;
+  kind: VoiceLineKind;
+  text: string;
+  tags?: string[];
+  source?: 'user_import' | 'built_in' | 'manual';
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+`direct_message` rows can feed proactive-letter direct mode. `rewrite_seed`
+rows guide model-written messages or scenes. `language_fingerprint` rows should
+not be sent as quotes; they are compact role-voice calibration notes covering
+habits, boundaries, care style, humor, attitude, and non-negotiable personality
+points. Current code reads this from `assets/aetheros_voice_core_${charId}` and
+also accepts `assets/character_voice_core_${charId}` as a compatibility key.
+
+Future hot-state rows should be short-lived and per character:
+
+```ts
+interface WorldlineHotState {
+  charId: string;
+  currentWhereabouts?: string;
+  currentMood?: string;
+  currentPressure?: string;
+  activeThreads: string[];
+  storySignals: string[];
+  pendingCare: string[];
+  recentlyMentionedPeople?: string[];
+  sourceRefs?: Array<{ kind: string; id: string }>;
+  updatedAt: number;
+  expiresAt?: number;
+}
+```
+
+Hot state is not a keepsake memory. It is the "what is going on with him
+lately" packet for chat, proactive letters, calls, meeting scenes, and social
+surfaces. Current code reads this from `assets/aetheros_worldline_hot_state_${charId}`
+and also accepts `assets/worldline_hot_state_${charId}` as a compatibility key.
+If no saved hot state exists, the selector derives a tiny temporary state from
+recent promises, phone/date echoes, and care signals.
 
 The first visibility layer uses localStorage only and does not bump IndexedDB:
 

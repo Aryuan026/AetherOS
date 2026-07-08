@@ -7,12 +7,20 @@ export const COMPANION_WAKEUP_EVENT = 'companion-wakeup-sent';
 const COMPANION_WAKEUP_SETTINGS_KEY = 'companion_wakeup_settings_v1';
 
 export interface CompanionWakeupSettings {
+    /**
+     * Legacy fallback for old rules and imports. New UI should use the booleans
+     * below so natural canon-like lines and AI moments can run in parallel.
+     */
     defaultMode: CompanionWakeupMode;
+    hiddenWordsEnabled: boolean;
+    momentWordsEnabled: boolean;
     aiCareWindowsEnabled: boolean;
 }
 
 export const DEFAULT_COMPANION_WAKEUP_SETTINGS: CompanionWakeupSettings = {
     defaultMode: 'direct',
+    hiddenWordsEnabled: true,
+    momentWordsEnabled: false,
     aiCareWindowsEnabled: true,
 };
 
@@ -22,8 +30,11 @@ export const loadCompanionWakeupSettings = (): CompanionWakeupSettings => {
         const raw = localStorage.getItem(COMPANION_WAKEUP_SETTINGS_KEY);
         if (!raw) return DEFAULT_COMPANION_WAKEUP_SETTINGS;
         const parsed = JSON.parse(raw) as Partial<CompanionWakeupSettings>;
+        const legacyMode: CompanionWakeupMode = parsed.defaultMode === 'render' ? 'render' : 'direct';
         return {
-            defaultMode: parsed.defaultMode === 'render' ? 'render' : 'direct',
+            defaultMode: legacyMode,
+            hiddenWordsEnabled: parsed.hiddenWordsEnabled ?? legacyMode === 'direct',
+            momentWordsEnabled: parsed.momentWordsEnabled ?? legacyMode === 'render',
             aiCareWindowsEnabled: parsed.aiCareWindowsEnabled !== false,
         };
     } catch {
@@ -39,9 +50,24 @@ export const saveCompanionWakeupSettings = (updates: Partial<CompanionWakeupSett
     return next;
 };
 
+export const naturalWakeupEnabled = (settings: CompanionWakeupSettings): boolean => (
+    settings.hiddenWordsEnabled || settings.momentWordsEnabled
+);
+
+export const resolveCompanionWakeupMode = (
+    settings: CompanionWakeupSettings = loadCompanionWakeupSettings(),
+    rule?: { lines?: string[]; mode?: CompanionWakeupMode },
+): CompanionWakeupMode => {
+    if (settings.hiddenWordsEnabled && rule?.lines?.length) return 'direct';
+    if (settings.momentWordsEnabled) return 'render';
+    if (settings.hiddenWordsEnabled) return 'direct';
+    return settings.defaultMode;
+};
+
 export const DEFAULT_HEARTBEAT_WINDOWS = [
     { title: '下午主动来信', windowStart: '15:00', windowEnd: '18:00' },
     { title: '夜间主动来信', windowStart: '21:00', windowEnd: '23:30' },
+    { title: '白天主动来信', windowStart: '09:30', windowEnd: '12:00' },
 ];
 
 export const DEFAULT_CARE_WINDOWS = [
@@ -157,7 +183,7 @@ export const scheduleNextCompanionWakeup = (rule: CompanionWakeupRule, from = Da
 
 export const createDefaultHeartbeatRules = (
     char: CharacterProfile,
-    mode: CompanionWakeupMode = loadCompanionWakeupSettings().defaultMode,
+    mode: CompanionWakeupMode = resolveCompanionWakeupMode(loadCompanionWakeupSettings(), { lines: DEFAULT_DIRECT_LINES }),
 ): CompanionWakeupRule[] => {
     const now = Date.now();
     return DEFAULT_HEARTBEAT_WINDOWS.map((item, index) => {
@@ -185,7 +211,7 @@ export const createDefaultHeartbeatRules = (
 export const createCareWindowRule = (
     charId: string,
     template: { title: string; windowStart: string; windowEnd: string; value: string },
-    mode: CompanionWakeupMode = loadCompanionWakeupSettings().defaultMode,
+    mode: CompanionWakeupMode = resolveCompanionWakeupMode(loadCompanionWakeupSettings(), { lines: CARE_DIRECT_LINES[template.title] || [template.value] }),
 ): CompanionWakeupRule => {
     const now = Date.now();
     const rule: CompanionWakeupRule = {
@@ -206,6 +232,34 @@ export const createCareWindowRule = (
         updatedAt: now,
     };
     return { ...rule, nextTriggerAt: scheduleNextCompanionWakeup(rule, now) };
+};
+
+export const createDefaultCareWindowRules = (
+    char: CharacterProfile,
+    mode: CompanionWakeupMode = resolveCompanionWakeupMode(loadCompanionWakeupSettings(), { lines: DEFAULT_CARE_WINDOWS.map(item => item.value) }),
+): CompanionWakeupRule[] => {
+    const now = Date.now();
+    return DEFAULT_CARE_WINDOWS.map((item, index) => {
+        const lines = CARE_DIRECT_LINES[item.title] || [item.value];
+        const rule: CompanionWakeupRule = {
+            id: `wake-care-built-in-${char.id}-${index + 1}`,
+            charId: char.id,
+            title: item.title,
+            enabled: true,
+            kind: 'window',
+            mode,
+            repeat: 'daily',
+            windowStart: item.windowStart,
+            windowEnd: item.windowEnd,
+            value: item.value,
+            lines: mode === 'direct' ? lines : undefined,
+            priority: 'care',
+            source: 'built_in',
+            createdAt: now,
+            updatedAt: now,
+        };
+        return { ...rule, nextTriggerAt: scheduleNextCompanionWakeup(rule, now) };
+    });
 };
 
 export const renderTemplateLine = (line: string, char: CharacterProfile, userProfile: UserProfile): string => (

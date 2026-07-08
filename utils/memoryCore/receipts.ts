@@ -23,6 +23,7 @@ const modeOrigin: Record<WorldlinePromptMode, MemoryOrigin> = {
   date_scene: 'date_scene',
   proactive_letter: 'proactive_letter',
   timebook: 'timebook',
+  call: 'daily_chat',
 };
 
 const canUseLocalStorage = (): boolean => (
@@ -55,11 +56,29 @@ const emitReceiptUpdate = (): void => {
   window.dispatchEvent(new CustomEvent(WORLDLINE_MEMORY_RECEIPTS_UPDATED_EVENT));
 };
 
-const stripMarkdown = (markdown: string): string => markdown
-  .replace(/[#>*`-]/g, '')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, 260);
+const stripMarkdown = (markdown: string): string => {
+  const blocked = [
+    '不要逐条汇报',
+    '只在对话需要时',
+    '以下是',
+    '当前入口',
+    '递送',
+    '预算',
+    '线索',
+    '回响',
+    '语言指纹',
+    '近况热层',
+  ];
+  const text = markdown
+    .split('\n')
+    .map(line => line.replace(/[#>*`-]/g, '').trim())
+    .filter(line => line.length > 0)
+    .filter(line => !blocked.some(keyword => line.includes(keyword)))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (text || markdown.replace(/[#>*`-]/g, '').replace(/\s+/g, ' ').trim()).slice(0, 180);
+};
 
 export const loadWorldlineMemoryReceiptSettings = (): WorldlineMemoryReceiptSettings => ({
   ...defaultSettings,
@@ -108,6 +127,9 @@ export const recordWorldlineMemoryReceipt = (
     markdownPreview: stripMarkdown(context.markdown),
     budgetChars: context.budgetChars,
     warnings: context.warnings,
+    deliveryTier: context.deliveryProfile?.tier,
+    hotStateDelivered: Boolean(context.hotState),
+    voiceFingerprintCount: context.voiceLineTitles?.length || 0,
   };
 
   const next = [receipt, ...loadWorldlineMemoryReceipts()].slice(0, MAX_RECEIPTS);

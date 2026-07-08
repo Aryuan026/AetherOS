@@ -1,7 +1,7 @@
 
 import { DB } from './db';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { loadCompanionWakeupSettings, scheduleNextCompanionWakeup } from './companionWakeups';
+import { loadCompanionWakeupSettings, resolveCompanionWakeupMode, scheduleNextCompanionWakeup } from './companionWakeups';
 
 export const ChatParser = {
     // Return cleaned content and perform side effects
@@ -68,9 +68,9 @@ export const ChatParser = {
             if (!wakeupSettings.aiCareWindowsEnabled) continue;
             const windowText = match[1].trim();
             const repeat = match[2].trim() as 'daily' | 'once';
-            const mode = wakeupSettings.defaultMode;
             const title = match[4].trim();
             const value = match[5].trim();
+            const mode = resolveCompanionWakeupMode(wakeupSettings, { lines: [value] });
             const [windowStart, windowEnd] = windowText.split('-').map(part => part.trim());
             if (windowStart && windowEnd && title && value) {
                 const now = Date.now();
@@ -122,6 +122,12 @@ export const ChatParser = {
         return text
             // Convert literal \n (backslash + n) the AI sometimes outputs into real newlines
             .replace(/\\n/g, '\n')
+            // Strip leaked pseudo-system media logs such as "[你 发送了一张图片：...]".
+            // If the character wants to talk about a photo, it should say it naturally,
+            // not imitate the app's history-log format.
+            .replace(/\[\s*(?:你|我|用户|User|user|assistant|角色|[\w一-龥]{1,12})?\s*(?:发送|发来|sent|uploaded)\s*(?:了)?\s*(?:一张|张|an?\s+)?\s*(?:图片|照片|image|photo)[\s\S]*?\]/gi, '')
+            .replace(/^\s*\[(?:你|我|用户|User|user|assistant|角色)?\s*$/gmi, '')
+            .replace(/^\s*(?:你|我|用户|User|user|assistant|角色)?\s*(?:发送|发来|sent|uploaded)\s*(?:了)?\s*(?:一张|张|an?\s+)?\s*(?:图片|照片|image|photo)\s*[：:][^\n]*$/gmi, '')
             // Strip source tags [聊天]/[通话]/[约会] leaked from history context → newline to preserve splits
             .replace(/\s*\[(?:聊天|通话|约会)\]\s*/g, '\n')
             // Strip leaked timestamps from chat history context:
@@ -174,6 +180,9 @@ export const ChatParser = {
             .replace(/^\s*---\s*$/gm, '')
             .replace(/``+/g, '')
             .replace(/(^|\s)`(\s|$)/gm, '$1$2')
+            .replace(/\[\s*(?:你|我|用户|User|user|assistant|角色|[\w一-龥]{1,12})?\s*(?:发送|发来|sent|uploaded)\s*(?:了)?\s*(?:一张|张|an?\s+)?\s*(?:图片|照片|image|photo)[\s\S]*?\]/gi, '')
+            .replace(/^\s*\[(?:你|我|用户|User|user|assistant|角色)?\s*$/gmi, '')
+            .replace(/^\s*(?:你|我|用户|User|user|assistant|角色)?\s*(?:发送|发来|sent|uploaded)\s*(?:了)?\s*(?:一张|张|an?\s+)?\s*(?:图片|照片|image|photo)\s*[：:][^\n]*$/gmi, '')
             .replace(/\[\[[\s\S]*?\]\]/g, '')
             .replace(/\[(?:QU[OA]TE|引用)[：:][^\]]*\]/g, '')
             .replace(/\[回复\s*[""\u201C][^""\u201D]*?[""\u201D](?:\.{0,3})\]\s*[：:]?\s*/g, '')

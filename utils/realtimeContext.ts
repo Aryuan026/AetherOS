@@ -18,6 +18,9 @@ export interface WeatherData {
 }
 
 export const defaultRealtimeConfig: RealtimeConfig = {
+    realitySyncMode: 'real_anchor',
+    weatherScope: 'user_only',
+    careBoundary: 'soft',
     weatherEnabled: false,
     weatherApiKey: '',
     weatherCity: 'Beijing',

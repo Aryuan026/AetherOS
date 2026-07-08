@@ -1,4 +1,8 @@
-import type { WorldlineMemoryCandidate, WorldlineOpenThread } from './types';
+import type {
+  WorldlineDeliveryProfile,
+  WorldlineMemoryCandidate,
+  WorldlineOpenThread,
+} from './types';
 
 const clip = (value: string, max: number): string => {
   const text = value.replace(/\s+/g, ' ').trim();
@@ -20,10 +24,25 @@ export const formatWorldlinePromptBlock = (
   candidates: WorldlineMemoryCandidate[],
   openThreads: WorldlineOpenThread[],
   budgetChars: number,
+  options?: {
+    deliveryProfile?: WorldlineDeliveryProfile;
+    hotStateMarkdown?: string;
+    voiceCoreMarkdown?: string;
+  },
 ): string => {
   const lines: string[] = [];
 
+  if (options?.voiceCoreMarkdown?.trim()) {
+    lines.push(options.voiceCoreMarkdown.trim());
+  }
+
+  if (options?.hotStateMarkdown?.trim()) {
+    if (lines.length > 0) lines.push('');
+    lines.push(options.hotStateMarkdown.trim());
+  }
+
   if (candidates.length > 0) {
+    if (lines.length > 0) lines.push('');
     lines.push('### 世界线交汇记忆');
     lines.push('以下是当前入口可自然参考的少量关系/剧情交汇点。不要逐条复述，只在对话需要时化成你的反应。');
     candidates.forEach(candidate => lines.push(formatCandidate(candidate)));
@@ -40,4 +59,3 @@ export const formatWorldlinePromptBlock = (
   if (!markdown) return '';
   return clip(markdown, budgetChars);
 };
-

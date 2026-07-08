@@ -212,6 +212,11 @@ export interface CharacterBuff {
 
 // 实时上下文配置 - 让AI角色感知真实世界
 export interface RealtimeConfig {
+  // 现实同频规则
+  realitySyncMode?: 'real_anchor' | 'rhythm_weather' | 'fiction_free';
+  weatherScope?: 'user_only' | 'shared_echo' | 'off';
+  careBoundary?: 'soft' | 'direct' | 'off';
+
   // 天气配置
   weatherEnabled: boolean;
   weatherApiKey: string;  // OpenWeatherMap API Key

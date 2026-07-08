@@ -31,3 +31,8 @@ xiaohongshu-skills/
 # Sticker intake / source originals
 sticker-inbox/
 public/stickers/originals/
+
+# Source-material intake / copyrighted raw references
+research/lysk-raw/
+research/lysk-sms-crawl/
+research/lysk-reviewed-private/

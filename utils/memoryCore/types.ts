@@ -36,7 +36,65 @@ export type WorldlinePromptMode =
   | 'meet_scene'
   | 'date_scene'
   | 'proactive_letter'
-  | 'timebook';
+  | 'timebook'
+  | 'call';
+
+export type WorldlineDeliveryTier =
+  | 'resident_only'
+  | 'heartbeat_lite'
+  | 'affective_warm'
+  | 'focused_recall'
+  | 'story_branch'
+  | 'full_diagnostic';
+
+export interface WorldlineDeliveryProfile {
+  tier: WorldlineDeliveryTier;
+  reasons: string[];
+  budgetChars: number;
+  candidateLimit: number;
+  openThreadLimit: number;
+  includeHotState: boolean;
+  includeVoiceFingerprint: boolean;
+  includeRewriteSeeds: boolean;
+  includeDirectLines: boolean;
+  includeStorySeeds: boolean;
+}
+
+export type VoiceLineKind =
+  | 'direct_message'
+  | 'rewrite_seed'
+  | 'language_fingerprint';
+
+export interface CharacterVoiceLine {
+  id: string;
+  charId: string;
+  kind: VoiceLineKind;
+  text: string;
+  tags?: string[];
+  source?: 'user_import' | 'built_in' | 'manual';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CharacterVoiceCore {
+  charId: string;
+  lines: CharacterVoiceLine[];
+  updatedAt?: number;
+}
+
+export interface WorldlineHotState {
+  charId: string;
+  currentWhereabouts?: string;
+  currentMood?: string;
+  currentPressure?: string;
+  activeThreads: string[];
+  storySignals: string[];
+  pendingCare: string[];
+  recentlyMentionedPeople?: string[];
+  sourceRefs?: SourceRef[];
+  updatedAt: number;
+  expiresAt?: number;
+}
 
 export interface SourceRef {
   kind: string;
@@ -87,6 +145,9 @@ export interface WorldlinePromptContext {
   openThreads: WorldlineOpenThread[];
   budgetChars: number;
   warnings: string[];
+  deliveryProfile?: WorldlineDeliveryProfile;
+  hotState?: WorldlineHotState | null;
+  voiceLineTitles?: string[];
 }
 
 export interface WorldlineMemoryReceipt {
@@ -104,6 +165,9 @@ export interface WorldlineMemoryReceipt {
   markdownPreview: string;
   budgetChars: number;
   warnings: string[];
+  deliveryTier?: WorldlineDeliveryTier;
+  hotStateDelivered?: boolean;
+  voiceFingerprintCount?: number;
 }
 
 export interface WorldlineMemoryReceiptSettings {

@@ -13,7 +13,8 @@ import {
   loadCompanionWakeupSettings,
   saveCompanionWakeupSettings,
 } from '../utils/companionWakeups';
-import { CompanionWakeupMode } from '../types';
+import type { RealtimeConfig } from '../types';
+import { syncBuiltInCareForActiveCharacters } from '../utils/companionWakeupRules';
 import {
   AUTO_MEMORY_UPDATED_EVENT,
   MEMORY_DM_TURN_MAX,
@@ -40,7 +41,17 @@ const memoryReceiptModeLabel = (mode: WorldlineMemoryReceipt['mode']): string =>
   if (mode === 'meet_scene') return '见面';
   if (mode === 'date_scene') return '约会';
   if (mode === 'proactive_letter') return '惦念';
+  if (mode === 'call') return '电话';
   return '时光簿';
+};
+
+const memoryReceiptTierLabel = (tier?: WorldlineMemoryReceipt['deliveryTier']): string => {
+  if (tier === 'heartbeat_lite') return '轻触';
+  if (tier === 'affective_warm') return '陪伴';
+  if (tier === 'focused_recall') return '追忆';
+  if (tier === 'story_branch') return '剧情';
+  if (tier === 'full_diagnostic') return '复核';
+  return '常驻';
 };
 
 const formatMemoryReceiptTime = (timestamp: number): string => (
@@ -59,6 +70,24 @@ const getMemoryReceiptTitles = (receipt: WorldlineMemoryReceipt): string[] => (
 const autoMemoryKindLabel = (kind: AutoMemoryLedgerEntry['kind']): string => (
   kind === 'timebook_candidate' ? '时光簿' : '沉淀'
 );
+
+const realityModeLabel: Record<NonNullable<RealtimeConfig['realitySyncMode']>, string> = {
+  real_anchor: '现实锚定',
+  rhythm_weather: '昼夜同频',
+  fiction_free: '剧情自由',
+};
+
+const weatherScopeLabel: Record<NonNullable<RealtimeConfig['weatherScope']>, string> = {
+  user_only: '只看你这边',
+  shared_echo: '共享回声',
+  off: '不接天气',
+};
+
+const careBoundaryLabel: Record<NonNullable<RealtimeConfig['careBoundary']>, string> = {
+  soft: '轻声照看',
+  direct: '明确提醒',
+  off: '不主动管',
+};
 
 const Settings: React.FC = () => {
   const {
@@ -98,6 +127,9 @@ const Settings: React.FC = () => {
   const [rtWeatherEnabled, setRtWeatherEnabled] = useState(realtimeConfig.weatherEnabled);
   const [rtWeatherKey, setRtWeatherKey] = useState(realtimeConfig.weatherApiKey);
   const [rtWeatherCity, setRtWeatherCity] = useState(realtimeConfig.weatherCity);
+  const [rtRealityMode, setRtRealityMode] = useState<NonNullable<RealtimeConfig['realitySyncMode']>>(realtimeConfig.realitySyncMode || 'real_anchor');
+  const [rtWeatherScope, setRtWeatherScope] = useState<NonNullable<RealtimeConfig['weatherScope']>>(realtimeConfig.weatherScope || 'user_only');
+  const [rtCareBoundary, setRtCareBoundary] = useState<NonNullable<RealtimeConfig['careBoundary']>>(realtimeConfig.careBoundary || 'soft');
   const [rtTestStatus, setRtTestStatus] = useState('');
   
   // For web download link
@@ -114,6 +146,15 @@ const Settings: React.FC = () => {
       setLocalMiniMaxKey(apiConfig.minimaxApiKey || '');
       setLocalMiniMaxGroupId(apiConfig.minimaxGroupId || '');
   }, [apiConfig]);
+
+  useEffect(() => {
+      setRtWeatherEnabled(realtimeConfig.weatherEnabled);
+      setRtWeatherKey(realtimeConfig.weatherApiKey);
+      setRtWeatherCity(realtimeConfig.weatherCity);
+      setRtRealityMode(realtimeConfig.realitySyncMode || 'real_anchor');
+      setRtWeatherScope(realtimeConfig.weatherScope || 'user_only');
+      setRtCareBoundary(realtimeConfig.careBoundary || 'soft');
+  }, [realtimeConfig]);
 
   const loadPreset = (preset: typeof apiPresets[0]) => {
       setLocalUrl(preset.config.baseUrl);
@@ -154,6 +195,15 @@ const Settings: React.FC = () => {
   const updateWakeupSettings = (updates: Partial<CompanionWakeupSettings>) => {
       const next = saveCompanionWakeupSettings(updates);
       setWakeupSettings(next);
+      if (Object.prototype.hasOwnProperty.call(updates, 'aiCareWindowsEnabled')) {
+          void syncBuiltInCareForActiveCharacters(characters, next.aiCareWindowsEnabled, next)
+              .then(count => {
+                  if (count > 0) {
+                      addToast(next.aiCareWindowsEnabled ? '生活照看已同步' : '生活照看已暂停', 'success');
+                  }
+              })
+              .catch(() => addToast('生活照看同步失败', 'error'));
+      }
       addToast('惦念已收好', 'success');
   };
 
@@ -344,6 +394,9 @@ const Settings: React.FC = () => {
   // 保存实时感知配置
   const handleSaveRealtimeConfig = () => {
       updateRealtimeConfig({
+          realitySyncMode: rtRealityMode,
+          weatherScope: rtWeatherScope,
+          careBoundary: rtCareBoundary,
           weatherEnabled: rtWeatherEnabled,
           weatherApiKey: rtWeatherKey,
           weatherCity: rtWeatherCity,
@@ -553,15 +606,18 @@ const Settings: React.FC = () => {
                         <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 whitespace-nowrap shrink-0">聊天页开启</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                        {(['direct', 'render'] as CompanionWakeupMode[]).map(mode => (
-                            <button
-                                key={mode}
-                                onClick={() => updateWakeupSettings({ defaultMode: mode })}
-                                className={`py-2.5 rounded-xl text-xs font-bold leading-tight transition-all ${wakeupSettings.defaultMode === mode ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}
-                            >
-                                {mode === 'direct' ? '藏好的话' : '此刻的话'}
-                            </button>
-                        ))}
+                        <button
+                            onClick={() => updateWakeupSettings({ hiddenWordsEnabled: !wakeupSettings.hiddenWordsEnabled })}
+                            className={`py-2.5 rounded-xl text-xs font-bold leading-tight transition-all ${wakeupSettings.hiddenWordsEnabled ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}
+                        >
+                            藏好的话
+                        </button>
+                        <button
+                            onClick={() => updateWakeupSettings({ momentWordsEnabled: !wakeupSettings.momentWordsEnabled })}
+                            className={`py-2.5 rounded-xl text-xs font-bold leading-tight transition-all ${wakeupSettings.momentWordsEnabled ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-400'}`}
+                        >
+                            此刻的话
+                        </button>
                     </div>
                 </div>
 
@@ -769,6 +825,24 @@ const Settings: React.FC = () => {
                                     : '这次没有可递入的线索。'}
                             </div>
 
+                            {latestMemoryReceipt.delivered && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    <span className="rounded-full bg-slate-50 px-2 py-1 text-[10px] text-slate-500 border border-slate-100">
+                                        {memoryReceiptTierLabel(latestMemoryReceipt.deliveryTier)}
+                                    </span>
+                                    {latestMemoryReceipt.hotStateDelivered && (
+                                        <span className="rounded-full bg-slate-50 px-2 py-1 text-[10px] text-slate-500 border border-slate-100">
+                                            近况
+                                        </span>
+                                    )}
+                                    {!!latestMemoryReceipt.voiceFingerprintCount && (
+                                        <span className="rounded-full bg-slate-50 px-2 py-1 text-[10px] text-slate-500 border border-slate-100">
+                                            语气 {latestMemoryReceipt.voiceFingerprintCount}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
                             {getMemoryReceiptTitles(latestMemoryReceipt).length > 0 && (
                                 <div className="flex flex-wrap gap-1.5 mt-2">
                                     {getMemoryReceiptTitles(latestMemoryReceipt).map((title, index) => (
@@ -781,8 +855,8 @@ const Settings: React.FC = () => {
 
                             {latestMemoryReceipt.markdownPreview && (
                                 <details className="mt-2 text-[11px] text-slate-400">
-                                    <summary className="cursor-pointer font-bold text-slate-400">片段</summary>
-                                    <p className="mt-1 leading-relaxed">{latestMemoryReceipt.markdownPreview}</p>
+                                    <summary className="cursor-pointer font-bold text-slate-400">递送摘记</summary>
+                                    <p className="mt-1 max-h-16 overflow-y-auto leading-relaxed">{latestMemoryReceipt.markdownPreview}</p>
                                 </details>
                             )}
 
@@ -828,10 +902,14 @@ const Settings: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-500 mb-3 leading-relaxed">
-                当前时间会自动进入聊天上下文；天气为可选感知。
+                {realityModeLabel[rtRealityMode]} · {weatherScopeLabel[rtWeatherScope]} · {careBoundaryLabel[rtCareBoundary]}
             </p>
 
-            <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="py-3 rounded-xl text-xs font-bold bg-violet-50 text-violet-600">
+                    <div className="text-lg mb-1"><img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f310.png" className="w-5 h-5 inline" alt="" /></div>
+                    同频
+                </div>
                 <div className="py-3 rounded-xl text-xs font-bold bg-violet-50 text-violet-600">
                     <div className="text-lg mb-1"><img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/23f0.png" className="w-5 h-5 inline" alt="" /></div>
                     时间
@@ -892,6 +970,59 @@ const Settings: React.FC = () => {
           footer={<button onClick={handleSaveRealtimeConfig} className="w-full py-3 bg-violet-500 text-white font-bold rounded-2xl shadow-lg">保存配置</button>}
       >
           <div className="space-y-5 max-h-[60vh] overflow-y-auto no-scrollbar">
+              <div className="bg-violet-50/60 p-4 rounded-2xl space-y-3">
+                  <div className="text-sm font-bold text-violet-700">现实同频</div>
+                  <div className="grid grid-cols-3 gap-2">
+                      {([
+                          ['real_anchor', '现实锚定'],
+                          ['rhythm_weather', '昼夜同频'],
+                          ['fiction_free', '剧情自由'],
+                      ] as const).map(([mode, label]) => (
+                          <button
+                              key={mode}
+                              onClick={() => setRtRealityMode(mode)}
+                              className={`rounded-xl px-2 py-2.5 text-[11px] font-bold transition-colors ${rtRealityMode === mode ? 'bg-violet-500 text-white shadow-sm' : 'bg-white/80 text-violet-400'}`}
+                          >
+                              {label}
+                          </button>
+                      ))}
+                  </div>
+              </div>
+
+              <div className="bg-white/70 p-4 rounded-2xl space-y-3 border border-slate-100">
+                  <div className="text-sm font-bold text-slate-700">边界</div>
+                  <div className="grid grid-cols-3 gap-2">
+                      {([
+                          ['user_only', '只看你这边'],
+                          ['shared_echo', '共享回声'],
+                          ['off', '不接天气'],
+                      ] as const).map(([scope, label]) => (
+                          <button
+                              key={scope}
+                              onClick={() => setRtWeatherScope(scope)}
+                              className={`rounded-xl px-2 py-2.5 text-[11px] font-bold transition-colors ${rtWeatherScope === scope ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-50 text-slate-400'}`}
+                          >
+                              {label}
+                          </button>
+                      ))}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                      {([
+                          ['soft', '轻声照看'],
+                          ['direct', '明确提醒'],
+                          ['off', '不主动管'],
+                      ] as const).map(([boundary, label]) => (
+                          <button
+                              key={boundary}
+                              onClick={() => setRtCareBoundary(boundary)}
+                              className={`rounded-xl px-2 py-2.5 text-[11px] font-bold transition-colors ${rtCareBoundary === boundary ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-50 text-slate-400'}`}
+                          >
+                              {label}
+                          </button>
+                      ))}
+                  </div>
+              </div>
+
               {/* 天气配置 */}
               <div className="bg-emerald-50/50 p-4 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">

@@ -131,6 +131,7 @@ const isMeaningfulMessage = (message: Message): boolean => (
   message.role !== 'system'
   && message.metadata?.hidden !== true
   && message.metadata?.proactiveHint !== true
+  && message.metadata?.wakeupProbe !== true
   && !!String(message.content || '').trim()
   && !/^\[连接中断[:：]/.test(String(message.content || '').trim())
 );
@@ -151,17 +152,29 @@ const groupMessagesByDate = (messages: Message[]): Record<string, Message[]> => 
   return groups;
 };
 
-const timebookSignalPattern = /第一次|初次|纪念|生日|约定|说好|一起|想见|见面|礼物|照片|蛋糕|旅行|回家|睡觉|吃饭|午饭|晚饭|生病|考试|面试|难过|开心|害怕|喜欢|讨厌|想你|记得|别忘/i;
+const timebookSignalPattern = /第一次|初次|初见|初识|相识|纪念|生日|周年|约定|说好|想见|见面|礼物|照片|蛋糕|旅行|出发|回家|生病|住院|考试|面试|毕业|搬家|告白|和好|重逢|记得|别忘/i;
+const strongTimebookSignalPattern = /第一次|初次|初见|初识|相识|纪念|生日|周年|约定|说好|想见|见面|礼物|照片|蛋糕|旅行|出发|回家|生病|住院|考试|面试|毕业|搬家|告白|和好|重逢/i;
+const casualAssistantCuePattern = /喜欢就好|不用急着回|刚刚突然想到你|想到你|照顾自己|在做什么|早点休息|吃午饭|吃晚饭/i;
 
 const selectTimebookMessage = (
   messages: Message[],
   keepTrivialMoments: boolean,
 ): Message | null => {
   const meaningful = messages.filter(isMeaningfulMessage);
-  const signaled = [...meaningful].reverse().find(message => timebookSignalPattern.test(messageText(message)));
+  const signaled = [...meaningful].reverse().find(message => {
+    const text = messageText(message);
+    if (!timebookSignalPattern.test(text)) return false;
+    if (message.role === 'user') return true;
+    if (message.metadata?.source === 'call' && !strongTimebookSignalPattern.test(text)) return false;
+    if (message.metadata?.source === 'companion_wakeup') return false;
+    if (casualAssistantCuePattern.test(text) && !strongTimebookSignalPattern.test(text)) return false;
+    return strongTimebookSignalPattern.test(text);
+  });
   if (signaled) return signaled;
   if (!keepTrivialMoments || meaningful.length < 5) return null;
-  return [...meaningful].reverse().find(message => message.role === 'user') || meaningful[meaningful.length - 1] || null;
+  return [...meaningful].reverse().find(message => message.role === 'user' && message.metadata?.source !== 'companion_wakeup')
+    || [...meaningful].reverse().find(message => message.metadata?.source !== 'companion_wakeup')
+    || null;
 };
 
 const buildTimebookCandidate = (

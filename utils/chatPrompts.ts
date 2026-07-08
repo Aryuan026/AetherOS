@@ -3,8 +3,8 @@ import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProf
 import { ContextBuilder } from './context';
 import { DB } from './db';
 import { formatLifeSimResetCardForContext } from './lifeSimChatCard';
-import { RealtimeContextManager, defaultRealtimeConfig } from './realtimeContext';
-import { loadCompanionWakeupSettings } from './companionWakeups';
+import { buildRealitySyncContext } from './realitySync';
+import { loadCompanionWakeupSettings, resolveCompanionWakeupMode } from './companionWakeups';
 
 export const ChatPrompts = {
     // 格式化时间戳
@@ -70,11 +70,10 @@ export const ChatPrompts = {
             baseSystemPrompt += `\n${worldlineMemoryContext.trim()}\n`;
         }
 
-        // 注入实时世界信息（时间、特殊日期、可选天气）
+        // 注入现实同频规则与实时信号（时间、昼夜、可选天气）
         try {
-            const config = realtimeConfig || defaultRealtimeConfig;
-            const realtimeContext = await RealtimeContextManager.buildFullContext(config);
-            baseSystemPrompt += `\n### 【当前时间】\n${realtimeContext}\n`;
+            const realtimeContext = await buildRealitySyncContext(realtimeConfig, 'chat');
+            baseSystemPrompt += `\n${realtimeContext}\n`;
         } catch (e) {
             console.error('Failed to inject realtime context:', e);
         }
@@ -105,6 +104,7 @@ export const ChatPrompts = {
 
         const emojiContextStr = ChatPrompts.buildEmojiContext(emojis, categories);
         const wakeupSettings = loadCompanionWakeupSettings();
+        const wakeupInstructionMode = resolveCompanionWakeupMode(wakeupSettings);
 
         baseSystemPrompt += `### 聊天 App 行为规范 (Chat App Rules)
             **严格注意，你正在手机聊天，无论之前是什么模式，哪怕上一句话你们还面对面在一起，当前，你都是已经处于线上聊天状态了，请不要输出你的行为**
@@ -123,6 +123,7 @@ export const ChatPrompts = {
    - 将回复拆分成简短的气泡（句子）。**【极其重要】当你想分成多条消息气泡时，必须使用真正的换行符（\\n）分隔，每一行会变成一个独立气泡。绝对不要用空格代替换行！空格不会产生新气泡！只有换行符（\\n）才会分割气泡。** 正常句子中的标点（句号、问号、感叹号等）不会被用来分割气泡，请自然使用。
    - 【严禁】在输出中包含时间戳、名字前缀或"[角色名]:"。
    - **【严禁】模仿历史记录中的系统日志格式（如"[你 发送了...]"）。**
+   - **【严禁】伪造图片/照片系统日志**：不要输出 "[你 发送了一张图片：...]"、"[User sent an image]"、"发送了一张图片：..." 这类格式。你现在不能真的发送图片；如果想描述照片，只能用自然聊天语气说 "我刚看到一只猫..."。
    - **发送表情包**: 必须且只能使用命令: \`[[SEND_EMOJI: 表情名称]]\`。
    - **可用表情库 (按分类)**: 
      ${emojiContextStr}
@@ -136,7 +137,7 @@ export const ChatPrompts = {
    - 转账: \`[[ACTION:TRANSFER:100]]\`
    - 调取记忆: \`[[RECALL: YYYY-MM]]\`，请注意，当用户提及具体某个月份时，或者当你想仔细想某个月份的事情时，欢迎你随时使该动作
    - **添加纪念日**: 如果你觉得今天是个值得纪念的日子（或者你们约定了某天），你可以**主动**将它添加到用户的日历中。单独起一行输出: \`[[ACTION:ADD_EVENT | 标题(Title) | YYYY-MM-DD]]\`。
-${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后台指令，不会显示给用户）**: 如果你在日常聊天中观察到用户有稳定的小习惯需要被照看（例如总是忘记吃饭、睡太晚、需要每天某段时间被轻轻提醒），可以悄悄写入一个范围唤醒，而不是写死某个整点。单独起一行输出: \`[wakeup_window | HH:MM-HH:MM | daily | ${wakeupSettings.defaultMode} | 标题 | 要发送的短笺或关怀意图]\`。这行会被系统隐藏并存成日常来信，不要在正文里解释你设置了提醒。例: \`[wakeup_window | 11:00-12:00 | daily | ${wakeupSettings.defaultMode} | 午饭提醒 | 该吃午饭了，先把自己喂饱。]\`。` : ''}
+${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后台指令，不会显示给用户）**: 如果你在日常聊天中观察到用户有稳定的小习惯需要被照看（例如总是忘记吃饭、睡太晚、需要每天某段时间被轻轻提醒），可以悄悄写入一个范围唤醒，而不是写死某个整点。单独起一行输出: \`[wakeup_window | HH:MM-HH:MM | daily | ${wakeupInstructionMode} | 标题 | 要发送的短笺或关怀意图]\`。这行会被系统隐藏并存成日常来信，不要在正文里解释你设置了提醒。例: \`[wakeup_window | 11:00-12:00 | daily | ${wakeupInstructionMode} | 午饭提醒 | 该吃午饭了，先把自己喂饱。]\`。` : ''}
    - **一次性定时发送消息（兼容旧功能）**: 只有明确约定了具体日期时间时才使用: \`[schedule_message | YYYY-MM-DD HH:MM:SS | fixed | 消息内容]\`。
 `;
 

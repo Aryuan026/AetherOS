@@ -5,9 +5,10 @@ import { safeFetchJson } from '../utils/safeApi';
 import { minimaxFetch } from '../utils/minimaxEndpoint';
 import { resolveMiniMaxApiKey } from '../utils/minimaxApiKey';
 import { ContextBuilder } from '../utils/context';
-import { RealtimeContextManager } from '../utils/realtimeContext';
 import { DB } from '../utils/db';
 import { ChatPrompts } from '../utils/chatPrompts';
+import { selectWorldlineMemoryContext } from '../utils/memoryCore';
+import { buildRealitySyncContext } from '../utils/realitySync';
 import { Message, ChatTheme, CharacterProfile } from '../types';
 import { PRESET_THEMES } from '../components/chat/ChatConstants';
 import AppHeader from '../components/shell/AppHeader';
@@ -265,14 +266,8 @@ const getCallBubbleDisplayText = (bubble?: CallBubble) => {
   const { display } = extractVoiceTag(line || bubble.text);
   return display.trim();
 };
-const buildCallPrompt = (userName: string, charName?: string, coreContext?: string, voiceLang?: string) => {
+const buildCallPrompt = (userName: string, charName?: string, coreContext?: string, realityContext?: string, voiceLang?: string) => {
   const resolvedCharName = charName || '你的角色';
-  const time = RealtimeContextManager.getTimeContext();
-  const specialDate = RealtimeContextManager.checkSpecialDates();
-  const timeContext = [
-    `【当前时间】${time}`,
-    specialDate ? `【今日特殊】${specialDate}` : '',
-  ].filter(Boolean).join('\n');
   const callPrompt = `你是${resolvedCharName}，电话那头是${userName}。
 这不是文字，这是一通真正的电话。你能听到对方的呼吸、语气、停顿。你也有自己的呼吸。
 
@@ -281,6 +276,7 @@ const buildCallPrompt = (userName: string, charName?: string, coreContext?: stri
 你这会儿在做什么？在哪儿？身边什么声音？
 接电话的时候自然地带出来就好——不用刻意交代，但也别假装你只是一个回答问题的接口。
 你可能正趴在床上、正在走路、正在吃东西、正盯着窗外发呆。这些都会影响你说话的样子。
+每次通话开场的环境细节要随时间、地点和心情自然变化，不要反复使用同一个水声、倒水、洗手或固定场景。
 
 ### 电话里的人不会像写作文一样说话
 
@@ -350,7 +346,7 @@ const buildCallPrompt = (userName: string, charName?: string, coreContext?: stri
 - <语音> 里不要包含舞台指示，只写会被朗读的文字
 - 每条消息只有一个 <语音> 标签
 - 中文部分和 <语音> 部分表达的意思要一致` : '';
-  return [coreContext, timeContext, callPrompt, voiceLangPrompt].filter(Boolean).join('\n\n');
+  return [coreContext, realityContext, callPrompt, voiceLangPrompt].filter(Boolean).join('\n\n');
 };
 const getCallStateStyles = (state: CallState) => {
   const map: Record<CallState, { label: string; textClass: string; ringClass: string; waveClass: string }> = {
@@ -428,7 +424,7 @@ const CallAppHeader: React.FC<{
   />
 );
 const CallApp: React.FC = () => {
-  const { closeApp, characters, activeCharacterId, addToast, apiConfig, userProfile, customThemes, suspendCall, suspendedCall, clearSuspendedCall } = useOS();
+  const { closeApp, characters, activeCharacterId, addToast, apiConfig, userProfile, customThemes, realtimeConfig, suspendCall, suspendedCall, clearSuspendedCall } = useOS();
 
   const [viewMode, setViewMode] = useState<ViewMode>('role-select');
   const [selectedCharId, setSelectedCharId] = useState<string>(activeCharacterId || characters[0]?.id || '');
@@ -763,9 +759,29 @@ const CallApp: React.FC = () => {
     const baseUrl = apiConfig.baseUrl?.replace(/\/+$/, '');
     if (!baseUrl) throw new Error('请先在设置里配置聊天 API URL');
     const userName = userProfile?.name?.trim() || '用户';
+    let callCoreContext = selectedChar ? ContextBuilder.buildCoreContext(selectedChar, userProfile, true) : undefined;
+    if (selectedChar) {
+      try {
+        const recentForMemory = await DB.getRecentMessagesByCharId(selectedChar.id, selectedChar.contextLimit || 500);
+        const worldlineMemory = await selectWorldlineMemoryContext({
+          char: selectedChar,
+          user: userProfile,
+          mode: 'call',
+          currentMessages: recentForMemory,
+          query: input,
+          budgetChars: 1000,
+        });
+        if (worldlineMemory.markdown) {
+          callCoreContext = `${callCoreContext}\n${worldlineMemory.markdown}\n`;
+        }
+      } catch (error) {
+        console.warn('[call] worldline memory unavailable', error);
+      }
+    }
+    const realityContext = await buildRealitySyncContext(realtimeConfig, 'call');
     const systemPrompt = selectedChar
-      ? buildCallPrompt(userName, selectedChar.name, ContextBuilder.buildCoreContext(selectedChar, userProfile, true), voiceLang || undefined)
-      : buildCallPrompt(userName, undefined, undefined, voiceLang || undefined);
+      ? buildCallPrompt(userName, selectedChar.name, callCoreContext, realityContext, voiceLang || undefined)
+      : buildCallPrompt(userName, undefined, undefined, realityContext, voiceLang || undefined);
     const messages = await buildHistoryMessages(input, skipDbId);
     const chatData = await safeFetchJson(`${baseUrl}/chat/completions`, {
       method: 'POST',
