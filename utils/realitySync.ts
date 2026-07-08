@@ -166,7 +166,7 @@ export const buildRealitySyncContext = async (
 ): Promise<string> => {
     const normalized = normalizeConfig(config);
     const mode = normalized.realitySyncMode;
-    const weatherScope = normalized.weatherScope;
+    const weatherScope = normalized.weatherEnabled ? normalized.weatherScope : 'off';
     const lines = buildRuleText(mode, weatherScope, normalized.careBoundary);
 
     lines.push('');

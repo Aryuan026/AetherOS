@@ -53,6 +53,37 @@
   - Fixed a real proactive-letter flood found in live testing: due wakeup rules
     are now batched per character, extra due rules are staggered instead of sent
     together, and exact recent duplicate direct lines are replaced or deferred.
+  - Rebalanced proactive-letter scheduling after live testing showed a 1-minute
+    repeat and stale next-time display: natural wakeups now keep a 35-minute
+    per-character send gap, heartbeat only uses a short 10-minute active-chat
+    guard, obsolete duplicate heartbeat rules are paused, and the chat UI uses
+    recent message state when estimating the next real wakeup.
+  - Rebalanced proactive-letter content selection: with both `藏好的话` and
+    `此刻的话` enabled, AI-rendered messages are now the primary path; fixed
+    lines are only unused fallback material, and already displayed fixed lines
+    are treated as consumed instead of merely avoided for 12 hours.
+  - Hardened the active-reply bridge after proactive messages: when the user
+    replies, Chat now checks live companion-wakeup rules in IndexedDB as well as
+    React state before deciding whether to auto-trigger the next character reply.
+  - Fixed a dinner-care duplicate found in live testing: built-in lunch/dinner/
+    sleep care windows now pause matching older daily care rules, calendar/care
+    wakeups also obey the per-character send gap, and all wakeups wait through
+    the short active-chat cooldown instead of treating the user's latest message
+    as something to answer.
+  - Capped one proactive wakeup render to at most two visible chat bubbles and
+    tightened the AI prompt so care reminders do not expand into a mini
+    back-and-forth like "我吃过了，你呢？".
+  - Replaced the fixed 35-minute proactive send gap with a stable randomized
+    22-52 minute range keyed by character and last wakeup timestamp, so the
+    anti-spam guard no longer feels like a visible system timer.
+  - Split the Reality Sync settings UI into clearer layers: world/time sync,
+    care boundary, and weather signal. Weather on/off is now controlled by the
+    weather switch; when weather is off, prompt construction treats weather as
+    disconnected even if a legacy weather-scope value exists.
+  - Cleaned up the character memory archive UX after live MemoryDM testing:
+    removed the misleading month-card eye toggle, renamed "core memory" to
+    `月度印象`/`月记`, renamed raw entries to `本月碎片`, and made detailed
+    month delivery explicit with `只递月记` / `递入本月碎片`.
 
 - pending:
   - Observe a real scheduled `主动来信` after the next heartbeat window and user

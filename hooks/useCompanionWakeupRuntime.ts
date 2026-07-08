@@ -6,20 +6,23 @@ import { ContextBuilder } from '../utils/context';
 import { safeFetchJson } from '../utils/safeApi';
 import { buildRealitySyncContext } from '../utils/realitySync';
 import {
+    COMPANION_WAKEUP_DUPLICATE_DEFER_MS,
     COMPANION_WAKEUP_EVENT,
+    COMPANION_WAKEUP_USER_COOLDOWN_MS,
     DEFAULT_DIRECT_LINES,
+    getCompanionWakeupBatchStaggerMs,
+    getCompanionWakeupSendGapMs,
     loadCompanionWakeupSettings,
     naturalWakeupEnabled,
     resolveCompanionWakeupMode,
     scheduleNextCompanionWakeup,
 } from '../utils/companionWakeups';
 import { pickVoiceDirectWakeupLine, selectWorldlineMemoryContext } from '../utils/memoryCore';
+import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule } from '../utils/companionWakeupRules';
 
-const HEARTBEAT_USER_COOLDOWN_MS = 90 * 60 * 1000;
 const TICK_INTERVAL_MS = 60 * 1000;
-const WAKEUP_BATCH_STAGGER_MS = 12 * 60 * 1000;
-const WAKEUP_DUPLICATE_LOOKBACK_MS = 12 * 60 * 60 * 1000;
-const WAKEUP_DUPLICATE_DEFER_MS = 6 * 60 * 60 * 1000;
+const SENT_WAKEUP_HISTORY_LIMIT = 500;
+const MAX_WAKEUP_BUBBLES = 2;
 
 interface RuntimeParams {
     isReady: boolean;
@@ -57,16 +60,14 @@ const hashText = (value: string): number => {
     return hash >>> 0;
 };
 
-const recentWakeupComparableSet = async (
+const sentWakeupComparableSet = async (
     charId: string,
-    now = Date.now(),
 ): Promise<Set<string>> => {
-    const recent = await DB.getRecentMessagesByCharId(charId, 120);
+    const recent = await DB.getRecentMessagesByCharId(charId, SENT_WAKEUP_HISTORY_LIMIT);
     return new Set(recent
         .filter(message => (
             message.role === 'assistant'
             && message.metadata?.source === 'companion_wakeup'
-            && now - message.timestamp <= WAKEUP_DUPLICATE_LOOKBACK_MS
         ))
         .map(message => normalizeWakeupComparable(String(message.content || '')))
         .filter(Boolean));
@@ -79,7 +80,8 @@ const isRecentWakeupDuplicate = async (
 ): Promise<boolean> => {
     const comparable = normalizeWakeupComparable(message);
     if (!comparable) return false;
-    return (await recentWakeupComparableSet(charId, now)).has(comparable);
+    void now;
+    return (await sentWakeupComparableSet(charId)).has(comparable);
 };
 
 const pickFreshDirectWakeupLine = async (
@@ -97,11 +99,20 @@ const pickFreshDirectWakeupLine = async (
         .filter(Boolean);
     if (!pool.length) return '';
 
-    const recent = await recentWakeupComparableSet(char.id, now);
-    const fresh = pool.filter(line => !recent.has(normalizeWakeupComparable(line)));
-    const pickPool = fresh.length ? fresh : pool;
+    const used = await sentWakeupComparableSet(char.id);
+    const pickPool = pool.filter(line => !used.has(normalizeWakeupComparable(line)));
+    if (!pickPool.length) return '';
     const index = hashText(`${rule.id}:${now}:${rule.title}`) % pickPool.length;
     return pickPool[index] || '';
+};
+
+const latestSentWakeupAt = async (charId: string): Promise<number | null> => {
+    const recent = await DB.getRecentMessagesByCharId(charId, SENT_WAKEUP_HISTORY_LIMIT);
+    const last = [...recent].reverse().find(message => (
+        message.role === 'assistant'
+        && message.metadata?.source === 'companion_wakeup'
+    ));
+    return last?.timestamp || null;
 };
 
 const latestRealUserMessageAt = async (charId: string): Promise<number | null> => {
@@ -113,6 +124,31 @@ const latestRealUserMessageAt = async (charId: string): Promise<number | null> =
         && message.metadata?.source !== 'companion_wakeup'
     ));
     return lastUser?.timestamp || null;
+};
+
+const nextEligibleWakeupAt = async (
+    rule: CompanionWakeupRule,
+    now = Date.now(),
+): Promise<{ at: number; reason?: string }> => {
+    let eligibleAt = now;
+    let reason: string | undefined;
+
+    const lastSentAt = await latestSentWakeupAt(rule.charId);
+    if (lastSentAt) {
+        const sendGapMs = getCompanionWakeupSendGapMs(rule.charId, lastSentAt);
+        if (now - lastSentAt < sendGapMs) {
+            eligibleAt = Math.max(eligibleAt, lastSentAt + sendGapMs);
+            reason = 'send_gap';
+        }
+    }
+
+    const lastUserAt = await latestRealUserMessageAt(rule.charId);
+    if (lastUserAt && now - lastUserAt < COMPANION_WAKEUP_USER_COOLDOWN_MS) {
+        eligibleAt = Math.max(eligibleAt, lastUserAt + COMPANION_WAKEUP_USER_COOLDOWN_MS);
+        reason = 'user_cooldown';
+    }
+
+    return { at: eligibleAt, reason };
 };
 
 const renderWakeupWithAI = async (
@@ -154,7 +190,9 @@ const renderWakeupWithAI = async (
 
 输出要求：
 - 只输出真正要发送的消息正文。
-- 一到两句话，像手机聊天里自然发出的短消息。
+- 一到两句话，像手机聊天里自然发出的短消息；最多只用一次换行。
+- 最近对话只用于判断语气，不要接续或回答用户刚刚说的话。
+- 如果是吃饭、睡觉这类照看，只轻轻提醒用户，不要连续追问，也不要展开成多轮对话。
 - 遵守现实同频规则。不要为了天气或时间强行越过世界边界。
 - 不要解释规则，不要写时间戳，不要写“系统提示”。`;
 
@@ -210,6 +248,7 @@ const saveWakeupMessage = async (
             });
             previewChunks.push(fallbackText);
             offset += 1;
+            if (previewChunks.length >= MAX_WAKEUP_BUBBLES) break;
             continue;
         }
 
@@ -218,6 +257,7 @@ const saveWakeupMessage = async (
             .filter(chunk => ChatParser.hasDisplayContent(chunk));
 
         for (const chunk of chunks) {
+            if (previewChunks.length >= MAX_WAKEUP_BUBBLES) break;
             await DB.saveMessage({
                 charId: char.id,
                 role: 'assistant',
@@ -234,6 +274,7 @@ const saveWakeupMessage = async (
             previewChunks.push(chunk);
             offset += 1;
         }
+        if (previewChunks.length >= MAX_WAKEUP_BUBBLES) break;
     }
 
     return previewChunks.join(' ').replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -259,7 +300,7 @@ const deferCrowdedWakeupRule = async (
     index: number,
     now = Date.now(),
 ): Promise<void> => {
-    const deferredFrom = now + (index + 1) * WAKEUP_BATCH_STAGGER_MS;
+    const deferredFrom = now + (index + 1) * getCompanionWakeupBatchStaggerMs(rule.charId, now, index);
     await DB.saveCompanionWakeupRule({
         ...rule,
         nextTriggerAt: scheduleNextCompanionWakeup(rule, deferredFrom),
@@ -346,23 +387,21 @@ export const useCompanionWakeupRuntime = ({
                 return;
             }
 
-            if (effectiveRule.kind === 'heartbeat') {
-                const lastUserAt = await latestRealUserMessageAt(effectiveRule.charId);
-                if (lastUserAt && now - lastUserAt < HEARTBEAT_USER_COOLDOWN_MS) {
-                    const nextTriggerAt = scheduleNextCompanionWakeup(effectiveRule, now + TICK_INTERVAL_MS);
-                    await DB.saveCompanionWakeupRule({ ...effectiveRule, nextTriggerAt, updatedAt: now });
-                    await DB.saveCompanionWakeupLog({
-                        id: `wake-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        ruleId: effectiveRule.id,
-                        charId: effectiveRule.charId,
-                        triggeredAt: now,
-                        status: 'skipped',
-                        mode: effectiveRule.mode,
-                        kind: effectiveRule.kind,
-                        reason: 'user_cooldown',
-                    });
-                    return;
-                }
+            const eligible = await nextEligibleWakeupAt(effectiveRule, now);
+            if (eligible.at > now) {
+                const nextTriggerAt = scheduleNextCompanionWakeup(effectiveRule, Math.max(now + TICK_INTERVAL_MS, eligible.at));
+                await DB.saveCompanionWakeupRule({ ...effectiveRule, nextTriggerAt, updatedAt: now });
+                await DB.saveCompanionWakeupLog({
+                    id: `wake-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    ruleId: effectiveRule.id,
+                    charId: effectiveRule.charId,
+                    triggeredAt: now,
+                    status: 'skipped',
+                    mode: effectiveRule.mode,
+                    kind: effectiveRule.kind,
+                    reason: eligible.reason || 'not_eligible_yet',
+                });
+                return;
             }
 
             let message = '';
@@ -370,8 +409,9 @@ export const useCompanionWakeupRuntime = ({
                 if (effectiveRule.mode === 'render') {
                     message = await renderWakeupWithAI(effectiveRule, char, currentUser, currentApi, currentGroups, currentRealtime);
                 }
+                const usedLines = await sentWakeupComparableSet(char.id);
                 if (!message && wakeupSettings.hiddenWordsEnabled) {
-                    message = await pickVoiceDirectWakeupLine(effectiveRule, char, currentUser, now);
+                    message = await pickVoiceDirectWakeupLine(effectiveRule, char, currentUser, now, usedLines);
                 }
                 if (!message && wakeupSettings.hiddenWordsEnabled && directLines?.length) {
                     message = await pickFreshDirectWakeupLine(effectiveRule, char, currentUser, directLines, now);
@@ -386,7 +426,7 @@ export const useCompanionWakeupRuntime = ({
                     if (normalizedAlternative && !(await isRecentWakeupDuplicate(char.id, normalizedAlternative, now))) {
                         message = normalizedAlternative;
                     } else {
-                        const nextTriggerAt = scheduleNextCompanionWakeup(effectiveRule, now + WAKEUP_DUPLICATE_DEFER_MS);
+                        const nextTriggerAt = scheduleNextCompanionWakeup(effectiveRule, now + COMPANION_WAKEUP_DUPLICATE_DEFER_MS);
                         await DB.saveCompanionWakeupRule({ ...effectiveRule, nextTriggerAt, updatedAt: now });
                         await DB.saveCompanionWakeupLog({
                             id: `wake-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -454,6 +494,35 @@ export const useCompanionWakeupRuntime = ({
                 for (const rule of allRules) {
                     if (cancelled) return;
                     if (!rule.enabled) continue;
+                    const ruleChar = refs.current.characters.find(item => item.id === rule.charId);
+                    if (ruleChar && isObsoleteHeartbeatRule(ruleChar, rule)) {
+                        await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
+                        await DB.saveCompanionWakeupLog({
+                            id: `wake-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            ruleId: rule.id,
+                            charId: rule.charId,
+                            triggeredAt: now,
+                            status: 'skipped',
+                            mode: rule.mode,
+                            kind: rule.kind,
+                            reason: 'obsolete_heartbeat_duplicate',
+                        });
+                        continue;
+                    }
+                    if (ruleChar && isDuplicateBuiltInCareRule(ruleChar, rule, allRules)) {
+                        await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
+                        await DB.saveCompanionWakeupLog({
+                            id: `wake-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            ruleId: rule.id,
+                            charId: rule.charId,
+                            triggeredAt: now,
+                            status: 'skipped',
+                            mode: rule.mode,
+                            kind: rule.kind,
+                            reason: 'duplicate_care_window',
+                        });
+                        continue;
+                    }
                     if (!rule.nextTriggerAt) {
                         await DB.saveCompanionWakeupRule({
                             ...rule,

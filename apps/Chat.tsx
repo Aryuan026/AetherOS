@@ -16,13 +16,15 @@ import { useChatAI } from '../hooks/useChatAI';
 import { synthesizeSpeech, cleanTextForTts } from '../utils/minimaxTts';
 import { getVisibleEmojiScopeForCharacter } from '../utils/emojiVisibility';
 import {
+    COMPANION_WAKEUP_USER_COOLDOWN_MS,
     DEFAULT_DIRECT_LINES,
+    getCompanionWakeupSendGapMs,
     loadCompanionWakeupSettings,
     pickDirectWakeupLine,
     resolveCompanionWakeupMode,
     scheduleNextCompanionWakeup,
 } from '../utils/companionWakeups';
-import { mergeDefaultHeartbeatRules, syncBuiltInCareWakeupRules } from '../utils/companionWakeupRules';
+import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule, mergeDefaultHeartbeatRules, syncBuiltInCareWakeupRules } from '../utils/companionWakeupRules';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
 
@@ -41,9 +43,20 @@ const emptyCompanionWakeupStatus: CompanionWakeupStatus = {
 const buildCompanionWakeupStatus = (
     rules: CompanionWakeupRule[],
     now = Date.now(),
+    recentMessages: Message[] = [],
 ): CompanionWakeupStatus => {
     const enabledHeartbeat = rules.filter(rule => rule.kind === 'heartbeat' && rule.enabled);
     const enabledWakeups = rules.filter(rule => rule.enabled && (rule.kind === 'heartbeat' || rule.kind === 'window'));
+    const lastWakeupAt = [...recentMessages].reverse().find(message => (
+        message.role === 'assistant'
+        && message.metadata?.source === 'companion_wakeup'
+    ))?.timestamp;
+    const lastRealUserAt = [...recentMessages].reverse().find(message => (
+        message.role === 'user'
+        && !message.metadata?.hidden
+        && !message.metadata?.proactiveHint
+        && message.metadata?.source !== 'companion_wakeup'
+    ))?.timestamp;
     const upcoming = enabledWakeups
         .map(rule => ({
             rule,
@@ -51,6 +64,21 @@ const buildCompanionWakeupStatus = (
                 ? rule.nextTriggerAt
                 : scheduleNextCompanionWakeup(rule, now),
         }))
+        .map(item => {
+            let eligibleAt = item.nextTriggerAt;
+            if (lastWakeupAt) {
+                eligibleAt = Math.max(eligibleAt, lastWakeupAt + getCompanionWakeupSendGapMs(item.rule.charId, lastWakeupAt));
+            }
+            if (lastRealUserAt) {
+                eligibleAt = Math.max(eligibleAt, lastRealUserAt + COMPANION_WAKEUP_USER_COOLDOWN_MS);
+            }
+            return {
+                ...item,
+                nextTriggerAt: eligibleAt > item.nextTriggerAt
+                    ? scheduleNextCompanionWakeup(item.rule, eligibleAt)
+                    : item.nextTriggerAt,
+            };
+        })
         .sort((a, b) => a.nextTriggerAt - b.nextTriggerAt);
 
     return {
@@ -207,6 +235,20 @@ const Chat: React.FC = () => {
             return;
         }
         let rules = await DB.getCompanionWakeupRulesByCharId(char.id);
+        const rulesToPause = rules.filter(rule => (
+            rule.enabled
+            && (
+                isObsoleteHeartbeatRule(char, rule)
+                || isDuplicateBuiltInCareRule(char, rule, rules)
+            )
+        ));
+        if (rulesToPause.length > 0) {
+            const now = Date.now();
+            for (const rule of rulesToPause) {
+                await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
+            }
+            rules = rules.filter(rule => !rulesToPause.some(item => item.id === rule.id));
+        }
         if (rules.some(rule => rule.kind === 'heartbeat' && rule.enabled)) {
             const settings = loadCompanionWakeupSettings();
             const now = Date.now();
@@ -223,11 +265,13 @@ const Chat: React.FC = () => {
                 ...heartbeats,
                 ...careRules,
             ];
+            rules = rules.filter(rule => !isDuplicateBuiltInCareRule(char, rule, rules));
             if (char.autoReplyEnabled === false) {
                 updateCharacter(char.id, { autoReplyEnabled: true });
             }
         }
-        const status = buildCompanionWakeupStatus(rules);
+        const recent = await DB.getRecentMessagesByCharId(char.id, 120);
+        const status = buildCompanionWakeupStatus(rules, Date.now(), recent);
         setCompanionWakeupActive(status.active);
         setCompanionWakeupStatus(status);
     }, [char, updateCharacter]);
@@ -248,17 +292,39 @@ const Chat: React.FC = () => {
         const existing = await DB.getCompanionWakeupRulesByCharId(char.id);
         const heartbeatRules = existing.filter(rule => rule.kind === 'heartbeat');
         const rulesToSave: CompanionWakeupRule[] = mergeDefaultHeartbeatRules(char, heartbeatRules, settings, now);
+        const nextIds = new Set(rulesToSave.map(rule => rule.id));
 
         for (const rule of rulesToSave) {
             await DB.saveCompanionWakeupRule(rule);
         }
+        for (const rule of heartbeatRules.filter(item => item.enabled && !nextIds.has(item.id) && isObsoleteHeartbeatRule(char, item))) {
+            await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
+        }
         const careRules = settings.aiCareWindowsEnabled
             ? await syncBuiltInCareWakeupRules(char, true, settings, existing)
             : [];
+        const mergedRules = [
+            ...existing,
+            ...rulesToSave,
+            ...careRules,
+        ];
+        for (const rule of mergedRules.filter(item => item.enabled && isDuplicateBuiltInCareRule(char, item, mergedRules))) {
+            await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
+        }
         if (char.autoReplyEnabled === false) {
             updateCharacter(char.id, { autoReplyEnabled: true });
         }
-        const status = buildCompanionWakeupStatus([...existing, ...rulesToSave, ...careRules]);
+        const recent = await DB.getRecentMessagesByCharId(char.id, 120);
+        const statusRules = [
+            ...existing.filter(rule => !isObsoleteHeartbeatRule(char, rule)),
+            ...rulesToSave,
+            ...careRules,
+        ];
+        const status = buildCompanionWakeupStatus(
+            statusRules.filter(rule => !isDuplicateBuiltInCareRule(char, rule, statusRules)),
+            now,
+            recent,
+        );
         setCompanionWakeupActive(status.active);
         setCompanionWakeupStatus(status);
         addToast(`${char.name} 偶尔会自然来信`, 'success');
@@ -721,7 +787,13 @@ const Chat: React.FC = () => {
         await reloadMessages(visibleCountRef.current);
         setShowPanel('none');
 
-        if (apiConfig.baseUrl && !isTyping && (autoReplyEnabled || companionWakeupActive)) {
+        const liveWakeupActive = companionWakeupActive || (await DB.getCompanionWakeupRulesByCharId(char.id))
+            .some(rule => rule.enabled && (rule.kind === 'heartbeat' || rule.kind === 'window'));
+        if (liveWakeupActive && char.autoReplyEnabled === false) {
+            updateCharacter(char.id, { autoReplyEnabled: true });
+        }
+
+        if (apiConfig.baseUrl && !isTyping && (autoReplyEnabled || liveWakeupActive)) {
             const updatedMessages = await DB.getRecentMessagesByCharId(char.id, visibleCountRef.current);
             void triggerAI(updatedMessages);
         }

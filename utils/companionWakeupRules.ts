@@ -1,7 +1,9 @@
 import type { CharacterProfile, CompanionWakeupRule } from '../types';
 import { DB } from './db';
 import {
+    DEFAULT_CARE_WINDOWS,
     DEFAULT_DIRECT_LINES,
+    DEFAULT_HEARTBEAT_WINDOWS,
     createDefaultCareWindowRules,
     createDefaultHeartbeatRules,
     loadCompanionWakeupSettings,
@@ -12,6 +14,77 @@ import {
 
 const isFuture = (timestamp: number | undefined, now: number): timestamp is number => (
     typeof timestamp === 'number' && timestamp > now
+);
+
+const normalizeRuleTextKey = (value: string): string => (
+    String(value || '')
+        .replace(/[，。！？、,.!?；;：:\s"'“”‘’（）()【】\[\]-]/g, '')
+        .toLowerCase()
+        .trim()
+);
+
+const careKindFromText = (value: string): 'lunch' | 'dinner' | 'sleep' | '' => {
+    if (/午饭|午餐|中饭/.test(value)) return 'lunch';
+    if (/晚饭|晚餐/.test(value)) return 'dinner';
+    if (/睡前|睡觉|休息|洗漱/.test(value)) return 'sleep';
+    return '';
+};
+
+const builtInCareRulePrefix = (charId: string): string => `wake-care-built-in-${charId}-`;
+
+export const isBuiltInCareRule = (char: CharacterProfile, rule: CompanionWakeupRule): boolean => (
+    rule.kind === 'window' && rule.id.startsWith(builtInCareRulePrefix(char.id))
+);
+
+const builtInCareTemplateKey = (rule: CompanionWakeupRule): string => {
+    if (rule.kind !== 'window' || rule.repeat !== 'daily' || rule.targetDate) return '';
+    const title = normalizeRuleTextKey(rule.title);
+    const value = normalizeRuleTextKey(rule.value || '');
+    const body = `${title}${value}`;
+    const matched = DEFAULT_CARE_WINDOWS.find(template => {
+        if (rule.windowStart !== template.windowStart || rule.windowEnd !== template.windowEnd) return false;
+        const templateTitle = normalizeRuleTextKey(template.title);
+        const templateValue = normalizeRuleTextKey(template.value);
+        const exactMatch = title === templateTitle
+            || value === templateValue
+            || body.includes(templateTitle)
+            || body.includes(templateValue);
+        const reminderMatch = title.includes('提醒')
+            && careKindFromText(body) !== ''
+            && careKindFromText(body) === careKindFromText(`${templateTitle}${templateValue}`);
+        return title === templateTitle
+            || exactMatch
+            || reminderMatch;
+    });
+    return matched
+        ? `${rule.charId}:${matched.title}:${matched.windowStart}-${matched.windowEnd}`
+        : '';
+};
+
+export const isDuplicateBuiltInCareRule = (
+    char: CharacterProfile,
+    rule: CompanionWakeupRule,
+    rules: CompanionWakeupRule[],
+): boolean => {
+    if (!rule.enabled || isBuiltInCareRule(char, rule)) return false;
+    const key = builtInCareTemplateKey(rule);
+    if (!key) return false;
+    return rules.some(candidate => (
+        candidate.enabled
+        && candidate.id !== rule.id
+        && isBuiltInCareRule(char, candidate)
+        && builtInCareTemplateKey(candidate) === key
+    ));
+};
+
+export const defaultHeartbeatRuleIdsForChar = (charId: string): Set<string> => (
+    new Set(DEFAULT_HEARTBEAT_WINDOWS.map((_, index) => `wake-heartbeat-${charId}-${index + 1}`))
+);
+
+export const isObsoleteHeartbeatRule = (char: CharacterProfile, rule: CompanionWakeupRule): boolean => (
+    rule.kind === 'heartbeat'
+    && !defaultHeartbeatRuleIdsForChar(char.id).has(rule.id)
+    && rule.source !== 'user'
 );
 
 export const mergeDefaultHeartbeatRules = (
@@ -48,7 +121,7 @@ export const mergeDefaultHeartbeatRules = (
         };
     });
     const customHeartbeats = existingRules
-        .filter(rule => rule.kind === 'heartbeat' && !defaultIds.has(rule.id))
+        .filter(rule => rule.kind === 'heartbeat' && !defaultIds.has(rule.id) && rule.source === 'user')
         .map(rule => {
             const nextRule: CompanionWakeupRule = {
                 ...rule,
@@ -106,6 +179,20 @@ export const syncBuiltInCareWakeupRules = async (
         };
         await DB.saveCompanionWakeupRule(nextRule);
         saved.push(nextRule);
+    }
+
+    const activeRules = [
+        ...rules,
+        ...saved,
+    ];
+    for (const rule of activeRules) {
+        if (isDuplicateBuiltInCareRule(char, rule, activeRules)) {
+            await DB.saveCompanionWakeupRule({
+                ...rule,
+                enabled: false,
+                updatedAt: now,
+            });
+        }
     }
 
     return saved;

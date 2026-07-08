@@ -83,6 +83,12 @@ const weatherScopeLabel: Record<NonNullable<RealtimeConfig['weatherScope']>, str
   off: '不接天气',
 };
 
+type WeatherScopeChoice = Exclude<NonNullable<RealtimeConfig['weatherScope']>, 'off'>;
+
+const normalizeWeatherScopeChoice = (scope?: RealtimeConfig['weatherScope']): WeatherScopeChoice => (
+  scope === 'shared_echo' ? 'shared_echo' : 'user_only'
+);
+
 const careBoundaryLabel: Record<NonNullable<RealtimeConfig['careBoundary']>, string> = {
   soft: '轻声照看',
   direct: '明确提醒',
@@ -128,7 +134,7 @@ const Settings: React.FC = () => {
   const [rtWeatherKey, setRtWeatherKey] = useState(realtimeConfig.weatherApiKey);
   const [rtWeatherCity, setRtWeatherCity] = useState(realtimeConfig.weatherCity);
   const [rtRealityMode, setRtRealityMode] = useState<NonNullable<RealtimeConfig['realitySyncMode']>>(realtimeConfig.realitySyncMode || 'real_anchor');
-  const [rtWeatherScope, setRtWeatherScope] = useState<NonNullable<RealtimeConfig['weatherScope']>>(realtimeConfig.weatherScope || 'user_only');
+  const [rtWeatherScope, setRtWeatherScope] = useState<WeatherScopeChoice>(normalizeWeatherScopeChoice(realtimeConfig.weatherScope));
   const [rtCareBoundary, setRtCareBoundary] = useState<NonNullable<RealtimeConfig['careBoundary']>>(realtimeConfig.careBoundary || 'soft');
   const [rtTestStatus, setRtTestStatus] = useState('');
   
@@ -152,7 +158,7 @@ const Settings: React.FC = () => {
       setRtWeatherKey(realtimeConfig.weatherApiKey);
       setRtWeatherCity(realtimeConfig.weatherCity);
       setRtRealityMode(realtimeConfig.realitySyncMode || 'real_anchor');
-      setRtWeatherScope(realtimeConfig.weatherScope || 'user_only');
+      setRtWeatherScope(normalizeWeatherScopeChoice(realtimeConfig.weatherScope));
       setRtCareBoundary(realtimeConfig.careBoundary || 'soft');
   }, [realtimeConfig]);
 
@@ -902,7 +908,7 @@ const Settings: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-500 mb-3 leading-relaxed">
-                {realityModeLabel[rtRealityMode]} · {weatherScopeLabel[rtWeatherScope]} · {careBoundaryLabel[rtCareBoundary]}
+                {realityModeLabel[rtRealityMode]} · {rtWeatherEnabled ? weatherScopeLabel[rtWeatherScope] : '不接天气'} · {careBoundaryLabel[rtCareBoundary]}
             </p>
 
             <div className="grid grid-cols-3 gap-2 text-center">
@@ -990,22 +996,7 @@ const Settings: React.FC = () => {
               </div>
 
               <div className="bg-white/70 p-4 rounded-2xl space-y-3 border border-slate-100">
-                  <div className="text-sm font-bold text-slate-700">边界</div>
-                  <div className="grid grid-cols-3 gap-2">
-                      {([
-                          ['user_only', '只看你这边'],
-                          ['shared_echo', '共享回声'],
-                          ['off', '不接天气'],
-                      ] as const).map(([scope, label]) => (
-                          <button
-                              key={scope}
-                              onClick={() => setRtWeatherScope(scope)}
-                              className={`rounded-xl px-2 py-2.5 text-[11px] font-bold transition-colors ${rtWeatherScope === scope ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-50 text-slate-400'}`}
-                          >
-                              {label}
-                          </button>
-                      ))}
-                  </div>
+                  <div className="text-sm font-bold text-slate-700">照看分寸</div>
                   <div className="grid grid-cols-3 gap-2">
                       {([
                           ['soft', '轻声照看'],
@@ -1037,6 +1028,20 @@ const Settings: React.FC = () => {
                   </div>
                   {rtWeatherEnabled && (
                       <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                              {([
+                                  ['user_only', '只看你这边'],
+                                  ['shared_echo', '共享回声'],
+                              ] as const).map(([scope, label]) => (
+                                  <button
+                                      key={scope}
+                                      onClick={() => setRtWeatherScope(scope)}
+                                      className={`rounded-xl px-2 py-2.5 text-[11px] font-bold transition-colors ${rtWeatherScope === scope ? 'bg-emerald-500 text-white shadow-sm' : 'bg-white/80 text-emerald-500'}`}
+                                  >
+                                      {label}
+                                  </button>
+                              ))}
+                          </div>
                           <div>
                               <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">OpenWeatherMap API Key</label>
                               <input type="password" value={rtWeatherKey} onChange={e => setRtWeatherKey(e.target.value)} className="w-full bg-white/80 border border-emerald-200 rounded-xl px-3 py-2 text-sm font-mono" placeholder="获取: openweathermap.org" />

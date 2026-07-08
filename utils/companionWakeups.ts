@@ -4,6 +4,12 @@ const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
 
 export const COMPANION_WAKEUP_EVENT = 'companion-wakeup-sent';
+export const COMPANION_WAKEUP_USER_COOLDOWN_MS = 10 * MINUTE;
+export const COMPANION_WAKEUP_SEND_GAP_MIN_MS = 22 * MINUTE;
+export const COMPANION_WAKEUP_SEND_GAP_MAX_MS = 52 * MINUTE;
+export const COMPANION_WAKEUP_BATCH_STAGGER_MIN_MS = 22 * MINUTE;
+export const COMPANION_WAKEUP_BATCH_STAGGER_MAX_MS = 52 * MINUTE;
+export const COMPANION_WAKEUP_DUPLICATE_DEFER_MS = 90 * MINUTE;
 const COMPANION_WAKEUP_SETTINGS_KEY = 'companion_wakeup_settings_v1';
 
 export interface CompanionWakeupSettings {
@@ -18,9 +24,9 @@ export interface CompanionWakeupSettings {
 }
 
 export const DEFAULT_COMPANION_WAKEUP_SETTINGS: CompanionWakeupSettings = {
-    defaultMode: 'direct',
+    defaultMode: 'render',
     hiddenWordsEnabled: true,
-    momentWordsEnabled: false,
+    momentWordsEnabled: true,
     aiCareWindowsEnabled: true,
 };
 
@@ -33,8 +39,8 @@ export const loadCompanionWakeupSettings = (): CompanionWakeupSettings => {
         const legacyMode: CompanionWakeupMode = parsed.defaultMode === 'render' ? 'render' : 'direct';
         return {
             defaultMode: legacyMode,
-            hiddenWordsEnabled: parsed.hiddenWordsEnabled ?? legacyMode === 'direct',
-            momentWordsEnabled: parsed.momentWordsEnabled ?? legacyMode === 'render',
+            hiddenWordsEnabled: parsed.hiddenWordsEnabled ?? true,
+            momentWordsEnabled: parsed.momentWordsEnabled ?? true,
             aiCareWindowsEnabled: parsed.aiCareWindowsEnabled !== false,
         };
     } catch {
@@ -58,10 +64,10 @@ export const resolveCompanionWakeupMode = (
     settings: CompanionWakeupSettings = loadCompanionWakeupSettings(),
     rule?: { lines?: string[]; mode?: CompanionWakeupMode },
 ): CompanionWakeupMode => {
-    if (settings.hiddenWordsEnabled && rule?.lines?.length) return 'direct';
     if (settings.momentWordsEnabled) return 'render';
+    if (settings.hiddenWordsEnabled && rule?.lines?.length) return 'direct';
     if (settings.hiddenWordsEnabled) return 'direct';
-    return settings.defaultMode;
+    return rule?.mode || settings.defaultMode;
 };
 
 export const DEFAULT_HEARTBEAT_WINDOWS = [
@@ -132,6 +138,32 @@ const hashText = (value: string): number => {
     }
     return hash >>> 0;
 };
+
+const pickRangeMs = (minMs: number, maxMs: number, seed: string): number => {
+    const range = Math.max(0, maxMs - minMs);
+    if (range <= 0) return minMs;
+    return minMs + (hashText(seed) % (range + 1));
+};
+
+export const getCompanionWakeupSendGapMs = (charId: string, lastSentAt: number): number => (
+    pickRangeMs(
+        COMPANION_WAKEUP_SEND_GAP_MIN_MS,
+        COMPANION_WAKEUP_SEND_GAP_MAX_MS,
+        `send-gap:${charId}:${lastSentAt}`,
+    )
+);
+
+export const getCompanionWakeupBatchStaggerMs = (
+    charId: string,
+    seedAt: number,
+    index: number,
+): number => (
+    pickRangeMs(
+        COMPANION_WAKEUP_BATCH_STAGGER_MIN_MS,
+        COMPANION_WAKEUP_BATCH_STAGGER_MAX_MS,
+        `batch-gap:${charId}:${seedAt}:${index}`,
+    )
+);
 
 const getWindowBounds = (dayStart: Date, windowStart: string, windowEnd: string) => {
     const startMinutes = parseClockMinutes(windowStart);

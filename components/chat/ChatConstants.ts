@@ -331,7 +331,7 @@ export const PRESET_THEMES: Record<string, ChatTheme> = {
 export const DEFAULT_REFINE_PROMPTS = [
     {
         id: 'refine_atmosphere',
-        name: '氛围月记 (Atmosphere)',
+        name: '氛围月记',
         content: `### [角色月度记忆精炼]
 当前月份: \${dateStr}
 身份: 你就是 \${char.name}
@@ -360,7 +360,7 @@ export const DEFAULT_REFINE_PROMPTS = [
     },
     {
         id: 'refine_keypoints',
-        name: '要点速记 (Key Points)',
+        name: '要点速记',
         content: `### [月度记忆压缩]
 月份: \${dateStr}
 角色: \${char.name}

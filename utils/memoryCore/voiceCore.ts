@@ -204,9 +204,17 @@ export const pickVoiceDirectWakeupLine = async (
   char: CharacterProfile,
   userProfile: UserProfile,
   seed = Date.now(),
+  usedComparables?: Set<string>,
 ): Promise<string> => {
   const core = await loadCharacterVoiceCore(char.id);
-  const directLines = core?.lines.filter(line => line.kind === 'direct_message') || [];
+  const normalizeComparable = (value: string) => (
+    renderTemplateLine(value, char, userProfile)
+      .replace(/[，。！？、,.!?；;：:\s"'“”‘’]/g, '')
+      .toLowerCase()
+      .trim()
+  );
+  const directLines = (core?.lines.filter(line => line.kind === 'direct_message') || [])
+    .filter(line => !usedComparables?.has(normalizeComparable(line.text)));
   if (directLines.length === 0) return '';
 
   const queryTerms = extractMemorySearchTerms(`${rule.title} ${rule.value}`);
