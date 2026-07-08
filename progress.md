@@ -50,6 +50,9 @@
     repetition.
   - Wired Reality Sync into chat, AI-rendered proactive letters, and phone calls.
   - Updated Settings and README with the new Reality Sync controls/feature note.
+  - Fixed a real proactive-letter flood found in live testing: due wakeup rules
+    are now batched per character, extra due rules are staggered instead of sent
+    together, and exact recent duplicate direct lines are replaced or deferred.
 
 - pending:
   - Observe a real scheduled `主动来信` after the next heartbeat window and user
