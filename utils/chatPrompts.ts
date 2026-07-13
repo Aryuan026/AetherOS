@@ -265,7 +265,13 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
                 else if (m.type === 'social_card') {
                     const post = m.metadata?.post || {};
                     const commentsSample = (post.comments || []).map((c: any) => `${c.authorName}: ${c.content}`).join(' | ');
-                    content = `${timeStr} [用户分享了朋友圈内容]\n标题: ${post.title}\n内容: ${post.content}\n热评: ${commentsSample}\n(请根据你的性格对这个内容发表看法，比如吐槽、感兴趣或者不屑)`;
+                    if (post.kind === 'news') {
+                        const source = post.newsChannel || post.authorName || '资讯站';
+                        const category = post.newsCategory ? `\n分类: ${post.newsCategory}` : '';
+                        content = `${timeStr} [用户分享了一条资讯站小报]\n媒体: ${source}${category}\n标题: ${post.title}\n内容: ${post.content}\n热评: ${commentsSample}\n(这条内容只是用户转发的传闻/种草/资讯，不等于已确认事实。请根据你的性格自然反应：可以吐槽、怀疑、提醒、顺势约聊，或把它当作候选话题。)`;
+                    } else {
+                        content = `${timeStr} [用户分享了朋友圈内容]\n标题: ${post.title}\n内容: ${post.content}\n热评: ${commentsSample}\n(请根据你的性格对这个内容发表看法，比如吐槽、感兴趣或者不屑)`;
+                    }
                 }
                 else if (m.type === 'emoji') {
                      const stickerName = emojis.find(e => e.url === m.content)?.name || 'Image/Sticker';

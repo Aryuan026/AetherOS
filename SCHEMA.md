@@ -1,5 +1,37 @@
 # AetherOS Public Sticker Schema
 
+## User DeepSpace Identity
+
+`UserProfile` may persist a structured DeepSpace identity mode in addition to
+free-form `bio`:
+
+```ts
+type UserDeepSpaceIdentityMode =
+  | 'custom_non_hunter'
+  | 'custom_hunter'
+  | 'canon_hunter';
+
+interface UserProfile {
+  name: string;
+  avatar: string;
+  avatarFramePresetId?: string;
+  callPortrait?: string;
+  bio: string;
+  deepspaceIdentityMode?: UserDeepSpaceIdentityMode;
+  deepspaceIdentityNote?: string;
+}
+```
+
+Missing `deepspaceIdentityMode` resolves to `custom_non_hunter`. This mode means
+the app must not automatically treat the user as the original protagonist,
+Lingkong hunter, Zhang Su's granddaughter, Caleb's sister, Zayne's childhood
+friend/patient, or an aether-core vessel.
+
+This is a role-default guard, not an appearance ban. DeepSpace canon characters
+and NPCs may still exist in the world and enter the user's relationship network
+through explicit user settings, current plot, mounted worldbooks, encounters, or
+gradual roleplay development.
+
 ## Timebook And Companion Planning
 
 Current persisted relationship-date shape:
@@ -152,6 +184,14 @@ selectWorldlineMemoryContext({
   budgetChars,
 })
 ```
+
+Group chat uses the selector as a per-member prompt supplement, not as a shared
+group memory blob. The AI director should build each member's base context with
+`ContextBuilder.buildCoreContext(member, userProfile, true)`, then append a
+budgeted `selectWorldlineMemoryContext()` result for that same member. The
+selector receives the member's recent private messages as `currentMessages` and
+the recent group topic as `query`, so private relationship memory can shape how
+the character acts in public without being exposed as a literal transcript.
 
 The selector currently reuses:
 
@@ -378,6 +418,74 @@ interface WorldlineMemoryEvent {
 }
 ```
 
+## Social Moments Reply Contract
+
+Persisted user `朋友圈` rows use the existing `SocialPost` store and add a
+lightweight reply queue. This does not require an IndexedDB version bump because
+the fields live on the stored object:
+
+```ts
+{
+  kind: 'moment';
+  sourceType: 'user';
+  replyState: 'none' | 'pending' | 'generated';
+  replyDueAt?: number;
+  replyAudienceCharIds?: string[];
+  replyRemainingCharIds?: string[];
+  replyLastGeneratedAt?: number;
+}
+```
+
+`replyAudienceCharIds` records the eligible activated characters selected when
+the user publishes the post. `replyRemainingCharIds` is consumed one character
+at a time. Each successful generated reply appends a `SocialComment` with
+`charId`, updates `replyLastGeneratedAt`, and schedules the next `replyDueAt`
+when more eligible characters remain.
+
+The social participant pool is scoped by the active character's worldbooks. If
+the active built-in male lead has not mounted the five-lead crossover package,
+other built-in male leads are excluded from post, comment, and delayed-reply
+generation. Related native NPCs and plot-added NPCs may still appear as NPC
+commenters, but they are not treated as installed male-lead accounts.
+
+## Social News Generation Contract
+
+Persisted social rows continue to use `SocialPost`. News rows are identified by:
+
+```ts
+{
+  kind: 'news';
+  sourceType: 'news';
+  newsCategory: 'mainline' | 'sidequest' | 'date' | 'daily';
+  newsChannel: string;
+  storyLineStatus: 'candidate' | 'active' | 'closed' | 'archived';
+  storySeedStatus: 'candidate' | 'adopted';
+}
+```
+
+Long-form channels are `野史不歪`, `诡秘谈`, `恋爱出走指南`, and
+`两个人的地图`. Their acceptance gate is:
+
+```text
+content.replace(/\s/g, '').length >= 500
+```
+
+The first generation call returns 5-6 complete media rows. Only long-form rows
+below the gate enter one bounded repair call. Repair rows bind back to their
+original batch position through `repairIndex`; the repair may replace `content`
+but does not change category, channel, title, or the candidate-truth boundary.
+Rows still below the gate after repair are not persisted.
+
+The browser-local placeholder-dismissal key is:
+
+```text
+aetheros_social_demo_dismissed_tabs_v1
+```
+
+It contains `moments` and/or `news`. Clearing news deletes only news rows from
+the existing `social_posts` IndexedDB store and records `news` in this key so
+demo rows do not reappear after reload.
+
 ## Chat Appearance Theme
 
 `OSTheme.chatAppearancePreset` controls the high-level chat appearance contract.
@@ -410,6 +518,63 @@ editor. Avatar frame/accessory controls are separate from bubble adjustment.
 
 The default `ChatTheme` entry is named `深空` and supplies the bubble colors used
 by the deep-space chat appearance.
+
+## Dialog Visual Rules
+
+Shared avatar-and-bubble dialogue sizing lives in:
+
+```text
+components/chat/dialogVisualRules.ts
+```
+
+Current baseline tokens:
+
+```ts
+avatarSizePx = 40
+bubbleMaxWidth = '74%'
+bubbleText = '14px / 1.5'
+avatarBubbleGap = '10px'
+rowGutter = '16px'
+metadata = '10px speaker name / 9px timestamp'
+```
+
+One-to-one chat and group chat should consume these tokens instead of inventing
+separate avatar, bubble, and body-text scales. Future plot-simulation long-text
+pages that use avatar + bubble narration should also start from these tokens and
+only add paragraph spacing or card chrome when needed.
+
+## Call Transcript Utilities
+
+Shared phone-call transcript cleanup lives in:
+
+```text
+utils/callTranscript.ts
+```
+
+It owns:
+
+- stripping exact system record labels such as `（通话记录）`;
+- splitting call text into `speech` and `cue` parts for review UI rendering;
+- extracting speech-only text for future call context;
+- selecting a clean keepsake line from the full call transcript for the
+  post-call chat card.
+
+Call history, in-call display, and the normal-chat call summary card should use
+these utilities instead of rendering raw assistant text directly.
+
+Phone-call end messages use `metadata.source = 'call-end-popup'`. Their metadata
+may include:
+
+```ts
+callScene?: string
+keepsakeLine?: string
+durationSec?: number
+turnCount?: number
+```
+
+`callScene` is the per-session opening scene anchor. It is generated separately
+from dialogue, displayed as a small "所在" chip during the call, and persisted
+into call history. It should not be injected as visible spoken text.
 
 ## Catalog
 

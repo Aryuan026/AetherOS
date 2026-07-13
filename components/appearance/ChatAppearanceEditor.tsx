@@ -120,6 +120,17 @@ const previewBubbleConfig = (bubble: string, isUser: boolean, theme: OSTheme) =>
     };
 };
 
+const previewSendButtonClass = (presetId: OSTheme['chatAppearancePreset'], sendButtonStyle: string) => {
+    if (presetId === 'wechat') {
+        return sendButtonStyle === 'pill'
+            ? 'bg-slate-200 text-[9px] text-slate-600 shadow-none'
+            : 'bg-transparent text-[10px] text-slate-500 border border-slate-200';
+    }
+    if (presetId === 'minimal') return 'bg-[#0a84ff] text-[10px] text-white shadow-sm';
+    if (presetId === 'deep-space') return 'bg-[#a89ef2] text-[10px] text-white shadow-sm';
+    return 'bg-primary text-[10px] text-white shadow-sm';
+};
+
 export const ChatAppearanceEditor: React.FC<Props> = ({ theme, updateTheme, onCustomPresetSelect }) => {
     const bgInputRef = useRef<HTMLInputElement>(null);
     const effectiveTheme = resolveChatAppearanceTheme(theme);
@@ -131,6 +142,7 @@ export const ChatAppearanceEditor: React.FC<Props> = ({ theme, updateTheme, onCu
     const messageSpacing = effectiveTheme.chatMessageSpacing || defaults.chatMessageSpacing;
     const showTimestamp = effectiveTheme.chatShowTimestamp || defaults.chatShowTimestamp;
     const inputStyle = effectiveTheme.chatInputStyle || defaults.chatInputStyle;
+    const sendButtonStyle = effectiveTheme.chatSendButtonStyle || defaults.chatSendButtonStyle;
     const chromeStyle = effectiveTheme.chatChromeStyle || defaults.chatChromeStyle;
     const backgroundStyle = effectiveTheme.chatBackgroundStyle || defaults.chatBackgroundStyle;
     const chatBackgroundImage = effectiveTheme.chatBackgroundImage ?? DEFAULT_CHAT_BACKGROUND_IMAGE;
@@ -283,8 +295,10 @@ export const ChatAppearanceEditor: React.FC<Props> = ({ theme, updateTheme, onCu
                             <div className={`flex min-h-7 flex-1 items-center px-3 text-[9px] text-slate-400 ${inputStyle === 'wechat' ? 'rounded-full border border-slate-200 bg-white' : 'rounded-full bg-slate-100'}`}>
                                 输入消息...
                             </div>
-                            <button className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#a89ef2] text-[10px] text-white shadow-sm">
-                                ➤
+                            <button className={`flex shrink-0 items-center justify-center rounded-full ${sendButtonStyle === 'pill' ? 'h-7 min-w-10 px-2' : 'h-7 w-7'} ${previewSendButtonClass(activePresetId, sendButtonStyle)}`}>
+                                <span className={sendButtonStyle === 'pill' ? 'px-2 text-[8px] font-bold' : ''}>
+                                    {sendButtonStyle === 'pill' ? '发送' : '➤'}
+                                </span>
                             </button>
                         </div>
                     </div>

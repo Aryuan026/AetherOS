@@ -1,7 +1,7 @@
 
 import React, { useRef } from 'react';
 import { ShareNetwork, Trash, Plus, Smiley, PaperPlaneTilt, Money, BookOpenText, GearSix, Image, Lock, ArrowsClockwise, ChatCircleDots, SmileyWink } from '@phosphor-icons/react';
-import { CharacterProfile, EmojiCategory, Emoji } from '../../types';
+import { CharacterProfile, EmojiCategory, Emoji, OSTheme } from '../../types';
 import { isIOSStandaloneWebApp } from '../../utils/iosStandalone';
 import { categoryHasRestrictedVisibility } from '../../utils/emojiVisibility';
 
@@ -37,6 +37,7 @@ interface ChatInputAreaProps {
     inputStyle?: 'default' | 'rounded' | 'flat' | 'wechat' | 'ios' | 'pixel';
     sendButtonStyle?: 'circle' | 'pill' | 'minimal';
     chromeStyle?: 'soft' | 'flat' | 'floating' | 'pixel';
+    appearancePreset?: OSTheme['chatAppearancePreset'];
 }
 
 const ChatInputArea: React.FC<ChatInputAreaProps> = ({
@@ -51,6 +52,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     inputStyle = 'default',
     sendButtonStyle = 'circle',
     chromeStyle = 'soft',
+    appearancePreset = 'custom',
 }) => {
     const chatImageInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -194,18 +196,42 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                   : inputStyle === 'pixel'
                     ? 'bg-[#f8f0e0] border-2 border-[#8f674a] rounded-[4px]'
                     : 'bg-white/38 border border-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] rounded-[24px]';
+    const sendButtonTone =
+        appearancePreset === 'deep-space'
+            ? {
+                circle: 'bg-[#a89ef2] text-white shadow-lg shadow-[#a89ef2]/24',
+                minimal: 'bg-transparent text-[#8b7cf6]',
+                pill: 'bg-[#a89ef2] text-white shadow-lg shadow-[#a89ef2]/24',
+              }
+            : appearancePreset === 'minimal'
+              ? {
+                circle: 'bg-[#0a84ff] text-white shadow-lg shadow-blue-200',
+                minimal: 'bg-transparent text-[#0a84ff]',
+                pill: 'bg-[#0a84ff] text-white shadow-lg shadow-blue-200',
+              }
+              : appearancePreset === 'wechat'
+                ? {
+                  circle: 'bg-transparent text-slate-500 border border-slate-200 shadow-none',
+                  minimal: 'bg-transparent text-slate-500',
+                  pill: 'bg-slate-200 text-slate-600 shadow-none',
+                }
+                : {
+                  circle: 'bg-primary text-white shadow-lg',
+                  minimal: 'bg-transparent text-primary',
+                  pill: 'bg-primary text-white shadow-lg',
+                };
     const sendButtonClass =
         sendButtonStyle === 'pill'
             ? isPixelStyle
                 ? 'h-11 min-w-[72px] shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] px-4 text-[11px] font-bold text-[#fff7ed]'
-                : 'h-11 min-w-[72px] shrink-0 rounded-full bg-primary px-4 text-[11px] font-bold text-white shadow-lg'
+                : `h-11 min-w-[72px] shrink-0 rounded-full px-4 text-[11px] font-bold ${sendButtonTone.pill}`
             : sendButtonStyle === 'minimal'
               ? isPixelStyle
                 ? 'w-11 h-11 shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] text-[#fff7ed] flex items-center justify-center'
-                : 'w-11 h-11 shrink-0 rounded-full bg-transparent text-primary flex items-center justify-center'
+                : `w-11 h-11 shrink-0 rounded-full flex items-center justify-center ${sendButtonTone.minimal}`
               : isPixelStyle
                 ? 'w-11 h-11 shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] text-[#fff7ed] flex items-center justify-center'
-                : 'w-11 h-11 shrink-0 rounded-full bg-primary text-white flex items-center justify-center transition-all shadow-lg';
+                : `w-11 h-11 shrink-0 rounded-full flex items-center justify-center transition-all ${sendButtonTone.circle}`;
     const panelClass = isPixelStyle
         ? 'bg-[#f8f0e0] border-t-2 border-[#8f674a]'
         : 'bg-slate-50 border-t border-slate-200/60';

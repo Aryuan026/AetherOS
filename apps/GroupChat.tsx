@@ -11,6 +11,8 @@ import { DEFAULT_ARCHIVE_PROMPTS } from '../components/chat/ChatConstants';
 import { UsersThree } from '@phosphor-icons/react';
 import { getVisibleEmojiScopeForCharacter, getVisibleEmojiScopeForGroup } from '../utils/emojiVisibility';
 import AppHeader, { AppHeaderAddButton } from '../components/shell/AppHeader';
+import { selectWorldlineMemoryContext } from '../utils/memoryCore';
+import { DIALOG_VISUAL_RULES } from '../components/chat/dialogVisualRules';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -126,7 +128,7 @@ const GroupMessageItem = React.memo(({
                 );
             default:
                 return (
-                    <div className={`px-3.5 py-2 rounded-[18px] text-[15px] leading-relaxed shadow-sm whitespace-pre-wrap break-all ${isUser ? 'bg-violet-500 text-white rounded-tr-sm' : 'bg-white text-slate-700 rounded-tl-sm border border-slate-100'}`}>
+                    <div className={`${DIALOG_VISUAL_RULES.bubblePaddingClass} ${DIALOG_VISUAL_RULES.bubbleMinHeightClass} rounded-[18px] ${DIALOG_VISUAL_RULES.bubbleTextClass} shadow-sm whitespace-pre-wrap break-all ${isUser ? 'bg-violet-500 text-white rounded-tr-sm' : 'bg-white text-slate-700 rounded-tl-sm border border-slate-100'}`}>
                         {msg.content}
                     </div>
                 );
@@ -135,7 +137,7 @@ const GroupMessageItem = React.memo(({
 
     return (
         <div 
-            className={`flex gap-3 mb-4 w-full animate-fade-in relative ${isUser ? 'justify-end' : 'justify-start'} ${selectionMode ? 'pl-8' : ''}`}
+            className={`flex ${DIALOG_VISUAL_RULES.avatarBubbleGapClass} mb-3.5 w-full animate-fade-in relative ${isUser ? 'justify-end' : 'justify-start'} ${selectionMode ? 'pl-8' : ''}`}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onTouchMove={handleMove}
@@ -154,19 +156,19 @@ const GroupMessageItem = React.memo(({
 
             {!isUser && (
                 <div className="flex flex-col items-center gap-1 shrink-0">
-                    <img src={avatar} className="w-9 h-9 rounded-full object-cover shadow-sm border border-white" loading="lazy" />
+                    <img src={avatar} className={`${DIALOG_VISUAL_RULES.avatarSizeClass} rounded-full object-cover shadow-sm border border-white`} loading="lazy" />
                 </div>
             )}
             
-            <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[80%] ${selectionMode ? 'pointer-events-none' : ''}`}>
-                {!isUser && <span className="text-[10px] text-slate-400 ml-1 mb-1">{name}</span>}
+            <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} ${DIALOG_VISUAL_RULES.bubbleMaxWidthClass} ${selectionMode ? 'pointer-events-none' : ''}`}>
+                {!isUser && <span className={`${DIALOG_VISUAL_RULES.nameTextClass} text-slate-400 ml-1 mb-1`}>{name}</span>}
                 {renderContent()}
-                <span className="text-[9px] text-slate-300 mt-1 px-1">{timeStr}</span>
+                <span className={`${DIALOG_VISUAL_RULES.timestampTextClass} text-slate-300 mt-1 px-1`}>{timeStr}</span>
             </div>
 
             {isUser && (
                 <div className="flex flex-col items-center gap-1 shrink-0">
-                    <img src={avatar} className="w-9 h-9 rounded-full object-cover shadow-sm border border-white" loading="lazy" />
+                    <img src={avatar} className={`${DIALOG_VISUAL_RULES.avatarSizeClass} rounded-full object-cover shadow-sm border border-white`} loading="lazy" />
                 </div>
             )}
         </div>
@@ -176,7 +178,7 @@ const GroupMessageItem = React.memo(({
 // --- Main Component ---
 
 const GroupChat: React.FC = () => {
-    const { closeApp, groups, createGroup, deleteGroup, characters, updateCharacter, apiConfig, addToast, userProfile, virtualTime } = useOS();
+    const { closeApp, groups, createGroup, updateGroup, deleteGroup, characters, updateCharacter, apiConfig, addToast, userProfile, virtualTime } = useOS();
     const [view, setView] = useState<'list' | 'chat'>('list');
     const [activeGroup, setActiveGroup] = useState<GroupProfile | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -220,6 +222,11 @@ const GroupChat: React.FC = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const groupAvatarInputRef = useRef<HTMLInputElement>(null);
+    const activeGroupMembers = useMemo(() => (
+        activeGroup
+            ? activeGroup.members.map(id => characters.find(char => char.id === id)).filter((char): char is CharacterProfile => Boolean(char))
+            : []
+    ), [activeGroup, characters]);
 
     // Load shared archive prompts from localStorage (same key as Chat app)
     useEffect(() => {
@@ -248,6 +255,14 @@ const GroupChat: React.FC = () => {
             });
         }
     }, [activeGroup]);
+
+    useEffect(() => {
+        if (!activeGroup) return;
+        const latestGroup = groups.find(group => group.id === activeGroup.id);
+        if (latestGroup && latestGroup !== activeGroup) {
+            setActiveGroup(latestGroup);
+        }
+    }, [groups, activeGroup?.id]);
 
     // Auto Scroll
     useLayoutEffect(() => {
@@ -393,9 +408,9 @@ const GroupChat: React.FC = () => {
 
     const handleUpdateGroupInfo = async () => {
         if (!activeGroup) return;
-        const updatedGroup = { ...activeGroup, name: tempGroupName || activeGroup.name };
-        await DB.saveGroup(updatedGroup);
-        setActiveGroup(updatedGroup);
+        const name = tempGroupName.trim() || activeGroup.name;
+        const updatedGroup = await updateGroup(activeGroup.id, { name });
+        if (updatedGroup) setActiveGroup(updatedGroup);
         setModalType('none');
         addToast('群信息已更新', 'success');
     };
@@ -405,9 +420,8 @@ const GroupChat: React.FC = () => {
         if (!file || !activeGroup) return;
         try {
             const base64 = await processImage(file);
-            const updatedGroup = { ...activeGroup, avatar: base64 };
-            await DB.saveGroup(updatedGroup);
-            setActiveGroup(updatedGroup);
+            const updatedGroup = await updateGroup(activeGroup.id, { avatar: base64 });
+            if (updatedGroup) setActiveGroup(updatedGroup);
             addToast('群头像已修改', 'success');
         } catch (err: any) {
             addToast('图片处理失败', 'error');
@@ -465,18 +479,23 @@ const GroupChat: React.FC = () => {
             return;
         }
 
-        if (messages.length === 0) {
-            addToast('暂无聊天记录', 'info');
-            return;
-        }
-
         setIsSummarizing(true);
-        setSummaryProgress('正在读取记录...');
+        setSummaryProgress('正在读取完整群聊记录...');
 
         try {
+            const allGroupMessages = await DB.getGroupMessages(activeGroup.id);
+            const archiveMessages = [...allGroupMessages].sort((a, b) => (
+                a.timestamp - b.timestamp || a.id - b.id
+            ));
+
+            if (archiveMessages.length === 0) {
+                addToast('暂无聊天记录', 'info');
+                return;
+            }
+
             // Group messages by Date (YYYY-MM-DD)
             const msgsByDate: Record<string, Message[]> = {};
-            messages.forEach(m => {
+            archiveMessages.forEach(m => {
                 const dateStr = new Date(m.timestamp).toLocaleDateString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit'}).replace(/\//g, '-');
                 if (!msgsByDate[dateStr]) msgsByDate[dateStr] = [];
                 msgsByDate[dateStr].push(m);
@@ -631,11 +650,16 @@ ${logText.substring(0, 10000)}
         setIsTyping(true);
 
         try {
+            const { messages: directorMsgs } = await DB.getRecentGroupMessagesWithCount(
+                activeGroup.id,
+                Math.max(contextLimit, currentMsgs.length, 30)
+            ).catch(() => ({ messages: currentMsgs, totalCount: currentMsgs.length }));
+
             // 1. Prepare Group Context
             const groupMembers = characters.filter(c => activeGroup.members.includes(c.id));
             
             // Calculate Time Context
-            const lastMsg = currentMsgs[currentMsgs.length - 1];
+            const lastMsg = directorMsgs[directorMsgs.length - 1];
             const timeGapInfo = lastMsg ? getTimeGapHint(lastMsg.timestamp) : "这是群聊的第一条消息。";
             const currentTimeStr = `${virtualTime.hours.toString().padStart(2, '0')}:${virtualTime.minutes.toString().padStart(2, '0')}`;
 
@@ -646,23 +670,58 @@ ${logText.substring(0, 10000)}
 用户 (User): ${userProfile.name} (你服务的对象)
 `;
 
+            const buildMessageLine = (m: Message) => {
+                let name = userProfile.name;
+                if (m.role === 'assistant') {
+                    name = characters.find(c => c.id === m.charId)?.name || '未知成员';
+                }
+                const content = m.type === 'image'
+                    ? '[图片]'
+                    : m.type === 'emoji'
+                        ? '[表情包]'
+                        : m.type === 'transfer'
+                            ? `[红包/转账: ${m.metadata?.amount || ''}]`
+                            : String(m.content || '');
+                return `${name}: ${content}`;
+            };
+
+            const groupMemoryQuery = directorMsgs
+                .slice(-12)
+                .map(buildMessageLine)
+                .join('\n')
+                .slice(-1600);
+
             // 2. Inject Member Context (Strict Isolation via ContextBuilder)
             for (const member of groupMembers) {
-                // Use ContextBuilder for the heavy lifting of profile, impression, and archived memories
-                const coreContext = ContextBuilder.buildCoreContext(member, userProfile, true);
-
                 // Fetch Private Logs
                 const privateMsgs = await DB.getMessagesByCharId(member.id);
+                const recentPrivateMsgs = privateMsgs.slice(-80);
+                const worldlineMemory = await selectWorldlineMemoryContext({
+                    char: member,
+                    user: userProfile,
+                    mode: 'remote_chat',
+                    currentMessages: recentPrivateMsgs,
+                    query: groupMemoryQuery,
+                    budgetChars: 1000,
+                });
+
+                // Use ContextBuilder for the heavy lifting of profile, impression, and archived memories
+                const coreContext = ContextBuilder.buildCoreContext(member, userProfile, true);
                 // Get private gap string
                 const privateGapInfo = await getPrivateTimeGap(member.id);
                 
-                const recentPrivate = privateMsgs.slice(-10).map(m => `[${m.role === 'user' ? '用户' : '我'}]: ${m.content.substring(0, 50)}`).join('\n');
+                const recentPrivate = privateMsgs.slice(-12).map(m => `[${m.role === 'user' ? '用户' : '我'}]: ${String(m.content || '').substring(0, 120)}`).join('\n');
                 
                 // Construct Detailed Profile Wrapper
                 // CRITICAL FIX: Emphasize Private Context logic
                 context += `
 <<< 角色档案 START: ${member.name} (ID: ${member.id}) >>>
 ${coreContext}
+${worldlineMemory.markdown ? `
+[世界线交汇记忆 / 最新状态补充]
+${worldlineMemory.markdown}
+（只在自然相关时吸收成反应，不要逐条复述。）
+` : ''}
 
 [重点：私聊状态 (Private Context)]: 
 - **私聊空窗期**: ${privateGapInfo}
@@ -674,14 +733,7 @@ ${recentPrivate || '(暂无私聊)'}
             }
 
             // 3. Group History (uses configurable context limit)
-            const recentGroupMsgs = currentMsgs.slice(-contextLimit).map(m => {
-                let name = '用户';
-                if (m.role === 'assistant') {
-                    name = characters.find(c => c.id === m.charId)?.name || '未知';
-                }
-                const content = m.type === 'image' ? '[图片]' : m.type === 'emoji' ? `[表情包: ${m.content}]` : m.type === 'transfer' ? `[发红包: ${m.metadata?.amount}]` : m.content;
-                return `${name}: ${content}`;
-            }).join('\n');
+            const recentGroupMsgs = directorMsgs.slice(-contextLimit).map(buildMessageLine).join('\n');
 
             // NEW: Build Categorized Emoji Context (filtered by group member visibility)
             const emojiContextStr = (() => {
@@ -953,34 +1005,48 @@ ${recentGroupMsgs}
     return (
         <div className="h-full w-full bg-[#f0f4f8] flex flex-col font-sans relative">
             {/* Header */}
-            <div className="h-24 bg-white/80 backdrop-blur-xl px-5 flex items-end pb-4 border-b border-slate-200/60 shrink-0 z-30 sticky top-0 shadow-sm transition-all">
+            <div className="h-[84px] bg-white/80 backdrop-blur-xl px-4 pt-[40px] pb-2 border-b border-slate-200/60 shrink-0 z-30 sticky top-0 shadow-sm transition-all">
                 {selectionMode ? (
-                    <div className="flex items-center justify-between w-full">
-                        <button onClick={() => { setSelectionMode(false); setSelectedMsgIds(new Set()); }} className="text-sm font-bold text-slate-500 px-2 py-1">取消</button>
+                    <div className="flex items-center justify-between w-full h-full">
+                        <button onClick={() => { setSelectionMode(false); setSelectedMsgIds(new Set()); }} className="text-xs font-bold text-slate-500 px-2 py-1">取消</button>
                         <span className="text-sm font-bold text-slate-800">已选 {selectedMsgIds.size} 项</span>
                         <div className="w-10"></div>
                     </div>
                 ) : (
-                    <div className="flex items-center gap-3 w-full">
-                        <button onClick={() => setView('list')} className="p-2 -ml-2 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors">
+                    <div className="flex items-center gap-2.5 w-full h-full">
+                        <button onClick={() => setView('list')} className="w-8 h-8 -ml-2 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors flex items-center justify-center">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                         </button>
                         <div className="flex-1 min-w-0" onClick={() => { setTempGroupName(activeGroup?.name || ''); setModalType('settings'); }}>
-                            <h1 className="text-base font-bold text-slate-800 truncate flex items-center gap-1">
+                            <h1 className="text-[14px] font-bold text-slate-800 truncate flex items-center gap-1 leading-tight">
                                 {activeGroup?.name}
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-400"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
                             </h1>
-                            <p className="text-[10px] text-slate-500 font-medium">{activeGroup?.members.length} 成员</p>
+                            <div className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                                <div className="flex -space-x-1">
+                                    {activeGroupMembers.slice(0, 4).map(member => (
+                                        <img
+                                            key={member.id}
+                                            src={member.avatar}
+                                            className="w-4 h-4 rounded-full object-cover border border-white shadow-[0_1px_2px_rgba(15,23,42,0.10)]"
+                                            alt={member.name}
+                                        />
+                                    ))}
+                                </div>
+                                <span className="truncate">
+                                    {activeGroupMembers.length} 成员{activeGroupMembers.length > 0 ? ` · ${activeGroupMembers.slice(0, 3).map(member => member.name).join('、')}` : ''}
+                                </span>
+                            </div>
                         </div>
                         
                         {/* Reroll Button (Context Aware) */}
                         {canReroll && !isTyping && (
                             <button 
                                 onClick={handleReroll} 
-                                className="p-2 rounded-full bg-slate-100 text-slate-500 hover:text-violet-600 transition-colors"
+                                className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:text-violet-600 transition-colors flex items-center justify-center"
                                 title="重新生成回复"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-[17px] h-[17px]"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                             </button>
                         )}
 
@@ -988,9 +1054,10 @@ ${recentGroupMsgs}
                         <button 
                             onClick={() => triggerDirector(messages)} 
                             disabled={isTyping} 
-                            className={`p-2 rounded-full transition-all active:scale-90 ${isTyping ? 'bg-slate-100 text-slate-300' : 'bg-violet-100 text-violet-600 shadow-sm'}`}
+                            className={`w-8 h-8 rounded-full transition-all active:scale-90 flex items-center justify-center ${isTyping ? 'bg-slate-100 text-slate-300' : 'bg-violet-100 text-violet-600 shadow-sm'}`}
+                            title="触发 AI 导演"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .914-.143Z" clipRule="evenodd" /></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-[17px] h-[17px]"><path fillRule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .914-.143Z" clipRule="evenodd" /></svg>
                         </button>
                     </div>
                 )}
@@ -1053,23 +1120,26 @@ ${recentGroupMsgs}
                         </button>
                     </div>
                 ) : (
-                    <div className="p-2 flex items-end gap-2">
+                    <div className="p-2 flex items-center gap-2">
                         {/* Plus / Actions Button */}
                         <button 
                             onClick={() => { setShowActions(!showActions); setShowEmojiPicker(false); }}
-                            className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform ${showActions ? 'bg-slate-300 rotate-45' : 'bg-transparent hover:bg-slate-200'}`}
+                            aria-label="展开更多功能"
+                            className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 self-center transition-all active:scale-95 ${showActions ? 'bg-slate-200 border-slate-400 rotate-45 text-slate-700' : 'bg-transparent border-slate-500/80 text-slate-600 hover:bg-slate-200'}`}
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-[18px] h-[18px]">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                            </svg>
                         </button>
 
                         {/* Input Field Container */}
-                        <div className="flex-1 bg-white rounded-xl flex items-end px-3 py-2 border border-slate-200 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 transition-all">
+                        <div className="flex-1 min-h-[44px] bg-white rounded-xl flex items-center px-3 py-2 border border-slate-200 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 transition-all">
                             <textarea 
                                 rows={1} 
                                 value={input} 
                                 onChange={e => setInput(e.target.value)} 
                                 onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(input); }}} 
-                                className="flex-1 bg-transparent text-[16px] outline-none resize-none max-h-28 text-slate-800 placeholder:text-slate-400 py-1" 
+                                className="flex-1 bg-transparent text-[15px] outline-none resize-none max-h-28 text-slate-800 placeholder:text-slate-400 py-1"
                                 placeholder="Message..." 
                                 style={{ height: 'auto', minHeight: '24px' }} 
                             />
@@ -1086,7 +1156,7 @@ ${recentGroupMsgs}
                         {input.trim() ? (
                             <button 
                                 onClick={() => handleSendMessage(input)} 
-                                className="h-9 px-4 bg-violet-500 text-white rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all"
+                                className="h-9 px-4 bg-violet-500 text-white rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all self-center"
                             >
                                 发送
                             </button>
@@ -1135,8 +1205,8 @@ ${recentGroupMsgs}
             {/* --- Modals --- */}
 
             {/* Group Settings Modal */}
-            <Modal isOpen={modalType === 'settings'} title="群组设置" onClose={() => setModalType('none')} footer={<button onClick={handleUpdateGroupInfo} className="w-full py-3 bg-violet-500 text-white font-bold rounded-2xl shadow-lg shadow-violet-200">保存修改</button>}>
-                <div className="space-y-6">
+            <Modal isOpen={modalType === 'settings'} title="群组设置" onClose={() => setModalType('none')} footer={<button onClick={handleUpdateGroupInfo} className="w-full py-3 bg-violet-500 text-white text-sm font-bold rounded-2xl shadow-lg shadow-violet-200">保存修改</button>}>
+                <div className="space-y-5">
                     {/* Header Info */}
                     <div className="flex justify-center">
                         <div onClick={() => groupAvatarInputRef.current?.click()} className="w-24 h-24 rounded-3xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden relative group hover:border-violet-400">
@@ -1155,7 +1225,7 @@ ${recentGroupMsgs}
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">AI 上下文条数 ({contextLimit})</label>
                         <input type="range" min="20" max="5000" step="10" value={contextLimit} onChange={e => { const v = parseInt(e.target.value); setContextLimit(v); localStorage.setItem('groupchat_context_limit', String(v)); }} className="w-full h-2 bg-slate-200 rounded-full appearance-none accent-violet-500" />
                         <div className="flex justify-between text-[10px] text-slate-400 mt-1"><span>20 (省流)</span><span>5000 (超长记忆)</span></div>
-                        <p className="text-[9px] text-slate-400 mt-1 leading-tight">控制每次触发AI导演时发送的群聊历史消息数量。越多上下文越丰富，但消耗更多token。</p>
+                        <p className="text-[9px] text-slate-400 mt-1 leading-tight">控制每次触发 AI 导演时读取的群聊历史条数；后台会按这个数量从本地历史拉取，不依赖当前屏幕加载了多少条。</p>
                     </div>
 
                     {/* Memory & Context Management */}
@@ -1175,14 +1245,14 @@ ${recentGroupMsgs}
                             <p className="text-[8px] text-indigo-300 mt-2 leading-tight">提示词与聊天-归档共享，可在聊天设置中自定义。</p>
                         </div>
 
-                        <button onClick={handleGroupSummary} disabled={isSummarizing} className="w-full py-3 bg-indigo-50 text-indigo-600 font-bold rounded-2xl border border-indigo-100 active:scale-95 transition-transform flex items-center justify-center gap-2 mb-2">
+                        <button onClick={handleGroupSummary} disabled={isSummarizing} className="w-full py-3 bg-indigo-50 text-indigo-600 text-sm font-bold rounded-2xl border border-indigo-100 active:scale-95 transition-transform flex items-center justify-center gap-2 mb-2">
                             {isSummarizing ? (
                                 <><div className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin"></div><span className="text-xs">{summaryProgress || '处理中...'}</span></>
                             ) : (
                                 <><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg> 生成总结并同步到全员记忆</>
                             )}
                         </button>
-                        <p className="text-[9px] text-slate-400 leading-tight px-1">使用选中的提示词风格生成群聊总结，并作为记忆植入到所有群成员的大脑中。</p>
+                        <p className="text-[9px] text-slate-400 leading-tight px-1">读取该群完整本地历史，使用选中的提示词风格生成群聊总结，并写入所有群成员的角色记忆。</p>
                     </div>
 
                     {/* Danger Zone */}

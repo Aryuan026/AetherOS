@@ -2,9 +2,12 @@
 
 
 import React, { useRef, useState } from 'react';
-import { Message, ChatTheme } from '../../types';
+import { AvatarFramePreset, Message, ChatTheme } from '../../types';
 import { tryParseLifeSimResetCard } from '../../utils/lifeSimChatCard';
 import { getChatBubbleContainerStyle } from './ChatConstants';
+import AvatarWithFrame from '../common/AvatarWithFrame';
+import { DIALOG_VISUAL_RULES } from './dialogVisualRules';
+import { cleanCallKeepsakeLine } from '../../utils/callTranscript';
 
 // --- Forward Card with expand/collapse ---
 const ForwardCard: React.FC<{
@@ -185,8 +188,10 @@ interface MessageItemProps {
     isLastInGroup: boolean;
     activeTheme: ChatTheme;
     charAvatar: string;
+    charAvatarFramePreset?: AvatarFramePreset;
     charName: string;
     userAvatar: string;
+    userAvatarFramePreset?: AvatarFramePreset;
     onLongPress: (m: Message) => void;
     selectionMode: boolean;
     isSelected: boolean;
@@ -215,8 +220,10 @@ const MessageItem = React.memo(({
     isLastInGroup,
     activeTheme,
     charAvatar,
+    charAvatarFramePreset,
     charName,
     userAvatar,
+    userAvatarFramePreset,
     onLongPress,
     selectionMode,
     isSelected,
@@ -250,11 +257,17 @@ const MessageItem = React.memo(({
     const isWechatBubble = visualBubbleVariant === 'wechat';
     const isDeepSpaceBubble = visualBubbleVariant === 'deep-space';
     const isCompactBubble = isWechatBubble || isDeepSpaceBubble;
-    const avatarSizeClass = isCompactBubble
-        ? 'w-[42px] h-[42px]'
+    const avatarSizeClass = isDeepSpaceBubble
+        ? DIALOG_VISUAL_RULES.avatarSizeClass
+        : isWechatBubble
+          ? 'w-[42px] h-[42px]'
         : avatarSize === 'small' ? 'w-7 h-7' : avatarSize === 'large' ? 'w-12 h-12' : 'w-9 h-9';
     const avatarRadiusClass = avatarShape === 'square' ? 'rounded-sm' : avatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full';
-    const avatarSizePx = isCompactBubble ? 42 : avatarSize === 'small' ? 28 : avatarSize === 'large' ? 48 : 36;
+    const avatarSizePx = isDeepSpaceBubble
+        ? DIALOG_VISUAL_RULES.avatarSizePx
+        : isWechatBubble
+          ? 42
+          : avatarSize === 'small' ? 28 : avatarSize === 'large' ? 48 : 36;
     const shouldShowAvatar = avatarMode === 'every_message' || isLastInGroup;
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const startPos = useRef({ x: 0, y: 0 }); // Track touch start position
@@ -333,15 +346,18 @@ const MessageItem = React.memo(({
 
     const formatTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
-    // Render Avatar with potential decoration/frame
+    // Render Avatar with potential bubble decoration
     // Removed mb-5 from here, handled via absolute positioning in parent
-    const renderAvatar = (src: string) => (
+    const renderAvatar = (src: string, framePreset?: AvatarFramePreset) => (
         <div className={`relative ${avatarSizeClass} z-0`}>
             {shouldShowAvatar && (
                 <>
-                    <img
+                    <AvatarWithFrame
                         src={src}
-                        className={`w-full h-full ${avatarRadiusClass} object-cover shadow-sm ring-1 ring-black/5 relative z-0`}
+                        framePreset={framePreset}
+                        className="w-full h-full relative z-0"
+                        roundedClassName={avatarRadiusClass}
+                        imageClassName="shadow-sm ring-1 ring-black/5"
                         alt="avatar"
                         loading="lazy"
                         decoding="async"
@@ -456,8 +472,8 @@ const MessageItem = React.memo(({
             const durationSec = Math.max(1, Number(m.metadata?.durationSec || 0));
             const turnCount = Math.max(1, Number(m.metadata?.turnCount || 1));
             const durationText = `${String(Math.floor(durationSec / 60)).padStart(2, '0')}:${String(durationSec % 60).padStart(2, '0')}`;
-            const callMemo = String(m.metadata?.keepsakeLine || `“今天这通电话，我会记很久。” —— ${m.metadata?.characterName || charName}`);
             const memoTitle = m.metadata?.characterName || charName;
+            const callMemo = cleanCallKeepsakeLine(m.metadata?.keepsakeLine || `“今天这通电话，我会记很久。” —— ${memoTitle}`, memoTitle);
             const memoAvatar = m.metadata?.characterAvatar || charAvatar;
             const timeHint = durationSec <= 240 ? '差不多是一杯咖啡的时间' : '像听完一首喜欢的歌再多一点';
 
@@ -533,12 +549,16 @@ const MessageItem = React.memo(({
         );
     }
 
-    const bubbleMaxWidthClass = isWechatBubble ? 'max-w-[78%]' : 'max-w-[72%]';
+    const bubbleMaxWidthClass = isDeepSpaceBubble
+        ? DIALOG_VISUAL_RULES.bubbleMaxWidthClass
+        : isWechatBubble ? 'max-w-[78%]' : 'max-w-[72%]';
     const bubbleOffsetClass = '';
-    const avatarBubbleGapClass = isCompactBubble ? 'gap-2.5' : 'gap-2';
+    const avatarBubbleGapClass = isDeepSpaceBubble
+        ? DIALOG_VISUAL_RULES.avatarBubbleGapClass
+        : isCompactBubble ? 'gap-2.5' : 'gap-2';
 
     const commonLayout = (content: React.ReactNode) => (
-            <div className={`flex items-start ${isUser ? 'justify-end' : 'justify-start'} ${avatarBubbleGapClass} ${marginBottom} px-4 group select-none relative transition-[padding] duration-300 ${selectionMode ? 'pl-12' : ''}`}>
+            <div className={`flex items-start ${isUser ? 'justify-end' : 'justify-start'} ${avatarBubbleGapClass} ${marginBottom} ${DIALOG_VISUAL_RULES.rowGutterClass} group select-none relative transition-[padding] duration-300 ${selectionMode ? 'pl-12' : ''}`}>
                 {selectionMode && (
                     <div className="absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer z-20" onClick={() => onToggleSelect(m.id)}>
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-slate-300 bg-white/80'}`}>
@@ -547,7 +567,7 @@ const MessageItem = React.memo(({
                     </div>
                 )}
 
-                {!isUser && renderAvatar(charAvatar)}
+                {!isUser && renderAvatar(charAvatar, charAvatarFramePreset)}
 
                 <div className={`relative flex min-w-0 ${bubbleMaxWidthClass} ${bubbleOffsetClass} flex-col ${isUser ? 'items-end' : 'items-start'}`} {...interactionProps}>
                     <div className={selectionMode ? 'pointer-events-none' : ''}>
@@ -558,7 +578,7 @@ const MessageItem = React.memo(({
                     )}
                 </div>
 
-                {isUser && renderAvatar(userAvatar)}
+                {isUser && renderAvatar(userAvatar, userAvatarFramePreset)}
             </div>
     );
 
@@ -960,7 +980,7 @@ const MessageItem = React.memo(({
     return commonLayout(
         <div className={isVoiceOnlyMsg
             ? 'relative animate-fade-in'
-            : `relative ${visualBubbleVariant === 'flat' || visualBubbleVariant === 'outline' || isWechatBubble ? '' : 'shadow-sm '}${isCompactBubble ? 'min-h-[42px] px-4 py-2.5' : 'px-5 py-3'} animate-fade-in ${visualBubbleVariant === 'outline' || isWechatBubble ? '' : 'border border-black/5 '}active:scale-[0.98] transition-transform ${isWechatBubble ? 'overflow-visible' : 'overflow-hidden'} ${isUser ? 'aether-bubble-user' : 'aether-bubble-ai'}`}
+            : `relative ${visualBubbleVariant === 'flat' || visualBubbleVariant === 'outline' || isWechatBubble ? '' : 'shadow-sm '}${isDeepSpaceBubble ? `${DIALOG_VISUAL_RULES.bubbleMinHeightClass} ${DIALOG_VISUAL_RULES.bubblePaddingClass}` : isCompactBubble ? 'min-h-[42px] px-4 py-2.5' : 'px-5 py-3'} animate-fade-in ${visualBubbleVariant === 'outline' || isWechatBubble ? '' : 'border border-black/5 '}active:scale-[0.98] transition-transform ${isWechatBubble ? 'overflow-visible' : 'overflow-hidden'} ${isUser ? 'aether-bubble-user' : 'aether-bubble-ai'}`}
             style={isVoiceOnlyMsg ? undefined : containerStyle}>
 
             {isWechatBubble && !isVoiceOnlyMsg && (
@@ -1012,7 +1032,7 @@ const MessageItem = React.memo(({
 
             {/* Layer 4: Text Content — shown when there's visible text after stripping voice tags */}
             {displayContent && (
-            <div className={`relative z-10 ${isCompactBubble ? 'text-[15px] leading-[1.42]' : 'text-[15px] leading-relaxed'} whitespace-pre-wrap break-words [overflow-wrap:anywhere] select-text`} style={{ color: styleConfig.textColor }}>
+            <div className={`relative z-10 ${isDeepSpaceBubble ? DIALOG_VISUAL_RULES.bubbleTextClass : isCompactBubble ? 'text-[15px] leading-[1.42]' : 'text-[15px] leading-relaxed'} whitespace-pre-wrap break-words [overflow-wrap:anywhere] select-text`} style={{ color: styleConfig.textColor }}>
                 {renderContent(displayContent)}
             </div>
             )}
@@ -1200,8 +1220,10 @@ const MessageItem = React.memo(({
            prev.isLastInGroup === next.isLastInGroup &&
            prev.activeTheme === next.activeTheme &&
            prev.charAvatar === next.charAvatar &&
+           prev.charAvatarFramePreset === next.charAvatarFramePreset &&
            prev.charName === next.charName &&
            prev.userAvatar === next.userAvatar &&
+           prev.userAvatarFramePreset === next.userAvatarFramePreset &&
            prev.selectionMode === next.selectionMode &&
            prev.isSelected === next.isSelected &&
            prev.translationEnabled === next.translationEnabled &&

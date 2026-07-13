@@ -62,6 +62,27 @@ export interface DesktopDecoration {
   flip?: boolean;
 }
 
+export interface AvatarFrameCalibration {
+  avatarScale: number;
+  avatarX: number;
+  avatarY: number;
+  frameScale: number;
+  frameX: number;
+  frameY: number;
+}
+
+export interface AvatarFramePreset {
+  id: string;
+  name: string;
+  src: string;
+  calibration: AvatarFrameCalibration;
+  ownerType?: 'character' | 'user';
+  ownerId?: string;
+  isBuiltIn?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export interface OSTheme {
   hue: number;
   saturation: number;
@@ -72,6 +93,7 @@ export interface OSTheme {
   launcherWidgetImage?: string; // kept for backward compat, migrated to launcherWidgets['wide']
   launcherWidgets?: Record<string, string>; // slots: 'tl' | 'tr' | 'wide'
   desktopDecorations?: DesktopDecoration[];
+  avatarFramePresets?: AvatarFramePreset[];
   customFont?: string;
   hideStatusBar?: boolean;
   // Chat UI customization (global)
@@ -391,6 +413,11 @@ export interface Worldbook {
     builtInVersion?: number;
 }
 
+export type UserDeepSpaceIdentityMode =
+    | 'custom_non_hunter'
+    | 'custom_hunter'
+    | 'canon_hunter';
+
 // --- NOVEL / CO-WRITING TYPES ---
 export interface NovelProtagonist {
     id: string;
@@ -676,6 +703,8 @@ export interface CharacterProfile {
   id: string;
   name: string;
   avatar: string;
+  avatarFrame?: string;
+  avatarFramePresetId?: string;
   callPortrait?: string;
   description: string;
   systemPrompt: string;
@@ -807,8 +836,11 @@ export interface CharacterExportData extends Omit<CharacterProfile, 'id' | 'memo
 export interface UserProfile {
     name: string;
     avatar: string;
+    avatarFramePresetId?: string;
     callPortrait?: string;
     bio: string;
+    deepspaceIdentityMode?: UserDeepSpaceIdentityMode;
+    deepspaceIdentityNote?: string;
 }
 
 export interface Toast {
@@ -931,10 +963,14 @@ export interface SocialComment {
     id: string;
     authorName: string;
     authorAvatar?: string;
+    charId?: string;
     content: string;
     likes: number;
     isCharacter?: boolean; 
 }
+
+export type SocialNewsCategory = 'mainline' | 'sidequest' | 'date' | 'daily';
+export type SocialStoryLineStatus = 'candidate' | 'active' | 'closed' | 'archived';
 
 export interface SocialPost {
     id: string;
@@ -952,11 +988,17 @@ export interface SocialPost {
     comments: SocialComment[];
     timestamp: number;
     tags: string[];
+    newsCategory?: SocialNewsCategory;
+    newsChannel?: string;
+    storyLineStatus?: SocialStoryLineStatus;
     bgStyle?: string; 
     storySeedStatus?: 'none' | 'candidate' | 'adopted';
     adoptedAt?: number;
     replyState?: 'none' | 'pending' | 'generated';
     replyDueAt?: number;
+    replyAudienceCharIds?: string[];
+    replyRemainingCharIds?: string[];
+    replyLastGeneratedAt?: number;
 }
 
 export interface SubAccount {

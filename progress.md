@@ -1,5 +1,266 @@
 # AetherOS Progress
 
+## 2026-07-13 Call Opening Scene Anchors
+
+- done:
+  - Audited the call prompt: stage cues were already phrased as optional, but
+    the opening environment still lived only inside generated dialogue.
+  - Relaxed the call prompt further so action/background cues are explicitly not
+    required every sentence or every turn.
+  - Added a per-session `callScene` opening anchor generated locally from
+    virtual time, character profile keywords, and the call session seed.
+  - Displayed the scene as an independent "所在" chip during the call and saved
+    it into call-end metadata for call history list/detail views.
+  - Preserved `callScene` across suspended calls.
+  - Documented the call scene contract in `REQUIREMENTS.md` and `SCHEMA.md`.
+
+- verified:
+  - `npm run verify:health` passed.
+
+## 2026-07-13 Call Transcript Hygiene
+
+- done:
+  - Added `utils/callTranscript.ts` for shared phone-call text cleanup,
+    speech/cue splitting, speech-only extraction, and keepsake-line selection.
+  - Fixed the call prompt history path so prior call messages no longer feed
+    `（通话记录）` style system labels back into the model as visible speech.
+  - Hardened assistant output/display cleanup so exact record labels are stripped
+    from new replies and old local records.
+  - Updated the call-record detail page so action cues render without outer
+    parentheses as neutral small secondary text outside speech bubbles.
+  - Updated the post-call normal-chat card to clean existing keepsake metadata
+    and select future keepsake lines from the whole call transcript instead of
+    the first sentence of the final assistant turn.
+  - Documented the contract in `REQUIREMENTS.md` and `SCHEMA.md`.
+
+- verified:
+  - `npm run verify:health` passed.
+
+## 2026-07-13 Diary Secondary Page Scale Pass
+
+- done:
+  - Tuned the exchange-diary character notebook page from poster-like scale to
+    compact secondary-page scale.
+  - Reduced the orange hero header padding/radius, back icon size, uppercase
+    label, and character-name title size.
+  - Reduced the "写今天的日记" CTA button typography/padding and tightened diary
+    history list cards/date tiles.
+  - Added a `Diary Visual Rhythm` requirement so future diary-like pages keep
+    secondary-page proportions instead of drifting back to oversized copy.
+
+- next:
+  - Human-check the selected-character diary page on the fixed frontend and
+    compare it against the dialogue rhythm pass for overall phone-shell balance.
+
+## 2026-07-13 Dialog Visual Rhythm Standard
+
+- done:
+  - Added `components/chat/dialogVisualRules.ts` as the shared sizing contract
+    for avatar-and-bubble dialogue surfaces.
+  - Aligned one-to-one deep-space chat and group chat to the same baseline:
+    `40px` avatars, `14px / 1.5` bubble body text, `74%` bubble max width,
+    about `10px` avatar-bubble gap, and secondary `10px/9px` metadata.
+  - Reduced one-to-one deep-space bubble text from the previous larger scale
+    while preserving readability through line height.
+  - Enlarged group chat message avatars and narrowed group bubble width so the
+    group page feels less cramped and less edge-heavy.
+  - Documented the rule for future plot-simulation long-text pages in
+    `REQUIREMENTS.md` and `SCHEMA.md`.
+
+- next:
+  - When building the plot-simulation long-text page, reuse
+    `DIALOG_VISUAL_RULES` for avatar/bubble narration and add paragraph rhythm
+    locally instead of increasing the base bubble font size.
+
+## 2026-07-13 Group Chat UI and State Sync
+
+- done:
+  - Added an `updateGroup()` OS context action so group title/avatar edits save
+    to IndexedDB and the global group list state in the same path.
+  - Fixed the group-title edit flow: saving changes in `群组设置` now refreshes
+    both the active chat view and the `群聊列表` card instead of only persisting
+    the initial create-time title.
+  - Fixed group-avatar updates to use the same global sync path.
+  - Compact-tuned the group chat inner header: shorter height, smaller action
+    buttons/icons, tighter title typography, and participant avatars under the
+    title instead of only a member count.
+  - Scaled the group settings panel copy/buttons down to better match the rest
+    of the phone UI while keeping the AI director history-message control.
+  - Follow-up tuned the inner chat header away from the status bar by using an
+    explicit top breathing layer, and rebuilt the bottom add button as a true
+    centered circular control.
+  - Re-confirmed the main user identity guard applies to group chat because
+    member generation goes through the shared `ContextBuilder.buildCoreContext()`
+    prompt path.
+
+- verified:
+  - `npm run verify:health` passed.
+  - `git diff --check -- apps/GroupChat.tsx context/OSContext.tsx REQUIREMENTS.md SCHEMA.md progress.md`
+    passed.
+
+## 2026-07-13 Group Chat Memory Backend
+
+- done:
+  - Audited `群聊` generation and confirmed it already used
+    `ContextBuilder.buildCoreContext(member, userProfile, true)`, so mounted
+    worldbooks, relationship impression, refined memories, and activated
+    detailed memories can enter member prompts.
+  - Connected group AI director generation to `selectWorldlineMemoryContext()`
+    per member. Each member now receives a budgeted worldline-memory supplement
+    selected from their recent private chat and the current group topic.
+  - Increased the private-chat snippet used by group generation from 10 very
+    short lines to 12 longer lines, so recent private mood is less likely to be
+    flattened into a stage-play cue.
+  - Fixed group director context loading: the configured group context limit now
+    pulls recent group messages from IndexedDB instead of only using currently
+    rendered React state.
+  - Fixed group archive input: `生成总结并同步到全员记忆` now reads full persisted
+    group history for that group before writing group memories to member
+    `char.memories`.
+  - Updated `REQUIREMENTS.md` and `SCHEMA.md` with the group-chat memory
+    inheritance contract.
+
+- next:
+  - Human-test with a small group after one member has a fresh private memory:
+    trigger the director and confirm the public reply reflects private
+    relationship state without quoting private chat directly.
+  - Later UI pass: expose a small non-immersive indicator that group generation
+    used member memory context, similar to memory delivery receipts.
+
+## 2026-07-13 DeepSpace User Identity Guard
+
+- done:
+  - Added structured DeepSpace identity fields to `UserProfile`:
+    `deepspaceIdentityMode` and `deepspaceIdentityNote`.
+  - Added `个人档案` identity modes: `自设非猎人`, `自设猎人`, and
+    `原作主控 / 灵空猎人`.
+  - Injected a high-priority user identity override into the shared prompt
+    builder so free-form user self-settings can override unintentional default
+    protagonist assumptions from character cards or worldbooks.
+  - Clarified that `自设非猎人` is not a character-exclusion rule: DeepSpace
+    canon characters and NPCs may still exist and gradually enter the user's
+    relationship network through plot, encounters, jobs, events, or explicit
+    user settings.
+  - Added identity-risk warnings in `通讯录` worldbook controls. The original
+    protagonist core relationship package now needs a second click to enable
+    when the user is in a custom identity mode.
+  - Softened built-in DeepSpace copy that previously treated original
+    protagonist/aether-core/old-relationship facts as unconditional defaults.
+  - Updated `REQUIREMENTS.md` and `SCHEMA.md` with the identity-mode contract.
+
+- next:
+  - Human-test with `自设非猎人`: open a DeepSpace built-in character, confirm
+    the worldbook modal warns on original protagonist relationship packages, and
+    send a chat message that should mention the user's custom profession without
+    forcing hunter identity.
+
+## 2026-07-13 Social Moments Reply Scheduling
+
+- done:
+  - Added a scoped social participant pool for `朋友圈` generation and comments.
+    When the active built-in male lead has not enabled the five-lead crossover
+    worldbook package, other built-in male leads are excluded from the visible
+    friend-circle actor pool.
+  - User-created moment posts now persist a reply queue with
+    `replyAudienceCharIds`, `replyRemainingCharIds`, and `replyDueAt` instead of
+    generating all replies in one batch.
+  - Due user-post replies are generated one activated related character at a
+    time, then the next character is scheduled for a later staggered time.
+  - Social replies now raise an in-app toast and can also use browser
+    notifications when permission has already been granted.
+  - Updated `REQUIREMENTS.md` and `SCHEMA.md` with the single-lead/crossover
+    worldbook boundary and reply queue contract.
+
+- next:
+  - Human-test with one real provider key: publish a user moment under a
+    single-lead setup, wait for staggered replies, then enable the crossover
+    worldbook and confirm additional activated leads can participate.
+
+## 2026-07-13 Canonical Verification Frontend
+
+- done:
+  - Confirmed ports 4173, 5173, and 5174 were offline and no historical
+    AetherOS/SullyOS Vite or esbuild process remained.
+  - Added a repository-local frontend controller with one canonical address:
+    `http://127.0.0.1:5174/`.
+  - Changed the handoff rule from stopping Vite after every test block to
+    preserving one healthy human-verification frontend across Codex windows.
+  - Added `frontstage:start`, `frontstage:status`, and `frontstage:stop` scripts;
+    runtime PID/log files stay under ignored `.run/`.
+  - Moved startup into a detached process session after verifying that a plain
+    background child could be reaped with its originating Codex command.
+
+- contract:
+  - Every window checks status before starting anything, reuses a healthy
+    server, and closes only temporary browser-automation sessions.
+  - The canonical frontend remains running after task completion unless the
+    user explicitly requests shutdown or replacement.
+
+## 2026-07-11 News Station Batch / Story-Form Follow-Up
+
+- done:
+  - Reproduced the reported top-of-feed click failure in a fresh Playwright
+    browser: the first news card stayed on the list while the third card opened
+    after auto-scroll.
+  - Moved desktop pull-to-refresh pointer capture behind an 8px downward-drag
+    deadzone, so ordinary clicks at scroll position zero reach the first and
+    second cards.
+  - Added a `资讯站` header clear action with confirmation. It deletes only news
+    rows, preserves 朋友圈 posts/shared chat cards, and leaves a persistent empty
+    state instead of restoring demo placeholders.
+  - Split news writing contracts by media shape. Long-form channels now include
+    sensational pseudo-history, strange-story submissions, date-route stories,
+    and map-like travel prose; short alert and daily formats remain distinct.
+  - Raised long-form acceptance to at least 500 non-whitespace characters.
+    `诡秘谈` targets 650-950 characters and requires an escalating story,
+    dialogue/action, false ending, and unresolved final sting.
+  - Added one bounded targeted repair pass for short long-form rows. Rows still
+    below 500 characters after repair are rejected instead of persisted.
+  - Added a 75-second timeout to social batch generation/repair requests.
+
+- verified:
+  - `npm run verify:health` passes; Vite retains only the known entry-chunk
+    warning.
+  - Fresh-browser regression confirmed both the first and second demo news cards
+    open directly with zero console errors.
+  - Isolated IndexedDB regression confirmed news-only clear: one persisted test
+    news row was removed, the clear button disappeared, and the explicit empty
+    state remained.
+  - Mocked two-call generation confirmed a deliberately short `诡秘谈` draft
+    was the only row repaired; the stored result contained 1,120 non-whitespace
+    characters across 8 paragraphs, with 5 total news rows persisted.
+
+- next:
+  - Human-test one real provider batch for prose quality and repetition. The
+    structural/length gate is verified locally, but model taste still needs a
+    real reading pass.
+
+## 2026-07-11 Resource Health Audit
+
+- done:
+  - Replaced eager imports of every feature app in `PhoneShell` with lazy app chunks while keeping the launcher and global event controllers eager.
+  - Debounced avatar-frame calibration persistence so slider previews stay immediate without issuing one full theme/IndexedDB persistence pass per input event.
+  - Removed the avatar-frame persistence path's per-update `getAllAssets()` scan and stopped rewriting unchanged frame binaries.
+  - Limited custom avatar-frame input to 8MB and resized static uploads to a 1024px maximum edge before persistence.
+  - Added a 45-second timeout and bounded five-minute retry delay to automatic social-comment requests; pending request IDs are now released in `finally`.
+  - Added the development `Service-Worker-Allowed` header so the keep-alive worker can claim the app root without a console error.
+  - Added `typecheck`, quiet build, and combined `verify:health` scripts plus repository resource-health guidance.
+
+- verified:
+  - `npm exec tsc -- --noEmit` passes.
+  - `npm run build` passes.
+  - Initial production entry chunk fell from `2,190.22 kB` (`687.57 kB` gzip) to `593.73 kB` (`213.01 kB` gzip); feature apps now emit separate on-demand chunks.
+  - Fresh Playwright load and lazy opening of `聊天装扮 -> 头像框校准` completed with `0` console errors and about `48 MB` used JS heap in the observed test page.
+  - A synthetic 60-event avatar-frame slider burst produced `1` `os_theme` write and `0` full IndexedDB `getAll()` calls.
+  - Playwright sessions were explicitly closed after verification.
+
+- next:
+  - Keep `OSContext.tsx` startup asset hydration and the remaining roughly 594kB eager entry chunk under observation; split only when a real profile shows startup or memory pressure.
+  - Use `npm run verify:health` for iterative checks and reserve full verbose `npm run build` output for release checkpoints.
+
+- risk:
+  - Existing user/browser IndexedDB may already contain oversized legacy images; this patch prevents new oversized avatar-frame imports but does not rewrite user data automatically.
+
 ## 2026-07-08 Runtime Test Follow-Up
 
 - done:

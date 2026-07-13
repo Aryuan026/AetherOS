@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CharacterProfile } from '../../types';
 import { CharacterWidgetImage } from '../../utils/characterWidgets';
+import AvatarWithFrame from '../common/AvatarWithFrame';
 
 const WIDGET_CAROUSEL_INTERVAL_MS = 6500;
 
@@ -126,9 +127,15 @@ const CharacterWidget: React.FC<{
             >
                 <div className="absolute top-0 right-0 w-32 h-full bg-gradient-to-l from-white/50 to-transparent skew-x-12 pointer-events-none"></div>
                 <div className="absolute inset-0 flex items-center p-4 gap-4">
-                    <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden shadow-lg border-2 border-white/80 relative bg-slate-800">
+                    <div className="w-20 h-20 shrink-0 relative overflow-visible rounded-2xl shadow-lg border-2 border-white/80 bg-slate-800">
                         {char ? (
-                            <img src={char.avatar} className="w-full h-full object-cover" alt="char" loading="lazy" />
+                            <AvatarWithFrame
+                                src={char.avatar}
+                                className="w-full h-full"
+                                roundedClassName="rounded-2xl"
+                                alt="char"
+                                loading="lazy"
+                            />
                         ) : <div className="w-full h-full bg-white/10 animate-pulse"></div>}
                         {unreadCount > 0 ? (
                             <div className="absolute bottom-1 right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-[8px] font-bold text-white">

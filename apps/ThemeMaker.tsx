@@ -3,9 +3,10 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useOS } from '../context/OSContext';
-import { ChatTheme, BubbleStyle } from '../types';
+import { ChatTheme, BubbleStyle, OSTheme } from '../types';
 import { processImage } from '../utils/file';
 import { ChatAppearanceEditor } from '../components/appearance/ChatAppearanceEditor';
+import AvatarFrameCalibrator from '../components/avatar-frame/AvatarFrameCalibrator';
 import {
     CHAT_APPEARANCE_PRESETS,
     CUSTOM_APPEARANCE_PRESET_ID,
@@ -44,6 +45,23 @@ const DEFAULT_THEME: ChatTheme = {
     ai: { ...DEFAULT_STYLE },
     customCss: ''
 };
+
+type CustomPanel = 'bubble' | 'layout' | 'advanced';
+
+const customPanelTabs: Array<{ id: CustomPanel; label: string }> = [
+    { id: 'bubble', label: '气泡样式' },
+    { id: 'layout', label: '排版与头像' },
+    { id: 'advanced', label: '高级 CSS' },
+];
+
+const optionButtonClass = (active: boolean) =>
+    `rounded-2xl border px-3 py-2 text-left text-xs font-bold transition-all active:scale-[0.98] ${
+        active
+            ? 'border-primary/40 bg-primary/10 text-primary shadow-sm'
+            : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white'
+    }`;
+
+const fieldCardClass = 'rounded-2xl border border-slate-100 bg-white p-3 shadow-sm';
 
 // --- CSS Examples ---
 const CSS_EXAMPLES = [
@@ -541,10 +559,21 @@ const PREVIEW_SCENES: PreviewScene[] = [
 ];
 
 const ThemeMaker: React.FC = () => {
-    const { closeApp, addCustomTheme, addToast, theme: osTheme, updateTheme: updateOSTheme } = useOS();
+    const {
+        closeApp,
+        addCustomTheme,
+        addToast,
+        theme: osTheme,
+        updateTheme: updateOSTheme,
+        characters,
+        userProfile,
+        updateUserProfile,
+        updateCharacter,
+    } = useOS();
     const [initialThemeId] = useState(() => `theme-${Date.now()}`);
     const [editingTheme, setEditingTheme] = useState<ChatTheme>({ ...DEFAULT_THEME, id: initialThemeId });
     const [workspace, setWorkspace] = useState<'chat' | 'custom' | 'avatar'>('chat');
+    const [customPanel, setCustomPanel] = useState<CustomPanel>('bubble');
     const [activeTab, setActiveTab] = useState<'user' | 'ai' | 'css'>('user');
     const [previewSceneId, setPreviewSceneId] = useState(PREVIEW_SCENES[0].id);
     const [showPreviewBgImage, setShowPreviewBgImage] = useState(true);
@@ -567,7 +596,6 @@ const ThemeMaker: React.FC = () => {
     const [paddingVal, setPaddingVal] = useState(12);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const avatarDecoInputRef = useRef<HTMLInputElement>(null);
     const cssTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     const activeStyle = editingTheme[activeTab === 'css' ? 'user' : activeTab];
@@ -617,8 +645,20 @@ const ThemeMaker: React.FC = () => {
     };
 
     const requestTabSwitch = (target: 'user' | 'ai' | 'css') => {
+        setCustomPanel(target === 'css' ? 'advanced' : 'bubble');
         if (target === activeTab) return;
         setActiveTab(target);
+    };
+
+    const requestCustomPanelSwitch = (target: CustomPanel) => {
+        setCustomPanel(target);
+        if (target === 'advanced') {
+            setActiveTab('css');
+            return;
+        }
+        if (activeTab === 'css') {
+            setActiveTab('user');
+        }
     };
 
     const requestClose = () => withDiscardGuard(() => closeApp());
@@ -630,6 +670,8 @@ const ThemeMaker: React.FC = () => {
         withDiscardGuard(() => setWorkspace('chat'));
     };
 
+    const openAvatarFrameManager = () => withDiscardGuard(() => setWorkspace('avatar'));
+
     const activateCustomAppearance = () => {
         const customPreset = CHAT_APPEARANCE_PRESETS.find(preset => preset.id === CUSTOM_APPEARANCE_PRESET_ID);
         updateOSTheme({
@@ -637,21 +679,16 @@ const ThemeMaker: React.FC = () => {
             chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
             chatBubbleThemeId: CUSTOM_APPEARANCE_PRESET_ID,
         });
+        setCustomPanel('bubble');
         setActiveTab('user');
         setWorkspace('custom');
     };
 
-    const openAvatarAccessories = () => {
-        if (!isCustomAppearance) {
-            const customPreset = CHAT_APPEARANCE_PRESETS.find(preset => preset.id === CUSTOM_APPEARANCE_PRESET_ID);
-            updateOSTheme({
-                ...customPreset?.config,
-                chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
-                chatBubbleThemeId: CUSTOM_APPEARANCE_PRESET_ID,
-            });
-        }
-        setActiveTab(activeTab === 'ai' ? 'ai' : 'user');
-        setWorkspace('avatar');
+    const updateChatLayout = (updates: Partial<OSTheme>) => {
+        updateOSTheme({
+            chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
+            ...updates,
+        });
     };
 
     // Initialize padding state from CSS on load
@@ -889,6 +926,16 @@ const ThemeMaker: React.FC = () => {
         const style = role === 'user' ? theme.user : theme.ai;
         const isUser = role === 'user';
         const isActive = panel === 'A' && (activeTab === role || activeTab === 'css');
+        const previewAvatarSize = osTheme.chatAvatarSize || 'medium';
+        const previewAvatarShape = osTheme.chatAvatarShape || 'circle';
+        const previewAvatarSizeClass = previewAvatarSize === 'small' ? 'w-7 h-7' : previewAvatarSize === 'large' ? 'w-12 h-12' : 'w-9 h-9';
+        const previewAvatarSizePx = previewAvatarSize === 'small' ? 28 : previewAvatarSize === 'large' ? 48 : 36;
+        const previewAvatarRadiusClass = previewAvatarShape === 'square' ? 'rounded-sm' : previewAvatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full';
+        const previewBubbleOffsetClass = previewAvatarSize === 'small'
+            ? (isUser ? 'mr-10' : 'ml-10')
+            : previewAvatarSize === 'large'
+                ? (isUser ? 'mr-14' : 'ml-14')
+                : (isUser ? 'mr-12' : 'ml-12');
         
         // Match core bubble corner strategy in MessageItem.tsx
         const containerStyle = {
@@ -908,8 +955,8 @@ const ThemeMaker: React.FC = () => {
                 title={panel === 'A' ? `点击编辑${isUser ? '用户' : '角色'}气泡` : '上次保存版本'}
             >
                 {/* Avatar + decoration: align with MessageItem layering */}
-                <div className={`absolute bottom-0 ${isUser ? 'right-0' : 'left-0'} w-9 h-9 z-10`}>
-                    <div className="w-full h-full rounded-full bg-slate-300 overflow-hidden relative z-0 shadow-sm ring-1 ring-black/5">
+                <div className={`absolute bottom-0 ${isUser ? 'right-0' : 'left-0'} ${previewAvatarSizeClass} z-10`}>
+                    <div className={`w-full h-full ${previewAvatarRadiusClass} bg-slate-300 overflow-hidden relative z-0 shadow-sm ring-1 ring-black/5`}>
                          <div className="absolute inset-0 flex items-center justify-center text-white/50 font-bold text-[10px]">{isUser ? 'ME' : 'AI'}</div>
                     </div>
                     {style.avatarDecoration && (
@@ -919,7 +966,7 @@ const ThemeMaker: React.FC = () => {
                             style={{
                                 left: `${style.avatarDecorationX ?? 50}%`,
                                 top: `${style.avatarDecorationY ?? 50}%`,
-                                width: `${36 * (style.avatarDecorationScale ?? 1)}px`, 
+                                width: `${previewAvatarSizePx * (style.avatarDecorationScale ?? 1)}px`,
                                 height: 'auto',
                                 transform: `translate(-50%, -50%) rotate(${style.avatarDecorationRotate ?? 0}deg)`,
                             }}
@@ -927,7 +974,7 @@ const ThemeMaker: React.FC = () => {
                     )}
                 </div>
 
-                <div className={`relative group max-w-[78%] ${isUser ? 'mr-12' : 'ml-12'}`}>
+                <div className={`relative group max-w-[78%] ${previewBubbleOffsetClass}`}>
                     {style.decoration && (
                         <img 
                             src={style.decoration} 
@@ -996,12 +1043,12 @@ const ThemeMaker: React.FC = () => {
                         {workspace === 'chat'
                             ? '聊天主题'
                             : workspace === 'avatar'
-                              ? '头像框挂件'
-                              : (isAppliedToPreview && !isDirty ? '已应用到真实聊天气泡' : '自定义气泡')}
+                                ? '头像框校准'
+                                : (isAppliedToPreview && !isDirty ? '已应用到真实聊天气泡' : '自定义气泡')}
                     </span>
                 }
                 onBack={requestBack}
-                right={(workspace === 'custom' || workspace === 'avatar') ? (
+                right={workspace === 'custom' ? (
                     <button onClick={() => saveTheme({ exitAfterSave: false })} className="px-4 py-1.5 bg-primary text-white rounded-full text-xs font-bold shadow-lg shadow-primary/30 active:scale-95 transition-all">
                         保存并应用
                     </button>
@@ -1009,53 +1056,37 @@ const ThemeMaker: React.FC = () => {
             />
 
             {workspace === 'chat' ? (
-                <div className="flex-1 overflow-y-auto p-5 no-scrollbar">
+                <div className="flex-1 overflow-y-auto p-5 no-scrollbar space-y-4">
                     <ChatAppearanceEditor theme={osTheme} updateTheme={updateOSTheme} onCustomPresetSelect={activateCustomAppearance} />
-                    <section className="mt-5 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                        <div className="mb-3">
-                            <h2 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">头像框挂件</h2>
+                    <section className="rounded-3xl border border-white/70 bg-white/72 p-4 shadow-sm">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <div className="text-sm font-bold text-slate-800">头像框校准</div>
+                                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                                    给每个头像框保存独立对齐参数，可分别应用到角色或用户头像。
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={openAvatarFrameManager}
+                                className="shrink-0 rounded-full bg-slate-900 px-3 py-2 text-[11px] font-bold text-white shadow-sm active:scale-95"
+                            >
+                                管理头像框
+                            </button>
                         </div>
-                        <button
-                            type="button"
-                            onClick={openAvatarAccessories}
-                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-xs font-bold text-slate-600 transition-all active:scale-[0.98] hover:border-primary/30 hover:bg-white"
-                        >
-                            管理头像框挂件
-                        </button>
                     </section>
                 </div>
             ) : workspace === 'avatar' ? (
                 <div className="flex-1 overflow-y-auto p-5 no-scrollbar">
-                    <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                        <div className="mb-4 flex gap-3">
-                            <button onClick={() => setActiveTab('user')} className={`flex-1 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all ${activeTab !== 'ai' ? 'bg-primary text-white shadow-sm shadow-primary/20' : 'bg-slate-100 text-slate-500'}`}>用户头像</button>
-                            <button onClick={() => setActiveTab('ai')} className={`flex-1 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all ${activeTab === 'ai' ? 'bg-primary text-white shadow-sm shadow-primary/20' : 'bg-slate-100 text-slate-500'}`}>角色头像</button>
-                        </div>
-                        <div onClick={() => avatarDecoInputRef.current?.click()} className="cursor-pointer group relative h-24 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 hover:border-primary/50 hover:text-primary transition-all">
-                             {activeStyle.avatarDecoration ? <img src={activeStyle.avatarDecoration} className="h-14 w-14 object-contain" /> : <span className="text-xs font-bold">+ 上传头像框/挂件</span>}
-                             <input type="file" ref={avatarDecoInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'avatarDeco')} />
-                             {activeStyle.avatarDecoration && <button onClick={(e) => { e.stopPropagation(); updateStyle('avatarDecoration', undefined); }} className="absolute top-2 right-2 text-[10px] bg-red-100 text-red-500 px-2 py-0.5 rounded-full">移除</button>}
-                        </div>
-                        {activeStyle.avatarDecoration && (
-                            <div className="mt-5 space-y-4">
-                                <div>
-                                    <label className="mb-2 block text-[10px] font-bold uppercase text-slate-400">位置</label>
-                                    <div className="flex gap-3">
-                                        <input type="range" min="-50" max="150" value={activeStyle.avatarDecorationX ?? 50} onChange={(e) => updateStyle('avatarDecorationX', parseInt(e.target.value))} className="flex-1 h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                        <input type="range" min="-50" max="150" value={activeStyle.avatarDecorationY ?? 50} onChange={(e) => updateStyle('avatarDecorationY', parseInt(e.target.value))} className="flex-1 h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-[10px] font-bold uppercase text-slate-400">缩放 ({activeStyle.avatarDecorationScale ?? 1}x)</label>
-                                    <input type="range" min="0.5" max="3" step="0.1" value={activeStyle.avatarDecorationScale ?? 1} onChange={(e) => updateStyle('avatarDecorationScale', parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-[10px] font-bold uppercase text-slate-400">旋转 ({activeStyle.avatarDecorationRotate ?? 0}°)</label>
-                                    <input type="range" min="-180" max="180" value={activeStyle.avatarDecorationRotate ?? 0} onChange={(e) => updateStyle('avatarDecorationRotate', parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-full accent-primary" />
-                                </div>
-                            </div>
-                        )}
-                    </section>
+                    <AvatarFrameCalibrator
+                        theme={osTheme}
+                        updateTheme={updateOSTheme}
+                        characters={characters}
+                        userProfile={userProfile}
+                        updateUserProfile={updateUserProfile}
+                        updateCharacter={updateCharacter}
+                        addToast={addToast}
+                    />
                 </div>
             ) : (
             <>
@@ -1098,21 +1129,41 @@ const ThemeMaker: React.FC = () => {
             {/* Editor Controls */}
             {!isPreviewFullscreen && (
             <div className="bg-white border-t border-slate-100 z-30 flex flex-col flex-1 min-h-0">
-                {/* Main Tabs (User / AI / CSS) */}
-                <div className="flex px-6 pt-5 pb-2 gap-3 overflow-x-auto no-scrollbar">
-                    <button onClick={() => requestTabSwitch('user')} className={`text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'user' ? 'text-slate-800' : 'text-slate-300'}`}>用户气泡</button>
-                    <button onClick={() => requestTabSwitch('ai')} className={`text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'ai' ? 'text-slate-800' : 'text-slate-300'}`}>角色气泡</button>
+                <div className="flex px-5 pt-4 pb-2 gap-2 overflow-x-auto no-scrollbar">
+                    {customPanelTabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => requestCustomPanelSwitch(tab.id)}
+                            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold transition-all active:scale-[0.98] ${
+                                customPanel === tab.id
+                                    ? 'bg-slate-900 text-white shadow-sm'
+                                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
 
+                {customPanel === 'bubble' && (
+                    <div className="flex px-6 pt-2 pb-2 gap-3 overflow-x-auto no-scrollbar">
+                        <button onClick={() => requestTabSwitch('user')} className={`text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'user' ? 'text-slate-800' : 'text-slate-300'}`}>用户气泡</button>
+                        <button onClick={() => requestTabSwitch('ai')} className={`text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'ai' ? 'text-slate-800' : 'text-slate-300'}`}>角色气泡</button>
+                    </div>
+                )}
+
+                {customPanel !== 'layout' && (
                 <div className="px-6 pb-2 flex items-center gap-2">
                     <button onClick={handleUndo} disabled={undoStack.length === 0} className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 disabled:opacity-40">撤销</button>
                     <button onClick={handleRedo} disabled={redoStack.length === 0} className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 disabled:opacity-40">重做</button>
                 </div>
+                )}
 
                 <div className="flex-1 overflow-y-auto p-5 space-y-5 no-scrollbar pb-20">
                     
                     {/* --- CSS EDITOR --- */}
-                    {activeTab === 'css' && (
+                    {customPanel === 'advanced' && (
                         <div className="space-y-6 animate-fade-in h-full flex flex-col">
                             <div className="text-[10px] text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed space-y-2">
                                 <span className="font-bold block mb-1 text-slate-500">CSS 增强模式</span>
@@ -1194,13 +1245,278 @@ const ThemeMaker: React.FC = () => {
                         </div>
                     )}
 
+                    {customPanel === 'layout' && (
+                        <div className="space-y-5 animate-fade-in">
+                            <div className={fieldCardClass}>
+                                <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">头像</div>
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">尺寸</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[
+                                                { value: 'small', label: '小' },
+                                                { value: 'medium', label: '标准' },
+                                                { value: 'large', label: '大' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatAvatarSize: option.value as OSTheme['chatAvatarSize'] })}
+                                                    className={optionButtonClass((osTheme.chatAvatarSize || 'medium') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">形状</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[
+                                                { value: 'circle', label: '圆形' },
+                                                { value: 'rounded', label: '圆角' },
+                                                { value: 'square', label: '方形' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatAvatarShape: option.value as OSTheme['chatAvatarShape'] })}
+                                                    className={optionButtonClass((osTheme.chatAvatarShape || 'circle') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">显示</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[
+                                                { value: 'grouped', label: '连续合并' },
+                                                { value: 'every_message', label: '每条显示' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatAvatarMode: option.value as OSTheme['chatAvatarMode'] })}
+                                                    className={optionButtonClass((osTheme.chatAvatarMode || 'grouped') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className={fieldCardClass}>
+                                <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">消息</div>
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">间距</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[
+                                                { value: 'compact', label: '紧凑' },
+                                                { value: 'default', label: '标准' },
+                                                { value: 'spacious', label: '宽松' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatMessageSpacing: option.value as OSTheme['chatMessageSpacing'] })}
+                                                    className={optionButtonClass((osTheme.chatMessageSpacing || 'default') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">时间</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[
+                                                { value: 'hover', label: '轻显示' },
+                                                { value: 'always', label: '常显示' },
+                                                { value: 'never', label: '隐藏' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatShowTimestamp: option.value as OSTheme['chatShowTimestamp'] })}
+                                                    className={optionButtonClass((osTheme.chatShowTimestamp || 'hover') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className={fieldCardClass}>
+                                <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">输入栏</div>
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">输入框</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[
+                                                { value: 'rounded', label: '圆润' },
+                                                { value: 'wechat', label: '微信' },
+                                                { value: 'ios', label: 'iOS' },
+                                                { value: 'default', label: '默认' },
+                                                { value: 'flat', label: '横线' },
+                                                { value: 'pixel', label: '像素' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatInputStyle: option.value as OSTheme['chatInputStyle'] })}
+                                                    className={optionButtonClass((osTheme.chatInputStyle || 'default') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">发送按钮</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[
+                                                { value: 'circle', label: '圆键' },
+                                                { value: 'pill', label: '文字键' },
+                                                { value: 'minimal', label: '极简' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatSendButtonStyle: option.value as OSTheme['chatSendButtonStyle'] })}
+                                                    className={optionButtonClass((osTheme.chatSendButtonStyle || 'circle') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className={fieldCardClass}>
+                                <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">页面</div>
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">顶部位置</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[
+                                                { value: 'left', label: '靠左' },
+                                                { value: 'center', label: '居中' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatHeaderAlign: option.value as OSTheme['chatHeaderAlign'] })}
+                                                    className={optionButtonClass((osTheme.chatHeaderAlign || 'left') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">顶部高度</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[
+                                                { value: 'compact', label: '紧凑' },
+                                                { value: 'default', label: '标准' },
+                                                { value: 'airy', label: '舒展' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatHeaderDensity: option.value as OSTheme['chatHeaderDensity'] })}
+                                                    className={optionButtonClass((osTheme.chatHeaderDensity || 'default') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="mb-2 text-[11px] font-bold text-slate-500">外壳</div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {[
+                                                { value: 'soft', label: '柔和' },
+                                                { value: 'flat', label: '平面' },
+                                                { value: 'floating', label: '悬浮' },
+                                                { value: 'pixel', label: '像素' },
+                                            ].map(option => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => updateChatLayout({ chatChromeStyle: option.value as OSTheme['chatChromeStyle'] })}
+                                                    className={optionButtonClass((osTheme.chatChromeStyle || 'soft') === option.value)}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* --- BASE STYLE TOOLS --- */}
-                    {activeTab !== 'css' && (
+                    {customPanel === 'bubble' && activeTab !== 'css' && (
                         <div className="space-y-6 animate-fade-in"> 
                             {/* Name Input (Only on Base) */}
                             <div>
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">主题名称 (Theme Name)</label>
                                 <input value={editingTheme.name} onChange={(e) => updateTheme(prev => ({ ...prev, name: e.target.value }), { trackHistory: false })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-primary/50 transition-all outline-none" placeholder="我的个性主题" />
+                            </div>
+
+                            <div className={fieldCardClass}>
+                                <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">气泡形态</div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { value: 'modern', label: '现代' },
+                                        { value: 'round', label: '圆润' },
+                                        { value: 'square', label: '直角' },
+                                        { value: 'wechat', label: '微信' },
+                                        { value: 'ios', label: 'iOS' },
+                                        { value: 'deep-space', label: '深空' },
+                                    ].map(option => (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => updateChatLayout({ chatBubbleStyle: option.value as OSTheme['chatBubbleStyle'] })}
+                                            className={optionButtonClass((osTheme.chatBubbleStyle || 'modern') === option.value)}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className={fieldCardClass}>
+                                <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">快速风格</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {STYLE_TEMPLATES.map(template => (
+                                        <button
+                                            key={template.id}
+                                            type="button"
+                                            onClick={() => applyTemplate(template)}
+                                            className={optionButtonClass(false)}
+                                        >
+                                            {template.name}
+                                        </button>
+                                    ))}
+                                    <button type="button" onClick={randomizeMonochrome} className={optionButtonClass(false)}>
+                                        同色生成
+                                    </button>
+                                    <button type="button" onClick={mirrorToOtherBubble} className={optionButtonClass(false)}>
+                                        镜像到另一侧
+                                    </button>
+                                </div>
                             </div>
 
                             <div className={`rounded-xl border p-3 ${showLowContrastWarning ? 'border-amber-200 bg-amber-50/80' : 'border-emerald-200 bg-emerald-50/70'}`}>

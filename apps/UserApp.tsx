@@ -4,11 +4,20 @@ import { useOS } from '../context/OSContext';
 import { processImage } from '../utils/file';
 import AppHeader from '../components/shell/AppHeader';
 import { CALL_PORTRAIT_UPLOAD_HELP, SUPPORTED_UPLOAD_IMAGE_ACCEPT } from '../utils/uploadGuidance';
+import { DEEPSPACE_IDENTITY_MODE_DESCRIPTIONS, DEEPSPACE_IDENTITY_MODE_LABELS, DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, resolveDeepSpaceIdentityMode } from '../utils/deepspaceIdentity';
+import type { UserDeepSpaceIdentityMode } from '../types';
+
+const DEEPSPACE_IDENTITY_OPTIONS: UserDeepSpaceIdentityMode[] = [
+    'custom_non_hunter',
+    'custom_hunter',
+    'canon_hunter',
+];
 
 const UserApp: React.FC = () => {
     const { closeApp, userProfile, updateUserProfile, addToast } = useOS();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const callPortraitInputRef = useRef<HTMLInputElement>(null);
+    const deepspaceIdentityMode = resolveDeepSpaceIdentityMode(userProfile);
 
     const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -100,6 +109,50 @@ const UserApp: React.FC = () => {
                             value={userProfile.name}
                             onChange={(e) => updateUserProfile({ name: e.target.value })}
                             className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-base font-semibold text-slate-700 focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">深空身份模式</label>
+                        <p className="text-[10px] text-slate-400 mb-3">
+                            这只决定系统是否自动套用“原作主控/灵空猎人”身份。非猎人自设不会把深空角色赶出世界，他们仍可随着剧情进入你的关系网。
+                        </p>
+                        <div className="space-y-2">
+                            {DEEPSPACE_IDENTITY_OPTIONS.map(mode => {
+                                const active = deepspaceIdentityMode === mode;
+                                return (
+                                    <button
+                                        key={mode}
+                                        type="button"
+                                        onClick={() => updateUserProfile({ deepspaceIdentityMode: mode })}
+                                        className={`w-full text-left rounded-2xl border p-3 transition-all active:scale-[0.99] ${
+                                            active
+                                                ? 'border-rose-200 bg-rose-50/70 shadow-sm'
+                                                : 'border-slate-100 bg-white hover:border-rose-100'
+                                        }`}
+                                    >
+                                        <div className={`text-sm font-bold ${active ? 'text-rose-600' : 'text-slate-700'}`}>
+                                            {DEEPSPACE_IDENTITY_MODE_LABELS[mode]}
+                                            {mode === DEFAULT_DEEPSPACE_USER_IDENTITY_MODE && (
+                                                <span className="ml-2 rounded-full bg-white/80 px-2 py-0.5 text-[9px] font-bold text-slate-400">默认</span>
+                                            )}
+                                        </div>
+                                        <div className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                                            {DEEPSPACE_IDENTITY_MODE_DESCRIPTIONS[mode]}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">身份补充 / 职业</label>
+                        <input
+                            value={userProfile.deepspaceIdentityNote || ''}
+                            onChange={(e) => updateUserProfile({ deepspaceIdentityNote: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                            placeholder="例如：临空大学学生、画廊策展人、普通市民、医生、记者……"
                         />
                     </div>
 

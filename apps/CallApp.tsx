@@ -9,10 +9,17 @@ import { DB } from '../utils/db';
 import { ChatPrompts } from '../utils/chatPrompts';
 import { selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { buildRealitySyncContext } from '../utils/realitySync';
-import { Message, ChatTheme, CharacterProfile } from '../types';
+import { Message, ChatTheme, CharacterProfile, VirtualTime } from '../types';
 import { PRESET_THEMES } from '../components/chat/ChatConstants';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
+import {
+  cleanCallKeepsakeLine,
+  getCallSpeechText,
+  splitCallTextParts,
+  stripCallRecordLabels,
+  summarizeCallKeepsakeLine,
+} from '../utils/callTranscript';
 type CallState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'ended' | 'error';
 type ViewMode = 'role-select' | 'in-call' | 'history' | 'record-detail';
 type CallBubble = { id: string; dbId?: number; role: 'user' | 'assistant'; text: string; time: string; audioUrl?: string; timestamp: number };
@@ -25,6 +32,7 @@ type CallRecord = {
   createdAt: string;
   durationSec: number;
   turnCount?: number;
+  callScene?: string;
   keepsakeLine?: string;
   endedAt?: number;
   transcript: CallBubble[];
@@ -38,24 +46,64 @@ const buildMiniMaxErrorMessage = (rawMessage: string, traceId?: string): string 
 const formatTime = () => new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 const formatDuration = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 const formatTimeByTs = (ts: number) => new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-const summarizeKeepsakeLine = (transcript: CallBubble[], charName: string) => {
-  const assistantLine = [...transcript].reverse().find(item => item.role === 'assistant' && item.text.trim());
-  if (!assistantLine) return `这通电话我会悄悄收藏，下次也记得来找我。 —— ${charName}`;
-  const normalized = assistantLine.text.replace(/\s+/g, ' ').trim();
-  const cutAt = normalized.search(/[。！？!?]/);
-  const sentence = cutAt >= 0 ? normalized.slice(0, cutAt + 1) : normalized.slice(0, 42);
-  const polished = sentence.length > 48 ? `${sentence.slice(0, 48)}…` : sentence;
-  return `“${polished}” —— ${charName}`;
+const summarizeKeepsakeLine = (transcript: CallBubble[], charName: string) => summarizeCallKeepsakeLine(transcript, charName);
+const hashText = (input: string): number => {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0);
+};
+const buildCallOpeningScene = (char: CharacterProfile | null, virtualTime: VirtualTime, seed = Date.now()): string => {
+  const hour = virtualTime.hours;
+  const minuteBucket = Math.floor(virtualTime.minutes / 15);
+  const timeBand = hour < 6 ? '深夜' : hour < 11 ? '清晨' : hour < 14 ? '午间' : hour < 18 ? '午后' : hour < 22 ? '夜晚' : '深夜';
+  const profile = `${char?.name || ''} ${char?.description || ''} ${char?.systemPrompt || ''} ${char?.worldview || ''}`.toLowerCase();
+  const doctorScenes = [
+    '医院走廊的白灯下，远处有推车轮声',
+    '值班室窗边，桌上还摊着没合上的病历',
+    '医院后门外，夜风里带着一点消毒水气味',
+    '办公室门口，刚结束一段简短交接',
+  ];
+  const artistScenes = [
+    '画室窗边，颜料和潮湿木框的味道还没散',
+    '展馆后台，墙那边有人压低声音搬画',
+    '海边栈道旁，风从听筒里擦过去',
+    '工作台前，未干的颜色还停在笔尖上',
+  ];
+  const fieldScenes = [
+    '临时休息点外，远处的警戒灯一闪一闪',
+    '任务车后座，窗外的路灯正在往后退',
+    '空旷楼顶边，风声比人声更先靠近听筒',
+    '训练场边缘，器械收拢的声音还没完全停',
+  ];
+  const everydayScenes = [
+    '回家的路上，路灯一盏盏往后退',
+    '房间窗边，杯子轻轻碰到桌面',
+    '便利店门口，自动门在身后开合',
+    '安静的楼道里，脚步声被压得很低',
+    '书桌旁，屏幕光还停在半暗的房间里',
+  ];
+  const scenePool = /医生|医院|akso|病房|手术|心脏|主任/.test(profile)
+    ? doctorScenes
+    : /画|艺术|展馆|海|利莫里亚|颜料|创作/.test(profile)
+      ? artistScenes
+      : /猎人|任务|训练|evol|n109|战斗|警戒/.test(profile)
+        ? fieldScenes
+        : everydayScenes;
+  const scene = scenePool[hashText(`${char?.id || char?.name || 'call'}:${virtualTime.day}:${hour}:${minuteBucket}:${seed}`) % scenePool.length];
+  return `${timeBand} · ${scene}`;
 };
 const sanitizeAssistantOutput = (raw: string) => {
   if (!raw) return '';
-  return raw
+  return stripCallRecordLabels(raw
     .replace(/^\s*(?:\[\s*通话\s*\]\s*)+/gim, '')
     .replace(/^\s*(?:\[\s*(?:聊天|约会)\s*\]\s*)+/gim, '')
     .replace(/^\s*\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*/gm, '')
     .replace(/^\s*\[?\d{4}[\/-]\d{1,2}[\/-]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\]?\s*/gm, '')
     .replace(/^\s*时间戳[:：].*$/gim, '')
-    .trim();
+    .trim());
 };
 /** 中文舞台指示 → MiniMax 语气词标签映射 */
 const NARRATION_TO_INTERJECTION: Record<string, string> = {
@@ -248,13 +296,13 @@ const splitTextForTts = (rawText: string, maxChunkLen = 120): string[] => {
   }).filter(Boolean);
 };
 const renderAssistantLine = (text: string) => {
-  const trimmed = text.trim();
+  const trimmed = stripCallRecordLabels(text).trim();
   // Split by narration cues（…）AND newlines, treat cues as block elements
   const parts = trimmed.split(/(（[^（）\n]{1,48}）|\n)/g).filter(Boolean);
   return parts.map((part, idx) => {
     if (part === '\n') return <div key={`br-${idx}`} className="h-2" />;
     const isCue = /^（[^（）\n]{1,48}）$/.test(part);
-    if (isCue) return <div key={`cue-${idx}`} className="text-violet-300/95 italic my-1.5 text-[0.85em]">{part}</div>;
+    if (isCue) return <div key={`cue-${idx}`} className="text-slate-400/85 italic my-1.5 text-[0.85em]">{part.replace(/^（|）$/g, '')}</div>;
     return <React.Fragment key={`t-${idx}`}>{part}</React.Fragment>;
   });
 };
@@ -264,19 +312,21 @@ const getCallBubbleDisplayText = (bubble?: CallBubble) => {
   const line = bubble.text.trim();
   if (bubble.role !== 'assistant') return line;
   const { display } = extractVoiceTag(line || bubble.text);
-  return display.trim();
+  return stripCallRecordLabels(display).trim();
 };
-const buildCallPrompt = (userName: string, charName?: string, coreContext?: string, realityContext?: string, voiceLang?: string) => {
+const buildCallPrompt = (userName: string, charName?: string, coreContext?: string, realityContext?: string, voiceLang?: string, callScene?: string) => {
   const resolvedCharName = charName || '你的角色';
   const callPrompt = `你是${resolvedCharName}，电话那头是${userName}。
 这不是文字，这是一通真正的电话。你能听到对方的呼吸、语气、停顿。你也有自己的呼吸。
 
 ### 你正拿着手机贴在耳边
 
-你这会儿在做什么？在哪儿？身边什么声音？
-接电话的时候自然地带出来就好——不用刻意交代，但也别假装你只是一个回答问题的接口。
-你可能正趴在床上、正在走路、正在吃东西、正盯着窗外发呆。这些都会影响你说话的样子。
-每次通话开场的环境细节要随时间、地点和心情自然变化，不要反复使用同一个水声、倒水、洗手或固定场景。
+本通电话的所在场景已经由系统单独显示给用户：
+${callScene || '一处符合你当前生活时间线的临时所在位置。'}
+
+这个场景只决定你现在的生活状态、语气和可能听见的背景声；它不是每句话都要完成的旁白任务。
+你不需要反复说明自己在哪，也不需要每轮都写动作。只有在自然相关、情绪变化、被用户问到、或需要解释短暂停顿时，才轻轻带一下环境。
+每通电话的场景会随时间、职业、生活节奏和心情变化，不要把同一个地点或固定动作当成默认模板。
 
 ### 电话里的人不会像写作文一样说话
 
@@ -319,8 +369,9 @@ const buildCallPrompt = (userName: string, charName?: string, coreContext?: stri
 
 ### 舞台指示（给前端用，不要念出来）
 
-偶尔可以加一个简短的括号描述你的状态——（轻笑）（叹气）（压低声音）（沉默了一下）。
-最多一条消息一个。不要写成小说旁白：”（我靠在椅背上，嘴角微微上扬，目光看向远方……）”——这不是你会在电话里说的。
+舞台指示不是必需品。很多回复完全可以没有动作。
+只有在它能让电话更像活人时，才偶尔加一个很短的括号状态——（轻笑）（叹气）（压低声音）（沉默了一下）。
+最多一条消息一个，而且不要连续多轮都写。不要写成小说旁白：”（我靠在椅背上，嘴角微微上扬，目光看向远方……）”——这不是你会在电话里说的。
 
 ### 底线
 
@@ -424,7 +475,7 @@ const CallAppHeader: React.FC<{
   />
 );
 const CallApp: React.FC = () => {
-  const { closeApp, characters, activeCharacterId, addToast, apiConfig, userProfile, customThemes, realtimeConfig, suspendCall, suspendedCall, clearSuspendedCall } = useOS();
+  const { closeApp, characters, activeCharacterId, addToast, apiConfig, userProfile, customThemes, realtimeConfig, virtualTime, suspendCall, suspendedCall, clearSuspendedCall } = useOS();
 
   const [viewMode, setViewMode] = useState<ViewMode>('role-select');
   const [selectedCharId, setSelectedCharId] = useState<string>(activeCharacterId || characters[0]?.id || '');
@@ -450,6 +501,7 @@ const CallApp: React.FC = () => {
   const [showHangupConfirm, setShowHangupConfirm] = useState(false);
   const [deleteConfirmRecord, setDeleteConfirmRecord] = useState<CallRecord | null>(null);
   const [voiceLang, setVoiceLang] = useState('');
+  const [callScene, setCallScene] = useState('');
   const [showLangPicker, setShowLangPicker] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentBlobUrlRef = useRef<string | null>(null);
@@ -522,6 +574,7 @@ const CallApp: React.FC = () => {
       if (suspendedCall.sessionId) setCurrentSessionId(suspendedCall.sessionId);
       if (typeof suspendedCall.elapsedSeconds === 'number') setElapsedSeconds(suspendedCall.elapsedSeconds);
       if (suspendedCall.voiceLang) setVoiceLang(suspendedCall.voiceLang);
+      if (suspendedCall.callScene) setCallScene(suspendedCall.callScene);
       setViewMode('in-call');
       setCallState('listening');
       clearSuspendedCall();
@@ -551,7 +604,7 @@ const CallApp: React.FC = () => {
       try {
         setCallStartedAt(Date.now());
         setCallState('connecting');
-        const greetingText = sanitizeAssistantOutput(await requestAssistantReply('（电话刚接通。你先开口——像平时接到这个人电话一样自然地说第一句话。不要解释你在做什么，就是最自然的那个"喂"或者"诶"或者别的什么。）'));
+        const greetingText = sanitizeAssistantOutput(await requestAssistantReply('（电话刚接通。系统已经把你此刻所在的场景单独显示给用户。你先开口——像平时接到这个人电话一样自然地说第一句话；不用主动解释你在哪里，也不用为了交代背景而写动作。）'));
         const nowTs = Date.now();
         const greetingBubble: CallBubble = { id: `${nowTs}-greeting`, role: 'assistant', text: greetingText, time: formatTime(), timestamp: nowTs };
         setCallState('speaking');
@@ -672,7 +725,8 @@ const CallApp: React.FC = () => {
         createdAt: new Date(start).toLocaleString('zh-CN'),
         durationSec: Math.max(1, durationFromEnd ?? Math.floor((end - start) / 1000)),
         turnCount: typeof endMeta.turnCount === 'number' ? endMeta.turnCount : undefined,
-        keepsakeLine: endMeta.keepsakeLine,
+        callScene: typeof endMeta.callScene === 'string' ? endMeta.callScene : undefined,
+        keepsakeLine: endMeta.keepsakeLine ? cleanCallKeepsakeLine(endMeta.keepsakeLine, endMeta.characterName || selectedChar?.name || '未选择角色') : undefined,
         endedAt: end,
         transcript,
       };
@@ -696,12 +750,15 @@ const CallApp: React.FC = () => {
     setShowInputPanel(true);
     setShowCallTranscript(false);
     setShowCallTools(false);
+    setCallScene('');
     setCurrentSessionId(`call-${Date.now()}`);
   };
 
   const startCallWithCharacter = (charId: string) => {
+    const nextChar = characters.find(c => c.id === charId) || selectedChar;
     setSelectedCharId(charId);
     resetCurrentCall();
+    setCallScene(buildCallOpeningScene(nextChar || null, virtualTime, Date.now()));
     setViewMode('in-call');
   };
 
@@ -715,6 +772,7 @@ const CallApp: React.FC = () => {
         characterAvatar: selectedChar.avatar,
         durationSec: elapsedSeconds,
         turnCount: userTurns,
+        callScene,
         keepsakeLine,
         endedAt: Date.now(),
       };
@@ -740,16 +798,18 @@ const CallApp: React.FC = () => {
     if (!selectedChar?.id) return [{ role: 'user', content: input }];
     const limit = selectedChar.contextLimit || 500;
     const allMsgs = await DB.getRecentMessagesByCharId(selectedChar.id, limit);
-    const filtered = allMsgs.filter(m => !(skipDbId && m.id === skipDbId));
+    const filtered = allMsgs.filter(m => !(skipDbId && m.id === skipDbId) && m.metadata?.source !== 'call-end-popup');
     const history = filtered.map(m => {
-      const source = m.metadata?.source === 'call' ? '（通话记录）' : m.metadata?.source === 'date' ? '（约会记录）' : '（聊天记录）';
-      const content = m.type === 'image'
+      const rawContent = m.type === 'image'
         ? '[用户发送了一张图片]'
         : m.type === 'emoji'
           ? '[发送了一个表情]'
           : m.content;
-      return { role: m.role, content: `[${new Date(m.timestamp).toLocaleString('zh-CN')}] ${source} ${content}` };
-    });
+      const cleanedContent = m.metadata?.source === 'call'
+        ? (getCallSpeechText(String(rawContent || '')) || stripCallRecordLabels(String(rawContent || '')))
+        : stripCallRecordLabels(String(rawContent || ''));
+      return { role: m.role, content: `[${new Date(m.timestamp).toLocaleString('zh-CN')}] ${cleanedContent}` };
+    }).filter(m => m.content.trim().replace(/^\[[^\]]+\]\s*/, '').trim());
     const lastMsg = filtered[filtered.length - 1];
     const timeGapHint = ChatPrompts.getTimeGapHint(lastMsg, Date.now());
     const finalInput = timeGapHint ? `${input}\n\n${timeGapHint}` : input;
@@ -780,8 +840,8 @@ const CallApp: React.FC = () => {
     }
     const realityContext = await buildRealitySyncContext(realtimeConfig, 'call');
     const systemPrompt = selectedChar
-      ? buildCallPrompt(userName, selectedChar.name, callCoreContext, realityContext, voiceLang || undefined)
-      : buildCallPrompt(userName, undefined, undefined, realityContext, voiceLang || undefined);
+      ? buildCallPrompt(userName, selectedChar.name, callCoreContext, realityContext, voiceLang || undefined, callScene || undefined)
+      : buildCallPrompt(userName, undefined, undefined, realityContext, voiceLang || undefined, callScene || undefined);
     const messages = await buildHistoryMessages(input, skipDbId);
     const chatData = await safeFetchJson(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -1184,7 +1244,7 @@ const CallApp: React.FC = () => {
           )}
           {callRecords.map(record => {
             const turnCount = record.turnCount ?? record.transcript.filter(t => t.role === 'user').length;
-            const keepsake = record.keepsakeLine || summarizeKeepsakeLine(record.transcript, record.characterName);
+            const keepsake = cleanCallKeepsakeLine(record.keepsakeLine || summarizeKeepsakeLine(record.transcript, record.characterName), record.characterName);
             return (
             <button key={record.id} onClick={() => { setRecordDetailId(record.id); setViewMode('record-detail'); }} className="w-full rounded-[1.35rem] border border-slate-100 bg-white p-4 text-left shadow-sm transition active:scale-[0.99]">
               <div className="flex items-center gap-3">
@@ -1200,10 +1260,11 @@ const CallApp: React.FC = () => {
                   <div className="text-xs text-slate-400 mt-0.5">{formatDuration(record.durationSec)} · {turnCount}轮对话</div>
                 </div>
                 <button onClick={(e) => { e.stopPropagation(); handleDeleteRecord(record); }} className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-400 transition active:scale-95">删除</button>
-              </div>
-              <div className="text-xs text-slate-500 mt-2.5 italic leading-relaxed line-clamp-2">{keepsake}</div>
-              <div className="text-[10px] text-slate-400 mt-1.5">{record.createdAt}</div>
-            </button>
+	              </div>
+	              <div className="text-xs text-slate-500 mt-2.5 italic leading-relaxed line-clamp-2">{keepsake}</div>
+	              {record.callScene && <div className="text-[11px] text-slate-400 mt-1.5 line-clamp-1">所在 · {record.callScene}</div>}
+	              <div className="text-[10px] text-slate-400 mt-1.5">{record.createdAt}</div>
+	            </button>
           );})}
         </div>
 
@@ -1231,33 +1292,56 @@ const CallApp: React.FC = () => {
           onBack={() => setViewMode('history')}
           right={<div className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">{formatDuration(recordDetail.durationSec)}</div>}
         />
-        <div className="mt-2 text-center px-5">
-          <p className="text-xs text-slate-400 italic">{recordDetail.createdAt}</p>
-        </div>
+	        <div className="mt-2 text-center px-5">
+	          <p className="text-xs text-slate-400 italic">{recordDetail.createdAt}</p>
+	          {recordDetail.callScene && (
+	            <p className="mx-auto mt-2 max-w-[82%] rounded-full bg-white px-3 py-1.5 text-[11px] leading-relaxed text-slate-400 shadow-sm ring-1 ring-slate-100">
+	              所在 · {recordDetail.callScene}
+	            </p>
+	          )}
+	        </div>
         <div className="mt-4 flex-1 overflow-y-auto space-y-2.5 px-5">
           {!recordDetail.transcript.length && (
             <div className="rounded-[1.35rem] border border-slate-100 bg-white p-4 text-center shadow-sm">
               <div className="text-sm font-semibold text-slate-700">这通电话没有留下对白</div>
-              <div className="mt-1 text-xs text-slate-400">{recordDetail.keepsakeLine || '可能是在接通前就断掉了。'}</div>
+              <div className="mt-1 text-xs text-slate-400">{recordDetail.keepsakeLine ? cleanCallKeepsakeLine(recordDetail.keepsakeLine, recordDetail.characterName) : '可能是在接通前就断掉了。'}</div>
             </div>
           )}
-          {recordDetail.transcript.map(item => (
-            <div key={item.id} className={`rounded-[1.25rem] border px-3.5 py-2.5 shadow-sm ${item.role === 'user' ? 'ml-8 border-cyan-100 bg-cyan-50/80' : 'mr-8 border-slate-100 bg-white'}`}>
-              <div className="text-[10px] text-slate-400">{item.role === 'user' ? '你' : recordDetail.characterName} · {item.time}</div>
-              <div className="text-sm mt-1 leading-relaxed text-slate-700">{(() => {
-                if (item.role !== 'assistant') return item.text;
-                const { display, voiceText } = extractVoiceTag(item.text);
-                return <>{display}{voiceText && <div className="mt-1 text-[10px] text-slate-400 italic">{voiceText}</div>}</>;
-              })()}</div>
-              {!!item.audioUrl && <button onClick={() => playAudio(item.audioUrl)} className="mt-2 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-500 transition active:scale-95">重播语音</button>}
-            </div>
-          ))}
+          {recordDetail.transcript.map(item => {
+            const parts = item.role === 'assistant'
+              ? splitCallTextParts(item.text)
+              : [{ kind: 'speech' as const, text: stripCallRecordLabels(item.text) }].filter(part => part.text);
+            return (
+              <div key={item.id} className={`flex flex-col ${item.role === 'user' ? 'items-end ml-8' : 'items-start mr-8'}`}>
+                <div className="mb-1 text-[10px] text-slate-400">{item.role === 'user' ? '你' : recordDetail.characterName} · {item.time}</div>
+                <div className={`flex max-w-full flex-col gap-1.5 ${item.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  {parts.length ? parts.map((part, index) => (
+                    part.kind === 'cue' ? (
+                      <div key={`${item.id}-cue-${index}`} className={`px-1 text-[11px] italic leading-relaxed text-slate-400/85 ${item.role === 'user' ? 'text-right' : 'text-left'}`}>
+                        {part.text}
+                      </div>
+                    ) : (
+                      <div
+                        key={`${item.id}-speech-${index}`}
+                        className={`rounded-[1.25rem] border px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${item.role === 'user' ? 'border-cyan-100 bg-cyan-50/80 text-cyan-900' : 'border-slate-100 bg-white text-slate-700'}`}
+                      >
+                        {part.text}
+                      </div>
+                    )
+                  )) : (
+                    <div className="rounded-[1.25rem] border border-slate-100 bg-white px-3.5 py-2.5 text-sm leading-relaxed text-slate-400 shadow-sm">
+                      （没有留下可显示的对白）
+                    </div>
+                  )}
+                </div>
+                {!!item.audioUrl && <button onClick={() => playAudio(item.audioUrl)} className="mt-2 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-500 transition active:scale-95">重播语音</button>}
+              </div>
+            );
+          })}
         </div>
         <button
           onClick={() => {
-            setSelectedCharId(recordDetail.characterId || selectedCharId);
-            resetCurrentCall();
-            setViewMode('in-call');
+            startCallWithCharacter(recordDetail.characterId || selectedCharId);
           }}
           className="mx-5 mb-6 py-3 rounded-2xl mt-4 font-semibold text-white shadow-[0_12px_24px_rgba(79,95,116,0.16)] transition active:scale-[0.98] block"
           style={{ backgroundColor: accentColor }}
@@ -1358,9 +1442,9 @@ const CallApp: React.FC = () => {
             </div>
           </div>
 
-          <div className="absolute right-4 top-4 z-20 h-20 w-16 overflow-hidden rounded-2xl border border-white/80 bg-white/[0.72] shadow-[0_12px_30px_rgba(79,95,116,0.16)] backdrop-blur-md">
-            {userCallImage ? (
-              <img
+	          <div className="absolute right-4 top-4 z-20 h-20 w-16 overflow-hidden rounded-2xl border border-white/80 bg-white/[0.72] shadow-[0_12px_30px_rgba(79,95,116,0.16)] backdrop-blur-md">
+	            {userCallImage ? (
+	              <img
                 src={userCallImage}
                 alt={userProfile.name || '我'}
                 className={`h-full w-full ${userCallUsesPortrait ? 'object-contain' : 'object-cover'}`}
@@ -1369,11 +1453,21 @@ const CallApp: React.FC = () => {
               <div className="flex h-full w-full items-center justify-center text-lg font-bold">{userProfile.name?.[0] || '我'}</div>
             )}
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/45 to-transparent px-2 pb-1.5 pt-4 text-right text-[10px] font-semibold text-white/95">
-              {userProfile.name || '我'}
-            </div>
-          </div>
+	              {userProfile.name || '我'}
+	            </div>
+	          </div>
 
-          {showCallTranscript ? (
+	          {callScene && (
+	            <div className="pointer-events-none absolute left-4 right-4 top-28 z-20 flex justify-center">
+	              <div className="max-w-[82%] rounded-full border border-white/80 bg-white/[0.68] px-3.5 py-1.5 text-center text-[11px] leading-relaxed text-slate-500 shadow-[0_8px_24px_rgba(79,95,116,0.12)] backdrop-blur-md">
+	                <span className="font-semibold text-slate-400">所在</span>
+	                <span className="mx-1 text-slate-300">·</span>
+	                <span>{callScene}</span>
+	              </div>
+	            </div>
+	          )}
+
+	          {showCallTranscript ? (
             <div ref={callScrollableRef} className="absolute bottom-3 left-4 right-4 z-20 max-h-[36%] overflow-y-auto rounded-2xl border border-white/80 bg-white/[0.72] p-2.5 shadow-[0_12px_34px_rgba(79,95,116,0.16)] ring-1 ring-slate-200/35 backdrop-blur-xl no-scrollbar">
               {!bubbles.length && (
                 <div className="py-1.5 text-center">
@@ -1549,7 +1643,7 @@ const CallApp: React.FC = () => {
               <button onClick={() => {
                 setShowHangupConfirm(false);
                 if (selectedChar) {
-                  suspendCall({ charId: selectedChar.id, charName: selectedChar.name, charAvatar: selectedChar.avatar, startedAt: callStartedAt || Date.now(), bubbles, sessionId: currentSessionId, elapsedSeconds, voiceLang });
+                  suspendCall({ charId: selectedChar.id, charName: selectedChar.name, charAvatar: selectedChar.avatar, startedAt: callStartedAt || Date.now(), bubbles, sessionId: currentSessionId, elapsedSeconds, voiceLang, callScene });
                   addToast('通话已挂起，点击顶部绿色条可随时回来', 'success');
                 }
               }} className="w-full py-2.5 rounded-2xl bg-emerald-100 text-emerald-700 font-semibold transition active:scale-[0.97] flex items-center justify-center gap-2">

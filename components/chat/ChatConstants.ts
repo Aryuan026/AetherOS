@@ -4,7 +4,11 @@ import { ChatTheme, OSTheme, BubbleStyle } from '../../types';
 import { publicAsset } from '../../utils/publicAssets';
 
 export const DEFAULT_CHAT_BACKGROUND_IMAGE = publicAsset('assets/aetheros/chat-default-bg.jpg');
+export const DEFAULT_XAVIER_AVATAR = publicAsset('assets/aetheros/xavier-avatar.jpg');
+export const DEFAULT_ZAYNE_AVATAR = publicAsset('assets/aetheros/zayne-avatar.jpg');
 export const DEFAULT_QIYU_AVATAR = publicAsset('assets/aetheros/qiyu-avatar.jpg');
+export const DEFAULT_SYLUS_AVATAR = publicAsset('assets/aetheros/sylus-avatar.jpg');
+export const DEFAULT_CALEB_AVATAR = publicAsset('assets/aetheros/caleb-avatar.jpg');
 export const DEEP_SPACE_APPEARANCE_PRESET_ID = 'deep-space';
 export const CUSTOM_APPEARANCE_PRESET_ID = 'custom';
 const LEGACY_MOONLIT_PRESET_ID = 'moonlit';
@@ -15,6 +19,9 @@ type ChatAppearancePresetId = NonNullable<OSTheme['chatAppearancePreset']>;
 export const DEEP_SPACE_CHAT_APPEARANCE: Partial<OSTheme> = {
     chatAppearancePreset: DEEP_SPACE_APPEARANCE_PRESET_ID,
     chatBubbleThemeId: 'default',
+    hue: 252,
+    saturation: 68,
+    lightness: 69,
     chatChromeStyle: 'flat',
     chatBackgroundStyle: 'plain',
     chatBackgroundImage: DEFAULT_CHAT_BACKGROUND_IMAGE,
@@ -74,6 +81,9 @@ export const CHAT_APPEARANCE_PRESETS: Array<{
         config: {
             chatAppearancePreset: 'wechat',
             chatBubbleThemeId: 'wechat',
+            hue: 215,
+            saturation: 14,
+            lightness: 52,
             chatChromeStyle: 'flat',
             chatBackgroundStyle: 'plain',
             chatBackgroundImage: '',

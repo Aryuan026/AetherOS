@@ -5,7 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "frontstage:start": "./scripts/local_ctl.sh start",
+    "frontstage:status": "./scripts/local_ctl.sh status",
+    "frontstage:stop": "./scripts/local_ctl.sh stop",
     "build": "vite build",
+    "build:quiet": "vite build --logLevel warn",
+    "typecheck": "tsc --noEmit",
+    "verify:health": "npm run typecheck && npm run build:quiet",
     "preview": "vite preview",
     "mock:api": "node scripts/mock-openai-server.mjs",
     "cap:sync": "cap sync",

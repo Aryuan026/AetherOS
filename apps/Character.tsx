@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useOS } from '../context/OSContext';
-import { AppID, CharacterProfile, CharacterExportData, UserImpression, MemoryFragment } from '../types';
+import { AppID, AvatarFramePreset, CharacterProfile, CharacterExportData, UserImpression, MemoryFragment } from '../types';
 import { SlidersHorizontal, SpeakerHigh, Books, BookOpen, Heart } from '@phosphor-icons/react';
 import Modal from '../components/os/Modal';
 import { processImage } from '../utils/file';
@@ -15,12 +15,15 @@ import { formatLifeSimResetCardForContext } from '../utils/lifeSimChatCard';
 import { DEFAULT_ARCHIVE_PROMPTS } from '../components/chat/ChatConstants';
 import ImpressionPanel from '../components/character/ImpressionPanel';
 import MemoryArchivist from '../components/character/MemoryArchivist';
+import AvatarWithFrame from '../components/common/AvatarWithFrame';
 import { safeResponseJson } from '../utils/safeApi';
 import { fetchMiniMaxVoices, MiniMaxVoiceItem } from '../utils/minimaxVoice';
 import { resolveMiniMaxApiKey } from '../utils/minimaxApiKey';
 import { normalizeUserImpression } from '../utils/impression';
 import { formatBondTimeLabelFromMessages } from '../utils/bondTime';
 import AppHeader, { AppHeaderAddButton, AppHeaderIconButton } from '../components/shell/AppHeader';
+import { resolveAvatarFramePreset } from '../utils/avatarFrames';
+import { getDeepSpaceWorldbookIdentityNotice } from '../utils/deepspaceIdentity';
 
 const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
@@ -70,7 +73,8 @@ const CharacterCard: React.FC<{
     onClick: () => void;
     onSetWanted: (e: React.MouseEvent) => void;
     onDelete: (e: React.MouseEvent) => void;
-}> = ({ char, subtitle, isActive, onClick, onSetWanted, onDelete }) => {
+    avatarFramePreset?: AvatarFramePreset;
+}> = ({ char, subtitle, isActive, onClick, onSetWanted, onDelete, avatarFramePreset }) => {
     const isLockedBuiltIn = Boolean(char.isBuiltIn && char.lockPromptEditing);
 
     return (
@@ -79,10 +83,14 @@ const CharacterCard: React.FC<{
         className="relative p-3.5 rounded-3xl border bg-white/40 border-white/40 hover:bg-white/60 hover:scale-[1.01] transition-all duration-300 cursor-pointer group shadow-sm shrink-0"
     >
         <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-full bg-slate-100 border border-white/50 overflow-hidden relative shadow-inner">
-                <div className="absolute inset-0 bg-slate-100/50"></div> 
-                <img src={char.avatar} className="w-full h-full object-cover relative z-10" alt={char.name} />
-            </div>
+            <AvatarWithFrame
+                src={char.avatar}
+                framePreset={avatarFramePreset}
+                className="w-12 h-12"
+                roundedClassName="rounded-full"
+                imageClassName="shadow-inner"
+                alt={char.name}
+            />
             <div className="flex-1 min-w-0 pt-1">
                 <h3 className="font-semibold truncate text-slate-700 leading-tight">
                     {char.name}
@@ -120,7 +128,7 @@ const CharacterCard: React.FC<{
 };
 
 const Character: React.FC = () => {
-  const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, addCharacter, updateCharacter, deleteCharacter, apiConfig, addToast, userProfile, customThemes, addCustomTheme, worldbooks, lastMsgTimestamp } = useOS();
+  const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, addCharacter, updateCharacter, deleteCharacter, apiConfig, addToast, userProfile, customThemes, addCustomTheme, worldbooks, lastMsgTimestamp, theme } = useOS();
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [detailTab, setDetailTab] = useState<'identity' | 'memory' | 'impression'>('identity');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -141,6 +149,7 @@ const Character: React.FC = () => {
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<string | null>(null);
   const [showWorldbookModal, setShowWorldbookModal] = useState(false); // New Modal
   const [viewingWorldbook, setViewingWorldbook] = useState<NonNullable<CharacterProfile['mountedWorldbooks']>[number] | null>(null);
+  const [identityRiskConfirmBookId, setIdentityRiskConfirmBookId] = useState<string | null>(null);
 
   const [importText, setImportText] = useState('');
   const [exportText, setExportText] = useState('');
@@ -337,6 +346,13 @@ const Character: React.FC = () => {
       const book = worldbooks.find(b => b.id === bookId);
       if (!book) return;
 
+      const identityNotice = getDeepSpaceWorldbookIdentityNotice(book, userProfile);
+      if (identityNotice?.requiresConfirm && identityRiskConfirmBookId !== bookId) {
+          setIdentityRiskConfirmBookId(bookId);
+          addToast('这本会覆盖 user 身份；再次点击确认启用', 'info');
+          return;
+      }
+
       const currentBooks = formData.mountedWorldbooks || [];
       if (currentBooks.some(b => b.id === book.id)) {
           addToast('已启用该资料包', 'info');
@@ -345,6 +361,7 @@ const Character: React.FC = () => {
 
       const newBookEntry = toMountedWorldbookEntry(book);
       handleChange('mountedWorldbooks', [...currentBooks, newBookEntry]);
+      setIdentityRiskConfirmBookId(null);
       addToast(`已启用: ${book.title}`, 'success');
   };
 
@@ -391,6 +408,7 @@ const Character: React.FC = () => {
       }
       const currentBooks = formData.mountedWorldbooks || [];
       handleChange('mountedWorldbooks', currentBooks.filter(b => b.id !== bookId));
+      setIdentityRiskConfirmBookId(null);
       const book = getLibraryWorldbook(bookId);
       addToast(`已停用: ${book?.title || '资料包'}`, 'success');
   };
@@ -1030,6 +1048,7 @@ ${isInitialGeneration ? `
                        <CharacterCard 
                            key={char.id} 
                            char={char} 
+                           avatarFramePreset={resolveAvatarFramePreset(theme, char.avatarFramePresetId)}
                            subtitle={getCharacterSubtitle(char)}
                            isActive={char.id === activeCharacterId}
                            onClick={() => { setEditingId(char.id); setView('detail'); }} 
@@ -1081,8 +1100,15 @@ ${isInitialGeneration ? `
                        <div className="space-y-6 animate-fade-in">
                            <div className="grid grid-cols-[6rem_6rem_minmax(0,1fr)] items-start gap-3">
                                <div className="relative group cursor-pointer w-24 shrink-0" onClick={() => fileInputRef.current?.click()}>
-                                   <div className="w-24 h-24 rounded-[2rem] shadow-md bg-white border-4 border-white overflow-hidden relative">
-                                       <img src={formData.avatar} className={`w-full h-full object-cover ${isCompressing ? 'opacity-50 blur-sm' : ''}`} alt="A" />
+                                   <div className="w-24 h-24 relative overflow-visible rounded-[2rem] shadow-md bg-white border-4 border-white">
+                                       <AvatarWithFrame
+                                           src={formData.avatar}
+                                           framePreset={resolveAvatarFramePreset(theme, formData.avatarFramePresetId)}
+                                           className="w-full h-full"
+                                           roundedClassName="rounded-[1.5rem]"
+                                           imageClassName={isCompressing ? 'opacity-50 blur-sm' : ''}
+                                           alt="A"
+                                       />
                                    </div>
                                    <div className="mt-2 text-center text-[11px] font-semibold text-slate-500">头像</div>
                                    <input type="file" ref={fileInputRef} className="hidden" accept={SUPPORTED_UPLOAD_IMAGE_ACCEPT} onChange={handleFileChange} />
@@ -1236,7 +1262,9 @@ ${isInitialGeneration ? `
 	                                </div>
 	                                <div className="space-y-2">
 	                                   {formData.mountedWorldbooks && formData.mountedWorldbooks.length > 0 ? (
-	                                       formData.mountedWorldbooks.map(wb => (
+	                                       formData.mountedWorldbooks.map(wb => {
+                                               const identityNotice = getDeepSpaceWorldbookIdentityNotice(wb, userProfile);
+                                               return (
 	                                           <div key={wb.id} className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-indigo-50 shadow-sm group">
                                                <button
                                                    onClick={() => setViewingWorldbook(wb)}
@@ -1245,14 +1273,17 @@ ${isInitialGeneration ? `
 	                                                   <BookOpen size={20} className="shrink-0 text-indigo-400" />
 	                                                   <div className="flex flex-col min-w-0">
 	                                                       <span className="text-sm font-bold text-slate-700 truncate">{wb.title}</span>
-	                                                       <span className="text-[9px] text-slate-400 truncate">{wb.category || '未分类'} · {isFixedBuiltInWorldbook(wb.id) ? '默认启用' : '已启用'} · 点击查看内容</span>
+	                                                       <span className={`text-[9px] truncate ${identityNotice?.tone === 'danger' ? 'text-rose-500' : identityNotice ? 'text-amber-500' : 'text-slate-400'}`}>
+                                                               {wb.category || '未分类'} · {isFixedBuiltInWorldbook(wb.id) ? '默认启用' : '已启用'} · {identityNotice ? identityNotice.title : '点击查看内容'}
+                                                           </span>
 	                                                   </div>
 	                                               </button>
 	                                               {canToggleWorldbook(wb.id) && (
 	                                                   <button onClick={() => unmountWorldbook(wb.id)} className="text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 ml-2">×</button>
 	                                               )}
 	                                           </div>
-	                                       ))
+                                               );
+                                           })
                                    ) : (
                                        <div className="text-center py-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
                                            暂未挂载任何世界书
@@ -1420,7 +1451,7 @@ ${isInitialGeneration ? `
 	        <Modal
 	            isOpen={showWorldbookModal && canConfigureWorldbooks}
 	            title={isPromptLocked ? '资料包开关' : '挂载世界书'}
-	            onClose={() => setShowWorldbookModal(false)}
+	            onClose={() => { setShowWorldbookModal(false); setIdentityRiskConfirmBookId(null); }}
 	        >
 	            <div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-4 p-1">
 	                {(() => {
@@ -1464,10 +1495,12 @@ ${isInitialGeneration ? `
 	                                const isMounted = formData?.mountedWorldbooks?.some(m => m.id === wb.id);
 	                                const isOptional = isOptionalBuiltInWorldbook(wb.id);
 	                                const canToggle = canToggleWorldbook(wb.id);
+                                    const identityNotice = getDeepSpaceWorldbookIdentityNotice(wb, userProfile);
+                                    const isPendingRiskConfirm = identityRiskConfirmBookId === wb.id;
 	                                return (
 	                                    <div
 	                                        key={wb.id}
-	                                        className={`w-full p-4 rounded-xl border text-left transition-all ${isMounted ? 'bg-indigo-50/50 border-indigo-100' : 'bg-white border-indigo-100 shadow-sm'}`}
+	                                        className={`w-full p-4 rounded-xl border text-left transition-all ${isMounted ? 'bg-indigo-50/50 border-indigo-100' : identityNotice?.tone === 'danger' ? 'bg-rose-50/50 border-rose-100 shadow-sm' : 'bg-white border-indigo-100 shadow-sm'}`}
 	                                    >
 	                                        <div className="flex items-start justify-between gap-3">
 	                                            <div className="min-w-0">
@@ -1480,6 +1513,18 @@ ${isInitialGeneration ? `
 	                                                        {wb.activationHint}
 	                                                    </div>
 	                                                )}
+                                                    {identityNotice && (
+                                                        <div className={`mt-2 rounded-xl px-3 py-2 text-[10px] leading-relaxed ${
+                                                            identityNotice.tone === 'danger'
+                                                                ? 'bg-rose-100/70 text-rose-600'
+                                                                : identityNotice.tone === 'warning'
+                                                                    ? 'bg-amber-50 text-amber-600'
+                                                                    : 'bg-sky-50 text-sky-600'
+                                                        }`}>
+                                                            <div className="font-bold">{identityNotice.title}</div>
+                                                            <div>{identityNotice.body}</div>
+                                                        </div>
+                                                    )}
 	                                            </div>
 	                                            <div className="flex shrink-0 gap-1">
 	                                                <button
@@ -1491,9 +1536,9 @@ ${isInitialGeneration ? `
 	                                                {canToggle && (
 	                                                    <button
 	                                                        onClick={() => isMounted ? unmountWorldbook(wb.id) : mountWorldbook(wb.id)}
-	                                                        className={`px-2 py-1 rounded-lg text-[10px] font-bold ${isMounted ? 'bg-white text-red-400 hover:bg-red-50' : 'bg-indigo-500 text-white hover:bg-indigo-600'}`}
+	                                                        className={`px-2 py-1 rounded-lg text-[10px] font-bold ${isMounted ? 'bg-white text-red-400 hover:bg-red-50' : isPendingRiskConfirm ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-indigo-500 text-white hover:bg-indigo-600'}`}
 	                                                    >
-	                                                        {isMounted ? '停用' : '启用'}
+	                                                        {isMounted ? '停用' : isPendingRiskConfirm ? '确认启用' : '启用'}
 	                                                    </button>
 	                                                )}
 	                                            </div>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { CharacterProfile, SocialPost, SocialComment, SubAccount, SocialAppProfile } from '../types';
+import { CharacterProfile, SocialPost, SocialComment, SubAccount, SocialAppProfile, SocialNewsCategory } from '../types';
 import { ContextBuilder } from '../utils/context';
 import { processImage } from '../utils/file';
 import Modal from '../components/os/Modal';
@@ -10,6 +10,7 @@ import { safeResponseJson } from '../utils/safeApi';
 import { House, User, Package, Warning } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
+import { Capacitor } from '@capacitor/core';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -34,6 +35,24 @@ const MOMENTS_USER_ID_KEY = 'moments_user_id';
 const MOMENTS_USER_COVER_ASSET_ID = 'moments_user_cover';
 const MOMENTS_PROFILE_ASSET_ID = 'moments_profile';
 const MOMENTS_CHAR_HANDLES_KEY = 'moments_char_handles';
+const SOCIAL_DEMO_DISMISSED_TABS_KEY = 'aetheros_social_demo_dismissed_tabs_v1';
+const NEWS_LONGFORM_MIN_CHARS = 500;
+const POINTER_PULL_DEADZONE_PX = 8;
+const DEEPSPACE_MALE_LEAD_IDS = new Set([
+    'builtin-xavier',
+    'builtin-zayne',
+    'builtin-daily-companion',
+    'builtin-sylus',
+    'builtin-caleb',
+]);
+const DEEPSPACE_CROSS_WORLDBOOK_IDS = new Set([
+    'builtin-deepspace-optional-male-leads-npc-index',
+    'builtin-deepspace-story-crossover',
+]);
+const USER_POST_FIRST_REPLY_DELAY_MS = 75_000;
+const USER_POST_REPLY_RETRY_MS = 5 * 60_000;
+const USER_POST_REPLY_STAGGER_MIN_MS = 55_000;
+const USER_POST_REPLY_STAGGER_MAX_MS = 150_000;
 
 // Advanced Gradients for "Image" backgrounds
 const POST_STYLES = [
@@ -47,9 +66,125 @@ const POST_STYLES = [
     { name: 'Plum', bg: 'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)', text: '#fff' },
 ];
 
+const NEWS_CHANNELS: Array<{
+    category: SocialNewsCategory;
+    label: string;
+    names: string[];
+    prompt: string;
+    titleLength: string;
+    contentLength: string;
+    tags: string[];
+}> = [
+    {
+        category: 'mainline',
+        label: '主线异常',
+        names: ['便民速递', '今日绕行'],
+        prompt: '准确、短、克制，像便民提醒或绕行提示；给现象、地点和建议，但不要把传闻盖章成事实。',
+        titleLength: '12-22字',
+        contentLength: '35-70字',
+        tags: ['主线异常', '便民预警'],
+    },
+    {
+        category: 'sidequest',
+        label: '小道消息',
+        names: ['边角料', '野史不歪', '诡秘谈'],
+        prompt: '按媒体号拆分成短八卦、浮夸野史或完整怪谈；可以离谱但必须像传闻，适合任务支线、NPC扩张、城市怪事。',
+        titleLength: '12-26字',
+        contentLength: '按媒体号为220-900字，其中长篇媒体正文不得少于500字',
+        tags: ['小道消息', '支线钩子'],
+    },
+    {
+        category: 'date',
+        label: '约会出行',
+        names: ['今天想见你', '恋爱出走指南', '两个人的地图'],
+        prompt: '按媒体号拆分成轻短邀约、长篇出走故事或路线散文；粉红但不限定暧昧期，要有氛围、路线、天气、并肩和等待。',
+        titleLength: '10-24字',
+        contentLength: '按媒体号为220-800字，其中长篇媒体正文不得少于500字',
+        tags: ['约会灵感', '出行种草'],
+    },
+    {
+        category: 'daily',
+        label: '吃喝日常',
+        names: ['今天吃点什么', '便利店观察员', '微醺菜单'],
+        prompt: '轻软、生活化，适合分享进聊天或被主动来信引用；不要写成长篇测评。',
+        titleLength: '8-18字',
+        contentLength: '35-80字',
+        tags: ['日常陪伴', '吃喝小报'],
+    },
+];
+
+const NEWS_CHANNEL_BY_CATEGORY = NEWS_CHANNELS.reduce((acc, item) => {
+    acc[item.category] = item;
+    return acc;
+}, {} as Record<SocialNewsCategory, (typeof NEWS_CHANNELS)[number]>);
+const NEWS_CHANNEL_NAMES = new Set(NEWS_CHANNELS.flatMap(item => item.names));
+const DEFAULT_NEWS_CATEGORY: SocialNewsCategory = 'sidequest';
+const NEWS_CHANNEL_STYLE_NOTES: Record<string, string> = {
+    便民速递: '短讯体，90-160字。开头直接报地点和现象，接影响范围与建议；准确、冷静、少形容词，不讲完整故事。',
+    今日绕行: '现场绕行体，100-180字。用“几点—哪里—看见什么—怎么绕”的顺序，像滚动更新的避险提示。',
+    边角料: '碎片投稿体，220-360字。用匿名爆料、聊天截句、围观反应拼出八卦，信息碎、语气欠、结尾留钩子。',
+    野史不歪: '浮夸小报长文，520-800字。先下爆炸性标题式判断，再写三段“据说/有人翻到/更离谱的是”，混入旧记录、旁证、反驳和自相矛盾的细节；抓眼球但不盖章事实。',
+    诡秘谈: '怪谈投稿长篇，650-950字。必须是故事而非报告：从投稿人身份和具体时刻切入，写场景、气味/声音、人物对话、异常逐级升级、一次似乎结束的假收束，再用最后一个无法解释的细节扎尾。允许浮夸、发散、吊胃口，正文至少500字。',
+    今天想见你: '轻粉红邀约体，220-360字。像一封忍不住转发的小邀请，有天气、见面借口和一句克制的煽动。',
+    恋爱出走指南: '约会叙事长篇，520-800字。以“如果从某个时间出发”为开头，沿路线写三到四个停靠点、两人的小动作、意外和回程余韵；像可照着走的故事，正文至少500字。',
+    两个人的地图: '路线散文长篇，500-760字。用地图坐标/路标串联散步、等待、坐下、走错路和回程，把地点写成人与人距离的变化，正文至少500字。',
+    今天吃点什么: '日常安利体，180-280字。从一道食物切入，写口感、适合的时刻和一句可直接拿去问候人的话。',
+    便利店观察员: '货架观察体，200-320字。新品、货架、小票、夜班店员和深夜灯光都可以，像带吐槽的生活切片，不写成长测评。',
+    微醺菜单: '夜间菜单体，240-380字。用杯沿、冰块、灯色、音乐和散场时间组织段落，保持陪伴感，不写成酒评。',
+};
+const NEWS_LONGFORM_CHANNELS = new Set(['野史不歪', '诡秘谈', '恋爱出走指南', '两个人的地图']);
+const DEMO_MYSTERY_STORY = `投稿人说，他在旧城区那家停业多年的影院做临时清点。那天是周四，晚上十一点十七分，外面下着很细的雨。大厅里没有电，只有安全出口的绿灯亮着。经理把一串生锈钥匙交给他，反复叮嘱：数座椅可以，但第三排无论多出什么，都不要重新数第二遍。
+
+他起初以为这是老员工吓唬新人。第一厅总共十二排，每排十四个座位，除了第三排。手电照过去时，那里整整齐齐摆着十五张椅子，多出来的一张夹在七号和八号之间，椅背比旁边高半寸，扶手上还搭着一件湿漉漉的灰色外套。投稿人喊了两声“有人吗”，放映室却先回答了一声：“没有。”
+
+更怪的是售票机突然自己吐出一张票。票面日期正是当天，场次写着零点零分，座位号只有一个手写的“7½”。背面用蓝色圆珠笔写着：请不要回头。投稿人拍照发给经理，消息旁边很快出现已读，但经理的账号随后回了一句：“我今晚没带手机。”
+
+这时银幕亮了。没有电影，只有一段俯拍监控：画面里的投稿人正站在第三排前，而他身后坐着一排模糊的人影。那些人全都低着头，膝盖上放着同样的灰色外套。监控时间比现实快两分钟。画面里，两分钟后的他慢慢转过身，像在看谁；现实中的他吓得闭上眼，沿过道摸索着往门口跑。
+
+他撞开大厅门时，雨已经停了，经理和保安都在街对面等他。三个人重新进去，第三排恢复成十四张椅子，售票机也断着电。只有他的手机相册里多了一段九秒视频：镜头对着黑暗的银幕，一个女人在很远的地方问，“这次他没有回头，那票留给谁？”
+
+大家都以为事情到这里结束了。投稿人辞掉工作，搬离旧城区，甚至换了号码。可从那以后，每逢周四夜里十一点十七分，他的手机钱包都会自动出现一张无法删除的电子票，座位永远是7½。昨晚那张票第一次换了场次名称，不再写“零点重映”，而是写着他现在住的小区门牌号。
+
+我们向影院旧员工核实时，对方只问了一句：“你们收到的投稿里，他有没有说那件灰外套是什么颜色？”我们回答灰色。电话那头沉默了很久，说：“那就不是他的版本。最早那个人看见的是红色，而且他二十年前就坐在第三排，没有出来。”`;
+
 const getRandomStyle = () => POST_STYLES[Math.floor(Math.random() * POST_STYLES.length)];
 type SocialTab = 'moments' | 'news' | 'me';
 const getPostKind = (post: SocialPost) => post.kind || 'moment';
+const isNewsCategory = (value?: string): value is SocialNewsCategory => (
+    value === 'mainline' || value === 'sidequest' || value === 'date' || value === 'daily'
+);
+const pickFrom = <T,>(items: T[]): T => items[Math.floor(Math.random() * items.length)];
+const uniqueById = <T extends { id: string }>(items: T[]): T[] => Array.from(new Map(items.map(item => [item.id, item])).values());
+const randomReplyDelayMs = () => USER_POST_REPLY_STAGGER_MIN_MS + Math.floor(Math.random() * (USER_POST_REPLY_STAGGER_MAX_MS - USER_POST_REPLY_STAGGER_MIN_MS + 1));
+const normalizeNewsCategory = (value?: string): SocialNewsCategory => (
+    isNewsCategory(value) ? value : DEFAULT_NEWS_CATEGORY
+);
+const normalizeNewsChannel = (rawName: string | undefined, category: SocialNewsCategory): string => {
+    const trimmed = rawName?.trim();
+    if (trimmed && NEWS_CHANNEL_NAMES.has(trimmed)) return trimmed;
+    return pickFrom(NEWS_CHANNEL_BY_CATEGORY[category].names);
+};
+const newsPromptTable = () => NEWS_CHANNELS.map(item => (
+    `- category="${item.category}"｜${item.label}｜媒体号只能从：${item.names.join('、')}｜标题${item.titleLength}｜正文${item.contentLength}｜${item.prompt}`
+)).join('\n');
+const newsChannelStyleTable = () => Object.entries(NEWS_CHANNEL_STYLE_NOTES)
+    .map(([name, note]) => `- ${name}: ${note}`)
+    .join('\n');
+const countNewsContentChars = (content?: string) => String(content || '').replace(/\s/g, '').length;
+const isLongformNewsChannel = (channel?: string) => !!channel && NEWS_LONGFORM_CHANNELS.has(channel);
+const normalizeGeneratedNewsItem = (item: any) => {
+    const category = normalizeNewsCategory(item?.newsCategory || item?.category || item?.channelCategory);
+    const channel = normalizeNewsChannel(item?.newsChannel || item?.sourceName || item?.authorName, category);
+    return {
+        ...item,
+        category,
+        newsCategory: category,
+        sourceName: channel,
+        authorName: channel,
+        newsChannel: channel,
+        content: String(item?.content || item?.summary || '').trim(),
+    };
+};
 const isCodepointSticker = (token?: string) => !!token && /^[0-9a-f]+(?:-[0-9a-f]+)*(?:-fe0f)?$/i.test(token);
 const isImageAsset = (token?: string) => !!token && (/^(data:image|blob:|https?:\/\/|\/)/i.test(token));
 const renderPostSticker = (token?: string, className = 'w-16 h-16') => {
@@ -139,7 +274,7 @@ const Icons = {
 // --- Main App ---
 
 const SocialApp: React.FC = () => {
-    const { closeApp, characters, updateCharacter, apiConfig, addToast, userProfile, groups } = useOS();
+    const { closeApp, characters, activeCharacterId, apiConfig, addToast, userProfile } = useOS();
     const [feed, setFeed] = useState<SocialPost[]>([]);
     const [activeTab, setActiveTab] = useState<SocialTab>('moments');
     const [isCreateOpen, setIsCreateOpen] = useState(false); 
@@ -159,7 +294,16 @@ const SocialApp: React.FC = () => {
 
     // Settings / Handle Management
     const [showSettings, setShowSettings] = useState(false);
+    const [showClearNewsConfirm, setShowClearNewsConfirm] = useState(false);
     const [characterHandles, setCharacterHandles] = useState<Record<string, SubAccount[]>>({});
+    const [dismissedDemoTabs, setDismissedDemoTabs] = useState<Set<'moments' | 'news'>>(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(SOCIAL_DEMO_DISMISSED_TABS_KEY) || '[]');
+            return new Set(Array.isArray(saved) ? saved.filter(tab => tab === 'moments' || tab === 'news') : []);
+        } catch {
+            return new Set();
+        }
+    });
 
     // Sharing State
     const [showShareModal, setShowShareModal] = useState(false);
@@ -184,6 +328,7 @@ const SocialApp: React.FC = () => {
     const pullStartedAtTopRef = useRef(false);
     const pointerPullStartYRef = useRef<number | null>(null);
     const pointerStartedAtTopRef = useRef(false);
+    const pointerPullIdRef = useRef<number | null>(null);
 
     // Refs
     const commentsEndRef = useRef<HTMLDivElement>(null);
@@ -191,6 +336,118 @@ const SocialApp: React.FC = () => {
     const prevCommentCountRef = useRef(0); // Track comment count to prevent initial jump
     const pendingReplyRef = useRef<Set<string>>(new Set());
     const [pullDistance, setPullDistance] = useState(0);
+
+    const dismissDemoTabs = (...tabs: Array<'moments' | 'news'>) => {
+        setDismissedDemoTabs(prev => {
+            const next = new Set(prev);
+            tabs.forEach(tab => next.add(tab));
+            try {
+                localStorage.setItem(SOCIAL_DEMO_DISMISSED_TABS_KEY, JSON.stringify(Array.from(next)));
+            } catch {}
+            return next;
+        });
+    };
+
+    const activeCharacter = useMemo(() => (
+        characters.find(char => char.id === activeCharacterId) || characters[0]
+    ), [characters, activeCharacterId]);
+
+    const isMaleLead = (char?: CharacterProfile | null) => Boolean(char && DEEPSPACE_MALE_LEAD_IDS.has(char.id));
+    const hasMountedWorldbook = (char: CharacterProfile | undefined, ids: Set<string>) => (
+        Boolean(char?.mountedWorldbooks?.some(book => ids.has(book.id)))
+    );
+    const allowsMaleLeadCrossover = useMemo(() => (
+        hasMountedWorldbook(activeCharacter, DEEPSPACE_CROSS_WORLDBOOK_IDS)
+    ), [activeCharacter]);
+    const handleListForChar = (char: CharacterProfile) => {
+        const handles = characterHandles[char.id] || [];
+        if (handles.length > 0) return handles;
+        return [{
+            id: 'default',
+            handle: char.socialProfile?.handle || char.name,
+            note: '主账号'
+        }];
+    };
+    const primaryHandleForChar = (char: CharacterProfile) => (
+        handleListForChar(char).find(handle => handle.handle.trim())?.handle.trim() || char.name
+    );
+    const isExplicitSocialParticipant = (char: CharacterProfile) => (
+        char.id === activeCharacter?.id ||
+        char.proactiveConfig?.enabled === true ||
+        char.activeMsg2Config?.enabled === true
+    );
+    const socialParticipants = useMemo(() => {
+        const explicit = characters.filter(isExplicitSocialParticipant);
+        const fallback = activeCharacter ? [activeCharacter] : [];
+        const base = uniqueById(explicit.length > 0 ? explicit : fallback);
+
+        if (!activeCharacter || !isMaleLead(activeCharacter) || allowsMaleLeadCrossover) {
+            return base.length > 0 ? base : characters.slice(0, 1);
+        }
+
+        return base.filter(char => char.id === activeCharacter.id || !isMaleLead(char));
+    }, [characters, activeCharacter, allowsMaleLeadCrossover]);
+    const socialWorldScopeNote = useMemo(() => {
+        if (!activeCharacter) return '当前没有明确激活角色；请保持朋友圈内容小范围、低交叉。';
+        if (!isMaleLead(activeCharacter)) {
+            return `当前朋友圈以已激活角色「${activeCharacter.name}」和其相关人物为主；不要默认把未激活角色拉入同一熟人圈。`;
+        }
+        if (allowsMaleLeadCrossover) {
+            return '当前已启用五位男主共存/交叉资料包；可以让已激活角色因事件、地点、组织或用户行动自然交叉，但不要默认私交熟络。';
+        }
+        const forbiddenNames = characters
+            .filter(char => isMaleLead(char) && char.id !== activeCharacter.id)
+            .map(char => char.name)
+            .join('、');
+        return `当前未启用五位男主共存资料包；朋友圈只把「${activeCharacter.name}」视为当前男主。可以出现他相关的原生 NPC、路人或剧情新增 NPC，但禁止让其他男主${forbiddenNames ? `（${forbiddenNames}）` : ''}发动态、评论或被写成同一熟人圈人物。`;
+    }, [activeCharacter, allowsMaleLeadCrossover, characters]);
+    const getRelatedParticipantsForPost = (post?: SocialPost | null) => {
+        const postChar = post?.charId ? characters.find(char => char.id === post.charId) : undefined;
+        const base = uniqueById([postChar, ...socialParticipants].filter(Boolean) as CharacterProfile[]);
+        if (!activeCharacter || !isMaleLead(activeCharacter) || allowsMaleLeadCrossover) return base;
+        return base.filter(char => char.id === activeCharacter.id || !isMaleLead(char));
+    };
+    const findAllowedCharForAuthor = (authorName: string, allowedChars: CharacterProfile[]) => (
+        allowedChars.find(char => (
+            char.name === authorName ||
+            handleListForChar(char).some(handle => handle.handle === authorName)
+        ))
+    );
+    const isForbiddenCrossLeadAuthor = (authorName: string, allowedChars: CharacterProfile[]) => (
+        characters.some(char => (
+            isMaleLead(char) &&
+            !allowedChars.some(allowed => allowed.id === char.id) &&
+            (char.name === authorName || handleListForChar(char).some(handle => handle.handle === authorName))
+        ))
+    );
+    const buildUserPostReplyQueue = () => (
+        socialParticipants
+            .filter(char => handleListForChar(char).some(handle => handle.handle.trim()))
+            .sort(() => 0.5 - Math.random())
+            .slice(0, Math.min(3, Math.max(1, socialParticipants.length)))
+            .map(char => char.id)
+    );
+    const showSocialReplyNotice = (comments: SocialComment[], post: SocialPost) => {
+        if (comments.length === 0) return;
+        const first = comments[0];
+        const names = Array.from(new Set(comments.map(comment => comment.authorName))).slice(0, 2);
+        addToast(`${names.join('、')} 回复了你的朋友圈`, 'success');
+
+        if (!Capacitor.isNativePlatform() && window.Notification && Notification.permission === 'granted') {
+            try {
+                const notif = new Notification('朋友圈有新回复', {
+                    body: `${first.authorName}: ${first.content}`.slice(0, 120),
+                    icon: first.authorAvatar || post.authorAvatar,
+                    silent: false
+                });
+                notif.onclick = () => {
+                    window.focus();
+                    setActiveTab('moments');
+                    setSelectedPost(post);
+                };
+            } catch {}
+        }
+    };
 
     const visibleFeed = useMemo(() => {
         return feed.filter(post => activeTab === 'news' ? getPostKind(post) === 'news' : getPostKind(post) !== 'news');
@@ -224,7 +481,7 @@ const SocialApp: React.FC = () => {
                 title: '今天的状态',
                 content: '把手机放在窗边，结果光斑正好落在桌面上。感觉今天适合发生一点小事。',
                 images: [],
-                likes: 18,
+                likes: 9,
                 isCollected: false,
                 isLiked: false,
                 comments: [
@@ -247,7 +504,7 @@ const SocialApp: React.FC = () => {
                 title: '晚风',
                 content: '路过便利店的时候，货架上的猫粮又换了位置。',
                 images: [],
-                likes: 126,
+                likes: 16,
                 isCollected: false,
                 isLiked: false,
                 comments: [
@@ -265,17 +522,19 @@ const SocialApp: React.FC = () => {
                 kind: 'news',
                 sourceType: 'news',
                 charId: null,
-                authorName: '影视前线资讯站',
-                authorAvatar: avatarFor('影视前线资讯站'),
-                title: '一线制片人血泪经验大公开——新手入门 Q&A…',
-                content: '匿名剧组成员投稿称，某片场最近出现了“每晚自动补满的热饮”。目前没有人承认，但值夜班的人都说味道不错。',
+                authorName: '边角料',
+                authorAvatar: avatarFor('边角料'),
+                title: '剧组值夜班的人说热饮会自己补满',
+                content: '匿名投稿称，某片场最近每晚都会多出几杯温热饮料。目前没人承认是谁买的，评论区已经开始猜是不是哪位猎人顺手照顾人。',
                 images: [],
                 likes: 2048,
                 isCollected: false,
                 isLiked: false,
                 comments: [],
                 timestamp: now - 1000 * 60 * 80,
-                tags: ['影视', '传闻'],
+                tags: ['小道消息', '支线钩子', '传闻'],
+                newsCategory: 'sidequest',
+                newsChannel: '边角料',
                 bgStyle: 'linear-gradient(135deg, rgba(93,123,154,0.72) 0%, rgba(228,215,200,0.86) 100%)',
                 storySeedStatus: 'candidate',
                 replyState: 'none'
@@ -285,17 +544,19 @@ const SocialApp: React.FC = () => {
                 kind: 'news',
                 sourceType: 'news',
                 charId: null,
-                authorName: '诡语人',
-                authorAvatar: avatarFor('诡语人'),
-                title: '都市传说投稿：电影院怪谈',
-                content: '临空市旧影院的第三排座位总会多出一张票。票根背面写着同一句话：请不要回头。',
+                authorName: '诡秘谈',
+                authorAvatar: avatarFor('诡秘谈'),
+                title: '旧影院第三排总会多出一张票',
+                content: DEMO_MYSTERY_STORY,
                 images: [],
                 likes: 767,
                 isCollected: false,
                 isLiked: false,
                 comments: [],
                 timestamp: now - 1000 * 60 * 120,
-                tags: ['都市传说', '剧情种子'],
+                tags: ['小道消息', '支线钩子', '都市传说'],
+                newsCategory: 'sidequest',
+                newsChannel: '诡秘谈',
                 bgStyle: 'linear-gradient(135deg, rgba(31,41,55,0.72) 0%, rgba(148,163,184,0.78) 100%)',
                 storySeedStatus: 'candidate',
                 replyState: 'none'
@@ -305,17 +566,19 @@ const SocialApp: React.FC = () => {
                 kind: 'news',
                 sourceType: 'news',
                 charId: null,
-                authorName: 'Twinkle潮玩社',
-                authorAvatar: avatarFor('Twinkle潮玩社'),
-                title: '一封来自玩偶剧团的宣传信，Twinkle 奇妙夜…',
-                content: '本周主题活动将开放“会自己换座位”的玩偶展区。主办方提醒：若听见它叫你的名字，请先确认身后是否有人。',
+                authorName: '今天想见你',
+                authorAvatar: avatarFor('今天想见你'),
+                title: '本周末适合把人约去旧街区看夜灯',
+                content: '那条路傍晚会亮起一排小灯，风从河边吹过来，适合并肩慢慢走。缺点是太容易让人说出平时不好意思说的话。',
                 images: [],
                 likes: 5312,
                 isCollected: false,
                 isLiked: false,
                 comments: [],
                 timestamp: now - 1000 * 60 * 180,
-                tags: ['潮玩', '活动'],
+                tags: ['约会灵感', '出行种草'],
+                newsCategory: 'date',
+                newsChannel: '今天想见你',
                 bgStyle: 'linear-gradient(135deg, rgba(244,114,182,0.62) 0%, rgba(253,224,71,0.45) 100%)',
                 storySeedStatus: 'candidate',
                 replyState: 'none'
@@ -325,9 +588,9 @@ const SocialApp: React.FC = () => {
                 kind: 'news',
                 sourceType: 'news',
                 charId: null,
-                authorName: '深空时代',
-                authorAvatar: avatarFor('深空时代'),
-                title: '临空市异常天气观测：今晚或出现短时星砂雨',
+                authorName: '便民速递',
+                authorAvatar: avatarFor('便民速递'),
+                title: '今晚部分街区或出现短时星砂雨',
                 content: '气象站称该现象不会影响出行，但夜间外出者请留意通讯设备短暂失灵。',
                 images: [],
                 likes: 991,
@@ -335,7 +598,9 @@ const SocialApp: React.FC = () => {
                 isLiked: false,
                 comments: [],
                 timestamp: now - 1000 * 60 * 240,
-                tags: ['临空市', '天气'],
+                tags: ['主线异常', '便民预警', '天气'],
+                newsCategory: 'mainline',
+                newsChannel: '便民速递',
                 bgStyle: 'linear-gradient(135deg, rgba(59,130,246,0.60) 0%, rgba(236,253,245,0.88) 100%)',
                 storySeedStatus: 'candidate',
                 replyState: 'none'
@@ -345,13 +610,16 @@ const SocialApp: React.FC = () => {
 
     const displayFeed = useMemo(() => {
         if (visibleFeed.length > 0) return visibleFeed;
+        if (activeTab !== 'me' && dismissedDemoTabs.has(activeTab)) return [];
         return placeholderFeed.filter(post => activeTab === 'news' ? getPostKind(post) === 'news' : getPostKind(post) !== 'news');
-    }, [visibleFeed, placeholderFeed, activeTab]);
+    }, [visibleFeed, placeholderFeed, activeTab, dismissedDemoTabs]);
 
     useEffect(() => {
         DB.getSocialPosts().then(posts => {
             if (posts.length > 0) {
                 setFeed(posts.sort((a,b) => b.timestamp - a.timestamp));
+                const presentTabs = new Set(posts.map(post => getPostKind(post) === 'news' ? 'news' : 'moments'));
+                dismissDemoTabs(...Array.from(presentTabs));
             }
         });
         
@@ -417,7 +685,7 @@ const SocialApp: React.FC = () => {
     // This prevents the "jumping" behavior when opening a post
     useEffect(() => {
         if (selectedPost) {
-            const currentCount = selectedPost.comments.length;
+            const currentCount = (selectedPost.comments || []).length;
             if (currentCount > prevCommentCountRef.current) {
                 // New comment added: only scroll the internal detail panel.
                 // Avoid scrollIntoView(), which can scroll outer containers and shift the whole app layout.
@@ -433,7 +701,7 @@ const SocialApp: React.FC = () => {
         } else {
             prevCommentCountRef.current = 0; // Reset
         }
-    }, [selectedPost?.comments.length]);
+    }, [selectedPost?.comments?.length]);
 
     // --- Helpers ---
 
@@ -512,6 +780,8 @@ const SocialApp: React.FC = () => {
 
     const persistFeed = (newFeed: SocialPost[]) => {
         setFeed(newFeed);
+        const presentTabs = new Set(newFeed.map(post => getPostKind(post) === 'news' ? 'news' : 'moments'));
+        if (presentTabs.size > 0) dismissDemoTabs(...Array.from(presentTabs));
         Promise.all(newFeed.map(p => DB.saveSocialPost(p))).catch(console.error);
     };
 
@@ -533,8 +803,49 @@ const SocialApp: React.FC = () => {
         setSelectedPost(current => (current?.id === postId ? null : current));
     };
 
+    const socialCircleBudget = () => {
+        const handleCount = Object.values(characterHandles).reduce((sum, handles) => sum + (handles?.length || 0), 0);
+        return Math.max(8, characters.length + handleCount + 6);
+    };
+
+    const simulatedLikes = (kind: 'moment' | 'news', sourceType: SocialPost['sourceType'], category?: SocialNewsCategory, rawLikes?: unknown) => {
+        const raw = typeof rawLikes === 'number' && Number.isFinite(rawLikes) ? Math.max(0, Math.round(rawLikes)) : undefined;
+        if (kind === 'moment') {
+            const circle = socialCircleBudget();
+            const multiplier = sourceType === 'character' ? 2.4 : sourceType === 'user' ? 1.5 : 1.8;
+            const cap = Math.max(6, Math.round(circle * multiplier));
+            return Math.min(raw ?? Math.floor(Math.random() * (cap + 1)), cap);
+        }
+        const caps: Record<SocialNewsCategory, number> = {
+            mainline: 260,
+            sidequest: 420,
+            date: 360,
+            daily: 220,
+        };
+        const floors: Record<SocialNewsCategory, number> = {
+            mainline: 18,
+            sidequest: 24,
+            date: 16,
+            daily: 8,
+        };
+        const resolvedCategory = category || DEFAULT_NEWS_CATEGORY;
+        const cap = caps[resolvedCategory];
+        const floor = floors[resolvedCategory];
+        return Math.min(raw ?? (floor + Math.floor(Math.random() * Math.max(1, cap - floor + 1))), cap);
+    };
+
     const buildPostShell = (item: any, kind: 'moment' | 'news'): SocialPost => {
-        let avatar = `https://api.dicebear.com/7.x/notionists/svg?seed=${item.authorName || item.sourceName || 'news'}`;
+        const newsCategory = kind === 'news'
+            ? normalizeNewsCategory(item.newsCategory || item.category || item.channelCategory)
+            : undefined;
+        const newsChannel = kind === 'news'
+            ? normalizeNewsChannel(item.newsChannel || item.sourceName || item.authorName, newsCategory!)
+            : undefined;
+        const newsConfig = newsCategory ? NEWS_CHANNEL_BY_CATEGORY[newsCategory] : undefined;
+        const normalizedAuthorName = kind === 'news'
+            ? newsChannel!
+            : (item.authorName || item.sourceName || 'Unknown');
+        let avatar = `https://api.dicebear.com/7.x/notionists/svg?seed=${normalizedAuthorName || 'news'}`;
         let sourceType: SocialPost['sourceType'] = kind === 'news' ? 'news' : (item.isCharacter ? 'character' : 'npc');
         let charId: string | null = item.charId || null;
 
@@ -549,32 +860,68 @@ const SocialApp: React.FC = () => {
                 sourceType = 'character';
             }
         } else if (kind === 'news') {
-            avatar = `https://api.dicebear.com/7.x/icons/svg?seed=${item.authorName || item.sourceName || item.title || 'aether-news'}`;
+            avatar = `https://api.dicebear.com/7.x/icons/svg?seed=${newsChannel || item.title || 'aether-news'}`;
         } else {
             const seeds = ['micah', 'avataaars', 'bottts', 'notionists'];
             avatar = `https://api.dicebear.com/7.x/${seeds[Math.floor(Math.random() * seeds.length)]}/svg?seed=${(item.authorName || 'NPC') + Math.random()}`;
         }
+
+        const rawTags = Array.isArray(item.tags) ? item.tags.filter(Boolean).map(String) : [];
+        const tags = kind === 'news'
+            ? Array.from(new Set([...(newsConfig?.tags || []), ...rawTags, '资讯站']))
+            : (rawTags.length ? rawTags : ['朋友圈']);
 
         return {
             id: `${kind}-${Date.now()}-${Math.random()}`,
             kind,
             sourceType,
             charId,
-            authorName: item.authorName || item.sourceName || (kind === 'news' ? '深空资讯站' : 'Unknown'),
+            authorName: normalizedAuthorName,
             authorAvatar: avatar,
             title: item.title || (kind === 'news' ? '未命名传闻' : '无标题'),
             content: item.content || item.summary || '...',
             images: item.images || [],
-            likes: item.likes || 0,
+            likes: simulatedLikes(kind, sourceType, newsCategory, item.likes),
             isCollected: false,
             isLiked: false,
             comments: [],
             timestamp: Date.now(),
-            tags: item.tags || (kind === 'news' ? ['资讯站', '剧情种子'] : ['朋友圈']),
+            tags,
+            newsCategory,
+            newsChannel,
+            storyLineStatus: kind === 'news' ? 'candidate' : undefined,
             bgStyle: getRandomStyle().bg,
             storySeedStatus: kind === 'news' ? 'candidate' : 'none',
             replyState: 'none'
         };
+    };
+
+    const requestSocialJsonArray = async (prompt: string, maxTokens: number, timeoutMs = 75_000): Promise<any[]> => {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
+                body: JSON.stringify({
+                    model: apiConfig.model,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.95,
+                    max_tokens: maxTokens,
+                }),
+                signal: controller.signal,
+            });
+            if (!response.ok) throw new Error(`API Error ${response.status}`);
+            const data = await safeResponseJson(response);
+            const json = safeParseJSON(data.choices?.[0]?.message?.content || '');
+            if (!Array.isArray(json) || json.length === 0) throw new Error('模型没有返回可用的 JSON 数组');
+            return json;
+        } catch (error: any) {
+            if (error?.name === 'AbortError') throw new Error('生成请求超时');
+            throw error;
+        } finally {
+            window.clearTimeout(timer);
+        }
     };
 
     // --- AI Logic (Updated for Multi-Handle) ---
@@ -582,8 +929,9 @@ const SocialApp: React.FC = () => {
         if (!apiConfig.apiKey) { addToast('请配置 API Key', 'error'); return; }
         setIsRefreshing(true);
         try {
-            const shuffledChars = [...characters].sort(() => 0.5 - Math.random());
-            const selectedChars = shuffledChars.slice(0, Math.min(3, characters.length));
+            const participantPool = socialParticipants.length > 0 ? socialParticipants : characters.slice(0, 1);
+            const shuffledChars = [...participantPool].sort(() => 0.5 - Math.random());
+            const selectedChars = shuffledChars.slice(0, Math.min(3, Math.max(1, participantPool.length)));
             const kind = targetTab === 'news' ? 'news' : 'moment';
             
             // Build Character Map with Multiple Handles Info
@@ -602,17 +950,42 @@ const SocialApp: React.FC = () => {
                 charContexts += `\n<<< 角色档案: ${char.name} >>>\n${coreContext}\n${recentStatus}\n<<< 档案结束 >>>\n`;
             }
 
-            const prompt = kind === 'news' ? `### 任务: 生成 AetherOS「朋友圈 · 资讯站」
-你需要生成 5-7 条深空世界观里的资讯、都市传闻、奇葩小道消息。
+            const prompt = kind === 'news' ? `### 任务: 生成 AetherOS「资讯站」
+你需要生成 5-6 条世界内部小报/资讯。它们可以像刷到的无良媒体、投稿号、种草号，但只是「候选素材」，不是已确认事实。
 
-### 内容方向
-1. 世界内部媒体：影视前线、深空时代、Twinkle潮玩社、匿名爆料站、都市传闻账号。
-2. 内容可以好笑、离谱、暧昧、有剧情钩子，但不要直接替用户决定主线事实。
-3. 生成内容只是「候选剧情引导」，必须等用户采纳后，后续才可以进入剧情上下文。
-4. 可参考当前内置角色和最近私聊状态，但不要把未发生的关系写成既成事实。
+### 固定媒体池
+只能使用下面这些 category 和媒体号，不允许自创媒体名：
+${newsPromptTable()}
+
+### 单个媒体号写法
+${newsChannelStyleTable()}
+如果 category 规则和单个媒体号写法冲突，以「单个媒体号写法」为准。不同媒体必须明显换文体，不能只换署名后继续使用同一种“地点 + 现象 + 建议”的报告模板。
+
+### 本批固定分配
+- 主线异常 mainline：1 条，来自「便民速递」或「今日绕行」。
+- 小道消息 sidequest：2 条，其中必须有 1 条来自「诡秘谈」，另一条来自「边角料」或「野史不歪」。
+- 约会出行 date：1-2 条，来自「今天想见你」「恋爱出走指南」「两个人的地图」，同批不要重复媒体号。
+- 吃喝日常 daily：1 条，来自「今天吃点什么」「便利店观察员」「微醺菜单」。
+
+### 长篇硬约束
+1. 「野史不歪」「诡秘谈」「恋爱出走指南」「两个人的地图」属于长篇媒体，content 去掉空白后必须至少 ${NEWS_LONGFORM_MIN_CHARS} 个中文字符；不是“尽量”，少于这个长度视为不合格。
+2. 长篇 content 必须是 5-9 个自然段，可以在 JSON 字符串中用 \\n\\n 分段。标题、标签、媒体名不计入 ${NEWS_LONGFORM_MIN_CHARS} 字。
+3. 「诡秘谈」必须写成完整怪谈投稿：投稿人和具体时刻开场 → 异常细节逐级升级 → 人物做出反应或对话 → 看似结束 → 最后一个更怪的细节扎尾。禁止公告、调查简报、风险报告、三段式概述。
+4. 长篇允许围绕一个主题充分发散：加入旁证、误导、回忆、听来的第二版本、彼此矛盾的细节；语气可以浮夸、抓眼球，但始终保留“投稿/传闻”边界。
+5. 短讯媒体仍保持短，不要为了统一长度把「便民速递」「今日绕行」也写成长故事。
+
+### 内容边界
+1. 不要出现固定城市名，除非用户或角色资料里已经明确写过；用“旧街区”“东区”“海边”“车站附近”等泛化地点。
+2. 内容可以好笑、离谱、暧昧、有剧情钩子，但必须保留传闻感，不要直接替用户决定主线事实。
+3. 生成内容只是候选剧情引导，必须等用户采纳后，后续才可以进入剧情上下文。
+4. 可参考当前角色和最近私聊状态，但不要把未发生的关系写成既成事实。
+5. 标题要像会被点开的资讯流，不要像任务报告。正文不要复述标题后立刻收尾。
 
 ### 关联角色参考
 ${selectedChars.map(c => c.name).join('、')}
+
+### 世界线可见范围
+${socialWorldScopeNote}
 
 ### 输入上下文
 ${charContexts}
@@ -620,12 +993,13 @@ ${charContexts}
 ### 输出格式 (JSON Array)
 [
   {
-    "sourceName": "媒体/账号名",
-    "authorName": "媒体/账号名",
+    "category": "mainline | sidequest | date | daily",
+    "sourceName": "必须是固定媒体池里的某一个媒体号",
+    "authorName": "同 sourceName",
     "title": "新闻或传闻标题",
-    "content": "正文摘要，像社交媒体资讯流，不要太长",
-    "tags": ["影视", "传闻"],
-    "likes": 随机数 (0 - 10000)
+    "content": "完整正文，严格按媒体号字数与文体规则；长篇用\\n\\n分段",
+    "tags": ["可选补充标签"],
+    "likes": 按媒体号热度填写：主线 18-260，小道 24-420，约会 16-360，吃喝 8-220
   }
 ]` : `### 任务: 生成 AetherOS「朋友圈」
 你需要生成 4-6 条新的朋友圈动态。
@@ -639,9 +1013,15 @@ ${charContexts}
    - 不要扮演用户发动态。
    - 不要把尚未发生的关系写成既成事实。
    - 可以让 NPC 或路人出现，但他们只能提供氛围，不要抢主线。
+3. **点赞仿真**:
+   - 朋友圈是熟人圈，不是公开社媒。
+   - likes 必须是 0-35 的小数字；普通 NPC 0-12，角色动态 3-30，热闹一点也不要超过 35。
 
 ### 身份配置
 ${identityMap}
+
+### 世界线可见范围
+${socialWorldScopeNote}
 
 ### 🚫 绝对禁令
 1. **禁止扮演用户**: 绝对禁止生成作者名为 "${socialProfile.name}" (用户) 的帖子。
@@ -658,24 +1038,84 @@ ${charContexts}
     "authorName": "必须填身份表中定义的【网名】",
     "title": "简短吸睛的标题",
     "content": "正文内容...",
-    "likes": 随机数 (0 - 10000)
+    "likes": 0-35 的小圈层点赞数
   },
   ...
 ]`;
-            const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
-                body: JSON.stringify({ model: apiConfig.model, messages: [{ role: "user", content: prompt }], temperature: 0.95, max_tokens: 8000 })
-            });
-            if (!response.ok) throw new Error('API Error');
-            const data = await safeResponseJson(response);
-            const json = safeParseJSON(data.choices[0].message.content);
-            if (!Array.isArray(json)) throw new Error('Parsed data is not an array');
-            
-            const newPosts: SocialPost[] = json.map((item: any) => buildPostShell(item, kind));
+            let generatedItems = await requestSocialJsonArray(prompt, kind === 'news' ? 14_000 : 8_000);
+            let rejectedLongformCount = 0;
+
+            if (kind === 'news') {
+                let normalizedItems = generatedItems.map(normalizeGeneratedNewsItem);
+                const shortLongformItems = normalizedItems
+                    .map((item, index) => ({ item, index }))
+                    .filter(({ item }) => isLongformNewsChannel(item.newsChannel) && countNewsContentChars(item.content) < NEWS_LONGFORM_MIN_CHARS);
+
+                if (shortLongformItems.length > 0) {
+                    const repairPrompt = `### 任务: 修复 AetherOS 资讯站过短长文
+下面这些长篇媒体稿件没有达到正文最低 ${NEWS_LONGFORM_MIN_CHARS} 字。请只重写 content，不改变 repairIndex、category、sourceName 和核心主题。
+
+### 媒体写法
+${newsChannelStyleTable()}
+
+### 硬约束
+- 每条 content 去掉空白后至少 ${NEWS_LONGFORM_MIN_CHARS} 个中文字符，使用 5-9 个自然段，并以 \\n\\n 分段。
+- 不是扩写报告摘要，而是根据对应媒体形态补成完整故事/小报长文。
+- 保留传闻边界，不把候选素材盖章为事实。
+- 只输出 JSON 数组，不要解释。
+
+### 待修稿件
+${JSON.stringify(shortLongformItems.map(({ item, index }) => ({
+    repairIndex: index,
+    category: item.newsCategory,
+    sourceName: item.newsChannel,
+    title: item.title,
+    currentContent: item.content,
+})), null, 2)}
+
+### 输出格式
+[
+  {
+    "repairIndex": 0,
+    "content": "达到对应媒体规则的完整分段长文"
+  }
+]`;
+
+                    try {
+                        const repairedItems = await requestSocialJsonArray(repairPrompt, 10_000);
+                        const repairsByIndex = new Map<number, any>();
+                        repairedItems.forEach(item => {
+                            const repairIndex = Number(item?.repairIndex);
+                            if (Number.isInteger(repairIndex)) repairsByIndex.set(repairIndex, item);
+                        });
+                        normalizedItems = normalizedItems.map((item, index) => {
+                            const repair = repairsByIndex.get(index);
+                            return repair?.content ? { ...item, content: String(repair.content).trim() } : item;
+                        });
+                    } catch (repairError) {
+                        console.warn('Long-form news repair skipped:', repairError);
+                    }
+                }
+
+                const acceptedItems = normalizedItems.filter(item => {
+                    if (!item.content) return false;
+                    if (!isLongformNewsChannel(item.newsChannel)) return true;
+                    return countNewsContentChars(item.content) >= NEWS_LONGFORM_MIN_CHARS;
+                });
+                rejectedLongformCount = normalizedItems.length - acceptedItems.length;
+                generatedItems = acceptedItems;
+            }
+
+            if (generatedItems.length === 0) throw new Error('本批内容未通过媒体字数与格式检查');
+            const newPosts: SocialPost[] = generatedItems.map((item: any) => buildPostShell(item, kind));
             const updatedFeed = [...newPosts, ...feed];
             persistFeed(updatedFeed);
-            addToast(kind === 'news' ? '资讯站已刷新' : '朋友圈已刷新', 'success');
+            addToast(
+                kind === 'news'
+                    ? `资讯站新增 ${newPosts.length} 条${rejectedLongformCount > 0 ? `，拦下 ${rejectedLongformCount} 条过短长文` : ''}`
+                    : `朋友圈新增 ${newPosts.length} 条`,
+                'success'
+            );
         } catch (e: any) { addToast('刷新失败: ' + e.message, 'error'); } finally { setIsRefreshing(false); }
     };
 
@@ -722,45 +1162,65 @@ ${charContexts}
         const scroller = feedScrollRef.current;
         pointerStartedAtTopRef.current = !!scroller && scroller.scrollTop <= 2;
         pointerPullStartYRef.current = e.clientY;
-        if (pointerStartedAtTopRef.current) e.currentTarget.setPointerCapture(e.pointerId);
+        pointerPullIdRef.current = e.pointerId;
     };
 
     const handlePointerPullMove = (e: React.PointerEvent<HTMLDivElement>) => {
         if (e.pointerType === 'touch' || pointerPullStartYRef.current === null || !pointerStartedAtTopRef.current || isRefreshing) return;
         if (e.buttons !== 1) {
-            handlePointerPullEnd();
+            handlePointerPullEnd(e);
             return;
         }
         const scroller = feedScrollRef.current;
         if (scroller && scroller.scrollTop > 4 && pullDistance <= 0) return;
         const delta = e.clientY - pointerPullStartYRef.current;
-        setPullDistance(delta > 0 ? Math.min(104, delta * 0.48) : 0);
+        if (delta > POINTER_PULL_DEADZONE_PX && !e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.setPointerCapture(e.pointerId);
+        }
+        const dragDistance = Math.max(0, delta - POINTER_PULL_DEADZONE_PX);
+        setPullDistance(Math.min(104, dragDistance * 0.48));
     };
 
-    const handlePointerPullEnd = () => {
+    const handlePointerPullEnd = (e?: React.PointerEvent<HTMLDivElement>) => {
         const shouldRefresh = pullDistance >= PULL_REFRESH_THRESHOLD && !isRefreshing && activeTab !== 'me';
+        const pointerId = e?.pointerId ?? pointerPullIdRef.current;
+        if (pointerId !== null && e?.currentTarget.hasPointerCapture(pointerId)) {
+            e.currentTarget.releasePointerCapture(pointerId);
+        }
         pointerPullStartYRef.current = null;
         pointerStartedAtTopRef.current = false;
+        pointerPullIdRef.current = null;
         setPullDistance(0);
         if (shouldRefresh) void handleRefresh(activeTab);
     };
 
     const generateComments = async (post: SocialPost, options: { force?: boolean; replyToUserPost?: boolean } = {}) => {
-        if (!post || (!options.force && post.comments.length > 0) || !apiConfig.apiKey) return;
+        const existingComments = post.comments || [];
+        if (post.sourceType === 'user' && post.replyState === 'pending' && !options.force) return;
+        if (!post || (!options.force && existingComments.length > 0) || !apiConfig.apiKey) return;
         setLoadingComments(true);
+        const controller = new AbortController();
+        const requestTimer = window.setTimeout(() => controller.abort(), 45_000);
+        let generated = false;
         try {
-            const shuffledChars = [...characters].sort(() => 0.5 - Math.random());
-            const selectedChars = shuffledChars.slice(0, 2);
+            const isNewsPost = getPostKind(post) === 'news';
+            const relatedParticipants = getRelatedParticipantsForPost(post);
+            const shuffledChars = [...relatedParticipants].sort(() => 0.5 - Math.random());
+            const selectedChars = shuffledChars.slice(0, Math.min(2, Math.max(1, relatedParticipants.length)));
             
             let identityMap = "";
-            for (const char of selectedChars) {
-                const handles = characterHandles[char.id] || [];
-                const hList = handles.map(h => `"${h.handle}" (${h.note})`).join(', ');
-                identityMap += `- 角色 ${char.name} 可用身份: ${hList}\n`;
+            if (!isNewsPost) {
+                for (const char of selectedChars) {
+                    const handles = handleListForChar(char);
+                    const hList = handles.map(h => `"${h.handle}" (${h.note})`).join(', ');
+                    identityMap += `- 角色 ${char.name} 可用身份: ${hList}\n`;
+                }
             }
 
             let contextPrompt = "";
-            for (const char of selectedChars) { contextPrompt += `\n<<< 评论者角色: ${char.name} >>>\n${ContextBuilder.buildCoreContext(char, userProfile, false)}\n`; }
+            if (!isNewsPost) {
+                for (const char of selectedChars) { contextPrompt += `\n<<< 评论者角色: ${char.name} >>>\n${ContextBuilder.buildCoreContext(char, userProfile, false)}\n`; }
+            }
             
             let authorType = "Stranger";
             if (post.authorName === socialProfile.name) authorType = "User";
@@ -772,7 +1232,28 @@ ${charContexts}
                 if (c) authorType = `Character "${c.name}"`; 
             }
 
-            const prompt = `### 任务: 模拟朋友圈评论区
+            const prompt = isNewsPost ? `### 任务: 模拟资讯站评论区
+**媒体号**: "${post.newsChannel || post.authorName}"
+**分类**: "${post.newsCategory || 'sidequest'}"
+**标题**: "${post.title}"
+**正文**: "${post.content}"
+
+请生成 4-7 条虚构路人评论。所有评论者都必须是虚拟昵称，不能使用男主、角色、用户、真实联系人或角色账号。
+
+### 评论气质
+- 像小报/种草号下面的评论区：有人不信、有人蹲后续、有人开玩笑、有人说自己也遇到过。
+- 不要把传闻盖章为事实；评论可以互相怀疑、补充、跑题。
+- 约会/吃喝类可以更轻松，诡秘/小道类可以更像投稿楼。
+
+### 禁令
+- 禁止署名为 "${socialProfile.name}"。
+- 禁止使用任何角色名或男主账号。
+- 禁止写“某某男主回复了”。
+
+### 输出格式 (JSON Array)
+[
+  { "author": "虚拟昵称", "content": "评论内容..." }
+]` : `### 任务: 模拟朋友圈评论区
 **帖子来源**: "${getPostKind(post) === 'news' ? '资讯站' : '朋友圈'}"
 **楼主**: "${post.authorName}" (${authorType})
 **帖子**: "${post.title}"
@@ -783,6 +1264,14 @@ ${options.replyToUserPost ? '这是用户刚发的朋友圈动态。请生成 2-
 
 ### 角色身份库
 ${identityMap}
+
+### 世界线可见范围
+${socialWorldScopeNote}
+
+### 调度规则
+- 只有「角色身份库」里列出的角色账号可以作为角色评论者。
+- 可以使用与这些角色当前世界书相关的原生 NPC、路人或剧情新增 NPC 做少量评论。
+- 未列入身份库的男主禁止发言、禁止用账号名出现。
 
 ### 禁令
 - **绝对禁止** 生成署名为 "${socialProfile.name}" 的评论。
@@ -797,29 +1286,130 @@ ${contextPrompt}
             const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
-                body: JSON.stringify({ model: apiConfig.model, messages: [{ role: "user", content: prompt }], temperature: 0.8 })
+                body: JSON.stringify({ model: apiConfig.model, messages: [{ role: "user", content: prompt }], temperature: 0.8 }),
+                signal: controller.signal,
             });
+            if (!response.ok) throw new Error(`Comment API returned ${response.status}`);
             if (response.ok) {
                 const data = await safeResponseJson(response);
                 const json = safeParseJSON(data.choices[0].message.content);
                 if (Array.isArray(json)) {
                     const comments: SocialComment[] = json.map((c: any) => {
-                        const authorName = c.author || c.authorName || 'Unknown';
+                        let authorName = c.author || c.authorName || 'Unknown';
+                        if (isForbiddenCrossLeadAuthor(authorName, selectedChars)) {
+                            authorName = '临空路过的人';
+                        }
                         let avatar = `https://api.dicebear.com/7.x/notionists/svg?seed=${authorName}`;
                         
-                        // Check if char
-                        const char = characters.find(ch => {
-                            const handles = characterHandles[ch.id] || [];
-                            return handles.some(h => h.handle === authorName);
+                        const char = isNewsPost ? undefined : characters.find(ch => {
+                            if (!selectedChars.some(allowed => allowed.id === ch.id)) return false;
+                            const handles = handleListForChar(ch);
+                            return handles.some(h => h.handle === authorName) || ch.name === authorName;
                         });
 
                         if (char) avatar = char.avatar;
-                        return { id: `cmt-${Math.random()}`, authorName: authorName, authorAvatar: avatar, content: c.content || '...', likes: Math.floor(Math.random() * 100), isCharacter: !!char };
+                        return { id: `cmt-${Math.random()}`, authorName: authorName, authorAvatar: avatar, charId: char?.id, content: c.content || '...', likes: Math.floor(Math.random() * (isNewsPost ? 18 : 36)), isCharacter: !!char };
                     });
                     updatePostInFeed({ ...post, comments, replyState: post.replyState === 'pending' ? 'generated' : post.replyState });
+                    generated = true;
                 }
             }
-        } catch (e: any) { addToast("评论加载失败", "error"); } finally { setLoadingComments(false); }
+        } catch (e: any) {
+            addToast(e?.name === 'AbortError' ? "评论请求超时，稍后再试" : "评论加载失败", "error");
+        } finally {
+            window.clearTimeout(requestTimer);
+            pendingReplyRef.current.delete(post.id);
+            if (!generated && options.replyToUserPost) {
+                updatePostInFeed({ ...post, replyDueAt: Date.now() + 5 * 60_000 });
+            }
+            setLoadingComments(false);
+        }
+    };
+
+    const generateNextReplyToUserPost = async (post: SocialPost) => {
+        if (!apiConfig.apiKey || post.sourceType !== 'user') return;
+        const eligibleIds = new Set(getRelatedParticipantsForPost(post).map(char => char.id));
+        const currentQueue = (post.replyRemainingCharIds?.length ? post.replyRemainingCharIds : post.replyAudienceCharIds || [])
+            .filter(charId => eligibleIds.has(charId));
+        const [nextCharId, ...remainingIds] = currentQueue;
+        const nextChar = nextCharId ? characters.find(char => char.id === nextCharId) : undefined;
+
+        if (!nextChar) {
+            updatePostInFeed({ ...post, replyState: 'generated', replyDueAt: undefined, replyRemainingCharIds: [] });
+            return;
+        }
+
+        const handles = handleListForChar(nextChar);
+        const primaryHandle = primaryHandleForChar(nextChar);
+        const identityMap = handles.map(handle => `- "${handle.handle}" (${handle.note})`).join('\n');
+        const coreContext = ContextBuilder.buildCoreContext(nextChar, userProfile, false);
+
+        const prompt = `### 任务: AetherOS 朋友圈单人延迟回复
+用户刚发了一条朋友圈。现在只轮到一个已激活角色回复，不要生成其他男主或未激活角色。
+
+### 目标角色
+角色: ${nextChar.name}
+可用账号:
+${identityMap}
+
+### 世界线可见范围
+${socialWorldScopeNote}
+
+### 用户动态
+作者: ${socialProfile.name}
+标题: ${post.title}
+正文: ${post.content}
+
+### 角色上下文
+${coreContext}
+
+### 回复规则
+- 只输出 1 条评论。
+- author 必须使用目标角色可用账号中的一个；如果不确定，用 "${primaryHandle}"。
+- 评论要像朋友圈自然回复：短、带个人口吻，可以关心、调侃、吃醋、接梗或认真回应。
+- 不要替用户发言，不要写成长段总结。
+- 不要让其他男主、系统、模型或旁白出现。
+
+### 输出格式
+[
+  { "author": "${primaryHandle}", "content": "评论内容..." }
+]`;
+
+        try {
+            const json = await requestSocialJsonArray(prompt, 1_200, 45_000);
+            const first = json[0] || {};
+            const rawAuthor = String(first.author || first.authorName || primaryHandle).trim();
+            const allowedAuthor = handles.some(handle => handle.handle === rawAuthor) ? rawAuthor : primaryHandle;
+            const content = String(first.content || '').trim();
+            if (!content) throw new Error('模型没有返回评论正文');
+
+            const newComment: SocialComment = {
+                id: `cmt-reply-${Date.now()}-${Math.random()}`,
+                authorName: allowedAuthor,
+                authorAvatar: nextChar.avatar,
+                charId: nextChar.id,
+                content,
+                likes: Math.floor(Math.random() * 8),
+                isCharacter: true,
+            };
+            const nextPost: SocialPost = {
+                ...post,
+                comments: [...(post.comments || []), newComment],
+                replyRemainingCharIds: remainingIds,
+                replyState: remainingIds.length > 0 ? 'pending' : 'generated',
+                replyDueAt: remainingIds.length > 0 ? Date.now() + randomReplyDelayMs() : undefined,
+                replyLastGeneratedAt: Date.now(),
+            };
+            updatePostInFeed(nextPost);
+            showSocialReplyNotice([newComment], nextPost);
+        } catch (e) {
+            updatePostInFeed({
+                ...post,
+                replyRemainingCharIds: currentQueue,
+                replyState: 'pending',
+                replyDueAt: Date.now() + USER_POST_REPLY_RETRY_MS,
+            });
+        }
     };
 
     useEffect(() => {
@@ -835,20 +1425,24 @@ ${contextPrompt}
             );
             if (duePost) {
                 pendingReplyRef.current.add(duePost.id);
-                generateComments(duePost, { force: true, replyToUserPost: true });
+                void generateNextReplyToUserPost(duePost).finally(() => {
+                    pendingReplyRef.current.delete(duePost.id);
+                });
             }
         }, 15000);
         return () => window.clearInterval(timer);
-    }, [feed, apiConfig.apiKey, characters.length, socialProfile.name]);
+    }, [feed, apiConfig.apiKey, characters.length, socialProfile.name, socialParticipants]);
 
     const generateRepliesToUser = async (post: SocialPost, userContent: string) => {
         if (!apiConfig.apiKey) return;
+        const relatedParticipants = getRelatedParticipantsForPost(post).slice(0, 2);
+        if (relatedParticipants.length === 0) return;
         setIsReplyingToUser(true);
         try {
             // Simplified handle map for replies
             let identityMap = "";
-            characters.forEach(char => {
-                const handles = characterHandles[char.id] || [];
+            relatedParticipants.forEach(char => {
+                const handles = handleListForChar(char);
                 const hList = handles.map(h => `"${h.handle}"`).join(', ');
                 identityMap += `- ${char.name}: ${hList}\n`;
             });
@@ -856,7 +1450,15 @@ ${contextPrompt}
             const prompt = `### 任务: 回复用户的评论
 **场景**: 用户 "${socialProfile.name}" 在帖子下发了一条评论: "${userContent}"。
 **帖子**: "${post.title}"
-请生成 1-3 条对用户评论的回复。
+请生成 1-2 条对用户评论的回复。
+
+### 世界线可见范围
+${socialWorldScopeNote}
+
+### 调度规则
+- 只有下面身份表里的已激活相关角色可以回复。
+- 未列入身份表的男主禁止出现。
+- 回复像朋友圈楼中楼，不要像系统总结。
 ${identityMap}
 
 ### 输出格式 (JSON Array)
@@ -873,20 +1475,25 @@ ${identityMap}
                 const json = safeParseJSON(data.choices[0].message.content);
                 if (Array.isArray(json)) {
                     const newReplies: SocialComment[] = json.map((c: any) => {
-                        const authorName = c.author || c.authorName || 'Unknown';
+                        let authorName = c.author || c.authorName || 'Unknown';
+                        if (isForbiddenCrossLeadAuthor(authorName, relatedParticipants)) {
+                            authorName = primaryHandleForChar(relatedParticipants[0]);
+                        }
                         let avatar = `https://api.dicebear.com/7.x/notionists/svg?seed=${authorName}`;
                         
-                        const char = characters.find(ch => {
-                            const handles = characterHandles[ch.id] || [];
-                            return handles.some(h => h.handle === authorName);
-                        });
+                        let char = findAllowedCharForAuthor(authorName, relatedParticipants);
+                        if (!char) {
+                            char = relatedParticipants[0];
+                            authorName = primaryHandleForChar(char);
+                        }
 
                         if (char) avatar = char.avatar;
-                        return { id: `cmt-reply-${Date.now()}-${Math.random()}`, authorName: authorName, authorAvatar: avatar, content: `回复 @${socialProfile.name}: ${c.content}`, likes: Math.floor(Math.random() * 10) };
+                        return { id: `cmt-reply-${Date.now()}-${Math.random()}`, authorName: authorName, authorAvatar: avatar, charId: char?.id, content: `回复 @${socialProfile.name}: ${c.content}`, likes: Math.floor(Math.random() * 10), isCharacter: !!char };
                     });
                     if (newReplies.length > 0) {
-                        updatePostInFeed({ ...post, comments: [...(post.comments || []), ...newReplies] });
-                        addToast(`收到 ${newReplies.length} 条新回复`, 'info');
+                        const nextPost = { ...post, comments: [...(post.comments || []), ...newReplies] };
+                        updatePostInFeed(nextPost);
+                        showSocialReplyNotice(newReplies, nextPost);
                     }
                 }
             }
@@ -904,6 +1511,8 @@ ${identityMap}
 
     const handleCreatePost = () => {
         if (!newPostContent.trim()) return;
+        const replyQueue = apiConfig.apiKey ? buildUserPostReplyQueue() : [];
+        const shouldScheduleReplies = replyQueue.length > 0;
         const post: SocialPost = { 
             id: `user-post-${Date.now()}`, 
             kind: 'moment',
@@ -922,14 +1531,16 @@ ${identityMap}
             tags: ['朋友圈'],
             bgStyle: getRandomStyle().bg,
             storySeedStatus: 'none',
-            replyState: apiConfig.apiKey ? 'pending' : 'none',
-            replyDueAt: apiConfig.apiKey ? Date.now() + 90000 : undefined
+            replyState: shouldScheduleReplies ? 'pending' : 'none',
+            replyDueAt: shouldScheduleReplies ? Date.now() + USER_POST_FIRST_REPLY_DELAY_MS : undefined,
+            replyAudienceCharIds: replyQueue,
+            replyRemainingCharIds: replyQueue,
         };
         persistFeed([post, ...feed]);
         setNewPostContent(''); setNewPostTitle(''); 
         setIsCreateOpen(false); // Close Modal
         setActiveTab('moments');
-        addToast(apiConfig.apiKey ? '已发布，稍后会有人来回复' : '发布成功', 'success');
+        addToast(shouldScheduleReplies ? '已发布，相关角色会陆续回复' : '发布成功', 'success');
     };
 
     const handleDeletePost = (postId: string) => { removePostFromFeed(postId); addToast('帖子已删除', 'success'); };
@@ -973,13 +1584,37 @@ ${identityMap}
         await generateRepliesToUser(updatedPost, contentToSend); 
     };
     
-    const handleClearFeed = () => { DB.clearSocialPosts(); setFeed([]); setShowSettings(false); addToast('朋友圈内容已清空', 'success'); };
+    const clearPostsByKind = async (kind: 'moment' | 'news') => {
+        const postIds = feed.filter(post => getPostKind(post) === kind).map(post => post.id);
+        await Promise.all(postIds.map(id => DB.deleteSocialPost(id)));
+        setFeed(prev => prev.filter(post => getPostKind(post) !== kind));
+        setSelectedPost(current => current && getPostKind(current) === kind ? null : current);
+        dismissDemoTabs(kind === 'news' ? 'news' : 'moments');
+        return postIds.length;
+    };
+
+    const handleClearMoments = async () => {
+        const count = await clearPostsByKind('moment');
+        setShowSettings(false);
+        addToast(count > 0 ? `已清空 ${count} 条朋友圈动态` : '朋友圈已经是空的', 'success');
+    };
+
+    const handleClearNews = async () => {
+        const count = await clearPostsByKind('news');
+        setShowClearNewsConfirm(false);
+        addToast(count > 0 ? `已清空 ${count} 条资讯` : '资讯站已经是空的', 'success');
+    };
 
     // --- Renderers ---
 
     const openPost = (post: SocialPost) => {
-        setSelectedPost(post);
-        if (!isDemoPost(post)) generateComments(post);
+        const normalizedPost = {
+            ...post,
+            comments: post.comments || [],
+            tags: post.tags || [],
+        };
+        setSelectedPost(normalizedPost);
+        if (!isDemoPost(normalizedPost)) generateComments(normalizedPost);
     };
 
     const renderPullRefreshIndicator = () => {
@@ -1087,7 +1722,10 @@ ${identityMap}
                         )}
                         <div className="mt-3 flex items-center gap-4 text-[12px] font-semibold text-slate-400">
                             <span>{post.likes} 赞</span>
-                            <span>{post.comments.length} 评论</span>
+                            <span>{(post.comments || []).length} 评论</span>
+                            {post.sourceType === 'user' && post.replyState === 'pending' && (
+                                <span className="text-[#ff2442]">相关角色陆续回复中</span>
+                            )}
                         </div>
                         {commentSnippets.length > 0 && (
                             <div className="mt-3 rounded-xl bg-white/55 px-3 py-2 text-[13px] leading-6 text-slate-600 shadow-sm ring-1 ring-white/70">
@@ -1143,6 +1781,8 @@ ${identityMap}
     // SEPARATED scrollable container from animation wrapper.
     const renderDetail = () => {
         if (!selectedPost) return null;
+        const selectedComments = selectedPost.comments || [];
+        const selectedTags = selectedPost.tags || [];
         const detailImage = selectedPost.images?.find(isImageAsset);
         const detailSticker = selectedPost.images?.find(token => token && !isImageAsset(token));
         return (
@@ -1195,7 +1835,7 @@ ${identityMap}
                             )}
                             
                             <div className="flex gap-2 flex-wrap pt-2">
-                                {selectedPost.tags.map(t => <span key={t} className="text-xs font-bold text-blue-600 bg-blue-50/50 backdrop-blur-sm border border-blue-100 px-2.5 py-1 rounded-full">#{t}</span>)}
+                                {selectedTags.map(t => <span key={t} className="text-xs font-bold text-blue-600 bg-blue-50/50 backdrop-blur-sm border border-blue-100 px-2.5 py-1 rounded-full">#{t}</span>)}
                             </div>
                             <div className="text-xs text-slate-400 font-medium border-b border-slate-100/50 pb-6">{new Date(selectedPost.timestamp).toLocaleDateString()}</div>
                         </div>
@@ -1203,13 +1843,18 @@ ${identityMap}
                         {/* Comments Section */}
                         <div className="px-6 pb-6">
                             <div className="text-sm font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                <span>共 {selectedPost.comments.length} 条评论</span>
+                                <span>共 {selectedComments.length} 条评论</span>
                                 {(loadingComments || isReplyingToUser) && <div className="w-3 h-3 border-2 border-slate-300 border-t-[#ff2442] rounded-full animate-spin"></div>}
                             </div>
+                            {selectedPost.sourceType === 'user' && selectedPost.replyState === 'pending' && (
+                                <div className="mb-5 rounded-2xl border border-rose-100 bg-rose-50/70 px-4 py-3 text-[12px] font-semibold leading-5 text-rose-500">
+                                    相关角色会按不同时间点陆续回复。当前世界线范围：{allowsMaleLeadCrossover ? '已允许交叉' : '单男主线'}
+                                </div>
+                            )}
                             
                             <div className="space-y-6">
-                                {selectedPost.comments.length === 0 && !loadingComments && <div className="text-center text-slate-300 text-xs py-10">快来抢沙发...</div>}
-                                {selectedPost.comments.map(c => (
+                                {selectedComments.length === 0 && !loadingComments && <div className="text-center text-slate-300 text-xs py-10">快来抢沙发...</div>}
+                                {selectedComments.map(c => (
                                     <div key={c.id} className="flex gap-3 animate-fade-in group">
                                         <img src={c.authorAvatar} className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-100" />
                                         <div className="flex-1">
@@ -1317,8 +1962,20 @@ ${identityMap}
                         ))}
                     </div>
                     <div className="flex gap-3 pt-2">
-                        <button onClick={handleClearFeed} className="flex-1 py-3 bg-white border border-slate-200 text-slate-500 font-bold rounded-xl text-xs active:bg-slate-50">清空朋友圈</button>
+                        <button onClick={() => void handleClearMoments()} className="flex-1 py-3 bg-white border border-slate-200 text-slate-500 font-bold rounded-xl text-xs active:bg-slate-50">清空朋友圈</button>
                         <button onClick={() => setShowSettings(false)} className="flex-1 py-3 bg-[#ff2442] text-white font-bold rounded-xl text-xs shadow-lg shadow-red-200 active:scale-95 transition-transform">完成</button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={showClearNewsConfirm} title="清空资讯站" onClose={() => setShowClearNewsConfirm(false)}>
+                <div className="space-y-5">
+                    <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-4 text-sm leading-6 text-slate-600">
+                        这会删除当前已经生成并保存的全部资讯，但不会影响朋友圈动态，也不会删除已经分享进聊天的卡片。
+                    </div>
+                    <div className="flex gap-3">
+                        <button onClick={() => setShowClearNewsConfirm(false)} className="flex-1 rounded-xl border border-slate-200 bg-white py-3 text-xs font-bold text-slate-500">先留着</button>
+                        <button onClick={() => void handleClearNews()} className="flex-1 rounded-xl bg-[#ff2442] py-3 text-xs font-bold text-white shadow-lg shadow-red-100 active:scale-95">确认清空</button>
                     </div>
                 </div>
             </Modal>
@@ -1397,6 +2054,15 @@ ${identityMap}
                         <button className={`${activeTab === 'news' ? 'text-slate-800 border-b-2 border-[#ff2442] pb-0.5' : 'hover:text-slate-500'} transition-all focus:outline-none`} onClick={() => setActiveTab('news')}>资讯站</button>
                     </div>
                     )}
+                    right={activeTab === 'news' && visibleFeed.length > 0 ? (
+                        <button
+                            type="button"
+                            onClick={() => setShowClearNewsConfirm(true)}
+                            className="rounded-full border border-rose-100 bg-white/75 px-3 py-1.5 text-[11px] font-bold text-rose-500 shadow-sm active:scale-95"
+                        >
+                            清空
+                        </button>
+                    ) : undefined}
                     className="bg-white/70 border-white/40"
                 />
 
@@ -1420,7 +2086,12 @@ ${identityMap}
                             {renderPullRefreshIndicator()}
                             {activeTab === 'moments' && renderMomentsCover()}
                             <div className="w-full overflow-hidden border-y border-white/70 bg-white/38 backdrop-blur-sm shadow-[0_16px_42px_rgba(148,163,184,0.08)]">
-                                {displayFeed.map(post => renderFeedItem(post))}
+                                {displayFeed.length > 0 ? displayFeed.map(post => renderFeedItem(post)) : (
+                                    <div className="flex min-h-52 flex-col items-center justify-center gap-2 px-8 text-center">
+                                        <div className="text-sm font-bold text-slate-500">{activeTab === 'news' ? '资讯站现在是空的' : '朋友圈现在是空的'}</div>
+                                        <p className="text-xs leading-5 text-slate-400">下拉刷新时会新增一批内容，旧批次不会自己回来。</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

@@ -1,38 +1,10 @@
 
 
 
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { useOS } from '../context/OSContext';
 import StatusBar from './os/StatusBar';
 import Launcher from '../apps/Launcher';
-import Settings from '../apps/Settings';
-import Character from '../apps/Character';
-import Chat from '../apps/Chat'; 
-import GroupChat from '../apps/GroupChat'; 
-import ThemeMaker from '../apps/ThemeMaker';
-import Appearance from '../apps/Appearance';
-import Gallery from '../apps/Gallery'; 
-import DateApp from '../apps/DateApp'; 
-import UserApp from '../apps/UserApp';
-import JournalApp from '../apps/JournalApp'; 
-import ScheduleApp from '../apps/ScheduleApp'; 
-import CompanionPlanApp from '../apps/CompanionPlanApp';
-import RoomApp from '../apps/RoomApp'; 
-import CheckPhone from '../apps/CheckPhone';
-import SocialApp from '../apps/SocialApp'; 
-import StudyApp from '../apps/StudyApp'; 
-import FAQApp from '../apps/FAQApp'; 
-import GameApp from '../apps/GameApp'; 
-import WorldbookApp from '../apps/WorldbookApp';
-import NovelApp from '../apps/NovelApp'; 
-import BankApp from '../apps/BankApp';
-import BrowserApp from '../apps/BrowserApp';
-import SongwritingApp from '../apps/SongwritingApp';
-import CallApp from '../apps/CallApp';
-import VoiceDesignerApp from '../apps/VoiceDesignerApp';
-import GuidebookApp from '../apps/GuidebookApp';
-import LifeSimApp from '../apps/LifeSimApp';
-import WidgetApp from '../apps/WidgetApp';
 import { SpecialMomentsApp, ValentineController, shouldShowValentinePopup } from './ValentineEvent';
 import { WhiteDayController, shouldShowWhiteDayPopup, isWhiteDay } from './WhiteDayEvent';
 import { AppID } from '../types';
@@ -42,6 +14,44 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { isIOSStandaloneWebApp } from '../utils/iosStandalone';
 import AppErrorBoundary from './os/AppErrorBoundary';
+
+// Keep the launcher and global controllers eager, but load feature apps only when
+// opened. This prevents every large app module from occupying the initial tab and
+// Vite HMR graph at once.
+const Settings = React.lazy(() => import('../apps/Settings'));
+const Character = React.lazy(() => import('../apps/Character'));
+const Chat = React.lazy(() => import('../apps/Chat'));
+const GroupChat = React.lazy(() => import('../apps/GroupChat'));
+const ThemeMaker = React.lazy(() => import('../apps/ThemeMaker'));
+const Appearance = React.lazy(() => import('../apps/Appearance'));
+const Gallery = React.lazy(() => import('../apps/Gallery'));
+const DateApp = React.lazy(() => import('../apps/DateApp'));
+const UserApp = React.lazy(() => import('../apps/UserApp'));
+const JournalApp = React.lazy(() => import('../apps/JournalApp'));
+const ScheduleApp = React.lazy(() => import('../apps/ScheduleApp'));
+const CompanionPlanApp = React.lazy(() => import('../apps/CompanionPlanApp'));
+const RoomApp = React.lazy(() => import('../apps/RoomApp'));
+const CheckPhone = React.lazy(() => import('../apps/CheckPhone'));
+const SocialApp = React.lazy(() => import('../apps/SocialApp'));
+const StudyApp = React.lazy(() => import('../apps/StudyApp'));
+const FAQApp = React.lazy(() => import('../apps/FAQApp'));
+const GameApp = React.lazy(() => import('../apps/GameApp'));
+const WorldbookApp = React.lazy(() => import('../apps/WorldbookApp'));
+const NovelApp = React.lazy(() => import('../apps/NovelApp'));
+const BankApp = React.lazy(() => import('../apps/BankApp'));
+const BrowserApp = React.lazy(() => import('../apps/BrowserApp'));
+const SongwritingApp = React.lazy(() => import('../apps/SongwritingApp'));
+const CallApp = React.lazy(() => import('../apps/CallApp'));
+const VoiceDesignerApp = React.lazy(() => import('../apps/VoiceDesignerApp'));
+const GuidebookApp = React.lazy(() => import('../apps/GuidebookApp'));
+const LifeSimApp = React.lazy(() => import('../apps/LifeSimApp'));
+const WidgetApp = React.lazy(() => import('../apps/WidgetApp'));
+
+const AppChunkFallback = () => (
+  <div className="flex h-full w-full items-center justify-center bg-white/45 text-xs font-semibold text-slate-400">
+    正在打开…
+  </div>
+);
 
 /*
 // Internal Error Boundary Component
@@ -481,7 +491,9 @@ const PhoneShell: React.FC = () => {
           {/* App Container */}
          <div className="flex-1 relative overflow-hidden" style={{ contain: useIOSStandaloneLayout ? undefined : 'layout style paint' }}>
     <AppErrorBoundary onCloseApp={closeApp} resetKey={`${activeApp}:${activeCharacterId || 'none'}`}>
-        {renderApp()}
+        <Suspense fallback={<AppChunkFallback />}>
+            {renderApp()}
+        </Suspense>
     </AppErrorBoundary>
 </div>
 

@@ -4,9 +4,18 @@ import { APIConfig, AppID, OSTheme, VirtualTime, CharacterProfile, ChatTheme, To
 import { DB } from '../utils/db';
 import { normalizeCharacterImpression } from '../utils/impression';
 import { loadAutoMemorySettings, loadMemoryDMSettings, runAutoMemoryPass, runMemoryDMPass } from '../utils/memoryCore';
-import { DEEP_SPACE_CHAT_APPEARANCE, DEFAULT_QIYU_AVATAR } from '../components/chat/ChatConstants';
+import { mergeAvatarFramePresets } from '../utils/avatarFrames';
+import {
+    DEEP_SPACE_CHAT_APPEARANCE,
+    DEFAULT_CALEB_AVATAR,
+    DEFAULT_QIYU_AVATAR,
+    DEFAULT_SYLUS_AVATAR,
+    DEFAULT_XAVIER_AVATAR,
+    DEFAULT_ZAYNE_AVATAR,
+} from '../components/chat/ChatConstants';
 import { normalizePublicAssetUrl } from '../utils/publicAssets';
 import { useCompanionWakeupRuntime } from '../hooks/useCompanionWakeupRuntime';
+import { DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, DEEPSPACE_USER_CIRCLE_WORLDBOOK_ID } from '../utils/deepspaceIdentity';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 
@@ -152,6 +161,7 @@ interface OSContextType {
   // Groups
   groups: GroupProfile[];
   createGroup: (name: string, members: string[]) => void;
+  updateGroup: (id: string, updates: Partial<GroupProfile>) => Promise<GroupProfile | null>;
   deleteGroup: (id: string) => void;
 
   // User Profile
@@ -210,8 +220,8 @@ interface OSContextType {
   handleBack: () => void;
 
   // Call Suspend
-  suspendedCall: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string } | null;
-  suspendCall: (info: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string }) => void;
+  suspendedCall: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string } | null;
+  suspendCall: (info: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string }) => void;
   resumeCall: () => void;
   clearSuspendedCall: () => void;
 }
@@ -223,6 +233,7 @@ const defaultTheme: OSTheme = {
   wallpaper: 'linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%)', 
   darkMode: false,
   contentColor: '#334155', // Default slate text for the light pastel wallpaper
+  avatarFramePresets: mergeAvatarFramePresets(),
   ...DEEP_SPACE_CHAT_APPEARANCE,
 };
 
@@ -245,12 +256,14 @@ const defaultUserProfile: UserProfile = {
     name: 'User',
     avatar: generateAvatar('User'),
     callPortrait: undefined,
-    bio: 'No description yet.'
+    bio: 'No description yet.',
+    deepspaceIdentityMode: DEFAULT_DEEPSPACE_USER_IDENTITY_MODE,
+    deepspaceIdentityNote: '',
 };
 
 const LEGACY_CARD_TESTER_ID = 'builtin-card-tester';
-const BUILT_IN_CHARACTER_VERSION = 13;
-const BUILT_IN_WORLDBOOK_VERSION = 11;
+const BUILT_IN_CHARACTER_VERSION = 17;
+const BUILT_IN_WORLDBOOK_VERSION = 12;
 const BUILT_IN_WORLDBOOK_TIMESTAMP = Date.UTC(2026, 6, 3);
 const QIYU_BUILT_IN_ID = 'builtin-daily-companion';
 const XAVIER_BUILT_IN_ID = 'builtin-xavier';
@@ -276,13 +289,23 @@ const normalizeStoredThemeAssets = (theme: OSTheme): OSTheme => ({
             Object.entries(theme.launcherWidgets).map(([slot, value]) => [slot, normalizePublicAssetUrl(value)])
         )
         : theme.launcherWidgets,
+    avatarFramePresets: mergeAvatarFramePresets(theme.avatarFramePresets).map(preset => ({
+        ...preset,
+        src: normalizePublicAssetUrl(preset.src),
+    })),
 });
 
+const isGeneratedInitialAvatar = (avatar?: string): boolean => (
+    Boolean(avatar?.startsWith('data:image/svg+xml') && avatar.includes('<svg') && avatar.includes('<text'))
+);
+
 const normalizeBuiltInAvatar = (existingAvatar: string | undefined, defaultAvatar: string): string => {
-    if (!existingAvatar || existingAvatar.startsWith('/assets/aetheros/')) return defaultAvatar;
-    return normalizePublicAssetUrl(existingAvatar);
+    if (!existingAvatar || isGeneratedInitialAvatar(existingAvatar)) return defaultAvatar;
+    const normalizedAvatar = normalizePublicAssetUrl(existingAvatar);
+    if (normalizedAvatar.includes('/assets/aetheros/')) return defaultAvatar;
+    return normalizedAvatar;
 };
-const USER_HUNTER_CIRCLE_WORLDBOOK_ID = 'builtin-deepspace-user-circle';
+const USER_HUNTER_CIRCLE_WORLDBOOK_ID = DEEPSPACE_USER_CIRCLE_WORLDBOOK_ID;
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
     'builtin-deepspace-optional-male-leads-npc-index',
     USER_HUNTER_CIRCLE_WORLDBOOK_ID,
@@ -364,7 +387,7 @@ Evol 是少数人身上显现的特殊能力，拥有 Evol 的人被称为 Evolv
 芯核：高危流浪体被消灭后可能掉落的能量核心。芯核能源可用于电子、生物、航天、武器等高新科技，也会带来芯源介入症、异化者、非法交易与势力争夺等风险。
 芯源介入症：由芯核引发的特殊疾病，会造成人体不同类型、不同程度的损伤，已知存在 A 型、E 型、Y 型等类型。
 异化者：芯源症的一种特殊病变，外表仍保留人类特征，但意识被侵蚀，只剩攻击本能。
-以太芯核：极特殊的芯核类型，力量远超普通芯核。默认设定中，{{user}}的心脏与以太芯核秘密有关；此信息属于高危秘密，不应在普通闲聊中轻易公开。`
+以太芯核：极特殊的芯核类型，力量远超普通芯核。原作主控线或已启用的相关资料包中，{{user}}的心脏与以太芯核秘密有关；若用户采用自设身份，尤其是非猎人身份，不要默认这层身体/宿命关系，除非当前聊天或用户设定明确建立。此信息属于高危秘密，不应在普通闲聊中轻易公开。`
     ),
     createBuiltInWorldbook(
         'builtin-deepspace-common-hunter-system',
@@ -514,7 +537,7 @@ DAA战斗机飞行员/远空舰队执舰官，Evol 为引力控制。原作主�
 
 赵希音（女）：原属灵空科技武装组，Evol 是微观改造，擅长对武器和装备做改装；改装结果很强，但偶尔会带来超过正常范围的装备损坏率。
 `,
-        '仅当 {{user}} 采用原作主控或灵空行动部猎人身份时启用；非猎人自设不要启用。'
+        '仅当 {{user}} 采用原作主控身份时启用；这本会写入张素、夏以昼、黎深旧识和灵空猎人关系。自设非猎人或只想自设猎人的 user 不建议启用。'
     ),
     createBuiltInWorldbook(
         'builtin-deepspace-optional-hunter-npc-index',
@@ -529,7 +552,7 @@ DAA战斗机飞行员/远空舰队执舰官，Evol 为引力控制。原作主�
 安泽宇（男）：数据分析组组长，逻辑严谨、思维缜密、情绪稳定；Evol 是记忆篡改，只能作用于 Evol 等级低于他的人，最多持续约 30 分钟。
 
 赵希音（女）：原属灵空科技武装组，Evol 是微观改造，擅长对武器、防具和探测器做改装；改装结果很强，但偶尔会带来超过正常范围的装备损坏率。`,
-        '当剧情需要灵空行动部背景人物时启用；这些人物不自动成为 {{user}} 私人关系。'
+        '当剧情需要灵空行动部背景人物时启用；这些人物可作为世界中的猎人/NPC 出现，但不自动成为 {{user}} 私人关系、同事或上司。'
     ),
 ];
 
@@ -676,8 +699,8 @@ MBTI：ISFP
 外界对他的印象是独树一帜的天才艺术家，看过祁煜作品的人很难不对他的画印象深刻：它们大多以海洋文明“利莫里亚”为主题，风格像烈火一样浪漫炽烈，作品色彩随情绪变化，不追求精确而重情感表达。
 真实背景：
 （祁煜从不与其他人谈起）出生于海洋文明利莫里亚的祁煜是利莫里亚最后一任海神，诞生于晨昏交替时，拥有操控海洋与火焰的力量。
-祁煜与{{user}}结缘后历经数个轮回的生离死别，利莫里亚已经从深海变成沙漠，可你们身上利莫里亚的契约已刻入灵魂，任凭时光流转，相爱之人终将再度重逢。
-今生今世：不知又是多少年过去，祁煜在这个星球上苏醒。这个世界上船能到达的地方，祁煜几乎都去过，有时是为了绘画颜料或是取景，有时或许也是为了寻找或许存在于世的某人。功夫不负有心人，祁煜凭借作品《幻》名声大噪，彼时{{user}}于临空大学就读，祁煜签约成为临空大学外聘教授，只为接近{{user}}一点点，他将这种寻找的过程形容为“一种让人上瘾的痛”，并计划在合适的时机正式与{{user}}重逢。祁煜的一生似乎都在等待中度过，千年万年都等过了，自然也有足够的耐心多等一会。
+祁煜与{{user}}结缘后历经数个轮回的生离死别，是原作/剧情增强线的重要宿命素材；若用户采用自设身份，这段关系不能自动覆盖用户设定，只能在当前剧情或用户主动设定逐步建立后使用。
+今生今世：不知又是多少年过去，祁煜在这个星球上苏醒。这个世界上船能到达的地方，祁煜几乎都去过，有时是为了绘画颜料或是取景，有时或许也是为了寻找或许存在于世的某人。原作线中，祁煜凭借作品《幻》名声大噪后签约成为临空大学外聘教授，只为接近{{user}}一点点；自设线中，他仍可作为艺术家、外聘教授、展览/海洋文明相关人物存在，并通过课程、委托、偶遇或事件自然进入{{user}}的关系网。
 职业：画家、艺术家
 工作单位：Mo Art Studio（个人工作室，位于临空市白沙湾）
 Evol（特殊能力）：火（是利莫里亚唯一能操控“火焰”的个体，此火温暖而不灼人）
@@ -760,7 +783,7 @@ Evol（特殊能力）：火（是利莫里亚唯一能操控“火焰”的个�
 不擅长：骑自行车、爬山、整理房间、等人（耐心一般）恐高：害怕脚不能着地（所以讨厌坐飞机，同理，反重力的事基本都讨厌）
 
 语言风格：
-爱用调侃语气，常叫{{user}}“保镖小姐”（{{user}}因为机缘巧合成为了祁煜的保镖，或者说因为祁煜这个富豪艺术家给的实在太多了，但或许双方性格使然，两人的相处方式往往却不像雇主和下属）
+爱用调侃语气；仅当当前剧情已经建立雇佣/保护/保镖关系时，才常叫{{user}}“保镖小姐”（原作线中，{{user}}因为机缘巧合成为了祁煜的保镖，或者说因为祁煜这个富豪艺术家给的实在太多了，但或许双方性格使然，两人的相处方式往往却不像雇主和下属）
 撒娇时软萌，傲娇时口是心非
 在感情中相信主动出击才能得到自己想要的，浪漫直球，情感表达坦诚，但不会因为自己艺术家和名人的身份恃强凌弱行使特权。
 
@@ -816,7 +839,7 @@ Evol：冰
 他总是来去匆匆，因为救死扶伤才是天职；他身体力行地践行希波克拉底誓言，甚至会因为不想耽误门诊而错过自己的颁奖礼。
 
 与 {{user}} 的起点：
-黎深与 {{user}} 相识于 {{user}} 8岁时，两人家庭为世交。长大后重逢，黎深已成为 {{user}} 的主治医生。多年未见，他又如此不善言辞，两人之间似乎变得有些生疏，又有些微妙的不同。
+原作主控线中，黎深与 {{user}} 相识于 {{user}} 8岁时，两人家庭为世交。长大后重逢，黎深已成为 {{user}} 的主治医生。若用户采用自设身份，这段旧识/主治医生关系不能自动成立，只能作为可选剧情线索或在当前剧情建立后使用。
 黎深始终是“被规则束缚的守护者”，骨子里却有着冰雪无法冻结的深情与反叛；{{user}} 的出现动摇了这种束缚，让他勇于面对和反抗命运。`
     ),
     createBuiltInWorldbook(
@@ -915,7 +938,7 @@ Evol 失控时会表现为具有攻击性与侵蚀性的黑色冰晶，可能与
 小袁护士：黎深科室的护士，善良开朗，刚入职但干劲十足，平时有很多小女生的喜好，也爱好网上交友。
 
 与 {{user}} 的关系：
-黎深与 {{user}} 自幼相识，两家是世交；重逢后，他成为 {{user}} 的主治医生。
+原作主控线中，黎深与 {{user}} 自幼相识，两家是世交；重逢后，他成为 {{user}} 的主治医生。自设线中，黎深仍可作为 Akso 医生、医学研究者、医院/城市事件相关人物出现，但与 {{user}} 的私人关系需要由用户设定或当前剧情建立。
 他的情感深沉克制，经常关心 {{user}} 的身体，也尊重 {{user}} 的一切选择，包括生活、学习、工作，甚至感情。
 虽然两人曾是青梅竹马，但那毕竟是童年中较为短暂的一段时光。长大后重逢，彼此其实并不算十分了解，甚至有些生疏；包括生活习惯、性格、爱好、口味，都需要重新开始了解。黎深不应轻易使用“我记得你喜欢……”这类过于果断或冒昧的话，除非当前聊天已经建立过对应事实。
 黎深内敛、冷静、条理分明，擅长内省；即便喜欢 {{user}}，也不会一开始就激进地拉近关系，而是有细水长流、循序渐进的耐心。他乐于了解 {{user}} 的学习、工作、生活方式，也喜欢听 {{user}} 讲那些或许没什么营养的小事、陌生的亲朋好友和人际关系；这会让他感觉又离 {{user}} 稍稍近了一点，像一块块小拼图，拼凑起那些年错过的空白。`
@@ -973,11 +996,12 @@ const createBuiltInPlaceholderCharacter = (
     id: string,
     name: string,
     description: string,
-    chatSignature: string
+    chatSignature: string,
+    defaultAvatar?: string
 ): CharacterProfile => ({
     id,
     name,
-    avatar: generateAvatar(name),
+    avatar: defaultAvatar || generateAvatar(name),
     description,
     chatSignature,
     chatSignatureAiEditable: true,
@@ -1008,19 +1032,20 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     XAVIER_BUILT_IN_ID,
     '沈星回',
     '内置角色待填写 / 光猎线资料位',
-    '星星会找到回来的路。'
+    '星星会找到回来的路。',
+    DEFAULT_XAVIER_AVATAR
   ),
   {
     id: ZAYNE_BUILT_IN_ID,
     name: '黎深',
-    avatar: generateAvatar('黎深'),
+    avatar: DEFAULT_ZAYNE_AVATAR,
     description: '内置角色 / 深空资料位',
     chatSignature: '按时休息，比任何检查都重要。',
     chatSignatureAiEditable: true,
     systemPrompt: `你是黎深，Akso医院心脏外科中心主任医师，Evol 为冰。你在 AetherOS 的短信、电话、见面等界面里与 {{user}} 互动。
 
 核心关系：
-- {{user}} 是你童年旧识，重逢后又与你的医疗线、旧病历和长恒山线索产生交集。
+- 原作主控线中，{{user}} 是你童年旧识，重逢后又与你的医疗线、旧病历和长恒山线索产生交集；若用户采用自设身份，请以用户档案和当前聊天为准，不要自动套用童年旧识、主治医生或原作主控关系。
 - 你习惯用医生的克制和行动照顾 {{user}}，但不要把旧识关系写成“我天然完全了解 {{user}}”；你们长大后仍需要重新认识彼此。
 - 如用户启用了黎深剧情增强，可自然使用先知、茉莉、黑色冰晶、长恒山、X-Heart 等深层线索；普通闲聊不要一次性倒出全部剧透。
 
@@ -1052,13 +1077,13 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     systemPrompt: `你是祁煜，外界眼中独树一帜的天才艺术家，真实身份是海洋文明利莫里亚最后一任海神。你在 AetherOS 的短信、电话、见面等界面里与 {{user}} 互动。
 
 核心关系：
-- {{user}} 是你跨越漫长轮回一直寻找的人，也是与你缔结海神契约的灵魂锚点。
-- 今生你以艺术家与临空大学外聘教授的身份接近 {{user}}，相处方式常像“雇主与保镖小姐”，但情感底色远比表面轻松。
-- 你可以记得这份宿命牵引，但不要在普通闲聊里一次性倒出全部神话背景；根据对话自然露出线索。
+- 原作与剧情增强线中，{{user}} 可能是你跨越漫长轮回一直寻找的人，也是与你缔结海神契约的灵魂锚点；若用户采用自设身份，请把这类宿命关系当作可逐步展开的剧情素材，不要自动覆盖用户自设。
+- 今生你以艺术家与临空大学外聘教授的身份生活在这个世界中，可以因为艺术、海洋、课程、委托、偶遇或用户主动设定而接近 {{user}}；只有当剧情已经建立雇佣/保护关系时，才自然使用“保镖小姐”这类关系称呼。
+- 你可以保留被 {{user}} 吸引、好奇、想靠近的底色，但不要在普通闲聊里一次性倒出全部神话背景；根据对话自然露出线索。
 
 性格与表达：
 - 对外冷淡、疏离、讨厌功利和虚伪；对 {{user}} 浪漫、主动、黏人、傲娇、易脸红，情感丰沛但常用调侃掩饰。
-- 语气聪明、轻松、带一点理直气壮的玩笑感；可口是心非、撒娇、试探、把“任务”“猎人业务”“创作灵感”“等你”当作话题钩子。
+- 语气聪明、轻松、带一点理直气壮的玩笑感；可口是心非、撒娇、试探。可以把“创作灵感”“等你”“委托”“课程/展览”当作话题钩子；只有当用户身份或剧情已经建立猎人关系时，才使用“猎人业务”作为默认话题。
 - 回复像真人短信，优先短句和分气泡表达。情绪强烈时可以长一点，但不要写成设定说明书。
 
 扮演边界：
@@ -1078,13 +1103,15 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     SYLUS_BUILT_IN_ID,
     '秦彻',
     '内置角色待填写 / N109资料位',
-    '别急，筹码会自己回到桌上。'
+    '别急，筹码会自己回到桌上。',
+    DEFAULT_SYLUS_AVATAR
   ),
   createBuiltInPlaceholderCharacter(
     CALEB_BUILT_IN_ID,
     '夏以昼',
     '内置角色待填写 / 远空舰队资料位',
-    '收到信号，就该返航了。'
+    '收到信号，就该返航了。',
+    DEFAULT_CALEB_AVATAR
   ),
 ];
 
@@ -1199,7 +1226,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const backHandlerRef = useRef<(() => boolean) | null>(null);
 
   // Call Suspend
-  const [suspendedCall, setSuspendedCall] = useState<{ charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string } | null>(null);
+  const [suspendedCall, setSuspendedCall] = useState<{ charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string } | null>(null);
 
   const sendProactiveNativeNotification = useCallback(async (charId: string, charName: string, body: string) => {
       if (!Capacitor.isNativePlatform()) return;
@@ -1430,6 +1457,16 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     loadedTheme.launcherWidgets = { ...(loadedTheme.launcherWidgets || {}), ...loadedWidgets };
                 }
 
+                if (loadedTheme.avatarFramePresets && loadedTheme.avatarFramePresets.length > 0) {
+                    loadedTheme.avatarFramePresets = loadedTheme.avatarFramePresets.map(preset => {
+                        if (!preset.src || preset.src === '') {
+                            const restored = assetMap[`avatar_frame_${preset.id}`];
+                            return restored ? { ...preset, src: restored } : preset;
+                        }
+                        return preset;
+                    });
+                }
+
                 // Load appearance presets from assets
                 const loadedPresets: AppearancePreset[] = [];
                 Object.keys(assetMap).forEach(key => {
@@ -1509,10 +1546,12 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                 await seedBuiltInStarterMessages(builtIn.id);
             } else {
                 const normalizedAvatar = normalizeBuiltInAvatar(existing.avatar, builtIn.avatar);
+                const normalizedAvatarFrame = '';
                 const needsBuiltInRefresh = !existing.isBuiltIn ||
                     !existing.lockPromptEditing ||
                     existing.builtInVersion !== builtIn.builtInVersion ||
-                    normalizedAvatar !== existing.avatar;
+                    normalizedAvatar !== existing.avatar ||
+                    normalizedAvatarFrame !== (existing.avatarFrame || '');
 
                 if (!needsBuiltInRefresh) continue;
 
@@ -1521,6 +1560,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     ...existing,
                     name: builtIn.name,
                     avatar: normalizedAvatar,
+                    avatarFrame: normalizedAvatarFrame,
                     description: builtIn.description,
                     chatSignature: existing.chatSignature || builtIn.chatSignature,
                     chatSignatureAiEditable: builtIn.chatSignatureAiEditable ?? existing.chatSignatureAiEditable,
@@ -1824,7 +1864,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   }, [characters, sendProactiveNativeNotification]);
 
   const updateTheme = async (updates: Partial<OSTheme>) => {
-    const { wallpaper, launcherWidgetImage, launcherWidgets, desktopDecorations, customFont, chatBackgroundImage, ...styleUpdates } = updates;
+    const { wallpaper, launcherWidgetImage, launcherWidgets, desktopDecorations, avatarFramePresets, customFont, chatBackgroundImage, ...styleUpdates } = updates;
     const newTheme = { ...theme, ...updates };
     setTheme(newTheme);
 
@@ -1884,6 +1924,22 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
     }
 
+    if (avatarFramePresets !== undefined) {
+        const previousPresets = new Map((theme.avatarFramePresets || []).map(preset => [preset.id, preset]));
+        const nextIds = new Set((avatarFramePresets || []).map(preset => preset.id));
+        for (const presetId of previousPresets.keys()) {
+            if (!nextIds.has(presetId)) {
+                await DB.deleteAsset(`avatar_frame_${presetId}`);
+            }
+        }
+        for (const preset of avatarFramePresets || []) {
+            const previous = previousPresets.get(preset.id);
+            if (preset.src && preset.src.startsWith('data:') && previous?.src !== preset.src) {
+                await DB.saveAsset(`avatar_frame_${preset.id}`, preset.src);
+            }
+        }
+    }
+
     // Logic for Font: Differentiate between Data URI (Blob) and URL (Web Font)
     if (customFont !== undefined) {
         if (customFont && customFont.startsWith('data:')) {
@@ -1920,6 +1976,13 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         lsTheme.desktopDecorations = lsTheme.desktopDecorations.map(d => ({
             ...d,
             content: (d.content && d.content.startsWith('data:') && d.type === 'image') ? '' : d.content
+        }));
+    }
+
+    if (lsTheme.avatarFramePresets) {
+        lsTheme.avatarFramePresets = lsTheme.avatarFramePresets.map(preset => ({
+            ...preset,
+            src: preset.src && preset.src.startsWith('data:') ? '' : preset.src,
         }));
     }
 
@@ -2015,6 +2078,15 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       };
       await DB.saveGroup(newGroup);
       setGroups(prev => [...prev, newGroup]);
+  };
+
+  const updateGroup = async (id: string, updates: Partial<GroupProfile>) => {
+      const currentGroup = groups.find(group => group.id === id);
+      if (!currentGroup) return null;
+      const savedGroup = { ...currentGroup, ...updates };
+      await DB.saveGroup(savedGroup);
+      setGroups(prev => prev.map(group => group.id === id ? savedGroup : group));
+      return savedGroup;
   };
 
   const deleteGroup = async (id: string) => {
@@ -2728,7 +2800,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   };
   const unlock = () => setIsLocked(false);
 
-  const suspendCall = (info: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string }) => {
+  const suspendCall = (info: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string }) => {
     setSuspendedCall(info);
     setActiveApp(AppID.Launcher);
   };
@@ -2794,6 +2866,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     deleteSong,
     groups,
     createGroup,
+    updateGroup,
     deleteGroup,
     userProfile,
     updateUserProfile,

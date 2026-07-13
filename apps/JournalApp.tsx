@@ -600,36 +600,36 @@ Structure:
     if (mode === 'calendar' && selectedChar) {
         return (
             <div className="h-full w-full bg-white flex flex-col font-light relative">
-                <div className="pt-12 pb-6 px-6 bg-amber-500 shadow-lg shrink-0 rounded-b-[2rem] z-20">
-                    <div className="flex justify-between items-start mb-4">
-                         <button onClick={() => setMode('select')} className="text-white/80 hover:text-white transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                <div className="pt-10 pb-5 px-5 bg-amber-500 shadow-lg shrink-0 rounded-b-[1.75rem] z-20">
+                    <div className="flex justify-between items-start mb-3">
+                         <button onClick={() => setMode('select')} className="w-9 h-9 -ml-2 rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
                          </button>
-                         <div className="w-6"></div>
+                         <div className="w-9"></div>
                     </div>
                     <div className="text-white">
-                        <div className="text-xs opacity-70 uppercase tracking-widest font-bold mb-1">Exchange Diary</div>
-                        <div className="text-3xl font-bold tracking-tight">{selectedChar.name}</div>
+                        <div className="text-[10px] opacity-75 uppercase tracking-[0.22em] font-bold mb-1">Exchange Diary</div>
+                        <div className="text-2xl font-bold tracking-tight leading-tight">{selectedChar.name}</div>
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-5 pb-20 no-scrollbar">
-                    <button onClick={() => openEntry(getLocalDateStr())} className="w-full py-5 mb-8 border-2 border-dashed border-amber-200 rounded-2xl text-amber-500 font-bold flex items-center justify-center gap-2 hover:bg-amber-50 active:scale-95 transition-all">
-                        <span className="text-xl">+</span> 写今天的日记
+                <div className="flex-1 overflow-y-auto p-4 pb-20 no-scrollbar">
+                    <button onClick={() => openEntry(getLocalDateStr())} className="w-full py-4 mb-6 border-2 border-dashed border-amber-200 rounded-2xl text-amber-500 text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-50 active:scale-95 transition-all">
+                        <span className="text-base leading-none">+</span> 写今天的日记
                     </button>
                     
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         {diaries.map(d => (
-                            <div key={d.id} onClick={() => openEntry(d.date)} className="flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-100 shadow-sm active:scale-95 transition-all hover:shadow-md cursor-pointer relative overflow-hidden group">
+                            <div key={d.id} onClick={() => openEntry(d.date)} className="flex items-center gap-3 p-3.5 rounded-2xl bg-white border border-slate-100 shadow-sm active:scale-95 transition-all hover:shadow-md cursor-pointer relative overflow-hidden group">
                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400"></div>
-                                <div className="w-14 h-14 bg-amber-50 rounded-xl flex flex-col items-center justify-center text-amber-800 shrink-0 border border-amber-100">
+                                <div className="w-12 h-12 bg-amber-50 rounded-xl flex flex-col items-center justify-center text-amber-800 shrink-0 border border-amber-100">
                                     <span className="text-[10px] font-bold opacity-60">{d.date.split('-')[1]}月</span>
-                                    <span className="text-xl font-bold leading-none">{d.date.split('-')[2]}</span>
+                                    <span className="text-lg font-bold leading-none">{d.date.split('-')[2]}</span>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm text-slate-700 truncate font-medium">{d.userPage.text || '(空)'}</p>
+                                    <p className="text-[13px] text-slate-700 truncate font-medium">{d.userPage.text || '(空)'}</p>
                                     <div className="flex justify-between items-center mt-1">
-                                        <p className="text-xs text-slate-400 font-mono">{d.date.split('-')[0]}</p>
+                                        <p className="text-[11px] text-slate-400 font-mono">{d.date.split('-')[0]}</p>
                                         <div className="flex gap-2">
                                             {d.charPage && <span className="px-2 py-0.5 bg-green-100 text-green-600 rounded-full text-[9px] font-bold">已回复</span>}
                                             {d.isArchived && <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-bold">已归档</span>}

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CaretLeft, Lightning } from '@phosphor-icons/react';
-import { CharacterBuff, CharacterProfile } from '../../types';
+import { AvatarFramePreset, CharacterBuff, CharacterProfile } from '../../types';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../shell/shellLayout';
+import AvatarWithFrame from '../common/AvatarWithFrame';
 
 interface TokenBreakdown {
     prompt: number;
@@ -31,6 +32,7 @@ interface ChatHeaderShellProps {
     isProactiveActive?: boolean;
     headerStyle?: 'default' | 'minimal' | 'wechat' | 'pixel';
     avatarShape?: 'circle' | 'rounded' | 'square';
+    avatarFramePreset?: AvatarFramePreset;
     headerAlign?: 'left' | 'center';
     headerDensity?: 'compact' | 'default' | 'airy';
     statusStyle?: 'subtle' | 'pill' | 'dot';
@@ -72,6 +74,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     isProactiveActive = false,
     headerStyle = 'default',
     avatarShape = 'circle',
+    avatarFramePreset,
     headerAlign = 'left',
     headerDensity = 'default',
     statusStyle = 'subtle',
@@ -341,7 +344,14 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
 
     const renderStandardInfo = () => (
         <>
-            <img src={activeCharacter.avatar} className={`w-10 h-10 object-cover shadow-sm ${avatarRadiusClass}`} alt="avatar" />
+            <AvatarWithFrame
+                src={activeCharacter.avatar}
+                framePreset={avatarFramePreset}
+                className="w-10 h-10"
+                roundedClassName={avatarRadiusClass}
+                imageClassName="shadow-sm"
+                alt="avatar"
+            />
             <div className="flex-1 min-w-0 flex flex-col items-start text-left">
                 <div className={`${signatureText ? 'text-[22px] leading-none' : 'text-base'} font-bold ${primaryTextClass}`}>{activeCharacter.name}</div>
                 <div className="flex items-center gap-2 flex-wrap min-w-0 max-w-full">

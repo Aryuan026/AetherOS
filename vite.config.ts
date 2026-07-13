@@ -36,6 +36,12 @@ export default defineConfig({
   // GitHub Pages 发布时使用相对路径，避免仓库子路径导致资源 404
   base: process.env.GITHUB_PAGES ? './' : '/',
   server: {
+    // Vite serves the module worker from /worker/ during development. Explicitly
+    // allow the app-root scope so the keep-alive worker can control the page just
+    // like the production copy at /sw-keep-alive.js.
+    headers: {
+      'Service-Worker-Allowed': '/',
+    },
     proxy: {
       '/api/minimax/t2a': {
         target: 'https://api.minimaxi.com',

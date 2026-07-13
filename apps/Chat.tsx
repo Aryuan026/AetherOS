@@ -10,6 +10,7 @@ import { DEFAULT_CHAT_BACKGROUND_IMAGE, PRESET_THEMES, DEFAULT_ARCHIVE_PROMPTS, 
 import ChatHeader from '../components/chat/ChatHeaderShell';
 import ChatInputArea from '../components/chat/ChatInputArea';
 import ChatModals from '../components/chat/ChatModals';
+import AvatarWithFrame from '../components/common/AvatarWithFrame';
 import Modal from '../components/os/Modal';
 import EmotionSettingsModal from '../components/chat/EmotionSettingsModal';
 import { useChatAI } from '../hooks/useChatAI';
@@ -25,6 +26,7 @@ import {
     scheduleNextCompanionWakeup,
 } from '../utils/companionWakeups';
 import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule, mergeDefaultHeartbeatRules, syncBuiltInCareWakeupRules } from '../utils/companionWakeupRules';
+import { resolveAvatarFramePreset } from '../utils/avatarFrames';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
 
@@ -187,6 +189,14 @@ const Chat: React.FC = () => {
 
     const char = characters.find(c => c.id === activeCharacterId) || characters[0];
     charRef.current = char; // Keep ref in sync for async callbacks
+    const charAvatarFramePreset = useMemo(
+        () => char ? resolveAvatarFramePreset(rawOsTheme, char.avatarFramePresetId) : undefined,
+        [rawOsTheme.avatarFramePresets, char?.avatarFramePresetId]
+    );
+    const userAvatarFramePreset = useMemo(
+        () => resolveAvatarFramePreset(rawOsTheme, userProfile.avatarFramePresetId),
+        [rawOsTheme.avatarFramePresets, userProfile.avatarFramePresetId]
+    );
     const appearancePresetId = normalizeChatAppearancePresetId(osTheme.chatAppearancePreset);
     const presetThemeId = appearancePresetId === DEEP_SPACE_APPEARANCE_PRESET_ID
         ? 'default'
@@ -266,24 +276,16 @@ const Chat: React.FC = () => {
                 ...careRules,
             ];
             rules = rules.filter(rule => !isDuplicateBuiltInCareRule(char, rule, rules));
-            if (char.autoReplyEnabled === false) {
-                updateCharacter(char.id, { autoReplyEnabled: true });
-            }
         }
         const recent = await DB.getRecentMessagesByCharId(char.id, 120);
         const status = buildCompanionWakeupStatus(rules, Date.now(), recent);
         setCompanionWakeupActive(status.active);
         setCompanionWakeupStatus(status);
-    }, [char, updateCharacter]);
+    }, [char]);
 
     useEffect(() => {
         void refreshCompanionWakeupActive();
     }, [refreshCompanionWakeupActive, lastMsgTimestamp]);
-
-    useEffect(() => {
-        if (!char?.id || !companionWakeupActive || char.autoReplyEnabled !== false) return;
-        updateCharacter(char.id, { autoReplyEnabled: true });
-    }, [char?.id, char?.autoReplyEnabled, companionWakeupActive, updateCharacter]);
 
     const enableCompanionWakeup = useCallback(async () => {
         if (!char?.id) return;
@@ -311,9 +313,6 @@ const Chat: React.FC = () => {
         for (const rule of mergedRules.filter(item => item.enabled && isDuplicateBuiltInCareRule(char, item, mergedRules))) {
             await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
         }
-        if (char.autoReplyEnabled === false) {
-            updateCharacter(char.id, { autoReplyEnabled: true });
-        }
         const recent = await DB.getRecentMessagesByCharId(char.id, 120);
         const statusRules = [
             ...existing.filter(rule => !isObsoleteHeartbeatRule(char, rule)),
@@ -327,10 +326,15 @@ const Chat: React.FC = () => {
         );
         setCompanionWakeupActive(status.active);
         setCompanionWakeupStatus(status);
-        addToast(`${char.name} 偶尔会自然来信`, 'success');
-    }, [addToast, char, updateCharacter]);
+        addToast(
+            char.autoReplyEnabled === false
+                ? `${char.name} 会偶尔来信；日常回复仍保持手动`
+                : `${char.name} 偶尔会自然来信`,
+            'success',
+        );
+    }, [addToast, char]);
 
-    const disableCompanionWakeup = useCallback(async () => {
+    const disableCompanionWakeup = useCallback(async (options?: { silent?: boolean }) => {
         if (!char?.id) return;
         const now = Date.now();
         const rules = await DB.getCompanionWakeupRulesByCharId(char.id);
@@ -339,7 +343,9 @@ const Chat: React.FC = () => {
         }
         setCompanionWakeupActive(false);
         setCompanionWakeupStatus(emptyCompanionWakeupStatus);
-        addToast(`${char.name} 暂时不会主动打扰`, 'info');
+        if (!options?.silent) {
+            addToast(`${char.name} 暂时不会主动打扰`, 'info');
+        }
     }, [addToast, char]);
 
     const handleToggleCompanionWakeup = useCallback(async () => {
@@ -378,9 +384,6 @@ const Chat: React.FC = () => {
             updatedAt: now,
         };
         await DB.saveCompanionWakeupRule(effectiveRule);
-        if (char.autoReplyEnabled === false) {
-            updateCharacter(char.id, { autoReplyEnabled: true });
-        }
 
         const content = pickDirectWakeupLine(effectiveRule, char, userProfile, now);
         const messagePayload: Omit<Message, 'id'> = {
@@ -787,13 +790,7 @@ const Chat: React.FC = () => {
         await reloadMessages(visibleCountRef.current);
         setShowPanel('none');
 
-        const liveWakeupActive = companionWakeupActive || (await DB.getCompanionWakeupRulesByCharId(char.id))
-            .some(rule => rule.enabled && (rule.kind === 'heartbeat' || rule.kind === 'window'));
-        if (liveWakeupActive && char.autoReplyEnabled === false) {
-            updateCharacter(char.id, { autoReplyEnabled: true });
-        }
-
-        if (apiConfig.baseUrl && !isTyping && (autoReplyEnabled || liveWakeupActive)) {
+        if (apiConfig.baseUrl && !isTyping && autoReplyEnabled) {
             const updatedMessages = await DB.getRecentMessagesByCharId(char.id, visibleCountRef.current);
             void triggerAI(updatedMessages);
         }
@@ -1455,6 +1452,7 @@ const Chat: React.FC = () => {
                 }}
                 headerStyle={osTheme.chatHeaderStyle}
                 avatarShape={osTheme.chatAvatarShape}
+                avatarFramePreset={charAvatarFramePreset}
                 headerAlign={osTheme.chatHeaderAlign}
                 headerDensity={osTheme.chatHeaderDensity}
                 statusStyle={osTheme.chatStatusStyle}
@@ -1502,8 +1500,10 @@ const Chat: React.FC = () => {
                             isLastInGroup={breaksWithNext}
                             activeTheme={activeTheme}
                             charAvatar={char.avatar}
+                            charAvatarFramePreset={charAvatarFramePreset}
                             charName={char.name}
                             userAvatar={userProfile.avatar}
+                            userAvatarFramePreset={userAvatarFramePreset}
                             onLongPress={handleMessageLongPress}
                             selectionMode={selectionMode}
                             isSelected={selectedMsgIds.has(m.id)}
@@ -1528,7 +1528,13 @@ const Chat: React.FC = () => {
                 
                 {(isTyping || recallStatus) && !selectionMode && (
                     <div className="relative z-10 flex items-end gap-3 px-3 mb-6 animate-fade-in">
-                        <img src={char.avatar} className={`${osTheme.chatAvatarSize === 'small' ? 'w-7 h-7' : osTheme.chatAvatarSize === 'large' ? 'w-12 h-12' : 'w-9 h-9'} ${osTheme.chatAvatarShape === 'square' ? 'rounded-sm' : osTheme.chatAvatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full'} object-cover`} />
+                        <AvatarWithFrame
+                            src={char.avatar}
+                            framePreset={charAvatarFramePreset}
+                            className={osTheme.chatAvatarSize === 'small' ? 'w-7 h-7' : osTheme.chatAvatarSize === 'large' ? 'w-12 h-12' : 'w-9 h-9'}
+                            roundedClassName={osTheme.chatAvatarShape === 'square' ? 'rounded-sm' : osTheme.chatAvatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full'}
+                            alt={char.name}
+                        />
                         <div className="bg-white px-4 py-3 rounded-2xl shadow-sm">
                             {recallStatus ? (
                                 <div className="flex items-center gap-2 text-xs text-indigo-500 font-medium">
@@ -1574,6 +1580,7 @@ const Chat: React.FC = () => {
                     inputStyle={osTheme.chatInputStyle}
                     sendButtonStyle={osTheme.chatSendButtonStyle}
                     chromeStyle={osTheme.chatChromeStyle}
+                    appearancePreset={appearancePresetId}
                 />
             </div>
 
@@ -1585,8 +1592,10 @@ const Chat: React.FC = () => {
                         <button
                             onClick={() => {
                                 updateCharacter(char.id, { autoReplyEnabled: false });
-                                setShowReplyModeModal(false);
-                                addToast('已切换为手动接话', 'info');
+                                setCompanionWakeupActive(false);
+                                setCompanionWakeupStatus(emptyCompanionWakeupStatus);
+                                void disableCompanionWakeup({ silent: true });
+                                addToast('已切换为手动接话，主动来信已暂停', 'info');
                             }}
                             className={`w-full rounded-2xl border px-4 py-3 text-left transition-all active:scale-[0.99] ${!autoReplyEnabled ? 'border-indigo-400 bg-indigo-50 text-indigo-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                         >
@@ -1600,7 +1609,6 @@ const Chat: React.FC = () => {
                         <button
                             onClick={() => {
                                 updateCharacter(char.id, { autoReplyEnabled: true });
-                                setShowReplyModeModal(false);
                                 addToast('已开启自动回复', 'success');
                             }}
                             className={`w-full rounded-2xl border px-4 py-3 text-left transition-all active:scale-[0.99] ${autoReplyEnabled ? 'border-emerald-400 bg-emerald-50 text-emerald-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
@@ -1615,7 +1623,6 @@ const Chat: React.FC = () => {
                         <button
                             onClick={() => {
                                 void handleToggleCompanionWakeup();
-                                setShowReplyModeModal(false);
                             }}
                             className={`w-full rounded-2xl border px-4 py-3 text-left transition-all active:scale-[0.99] ${replySignalActive ? 'border-violet-400 bg-violet-50 text-violet-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                         >
