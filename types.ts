@@ -414,6 +414,7 @@ export interface Worldbook {
 }
 
 export type UserDeepSpaceIdentityMode =
+    | 'custom_world'
     | 'custom_non_hunter'
     | 'custom_hunter'
     | 'canon_hunter';
@@ -444,6 +445,79 @@ export interface NovelSegment {
     };
 }
 
+export type NarrativeSurfaceId =
+    | 'consult_desk'
+    | 'novel'
+    | 'date'
+    | 'guidebook'
+    | 'special_moments'
+    | 'check_phone'
+    | 'game'
+    | 'lifesim'
+    | 'timebook'
+    | 'chat'
+    | 'social_feed';
+
+export type NarrativeLane =
+    | 'mainline'
+    | 'pending_mainline'
+    | 'if_line'
+    | 'date_experience'
+    | 'keepsake_event'
+    | 'user_insight'
+    | 'supporting_evidence'
+    | 'sandbox'
+    | 'draft';
+
+export type NarrativeMemoryPolicy =
+    | 'main_vault'
+    | 'manual_promotion'
+    | 'relationship_echo'
+    | 'character_private'
+    | 'dream_material'
+    | 'excluded_from_main_vault'
+    | 'local_keepsake'
+    | 'system_trace';
+
+export type NarrativeDirectiveStatus =
+    | 'pending'
+    | 'activated'
+    | 'played'
+    | 'archived'
+    | 'discarded';
+
+export interface NarrativeDirectiveSourceRef {
+    surface: NarrativeSurfaceId;
+    id?: string;
+    label?: string;
+}
+
+export interface NarrativeDirective {
+    id: string;
+    title: string;
+    summary: string;
+    lane: NarrativeLane;
+    status: NarrativeDirectiveStatus;
+    sourceSurface: NarrativeSurfaceId;
+    targetSurface?: NarrativeSurfaceId;
+    charIds: string[];
+    npcNames?: string[];
+    tags?: string[];
+    constraints?: string[];
+    activationHint?: string;
+    memoryPolicy: NarrativeMemoryPolicy;
+    sourceRefs?: NarrativeDirectiveSourceRef[];
+    createdAt: number;
+    updatedAt: number;
+    playedAt?: number;
+    dreamDelivery?: {
+        charId: string;
+        tone?: 'soft' | 'uneasy' | 'romantic' | 'ominous' | 'playful';
+        instruction: string;
+        deliveredAt?: number;
+    };
+}
+
 export interface NovelBook {
     id: string;
     title: string;
@@ -455,6 +529,7 @@ export interface NovelBook {
     collaboratorIds: string[]; 
     protagonists: NovelProtagonist[];
     segments: NovelSegment[];
+    directives?: NarrativeDirective[];
     createdAt: number;
     lastActiveAt: number;
 }
@@ -841,6 +916,55 @@ export interface UserProfile {
     bio: string;
     deepspaceIdentityMode?: UserDeepSpaceIdentityMode;
     deepspaceIdentityNote?: string;
+    activePersonaMaskId?: string;
+    activeProgressBundleId?: string;
+    personaMasks?: UserPersonaMask[];
+    progressBundles?: UserProgressBundle[];
+}
+
+export type UserProgressSurface =
+    | 'chat'
+    | 'group_chat'
+    | 'call'
+    | 'date'
+    | 'social'
+    | 'novel'
+    | 'guidebook'
+    | 'special_moments'
+    | 'timebook'
+    | 'game'
+    | 'lifesim'
+    | 'worldbook'
+    | 'study'
+    | 'settings';
+
+export type UserProgressSurfacePolicy = 'shared' | 'mask_scoped' | 'hold';
+
+export interface UserPersonaMask {
+    id: string;
+    label: string;
+    name: string;
+    avatar: string;
+    avatarFramePresetId?: string;
+    callPortrait?: string;
+    bio: string;
+    deepspaceIdentityMode?: UserDeepSpaceIdentityMode;
+    deepspaceIdentityNote?: string;
+    linkedCharacterIds?: string[];
+    progressBundleId: string;
+    createdAt: number;
+    updatedAt: number;
+    lastUsedAt?: number;
+}
+
+export interface UserProgressBundle {
+    id: string;
+    maskId: string;
+    label: string;
+    description?: string;
+    surfacePolicy: Partial<Record<UserProgressSurface, UserProgressSurfacePolicy>>;
+    createdAt: number;
+    updatedAt: number;
 }
 
 export interface Toast {

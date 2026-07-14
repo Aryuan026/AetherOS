@@ -14,12 +14,14 @@ const DEEPSPACE_STORY_WORLDBOOK_IDS = new Set([
 ]);
 
 export const DEEPSPACE_IDENTITY_MODE_LABELS: Record<UserDeepSpaceIdentityMode, string> = {
+    custom_world: '通用自设 / 非深空世界',
     custom_non_hunter: '自设非猎人',
     custom_hunter: '自设猎人',
     canon_hunter: '原作主控 / 灵空猎人',
 };
 
 export const DEEPSPACE_IDENTITY_MODE_DESCRIPTIONS: Record<UserDeepSpaceIdentityMode, string> = {
+    custom_world: '不启用深空默认身份判断；角色应主要根据当前角色卡、用户导入的世界书和当前剧情理解 user，适合全新世界观或原创角色卡。',
     custom_non_hunter: '不自动成为灵空行动部猎人，也不自动继承原作主控的家人、旧识和以太芯核关系；深空角色仍可作为世界人物出现，并可随剧情进入关系网。',
     custom_hunter: '可以拥有猎人职业和任务入口，但不自动继承张素、夏以昼、黎深旧识等原作主控私关系。',
     canon_hunter: '采用原作主控/灵空行动部猎人身份，可启用主控核心关系和猎人同事网络。',
@@ -43,13 +45,18 @@ export const buildDeepSpaceIdentityContext = (user: UserProfile): string => {
     const note = user.deepspaceIdentityNote?.trim();
 
     let context = `### 互动对象身份优先级 (User Identity Override)\n`;
-    context += `本节优先级高于角色卡、世界书和剧情增强资料包中未被用户明确启用的“默认主控/默认猎人/默认宿命关系”。\n`;
+    context += mode === 'custom_world'
+        ? `本节优先级高于角色卡或世界书里对 user 的默认假设。当前是通用自设身份，不自动套用任何特定作品主控设定。\n`
+        : `本节优先级高于角色卡、世界书和剧情增强资料包中未被用户明确启用的“默认主控/默认猎人/默认宿命关系”。\n`;
     context += `- 名字: ${user.name}\n`;
-    context += `- 深空身份模式: ${label}\n`;
+    context += `- 世界/身份模式: ${label}\n`;
     if (note) context += `- 身份补充/职业: ${note}\n`;
     context += `- 设定/备注: ${user.bio || '无'}\n`;
 
-    if (mode === 'canon_hunter') {
+    if (mode === 'custom_world') {
+        context += `- 当前不启用深空猎人、原作主控、以太芯核、临空市默认关系等前提；除非用户导入的世界书或当前剧情明确写入。\n`;
+        context += `- 请以当前角色卡、用户自设、已启用世界书、当前聊天和剧情事实为准，不要主动把 user 拉回《恋与深空》原作身份框架。\n`;
+    } else if (mode === 'canon_hunter') {
         context += `- 允许采用原作主控或灵空行动部猎人身份；只有已启用的资料包才可作为当前关系事实。\n`;
     } else if (mode === 'custom_hunter') {
         context += `- {{user}} 可以是自设猎人或相关行动人员，但不是自动等同于原作主控。\n`;
@@ -83,18 +90,22 @@ export const getDeepSpaceWorldbookIdentityNotice = (
         return {
             tone: 'danger',
             title: '会覆盖成原作主控关系',
-            body: mode === 'custom_non_hunter'
+            body: mode === 'custom_world'
+                ? '当前是通用自设/非深空世界。这本会强行写入原作主控家人、旧识和猎人关系；除非你明确要把这个面具切回深空主控线，否则不建议启用。'
+                : mode === 'custom_non_hunter'
                 ? '这本会把 user 写成灵空猎人、张素孙女、夏以昼妹妹和黎深旧识。非猎人自设不建议启用；若确实要混入原作私关系，请再次点击确认。'
                 : '这本会继承原作主控家人/旧识关系，不只是猎人职业。自设猎人若不想继承原作私关系，请保持停用。',
             requiresConfirm: true,
         };
     }
 
-    if (id === DEEPSPACE_HUNTER_NPC_WORLDBOOK_ID && mode === 'custom_non_hunter') {
+    if (id === DEEPSPACE_HUNTER_NPC_WORLDBOOK_ID && (mode === 'custom_non_hunter' || mode === 'custom_world')) {
         return {
             tone: 'warning',
-            title: '可作世界人物，不自动变同事',
-            body: '灵空行动部 NPC 可以作为猎人协会/城市事件中的人物出现，但当前 user 不是猎人时，不应默认他们是 user 的同事、上司或队友。',
+            title: mode === 'custom_world' ? '深空 NPC 包不适配通用世界' : '可作世界人物，不自动变同事',
+            body: mode === 'custom_world'
+                ? '当前面具是通用自设/非深空世界。除非你正在混入深空资料，否则这类 NPC 包不应默认成为当前世界事实。'
+                : '灵空行动部 NPC 可以作为猎人协会/城市事件中的人物出现，但当前 user 不是猎人时，不应默认他们是 user 的同事、上司或队友。',
         };
     }
 

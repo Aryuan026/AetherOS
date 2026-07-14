@@ -43,6 +43,15 @@
   quiz flows for now.
 - Future co-reading/book-club behavior can grow from `书房`, but should not
   disrupt the current study-tool flow before it is deliberately designed.
+- `书房` internals should stay split enough that future co-reading can add a
+  shelf/reader/annotation/progress layer without rewriting the PDF course and
+  quiz flow.
+- Study-room AI JSON output should be parsed through shared tolerant helpers,
+  and empty chapter/quiz outputs should fail gracefully instead of producing
+  blank lessons, divide-by-zero ranges, or NaN scores.
+- `书房` imports should guard large local files before reading them into memory.
+- Historical quizzes opened from `练习册` should return to `练习册`; fresh
+  classroom quizzes should return to the classroom.
 
 ## Timebook Context Delivery
 
@@ -288,6 +297,179 @@
   assistant turn.
 - Keepsake selection should prefer clean, emotionally or contextually meaningful
   spoken sentences and ignore system labels, voice tags, and action-only cues.
+
+## Narrative Experience Boundaries
+
+- Mainline plot, date/meeting scenes, IF lines, guidebook play, special events,
+  phone evidence, TRPG, and city simulation must not all write into memory with
+  the same meaning.
+- A future `咨询台` should be a story-seed approval surface. It should emit
+  pending narrative directives after user approval, not chat messages or
+  character-phone evidence.
+- `查手机` must stay a character-phone evidence surface. It should not be reused
+  as the consultation desk because generated records can be interpreted as facts
+  already present on the character's phone.
+- A user-approved new plot expansion should become a pending directive for
+  `剧情推演 / 小说生成` before it becomes a lived memory.
+- Pending mainline directives are not memories yet. They may guide a future
+  Novel/Date play session, but the character should not treat them as already
+  happened until the user plays and archives them.
+- IF-line material must stay out of the main memory vault. It may be delivered
+  as a character dream, wrong-route echo, creative branch residue, or
+  subconscious image.
+- `见面` is the preferred low-pressure embodied play surface for daily
+  date/meeting experiences: visits, meals, walks, light roleplay, and
+  relationship warmth. It may read relationship memory, but must not
+  spontaneously escalate into mainline crisis, NPC death, or irreversible plot
+  turns.
+- `见面` prompt rules and selection UI should stay modular: prompt boundaries in
+  `utils/dateExperience.ts`, reusable selection UI under `components/date/`.
+- `见面` selection filters may expose “显示全部 / 只看链接”, but text toggles
+  must live inside the content/scope notice rather than the centered header
+  right slot, because that slot is sized for compact icons.
+- `见面` auto-save may persist the current scene on timer, background, refresh,
+  or React unmount, but it must not call the parent exit/navigation path.
+  Showing “进度已保存” and returning to selection should happen only after the
+  explicit “保存并退出” action.
+- `见面` should default to an embodied visual-scene player rather than a
+  question-answer text page: the user first sees the character "present" in the
+  scene, then approaches, then advances short scene beats.
+- If a character has no dedicated date portrait or generated background, `见面`
+  must still avoid black empty screens by using an avatar-based presence card,
+  blurred color mood, and nameplate fallback. Generating per-character back
+  views should remain optional, not a requirement for self-insert/original
+  character players.
+- The fallback presence mood should respond to virtual time with distinct
+  dawn/day/dusk/night light, so custom characters without backgrounds do not
+  feel trapped in one permanent night palette.
+- Reusable built-in date backdrops live under
+  `public/assets/aetheros/date-backgrounds/`. When no character-specific
+  `dateBackground` is set, `见面` should use the virtual-time-matched built-in
+  backdrop as the default sprite grounding layer; manually uploaded or selected
+  backgrounds override the automatic backdrop.
+- In visual-scene mode, narration/action/environment lines should render as
+  transient floating text over the scene, while quoted speech belongs in the
+  bottom dialogue box. The long-text page is a reading/record mode, not the
+  primary interaction mode.
+- Visual-scene mode should reserve three safe zones: a lowered compact top
+  control row, a high presence/sprite zone, and a bottom text/input zone.
+  Avatar-only fallbacks should sit around 44-46% of screen height rather than
+  on the bottom edge, so long scene text and the input bar do not cover the
+  character marker.
+- Scene text cards should be bounded overlays, not unlimited prose panels. When
+  the input bar is open, narration/dialogue cards move upward and cap their
+  height; the input bar itself should stay compact enough not to dominate the
+  visual scene.
+- When the current visual-scene dialogue batch reaches its final beat, the UI
+  should invite the user back in by opening the input composer instead of
+  replaying the batch or showing a subtle toast that can be missed.
+- Novel/record reading mode must keep a real top gutter and fade/scrim under
+  floating controls, so scrolling text never sits visibly underneath the
+  toolbar.
+- The `见面` waiting card should not show the generated opening text, because
+  that text is replayed in the visual scene after the user approaches. While
+  generation is pending, the card should keep a short immersive status line and
+  a subtle full-width moving light strip; after generation, it should only tell
+  the user the scene is ready. Waiting/ready copy should rotate among several
+  short, human-feeling lines rather than using one fixed system-sounding phrase.
+- `savedDateState` is a single resumable unfinished progress slot per
+  character. `见面记录` is not limited to that slot: it is reconstructed from
+  persisted `source="date"` messages, split by opening markers and time gaps.
+- `见面记录` should render as a compact record list first. Cards may show date,
+  sentence count, favorite state, and a short excerpt, but full prose belongs in
+  a drill-in detail page so long and short records do not stretch the list.
+- `见面记录` detail pages must preserve readable message structure: assistant
+  content should keep generated line breaks/scene beats, user actions should
+  stay visually separated, and only parser tags such as `[normal]` should be
+  hidden from display.
+- `见面全文` speaker identity should follow the stored message role first.
+  Quoted lines inside assistant/date messages are character speech and should
+  render on the character side. User/date messages remain user-side even when
+  they contain quotes, parentheses, or loose text such as `（动作）文字`.
+- In the long-text reading page, management selection should use the visible
+  segment/paragraph as its unit, not the raw database message as its unit. If a
+  user deletes only some assistant segments, the app should update that
+  message's content; only fully selected or user-message units should delete the
+  whole message record.
+- `见面记录` list cards should expose favorite and delete actions. Deleting a
+  record deletes the whole date-message session; deleting the newest session may
+  also clear that character's unfinished `savedDateState` to prevent test scraps
+  from reappearing as resumable progress.
+- Heavy plot, long timeline continuity, and mainline pressure should move to a
+  future `世界旅行` / plot-travel surface that emits timeline summaries for the
+  narrative DM.
+- `攻略本` should remain character-private user-understanding material. It can
+  improve character tone and relationship handling, but it should not
+  automatically become world/canon fact.
+- `特别时光` should remain a keepsake-event capsule tied to calendar/timebook
+  nodes such as birthdays, holidays, anniversaries, first meetings, saved
+  places, and user story preferences. It should eventually be initiated by the
+  character as a themed invitation. It can be promoted to 时光簿 or a future
+  plot hook only after user action.
+- `特别时光` prompt rules and lobby UI should stay modular: shared keepsake
+  boundaries in `utils/specialMoments.ts`, reusable lobby/event/delete UI under
+  `components/special-moments/`.
+- `TRPG` and `都市人生` are useful references for action logs, options, NPC
+  feeds, and summaries, but they should stay HOLD for mainline/IF routing until
+  their archive paths can respect narrative memory policy.
+
+## User Persona Masks And Progress Bundles
+
+- The personal profile must support multiple user persona masks so a player can
+  keep non-hunter self-insert, hunter self-insert, canon protagonist, or other
+  route identities in parallel.
+- The personal profile should use a two-page mask flow:
+  - the list page creates, switches, and deletes masks;
+  - the detail page edits a single mask and only persists changes after an
+    explicit save action.
+- Each mask row should show enough switching context: mask label, user name,
+  recent-use time, and linked character avatars/names.
+- A persona mask owns the mask-bound user fields: name, avatar, avatar frame,
+  call portrait, bio/self-setting, DeepSpace identity mode, and DeepSpace
+  identity note.
+- A persona mask may also keep `linkedCharacterIds` as a lightweight relationship
+  marker for future route-scoped story/date/social filtering.
+- Linked characters define the active relationship network for the current mask.
+  They should focus experience surfaces, not delete or permanently hide the
+  global character library.
+- Contact/directory surfaces should keep all characters reachable, with linked
+  characters shown first and unlinked characters available for adding to the
+  mask.
+- Experience/generation surfaces should default to linked characters only when
+  the active mask has links. This includes Social, Date, Call, future StoryDesk,
+  Novel route directives, Guidebook, and special-event selection.
+- If the active mask has no linked characters, experience surfaces should fall
+  back to all characters and guide the user to establish links rather than
+  showing an empty page.
+- Prompted generation must not let unlinked characters post, reply, or appear as
+  current familiar/romance-network members. They may still exist as public
+  background people when a worldbook or user explicitly mentions them.
+- New route surfaces must use the shared `personaRouteScope` helper rather than
+  hand-written `linkedCharacterIds` checks, so directory/contact pages,
+  experience pickers, and prompt pools keep the same behavior.
+- Current connected surfaces: Social participant generation, Character
+  directory sorting/linking, Date role picker, Call role picker, and GroupChat
+  member creation.
+- The identity mode list must include a non-DeepSpace option for fully custom
+  worlds and imported original character cards. In that mode, prompt context
+  must not force DeepSpace hunter, canon protagonist, aether core, or original
+  relationship assumptions.
+- The currently active mask must be mirrored onto the legacy top-level
+  `userProfile` fields so existing chat, call, date, guidebook, social, and
+  prompt paths naturally see the active identity before they become
+  bundle-aware.
+- Each persona mask should own a progress bundle ID. Future plot, IF, date,
+  social, timebook, guidebook, and special-event records should attach to this
+  bundle when they represent route-specific progress.
+- Device/app settings, API keys, global themes, study material, and the
+  worldbook library remain shared by default.
+- TRPG and LifeSim remain HOLD for bundle routing until their archive and world
+  models can respect narrative memory policy.
+- Switching masks must not delete, rewrite, or silently migrate existing chat
+  history or memories. Per-surface filtering should be added explicitly in later
+  slices.
+- Backup/export must preserve the full mask-aware `UserProfile`, including
+  DeepSpace identity fields, persona masks, and progress bundles.
 
 ## Public Sticker Packs
 

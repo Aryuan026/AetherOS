@@ -2,12 +2,40 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { StudyCourse, StudyChapter, CharacterProfile, Message, UserProfile, APIConfig, StudyTutorPreset, QuizQuestion, QuizSession, QuizQuestionNote } from '../types';
+import { StudyCourse, CharacterProfile, APIConfig, StudyTutorPreset, QuizQuestion, QuizSession, QuizQuestionNote } from '../types';
 import { ContextBuilder } from '../utils/context';
 import Modal from '../components/os/Modal';
-import { safeResponseJson } from '../utils/safeApi';
+import { extractJson, safeResponseJson } from '../utils/safeApi';
 import { Notepad, Check, X, CheckCircle, XCircle, Hand } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
+import {
+    DEFAULT_STUDY_QUIZ_TYPES,
+    STUDY_COVER_GRADIENTS,
+    STUDY_MAX_PDF_BYTES,
+    STUDY_MAX_PDF_PAGES,
+    STUDY_STORAGE_KEYS,
+    StudyQuizType,
+    assertStudyApiReady,
+    buildEffectiveStudyApi,
+    buildStudyChaptersFromOutline,
+    buildStudyChatCompletionUrl,
+    extractAiMessageText,
+    formatPdfByteLimit,
+    getStudyChapterSource,
+    getStudyScorePercent,
+    normalizeQuizQuestions,
+} from '../utils/studyRoom';
+import {
+    appendStudyModeContext,
+    appendStudyQuestionContext,
+    buildCurriculumPrompt,
+    buildLecturePrompt,
+    buildQuizFollowUpPrompt,
+    buildQuizPrompt,
+    buildQuizReviewPrompt,
+    buildStudyMemoryPrompt,
+    buildStudyQuestionPrompt,
+} from '../utils/studyPrompts';
 
 type PdfJsLike = {
     getDocument: (src: { data: ArrayBuffer }) => { promise: Promise<any> };
@@ -69,16 +97,6 @@ const loadKatex = async (): Promise<KatexLike> => {
     }
     return katexPromise;
 };
-
-// --- Styles ---
-const GRADIENTS = [
-    'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)',
-    'linear-gradient(120deg, #f093fb 0%, #f5576c 100%)',
-    'linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%)',
-    'linear-gradient(135deg, #f6d365 0%, #fda085 100%)',
-    'linear-gradient(to top, #5ee7df 0%, #b490ca 100%)',
-    'linear-gradient(to right, #43e97b 0%, #38f9d7 100%)'
-];
 
 // --- Renderer Component ---
 // Enhanced Markdown & Math Renderer
@@ -363,11 +381,7 @@ const StudyApp: React.FC = () => {
     const [presetPrompt, setPresetPrompt] = useState('');
 
     // Effective API config: study-specific overrides fall back to main config
-    const effectiveApi: APIConfig = {
-        baseUrl: studyApi.baseUrl || apiConfig.baseUrl,
-        apiKey: studyApi.apiKey || apiConfig.apiKey,
-        model: studyApi.model || apiConfig.model,
-    };
+    const effectiveApi: APIConfig = buildEffectiveStudyApi(studyApi, apiConfig);
 
     // Delete Confirmation State
     const [deleteTarget, setDeleteTarget] = useState<StudyCourse | null>(null);
@@ -377,8 +391,9 @@ const StudyApp: React.FC = () => {
     const [quizLoading, setQuizLoading] = useState<string>(''); // loading status text, empty = not loading
     const [quizUserAnswers, setQuizUserAnswers] = useState<Record<string, string>>({});
     const [quizShowSetup, setQuizShowSetup] = useState(false);
-    const [quizTypes, setQuizTypes] = useState<('choice' | 'true_false' | 'fill_blank')[]>(['choice', 'true_false', 'fill_blank']);
+    const [quizTypes, setQuizTypes] = useState<StudyQuizType[]>(DEFAULT_STUDY_QUIZ_TYPES);
     const [quizCount, setQuizCount] = useState(8);
+    const [quizExitMode, setQuizExitMode] = useState<'classroom' | 'practice_book'>('classroom');
     // Practice Book State
     const [allQuizzes, setAllQuizzes] = useState<QuizSession[]>([]);
     const [reviewingQuiz, setReviewingQuiz] = useState<QuizSession | null>(null);
@@ -392,11 +407,20 @@ const StudyApp: React.FC = () => {
 
     useEffect(() => {
         loadCourses();
-        if (activeCharacterId) {
-            const char = characters.find(c => c.id === activeCharacterId) || characters[0];
-            setSelectedChar(char);
+    }, []);
+
+    useEffect(() => {
+        if (characters.length === 0) {
+            setSelectedChar(null);
+            return;
         }
-    }, [activeCharacterId]);
+
+        setSelectedChar(prev => {
+            const stillExists = prev ? characters.find(c => c.id === prev.id) : null;
+            if (stillExists) return stillExists;
+            return (activeCharacterId ? characters.find(c => c.id === activeCharacterId) : null) || characters[0];
+        });
+    }, [activeCharacterId, characters]);
 
 
     useEffect(() => {
@@ -405,7 +429,7 @@ const StudyApp: React.FC = () => {
         });
         // Load study-specific settings from localStorage
         try {
-            const savedStudyApi = localStorage.getItem('study_api_config');
+            const savedStudyApi = localStorage.getItem(STUDY_STORAGE_KEYS.apiConfig);
             if (savedStudyApi) {
                 const parsed = JSON.parse(savedStudyApi);
                 setStudyApi(parsed);
@@ -413,7 +437,7 @@ const StudyApp: React.FC = () => {
                 setLocalStudyKey(parsed.apiKey || '');
                 setLocalStudyModel(parsed.model || '');
             }
-            const savedPresets = localStorage.getItem('study_tutor_presets');
+            const savedPresets = localStorage.getItem(STUDY_STORAGE_KEYS.tutorPresets);
             if (savedPresets) setTutorPresets(JSON.parse(savedPresets));
         } catch (e) { console.error('Failed to load study settings', e); }
     }, []);
@@ -467,7 +491,7 @@ const StudyApp: React.FC = () => {
         if (localStudyKey.trim()) cfg.apiKey = localStudyKey.trim();
         if (localStudyModel.trim()) cfg.model = localStudyModel.trim();
         setStudyApi(cfg);
-        localStorage.setItem('study_api_config', JSON.stringify(cfg));
+        localStorage.setItem(STUDY_STORAGE_KEYS.apiConfig, JSON.stringify(cfg));
         addToast('书房 API 已保存', 'success');
     };
 
@@ -476,13 +500,13 @@ const StudyApp: React.FC = () => {
         setLocalStudyUrl('');
         setLocalStudyKey('');
         setLocalStudyModel('');
-        localStorage.removeItem('study_api_config');
+        localStorage.removeItem(STUDY_STORAGE_KEYS.apiConfig);
         addToast('已恢复使用全局 API', 'info');
     };
 
     const savePresets = (list: StudyTutorPreset[]) => {
         setTutorPresets(list);
-        localStorage.setItem('study_tutor_presets', JSON.stringify(list));
+        localStorage.setItem(STUDY_STORAGE_KEYS.tutorPresets, JSON.stringify(list));
     };
 
     const handleSavePreset = () => {
@@ -511,6 +535,10 @@ const StudyApp: React.FC = () => {
             addToast('请上传 PDF 文件', 'error');
             return;
         }
+        if (file.size > STUDY_MAX_PDF_BYTES) {
+            addToast(`PDF 超过 ${formatPdfByteLimit()}，先换小一点的版本避免书房卡住`, 'error');
+            return;
+        }
 
         setIsProcessing(true);
         setProcessStatus('正在预处理 PDF...');
@@ -522,7 +550,7 @@ const StudyApp: React.FC = () => {
             const pdf = await loadingTask.promise;
             
             let fullText = '';
-            const maxPages = Math.min(pdf.numPages, 50);
+            const maxPages = Math.min(pdf.numPages, STUDY_MAX_PDF_PAGES);
 
             for (let i = 1; i <= maxPages; i++) {
                 setProcessStatus(`提取文本中 (${i}/${maxPages})...`);
@@ -572,30 +600,13 @@ const StudyApp: React.FC = () => {
     };
 
     const generateCurriculum = async (title: string, text: string, preference: string): Promise<StudyCourse> => {
-        if (!effectiveApi.apiKey) throw new Error('API Key missing');
+        assertStudyApiReady(effectiveApi);
 
         // Truncate text for outline generation if too long
         const contextText = text.substring(0, 30000); 
 
-        const prompt = `
-### Task: Create Course Outline
-Document Title: "${title}"
-User Preference: "${preference || 'Standard'}"
-Content Sample:
-${contextText.substring(0, 5000)}...
-
-Please analyze the content and split it into 3-8 logical chapters for teaching.
-For each chapter, provide a title, a brief summary of what it covers, and a difficulty rating.
-
-### Output Format (Strict JSON)
-{
-  "chapters": [
-    { "title": "Chapter 1: ...", "summary": "...", "difficulty": "easy" },
-    ...
-  ]
-}
-`;
-        const response = await fetch(`${effectiveApi.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+        const prompt = buildCurriculumPrompt(title, contextText, preference);
+        const response = await fetch(buildStudyChatCompletionUrl(effectiveApi), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey}` },
             body: JSON.stringify({
@@ -608,23 +619,19 @@ For each chapter, provide a title, a brief summary of what it covers, and a diff
 
         if (!response.ok) throw new Error('API Error');
         const data = await safeResponseJson(response);
-        const content = data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
-        const json = JSON.parse(content);
+        const content = extractAiMessageText(data);
+        const json = extractJson(content);
+        if (!json) throw new Error('课程大纲不是有效 JSON');
+        const chapters = buildStudyChaptersFromOutline(json.chapters, text.length);
 
         return {
             id: `course-${Date.now()}`,
             title: title,
             rawText: text, // Store full text locally
-            chapters: json.chapters.map((c: any, i: number) => ({
-                id: `ch-${i}`,
-                title: c.title,
-                summary: c.summary,
-                difficulty: c.difficulty || 'normal',
-                isCompleted: false
-            })),
+            chapters,
             currentChapterIndex: 0,
             createdAt: Date.now(),
-            coverStyle: GRADIENTS[Math.floor(Math.random() * GRADIENTS.length)],
+            coverStyle: STUDY_COVER_GRADIENTS[Math.floor(Math.random() * STUDY_COVER_GRADIENTS.length)],
             totalProgress: 0,
             preference: preference // Save preference
         };
@@ -635,6 +642,7 @@ For each chapter, provide a title, a brief summary of what it covers, and a diff
     const startSession = (course: StudyCourse) => {
         setActiveCourse(course);
         setMode('classroom');
+        setQuizExitMode('classroom');
         setChatHistory([]);
         
         // Find first incomplete chapter or stay on current if valid
@@ -655,9 +663,21 @@ For each chapter, provide a title, a brief summary of what it covers, and a diff
     // [MODIFIED]: buildStudyContext Removed. We now use ContextBuilder directly in handleTeach.
 
     const handleTeach = async (course: StudyCourse, chapterIdx: number, forceRegenerate: boolean = false) => {
-        if (!selectedChar || !effectiveApi.apiKey) return;
+        if (!selectedChar) return;
+        try {
+            assertStudyApiReady(effectiveApi);
+        } catch (error: any) {
+            setClassroomState('idle');
+            setCurrentText(`书房还没接好 API：${error.message}`);
+            return;
+        }
         
         const chapter = course.chapters[chapterIdx];
+        if (!chapter) {
+            setClassroomState('idle');
+            setCurrentText('这门课的章节数据不完整，建议重新导入或重新生成课程。');
+            return;
+        }
         
         // 1. Check if we already have content (History Review) and NOT forcing regen
         if (chapter.content && !forceRegenerate) {
@@ -672,37 +692,11 @@ For each chapter, provide a title, a brief summary of what it covers, and a diff
         setClassroomState('teaching');
         setCurrentText("正在准备教案...");
         
-        // Simple chunking strategy
-        const totalLen = course.rawText.length;
-        const chunkSize = Math.floor(totalLen / course.chapters.length);
-        const start = chapterIdx * chunkSize;
-        const chunkText = course.rawText.substring(start, start + chunkSize + 2000); // Overlap
+        const chunkText = getStudyChapterSource(course, chapterIdx);
 
-        const callApi = async (personaContext: string, isFallback: boolean = false) => {
-            const prompt = `${personaContext}
-
-### [Current Lesson Configuration]
-Topic: "${chapter.title}"
-Difficulty: ${chapter.difficulty}
-User Preference: "${course.preference || 'Standard'}"
-
-### [Source Material]
-${chunkText.substring(0, 8000)}
-
-### [Task: Lecture Generation]
-Explain this chapter's key concepts to the user based strictly on the Source Material above.
-- **Formatting**: Use Markdown extensively.
-  - **Bold** for key terms (\`**term**\`).
-  - Lists for steps.
-  - Math: Use \`$ E=mc^2 $\` for inline math, and \`$$ E=mc^2 $$\` for block equations.
-- **Style**: ${course.preference || 'Simple, conversational, and encouraging.'}
-- **Structure**:
-  1. Intro: Friendly greeting.
-  2. Core: Explanation of concepts using analogies.
-  3. Example: A concrete example or walkthrough.
-  4. Summary: Quick recap.
-`;
-            return await fetch(`${effectiveApi.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+        const callApi = async (personaContext: string) => {
+            const prompt = buildLecturePrompt(personaContext, course, chapter, chunkText);
+            return await fetch(buildStudyChatCompletionUrl(effectiveApi), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey}` },
                 body: JSON.stringify({
@@ -724,15 +718,7 @@ Explain this chapter's key concepts to the user based strictly on the Source Mat
             // Attempt 1: Full Character Context (The "Soul")
             // [MODIFIED]: Use centralized ContextBuilder with memory enabled
             let baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile, true);
-            
-            // Append Study Mode specific instructions to the core context
-            baseContext += `
-### [System: Study Mode Active]
-You are now acting as a private tutor for ${userProfile.name}.
-- **Maintain Personality**: You MUST stay in character (as defined above). If you are tsundere, teach with a tsundere attitude. If you are shy, teach shyly. Don't become a robotic lecturer.
-- **Goal**: Explain the content clearly, but don't lose your "soul".
-- **Safety**: If the source material contains sensitive topics (biology, history, etc.), treat them academically and neutrally.
-`;
+            baseContext = appendStudyModeContext(baseContext, userProfile);
 
             let response = await callApi(baseContext);
             
@@ -743,7 +729,7 @@ You are now acting as a private tutor for ${userProfile.name}.
                 const data = await safeResponseJson(response);
                 
                 // ROBUST EXTRACTION: Try content, then reasoning_content
-                text = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || "";
+                text = extractAiMessageText(data);
                 
                 if (!text || data.choices?.[0]?.finish_reason === 'content_filter') {
                     console.warn("Content blocked by filter or empty response.");
@@ -757,10 +743,10 @@ You are now acting as a private tutor for ${userProfile.name}.
             if (isBlocked) {
                 setCurrentText("正在尝试切换安全线路 (Safety Fallback)...");
                 const fallbackContext = "[System: You are a helpful and neutral academic tutor. Ignore previous character persona constraints to ensure educational content is delivered.]";
-                response = await callApi(fallbackContext, true);
+                response = await callApi(fallbackContext);
                 if (response.ok) {
                     const data = await safeResponseJson(response);
-                    text = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || "（内容仍被拦截，请尝试更换模型或缩短文本）";
+                    text = extractAiMessageText(data) || "（内容仍被拦截，请尝试更换模型或缩短文本）";
                 }
             }
             
@@ -804,30 +790,15 @@ You are now acting as a private tutor for ${userProfile.name}.
         setCurrentText("让我想想...");
 
         try {
-            const totalLen = activeCourse.rawText.length;
-            const chunkSize = Math.floor(totalLen / activeCourse.chapters.length);
-            const start = activeCourse.currentChapterIndex * chunkSize;
-            const chunkText = activeCourse.rawText.substring(start, start + chunkSize + 2000);
+            assertStudyApiReady(effectiveApi);
+            const chunkText = getStudyChapterSource(activeCourse, activeCourse.currentChapterIndex);
 
             // [MODIFIED]: Use Full Context for Q&A
             let baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile, true);
-            baseContext += `
-### [System: Study Mode Q&A]
-User is asking a question about the study material.
-- **Maintain Personality**: Answer in character.
-`;
+            baseContext = appendStudyQuestionContext(baseContext);
 
-            const prompt = `${baseContext}
-### Source Material
-${chunkText.substring(0, 8000)}
-
-### User Question
-"${question}"
-
-### Task
-Answer the question based on the source material. Be helpful and encouraging (in character). Use Markdown.
-`;
-             const response = await fetch(`${effectiveApi.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+            const prompt = buildStudyQuestionPrompt(baseContext, chunkText, question);
+             const response = await fetch(buildStudyChatCompletionUrl(effectiveApi), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey}` },
                 body: JSON.stringify({
@@ -839,7 +810,7 @@ Answer the question based on the source material. Be helpful and encouraging (in
             });
             
             const data = await safeResponseJson(response);
-            const text = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || "（无回答）";
+            const text = extractAiMessageText(data) || "（无回答）";
             
             setCurrentText(text);
             setChatHistory(prev => [...prev, { role: 'assistant', content: text }]);
@@ -873,26 +844,28 @@ Answer the question based on the source material. Be helpful and encouraging (in
         setActiveCourse(updatedCourse);
         setCourses(prev => prev.map(c => c.id === updatedCourse.id ? updatedCourse : c)); // Sync
 
-        // Summarize to Memory (Fire & Forget)
-        // UPDATED PROMPT: First person perspective
-        const summaryPrompt = `
-[System: Memory Generation]
-Role: ${selectedChar.name} (Teacher)
-Action: Just finished teaching "${updatedChapters[activeCourse.currentChapterIndex].title}" to ${userProfile.name}.
-Task: Write a short, **first-person** diary entry (1 sentence) about this teaching session.
-Format: "今天给[User]讲了[Topic]..." or "Today I taught [User] about..."
-Note: Use "我" (I) to refer to yourself.
-`;
+        // Summarize to Memory (Fire & Forget). Failure should not block chapter progress.
+        try {
+            assertStudyApiReady(effectiveApi);
+            const summaryPrompt = buildStudyMemoryPrompt(
+                selectedChar,
+                userProfile,
+                updatedChapters[activeCourse.currentChapterIndex].title
+            );
 
-        fetch(`${effectiveApi.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey}` },
-            body: JSON.stringify({ model: effectiveApi.model, messages: [{ role: "user", content: summaryPrompt }] })
-        }).then(res => safeResponseJson(res)).then(data => {
-            const mem = data.choices[0].message.content;
-            const newMem = { id: `mem-${Date.now()}`, date: new Date().toLocaleDateString(), summary: `[教学] ${mem}`, mood: 'proud' };
-            updateCharacter(selectedChar.id, { memories: [...(selectedChar.memories || []), newMem] });
-        });
+            fetch(buildStudyChatCompletionUrl(effectiveApi), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey}` },
+                body: JSON.stringify({ model: effectiveApi.model, messages: [{ role: "user", content: summaryPrompt }] })
+            }).then(res => safeResponseJson(res)).then(data => {
+                const mem = extractAiMessageText(data);
+                if (!mem) return;
+                const newMem = { id: `mem-${Date.now()}`, date: new Date().toLocaleDateString(), summary: `[教学] ${mem}`, mood: 'proud' };
+                updateCharacter(selectedChar.id, { memories: [...(selectedChar.memories || []), newMem] });
+            }).catch(error => console.warn('[StudyApp] memory summary failed:', error));
+        } catch {
+            // Dedicated API settings may be incomplete after a lesson was cached; keep navigation alive.
+        }
 
         // 3. Trigger next logic
         if (nextIdx >= updatedChapters.length) {
@@ -935,21 +908,32 @@ Note: Use "我" (I) to refer to yourself.
 
     const openQuizSetup = () => {
         if (!activeCourse) return;
+        setQuizExitMode('classroom');
         setQuizShowSetup(true);
     };
 
     const generateQuiz = async () => {
-        if (!activeCourse || !selectedChar || !effectiveApi.apiKey) return;
+        if (!activeCourse || !selectedChar) return;
+        try {
+            assertStudyApiReady(effectiveApi);
+        } catch (error: any) {
+            addToast(`书房还没接好 API：${error.message}`, 'error');
+            return;
+        }
         setQuizShowSetup(false);
         setMode('quiz');
+        setQuizExitMode('classroom');
         setQuizLoading('正在生成试题...');
         setQuizUserAnswers({});
 
         const chapter = activeCourse.chapters[activeCourse.currentChapterIndex];
-        const totalLen = activeCourse.rawText.length;
-        const chunkSize = Math.floor(totalLen / activeCourse.chapters.length);
-        const start = activeCourse.currentChapterIndex * chunkSize;
-        const chunkText = activeCourse.rawText.substring(start, start + chunkSize + 2000);
+        if (!chapter) {
+            addToast('当前章节不存在，无法出题', 'error');
+            setQuizLoading('');
+            setMode('classroom');
+            return;
+        }
+        const chunkText = getStudyChapterSource(activeCourse, activeCourse.currentChapterIndex);
 
         const typeLabels: Record<string, string> = {
             choice: '选择题 (4个选项，单选)',
@@ -958,50 +942,10 @@ Note: Use "我" (I) to refer to yourself.
         };
         const selectedTypeStr = quizTypes.map(t => typeLabels[t]).join('、');
 
-        const prompt = `### Task: Generate Quiz Questions
-You are creating a quiz based on the following study material.
-
-**Chapter**: "${chapter.title}"
-**Source Material**:
-${chunkText.substring(0, 10000)}
-
-**Requirements**:
-- Generate exactly ${quizCount} questions total
-- Question types to include: ${selectedTypeStr}
-- Mix the types roughly evenly among the selected types
-- Questions should test understanding, not just memorization
-- For choice questions: provide exactly 4 options labeled A/B/C/D
-- For true_false questions: answer should be "true" or "false"
-- For fill_blank questions: use "___" in the stem to indicate the blank, answer should be concise (1-5 words)
-- Provide a brief explanation for each answer
-
-### Output Format (Strict JSON, no markdown wrapping)
-{
-  "questions": [
-    {
-      "type": "choice",
-      "stem": "Which of the following...",
-      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-      "answer": "B",
-      "explanation": "Because..."
-    },
-    {
-      "type": "true_false",
-      "stem": "Statement to judge...",
-      "answer": "true",
-      "explanation": "Because..."
-    },
-    {
-      "type": "fill_blank",
-      "stem": "___ is used for...",
-      "answer": "React",
-      "explanation": "Because..."
-    }
-  ]
-}`;
+        const prompt = buildQuizPrompt(chapter, chunkText, quizCount, selectedTypeStr);
 
         try {
-            const response = await fetch(`${effectiveApi.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+            const response = await fetch(buildStudyChatCompletionUrl(effectiveApi), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey}` },
                 body: JSON.stringify({
@@ -1014,17 +958,10 @@ ${chunkText.substring(0, 10000)}
 
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
             const data = await safeResponseJson(response);
-            const content = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').replace(/```json/g, '').replace(/```/g, '').trim();
-            const json = JSON.parse(content);
-
-            const questions: QuizQuestion[] = (json.questions || []).map((q: any, i: number) => ({
-                id: `q-${Date.now()}-${i}`,
-                type: q.type,
-                stem: q.stem,
-                options: q.options,
-                answer: String(q.answer),
-                explanation: q.explanation || '',
-            }));
+            const content = extractAiMessageText(data);
+            const json = extractJson(content);
+            const questions: QuizQuestion[] = normalizeQuizQuestions(json?.questions);
+            if (questions.length === 0) throw new Error('模型没有生成可用题目');
 
             const session: QuizSession = {
                 id: `quiz-${Date.now()}`,
@@ -1056,7 +993,17 @@ ${chunkText.substring(0, 10000)}
     };
 
     const submitQuiz = async () => {
-        if (!quizSession || !selectedChar || !effectiveApi.apiKey) return;
+        if (!quizSession || !selectedChar) return;
+        try {
+            assertStudyApiReady(effectiveApi);
+        } catch (error: any) {
+            addToast(`书房还没接好 API：${error.message}`, 'error');
+            return;
+        }
+        if (quizSession.questions.length === 0) {
+            addToast('这份试卷没有可批改题目', 'error');
+            return;
+        }
         setQuizLoading('正在批改试卷...');
 
         // Grade locally first
@@ -1075,7 +1022,7 @@ ${chunkText.substring(0, 10000)}
         });
 
         const score = gradedQuestions.filter(q => q.isCorrect).length;
-        const scorePercent = Math.round((score / gradedQuestions.length) * 100);
+        const scorePercent = getStudyScorePercent(score, gradedQuestions.length);
 
         // Build review prompt
         const resultsText = gradedQuestions.map((q, i) => {
@@ -1086,33 +1033,18 @@ ${chunkText.substring(0, 10000)}
         }).join('\n\n');
 
         let baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile, true);
-
-        const reviewPrompt = `${baseContext}
-
-### [System: Quiz Review Mode]
-You just gave ${userProfile.name} a quiz on "${quizSession.chapterTitle}".
-They scored ${score}/${gradedQuestions.length} (${scorePercent}%).
-
-**Your task**: Review their answers one by one. For each question:
-- If they got it RIGHT: give a brief, entertaining acknowledgment (can be surprised, sarcastic, or genuinely happy depending on your personality)
-- If they got it WRONG: analyze WHY they might have gotten it wrong. Did they confuse similar concepts? Did they not read carefully? Make it entertaining and memorable — the goal is to make them laugh while learning. Ask them rhetorically what went wrong.
-- Stay in character throughout! A gentle character should be funny in a gentle way. A tsundere should be tsundere about it. A cool character should be cool about it.
-- The tone should be engaging and memorable — think "entertaining study buddy", not "cold grading machine"
-- Use their name naturally
-
-**Important**:
-- Review ALL questions in one response
-- Use markdown formatting
-- Number each review to match the question number
-- End with an overall summary comment about their performance
-
-### Quiz Results:
-${resultsText}
-
-### Your Review (in character):`;
+        const reviewPrompt = buildQuizReviewPrompt(
+            baseContext,
+            userProfile,
+            quizSession,
+            score,
+            gradedQuestions.length,
+            scorePercent,
+            resultsText
+        );
 
         try {
-            const response = await fetch(`${effectiveApi.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+            const response = await fetch(buildStudyChatCompletionUrl(effectiveApi), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey}` },
                 body: JSON.stringify({
@@ -1125,7 +1057,7 @@ ${resultsText}
 
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
             const data = await safeResponseJson(response);
-            const reviewText = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '（批改失败，但分数已记录）';
+            const reviewText = extractAiMessageText(data) || '（批改失败，但分数已记录）';
 
             const gradedSession: QuizSession = {
                 ...quizSession,
@@ -1167,8 +1099,21 @@ ${resultsText}
         addToast('试卷已删除', 'success');
     };
 
+    const returnFromQuizSurface = () => {
+        setReviewingQuiz(null);
+        setAskingQuestionId('');
+        setFollowUpInput('');
+        if (quizExitMode === 'practice_book' || !activeCourse) {
+            loadQuizzes();
+            setMode('practice_book');
+        } else {
+            setMode('classroom');
+        }
+    };
+
     const resumeQuiz = (quiz: QuizSession) => {
         setQuizSession(quiz);
+        setQuizExitMode('practice_book');
         if (quiz.status === 'graded') {
             setMode('quiz_review');
             setReviewingQuiz(quiz);
@@ -1186,7 +1131,13 @@ ${resultsText}
 
     // Follow-up Q&A on a specific question
     const handleFollowUp = async (questionId: string) => {
-        if (!followUpInput.trim() || !selectedChar || !effectiveApi.apiKey || !quizSession) return;
+        if (!followUpInput.trim() || !selectedChar || !quizSession) return;
+        try {
+            assertStudyApiReady(effectiveApi);
+        } catch (error: any) {
+            addToast(`书房还没接好 API：${error.message}`, 'error');
+            return;
+        }
         const question = quizSession.questions.find(q => q.id === questionId);
         if (!question) return;
 
@@ -1195,24 +1146,10 @@ ${resultsText}
         setFollowUpInput('');
 
         let baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile, true);
-
-        const prompt = `${baseContext}
-
-### [System: Quiz Follow-up Q&A]
-The user just did a quiz and wants to ask about a specific question they got ${question.isCorrect ? 'right' : 'wrong'}.
-
-**Question**: ${question.stem}
-${question.options ? question.options.map(o => `  ${o}`).join('\n') : ''}
-**Correct Answer**: ${question.answer}
-**User's Answer**: ${question.userAnswer || '(未作答)'}
-**Explanation**: ${question.explanation}
-
-**User's follow-up question**: "${userQ}"
-
-Answer in character. Be helpful and clear. If they're confused about a concept, explain it with different examples or analogies. Keep it concise but thorough.`;
+        const prompt = buildQuizFollowUpPrompt(baseContext, question, userQ);
 
         try {
-            const response = await fetch(`${effectiveApi.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+            const response = await fetch(buildStudyChatCompletionUrl(effectiveApi), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey}` },
                 body: JSON.stringify({
@@ -1225,7 +1162,7 @@ Answer in character. Be helpful and clear. If they're confused about a concept, 
 
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
             const data = await safeResponseJson(response);
-            const answerText = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '（回答失败）';
+            const answerText = extractAiMessageText(data) || '（回答失败）';
 
             const note: QuizQuestionNote = { question: userQ, answer: answerText, timestamp: Date.now() };
 
@@ -1248,7 +1185,7 @@ Answer in character. Be helpful and clear. If they're confused about a concept, 
     // Send quiz result card to chat
     const sendQuizCardToChat = async (session: QuizSession) => {
         if (!selectedChar) return;
-        const scorePercent = Math.round((session.score / session.totalQuestions) * 100);
+        const scorePercent = getStudyScorePercent(session.score, session.totalQuestions);
         const cardData = {
             type: 'quiz_card',
             courseTitle: session.courseTitle,
@@ -1343,13 +1280,13 @@ Answer in character. Be helpful and clear. If they're confused about a concept, 
 
                 {/* Header */}
                 <div className="bg-[#1a1a1a]/80 backdrop-blur-md p-4 flex items-center justify-between z-30 border-b border-white/10">
-                    <button onClick={() => { setMode('classroom'); setReviewingQuiz(null); }} className="bg-black/30 text-white/80 p-2 rounded-full hover:bg-black/50 transition-colors border border-white/10">
+                    <button onClick={returnFromQuizSurface} className="bg-black/30 text-white/80 p-2 rounded-full hover:bg-black/50 transition-colors border border-white/10">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                     </button>
                     <div className="text-center">
                         <div className="text-white font-bold text-sm">批改结果</div>
                         <div className={`text-xs font-bold mt-0.5 ${viewQuiz.score === viewQuiz.totalQuestions ? 'text-emerald-400' : viewQuiz.score >= viewQuiz.totalQuestions * 0.6 ? 'text-amber-400' : 'text-red-400'}`}>
-                            {viewQuiz.score}/{viewQuiz.totalQuestions} ({Math.round((viewQuiz.score / viewQuiz.totalQuestions) * 100)}%)
+                            {viewQuiz.score}/{viewQuiz.totalQuestions} ({getStudyScorePercent(viewQuiz.score, viewQuiz.totalQuestions)}%)
                         </div>
                     </div>
                     <div className="w-9" />
@@ -1456,8 +1393,8 @@ Answer in character. Be helpful and clear. If they're confused about a concept, 
 
                 {/* Bottom Bar */}
                 <div className="absolute bottom-0 w-full bg-[#1a1a1a]/95 backdrop-blur-xl border-t border-white/10 p-4 z-30 pb-safe">
-                    <button onClick={() => { setMode('classroom'); setReviewingQuiz(null); }} className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold shadow-lg shadow-emerald-900/30 active:scale-95 transition-all">
-                        返回课堂
+                    <button onClick={returnFromQuizSurface} className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold shadow-lg shadow-emerald-900/30 active:scale-95 transition-all">
+                        {quizExitMode === 'practice_book' || !activeCourse ? '返回练习册' : '返回课堂'}
                     </button>
                 </div>
             </div>
@@ -1476,7 +1413,7 @@ Answer in character. Be helpful and clear. If they're confused about a concept, 
                                 const updated = { ...quizSession, questions: quizSession.questions.map(q => ({ ...q, userAnswer: quizUserAnswers[q.id] || q.userAnswer })) };
                                 DB.saveQuiz(updated);
                             }
-                            setMode('classroom');
+                            returnFromQuizSurface();
                     }}
                     className="bg-[#fdfbf7]/90 border-[#e5e5e5]"
                     titleClassName="truncate text-sm font-bold tracking-wide text-slate-800"

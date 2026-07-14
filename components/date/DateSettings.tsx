@@ -4,6 +4,7 @@ import { useOS } from '../../context/OSContext';
 import { CharacterProfile, SpriteConfig, SkinSet } from '../../types';
 import { processImage } from '../../utils/file';
 import AppHeader from '../shell/AppHeader';
+import { BUILT_IN_DATE_BACKGROUNDS, getBuiltInDateBackgroundForHour } from '../../utils/dateExperience';
 
 // 标准情绪列表
 const REQUIRED_EMOTIONS = ['normal', 'happy', 'angry', 'sad', 'shy'];
@@ -15,7 +16,7 @@ interface DateSettingsProps {
 }
 
 const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
-    const { updateCharacter, addToast } = useOS();
+    const { updateCharacter, addToast, virtualTime } = useOS();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [uploadTarget, setUploadTarget] = useState<'bg' | 'sprite' | 'skin-sprite'>('bg');
@@ -50,6 +51,8 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
         return sprites;
     }, [activeSkinId, skinSets, sprites]);
     const currentSpriteImg = previewSprites['normal'] || previewSprites['default'] || Object.values(previewSprites)[0] || char.avatar;
+    const automaticDateBackground = getBuiltInDateBackgroundForHour(virtualTime.hours)?.src || '';
+    const previewBackground = char.dateBackground || automaticDateBackground;
 
     const triggerUpload = (target: 'bg' | 'sprite', emotionKey?: string) => {
         setUploadTarget(target);
@@ -186,7 +189,7 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
             
             {/* Live Preview Area */}
             <div className="h-64 bg-black relative overflow-hidden shrink-0 border-b border-slate-200">
-                    <div className="absolute inset-0 bg-cover bg-center opacity-60" style={{ backgroundImage: char.dateBackground ? `url(${char.dateBackground})` : 'none' }}></div>
+                    <div className="absolute inset-0 bg-cover bg-center opacity-60" style={{ backgroundImage: previewBackground ? `url(${previewBackground})` : 'none' }}></div>
                     <div className="absolute inset-0 flex items-end justify-center pointer-events-none">
                         <img 
                         src={currentSpriteImg}
@@ -199,7 +202,7 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                     <div className="absolute top-2 left-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm">预览 (Preview)</div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-8 pb-20">
+            <div className="flex-1 overflow-y-auto p-5 space-y-7 pb-20 text-[13px]">
                 <section className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                     <h3 className="text-xs font-bold text-slate-400 uppercase mb-4">立绘位置调整</h3>
                     <div className="space-y-6">
@@ -235,6 +238,36 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
 
                 <section>
                     <h3 className="text-xs font-bold text-slate-400 uppercase mb-3">背景 (Background)</h3>
+                    <div className="mb-3 grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                updateCharacter(char.id, { dateBackground: undefined });
+                                addToast('已切回按时间自动背景', 'success');
+                            }}
+                            className={`rounded-2xl border px-3 py-2 text-left transition-all active:scale-95 ${!char.dateBackground ? 'border-primary bg-primary/5 text-primary' : 'border-slate-100 bg-white text-slate-500'}`}
+                        >
+                            <div className="text-[11px] font-bold">按时间自动</div>
+                            <div className="mt-0.5 text-[10px] opacity-70">清晨 / 白天 / 黄昏 / 夜晚</div>
+                        </button>
+                        {BUILT_IN_DATE_BACKGROUNDS.map(bg => (
+                            <button
+                                key={bg.id}
+                                type="button"
+                                onClick={() => {
+                                    updateCharacter(char.id, { dateBackground: bg.src });
+                                    addToast(`已设为${bg.label}`, 'success');
+                                }}
+                                className={`overflow-hidden rounded-2xl border text-left transition-all active:scale-95 ${char.dateBackground === bg.src ? 'border-primary ring-2 ring-primary/20' : 'border-slate-100'}`}
+                            >
+                                <div className="relative h-20 bg-slate-100">
+                                    <img src={bg.src} className="h-full w-full object-cover" />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />
+                                    <div className="absolute bottom-2 left-2 text-[11px] font-bold text-white drop-shadow">{bg.label}</div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
                     <div 
                         onClick={() => triggerUpload('bg')}
                         className="aspect-video bg-slate-200 rounded-xl overflow-hidden relative border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer hover:border-primary group"
@@ -311,12 +344,12 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                             onChange={e => setNewEmotionName(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') handleAddCustomEmotion(); }}
                             placeholder="输入情绪名 (如 scared, excited...)"
-                            className="flex-1 px-4 py-3 bg-slate-100 rounded-xl text-sm focus:ring-1 focus:ring-primary/30 outline-none transition-all"
+                            className="flex-1 px-3 py-2.5 bg-slate-100 rounded-xl text-xs focus:ring-1 focus:ring-primary/30 outline-none transition-all"
                         />
                         <button
                             onClick={handleAddCustomEmotion}
                             disabled={!newEmotionName.trim()}
-                            className="px-5 py-3 bg-primary text-white text-sm font-bold rounded-xl disabled:opacity-40 active:scale-95 transition-all"
+                            className="px-4 py-2.5 bg-primary text-white text-xs font-bold rounded-xl disabled:opacity-40 active:scale-95 transition-all"
                         >
                             添加
                         </button>
@@ -331,7 +364,7 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                     <p className="text-[11px] text-slate-400 mb-3">直接粘贴图片 URL 作为默认立绘</p>
                     <button
                         onClick={() => { setUrlTargetSkinId(null); setShowUrlModal(true); }}
-                        className="w-full py-2.5 bg-slate-100 text-slate-600 text-sm font-medium rounded-xl hover:bg-slate-200 transition-colors active:scale-95"
+                        className="w-full py-2.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-xl hover:bg-slate-200 transition-colors active:scale-95"
                     >
                         + 通过 URL 添加立绘
                     </button>
@@ -412,12 +445,12 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                             onChange={e => setNewSkinName(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') handleCreateSkinSet(); }}
                             placeholder="皮肤名称 (如 冬装、泳装...)"
-                            className="flex-1 px-4 py-3 bg-slate-100 rounded-xl text-sm focus:ring-1 focus:ring-primary/30 outline-none transition-all"
+                            className="flex-1 px-3 py-2.5 bg-slate-100 rounded-xl text-xs focus:ring-1 focus:ring-primary/30 outline-none transition-all"
                         />
                         <button
                             onClick={handleCreateSkinSet}
                             disabled={!newSkinName.trim()}
-                            className="px-5 py-3 bg-primary text-white text-sm font-bold rounded-xl disabled:opacity-40 active:scale-95 transition-all"
+                            className="px-4 py-2.5 bg-primary text-white text-xs font-bold rounded-xl disabled:opacity-40 active:scale-95 transition-all"
                         >
                             创建
                         </button>
@@ -432,7 +465,7 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                 <div className="fixed inset-0 z-[300] bg-black/40 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowUrlModal(false)}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
                         <div className="p-4 border-b border-slate-100">
-                            <h3 className="font-bold text-slate-700 text-sm">通过 URL 添加立绘</h3>
+                            <h3 className="font-bold text-slate-700 text-[13px]">通过 URL 添加立绘</h3>
                             <p className="text-[11px] text-slate-400 mt-1">{urlTargetSkinId ? `目标: ${skinSets.find(s => s.id === urlTargetSkinId)?.name}` : '目标: 默认立绘'}</p>
                         </div>
                         <div className="p-4 space-y-3">
@@ -441,7 +474,7 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                                 <select
                                     value={skinUrlEmotionKey}
                                     onChange={e => setSkinUrlEmotionKey(e.target.value)}
-                                    className="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-sm outline-none"
+                                    className="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-xs outline-none"
                                 >
                                     <option value="">选择情绪...</option>
                                     {[...REQUIRED_EMOTIONS, ...(char.customDateSprites || [])].map(k => (
@@ -456,7 +489,7 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                                     value={skinUrlInput}
                                     onChange={e => setSkinUrlInput(e.target.value)}
                                     placeholder="https://example.com/sprite.png"
-                                    className="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-sm outline-none focus:ring-1 focus:ring-primary/30"
+                                    className="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-xs outline-none focus:ring-1 focus:ring-primary/30"
                                 />
                             </div>
                             {skinUrlInput && skinUrlInput.startsWith('http') && (
@@ -466,15 +499,15 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                             )}
                         </div>
                         <div className="p-4 border-t border-slate-100 flex gap-2">
-                            <button onClick={() => setShowUrlModal(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold text-sm rounded-xl">取消</button>
-                            <button onClick={handleUrlSubmit} disabled={!skinUrlInput.trim() || !skinUrlEmotionKey} className="flex-1 py-2.5 bg-primary text-white font-bold text-sm rounded-xl disabled:opacity-40 active:scale-95 transition-all">确认添加</button>
+                            <button onClick={() => setShowUrlModal(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl">取消</button>
+                            <button onClick={handleUrlSubmit} disabled={!skinUrlInput.trim() || !skinUrlEmotionKey} className="flex-1 py-2.5 bg-primary text-white font-bold text-xs rounded-xl disabled:opacity-40 active:scale-95 transition-all">确认添加</button>
                         </div>
                     </div>
                 </div>
             )}
 
             <div className="p-4 border-t border-slate-200 bg-white/90 backdrop-blur-sm sticky bottom-0 z-20">
-                <button onClick={handleSaveSettings} className="w-full py-3 bg-primary text-white font-bold rounded-2xl shadow-lg active:scale-95 transition-transform">
+                <button onClick={handleSaveSettings} className="w-full py-2.5 bg-primary text-white text-sm font-bold rounded-2xl shadow-lg active:scale-95 transition-transform">
                     保存当前布置
                 </button>
             </div>

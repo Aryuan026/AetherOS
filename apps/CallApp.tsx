@@ -20,6 +20,7 @@ import {
   stripCallRecordLabels,
   summarizeCallKeepsakeLine,
 } from '../utils/callTranscript';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 type CallState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'ended' | 'error';
 type ViewMode = 'role-select' | 'in-call' | 'history' | 'record-detail';
 type CallBubble = { id: string; dbId?: number; role: 'user' | 'assistant'; text: string; time: string; audioUrl?: string; timestamp: number };
@@ -479,6 +480,7 @@ const CallApp: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<ViewMode>('role-select');
   const [selectedCharId, setSelectedCharId] = useState<string>(activeCharacterId || characters[0]?.id || '');
+  const [showAllCallCharacters, setShowAllCallCharacters] = useState(false);
   const [recordDetailId, setRecordDetailId] = useState<string>('');
   const [callState, setCallState] = useState<CallState>('idle');
   const [bubbles, setBubbles] = useState<CallBubble[]>([]);
@@ -507,6 +509,15 @@ const CallApp: React.FC = () => {
   const currentBlobUrlRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const callTouchStartPos = useRef({ x: 0, y: 0 });
+  const personaScope = useMemo(() => (
+    resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+  ), [userProfile, characters, activeCharacterId]);
+  const callScopedCharacters = useMemo(() => (
+    filterCharactersForPersonaSurface(characters, personaScope, { surface: 'call' })
+  ), [characters, personaScope]);
+  const visibleCallCharacters = personaScope.hasLinkedFocus && !showAllCallCharacters
+    ? callScopedCharacters
+    : characters;
   const selectedChar = useMemo(() => characters.find(c => c.id === selectedCharId) || null, [characters, selectedCharId]);
   const selectedCharCallImage = useMemo(() => resolveCharacterCallImage(selectedChar), [selectedChar]);
   const hasPortraitCallImage = Boolean(selectedCharCallImage.src && selectedCharCallImage.isPortrait);
@@ -1199,16 +1210,33 @@ const CallApp: React.FC = () => {
       <div className="h-full w-full bg-slate-50 text-slate-900 flex flex-col">
         <AppHeader
           title="电话"
-          subtitle={`${characters.length} 位联系人`}
+          subtitle={personaScope.hasLinkedFocus && !showAllCallCharacters ? `当前面具 · ${callScopedCharacters.length} 位联系人` : `${visibleCallCharacters.length} 位联系人`}
           onBack={closeApp}
           className="bg-white/80 border-slate-100/70"
           titleClassName="truncate text-xl font-semibold tracking-tight text-slate-800"
           subtitleClassName="mt-0.5 truncate text-xs font-normal text-slate-400"
-          right={<button onClick={() => setViewMode('history')} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 active:scale-95">记录</button>}
+          right={(
+            <div className="flex items-center gap-2">
+              {personaScope.hasLinkedFocus && (
+                <button
+                  onClick={() => setShowAllCallCharacters(prev => !prev)}
+                  className="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-500 shadow-sm active:scale-95"
+                >
+                  {showAllCallCharacters ? '只看链接' : '显示全部'}
+                </button>
+              )}
+              <button onClick={() => setViewMode('history')} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 active:scale-95">记录</button>
+            </div>
+          )}
         />
         <div className="flex-1 overflow-y-auto px-4 py-3">
+          {personaScope.hasLinkedFocus && (
+            <div className="mb-3 rounded-2xl border border-sky-100 bg-sky-50/75 px-3 py-2 text-[11px] leading-relaxed text-sky-600">
+              当前电话默认只显示面具「{personaScope.activeMaskLabel || '未命名面具'}」链接的联系人；需要临时拨给其他人时可显示全部。
+            </div>
+          )}
           <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-slate-100">
-          {characters.map(char => (
+          {visibleCallCharacters.map(char => (
             <button
               key={char.id}
               onClick={() => startCallWithCharacter(char.id)}

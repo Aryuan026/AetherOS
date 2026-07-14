@@ -11,6 +11,11 @@ import { House, User, Package, Warning } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 import { Capacitor } from '@capacitor/core';
+import {
+    buildPersonaScopePromptNote,
+    filterCharactersForPersonaSurface,
+    resolvePersonaRouteScope,
+} from '../utils/personaRouteScope';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -348,9 +353,17 @@ const SocialApp: React.FC = () => {
         });
     };
 
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [userProfile, characters, activeCharacterId]);
+    const socialScopedCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, {
+            surface: 'social',
+        })
+    ), [characters, personaScope]);
     const activeCharacter = useMemo(() => (
-        characters.find(char => char.id === activeCharacterId) || characters[0]
-    ), [characters, activeCharacterId]);
+        personaScope.preferredActiveCharacter || characters.find(char => char.id === activeCharacterId) || characters[0]
+    ), [characters, activeCharacterId, personaScope]);
 
     const isMaleLead = (char?: CharacterProfile | null) => Boolean(char && DEEPSPACE_MALE_LEAD_IDS.has(char.id));
     const hasMountedWorldbook = (char: CharacterProfile | undefined, ids: Set<string>) => (
@@ -377,30 +390,34 @@ const SocialApp: React.FC = () => {
         char.activeMsg2Config?.enabled === true
     );
     const socialParticipants = useMemo(() => {
-        const explicit = characters.filter(isExplicitSocialParticipant);
+        const explicit = personaScope.hasLinkedFocus
+            ? socialScopedCharacters
+            : socialScopedCharacters.filter(isExplicitSocialParticipant);
         const fallback = activeCharacter ? [activeCharacter] : [];
         const base = uniqueById(explicit.length > 0 ? explicit : fallback);
 
         if (!activeCharacter || !isMaleLead(activeCharacter) || allowsMaleLeadCrossover) {
-            return base.length > 0 ? base : characters.slice(0, 1);
+            return base.length > 0 ? base : socialScopedCharacters.slice(0, 1);
         }
 
         return base.filter(char => char.id === activeCharacter.id || !isMaleLead(char));
-    }, [characters, activeCharacter, allowsMaleLeadCrossover]);
+    }, [socialScopedCharacters, activeCharacter, allowsMaleLeadCrossover, personaScope.hasLinkedFocus]);
     const socialWorldScopeNote = useMemo(() => {
+        const personaNote = buildPersonaScopePromptNote(personaScope, '朋友圈');
         if (!activeCharacter) return '当前没有明确激活角色；请保持朋友圈内容小范围、低交叉。';
+        const prefix = `${personaNote}\n`;
         if (!isMaleLead(activeCharacter)) {
-            return `当前朋友圈以已激活角色「${activeCharacter.name}」和其相关人物为主；不要默认把未激活角色拉入同一熟人圈。`;
+            return `${prefix}当前朋友圈以已激活角色「${activeCharacter.name}」和其相关人物为主；不要默认把未激活角色拉入同一熟人圈。`;
         }
         if (allowsMaleLeadCrossover) {
-            return '当前已启用五位男主共存/交叉资料包；可以让已激活角色因事件、地点、组织或用户行动自然交叉，但不要默认私交熟络。';
+            return `${prefix}当前已启用五位男主共存/交叉资料包；可以让已激活角色因事件、地点、组织或用户行动自然交叉，但不要默认私交熟络。`;
         }
         const forbiddenNames = characters
             .filter(char => isMaleLead(char) && char.id !== activeCharacter.id)
             .map(char => char.name)
             .join('、');
-        return `当前未启用五位男主共存资料包；朋友圈只把「${activeCharacter.name}」视为当前男主。可以出现他相关的原生 NPC、路人或剧情新增 NPC，但禁止让其他男主${forbiddenNames ? `（${forbiddenNames}）` : ''}发动态、评论或被写成同一熟人圈人物。`;
-    }, [activeCharacter, allowsMaleLeadCrossover, characters]);
+        return `${prefix}当前未启用五位男主共存资料包；朋友圈只把「${activeCharacter.name}」视为当前男主。可以出现他相关的原生 NPC、路人或剧情新增 NPC，但禁止让其他男主${forbiddenNames ? `（${forbiddenNames}）` : ''}发动态、评论或被写成同一熟人圈人物。`;
+    }, [activeCharacter, allowsMaleLeadCrossover, characters, personaScope]);
     const getRelatedParticipantsForPost = (post?: SocialPost | null) => {
         const postChar = post?.charId ? characters.find(char => char.id === post.charId) : undefined;
         const base = uniqueById([postChar, ...socialParticipants].filter(Boolean) as CharacterProfile[]);

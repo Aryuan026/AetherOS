@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useOS } from '../context/OSContext';
 import { AppID, AvatarFramePreset, CharacterProfile, CharacterExportData, UserImpression, MemoryFragment } from '../types';
 import { SlidersHorizontal, SpeakerHigh, Books, BookOpen, Heart } from '@phosphor-icons/react';
@@ -24,6 +24,8 @@ import { formatBondTimeLabelFromMessages } from '../utils/bondTime';
 import AppHeader, { AppHeaderAddButton, AppHeaderIconButton } from '../components/shell/AppHeader';
 import { resolveAvatarFramePreset } from '../utils/avatarFrames';
 import { getDeepSpaceWorldbookIdentityNotice } from '../utils/deepspaceIdentity';
+import { resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import { normalizeUserPersonaProfile } from '../utils/userPersonaMasks';
 
 const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
@@ -73,8 +75,10 @@ const CharacterCard: React.FC<{
     onClick: () => void;
     onSetWanted: (e: React.MouseEvent) => void;
     onDelete: (e: React.MouseEvent) => void;
+    isLinkedToMask?: boolean;
+    onLinkToMask?: (e: React.MouseEvent) => void;
     avatarFramePreset?: AvatarFramePreset;
-}> = ({ char, subtitle, isActive, onClick, onSetWanted, onDelete, avatarFramePreset }) => {
+}> = ({ char, subtitle, isActive, onClick, onSetWanted, onDelete, isLinkedToMask, onLinkToMask, avatarFramePreset }) => {
     const isLockedBuiltIn = Boolean(char.isBuiltIn && char.lockPromptEditing);
 
     return (
@@ -99,6 +103,18 @@ const CharacterCard: React.FC<{
                 <p className="text-xs text-slate-400 truncate mt-1 font-light">
                     {subtitle || char.description || '暂无描述'}
                 </p>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                    {isLinkedToMask ? (
+                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-500">当前面具已链接</span>
+                    ) : onLinkToMask ? (
+                        <button
+                            onClick={onLinkToMask}
+                            className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-500 active:scale-95"
+                        >
+                            加入当前面具
+                        </button>
+                    ) : null}
+                </div>
             </div>
             <button
                 onClick={onSetWanted}
@@ -128,7 +144,7 @@ const CharacterCard: React.FC<{
 };
 
 const Character: React.FC = () => {
-  const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, addCharacter, updateCharacter, deleteCharacter, apiConfig, addToast, userProfile, customThemes, addCustomTheme, worldbooks, lastMsgTimestamp, theme } = useOS();
+  const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, addCharacter, updateCharacter, deleteCharacter, apiConfig, addToast, userProfile, updateUserProfile, customThemes, addCustomTheme, worldbooks, lastMsgTimestamp, theme } = useOS();
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [detailTab, setDetailTab] = useState<'identity' | 'memory' | 'impression'>('identity');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -177,6 +193,44 @@ const Character: React.FC = () => {
   });
   const [bondTimeLabels, setBondTimeLabels] = useState<Record<string, string>>({});
   const builtInCharacterIdsKey = characters.filter(char => char.isBuiltIn).map(char => char.id).join('|');
+  const personaScope = useMemo(() => (
+      resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+  ), [userProfile, characters, activeCharacterId]);
+  const linkedCharacterIdSet = useMemo(() => new Set(personaScope.linkedCharacterIds), [personaScope.linkedCharacterIds]);
+  const directoryCharacters = useMemo(() => (
+      [...characters].sort((a, b) => {
+          const aLinked = linkedCharacterIdSet.has(a.id) ? 1 : 0;
+          const bLinked = linkedCharacterIdSet.has(b.id) ? 1 : 0;
+          if (aLinked !== bLinked) return bLinked - aLinked;
+          if (a.id === activeCharacterId) return -1;
+          if (b.id === activeCharacterId) return 1;
+          return a.name.localeCompare(b.name, 'zh-CN');
+      })
+  ), [characters, linkedCharacterIdSet, activeCharacterId]);
+
+  const handleLinkCharacterToActiveMask = (char: CharacterProfile, e?: React.MouseEvent) => {
+      e?.stopPropagation();
+      if (!personaScope.activeMaskId) {
+          addToast('请先在个人档案中建立一个身份面具', 'info');
+          return;
+      }
+      if (linkedCharacterIdSet.has(char.id)) {
+          addToast(`${char.name} 已经链接到当前面具`, 'info');
+          return;
+      }
+      const normalized = normalizeUserPersonaProfile(userProfile);
+      const nextMasks = (normalized.personaMasks || []).map(mask => (
+          mask.id === personaScope.activeMaskId
+              ? {
+                  ...mask,
+                  linkedCharacterIds: [...new Set([...(mask.linkedCharacterIds || []), char.id])],
+                  updatedAt: Date.now(),
+              }
+              : mask
+      ));
+      updateUserProfile({ personaMasks: nextMasks });
+      addToast(`${char.name} 已加入当前面具关系网`, 'success');
+  };
 
   const handleSetWantedCharacter = (char: CharacterProfile) => {
       if (activeCharacterId === char.id) {
@@ -1026,7 +1080,7 @@ ${isInitialGeneration ? `
            <div className="flex flex-col h-full animate-fade-in">
                <AppHeader
                    title="通讯录"
-                   subtitle={`选择想见的人 · 已保存 ${characters.length} 位`}
+                   subtitle={`已链接 ${personaScope.linkedCharacters.length} 位 · 已保存 ${characters.length} 位`}
                    onBack={closeApp}
                    className="bg-white/60 border-white/40"
                    titleClassName="truncate text-xl font-light tracking-tight text-slate-800"
@@ -1044,13 +1098,20 @@ ${isInitialGeneration ? `
                />
                <input type="file" ref={cardImportRef} className="hidden" accept=".json" onChange={handleImportCard} />
                <div className="flex-1 overflow-y-auto px-5 pt-3 pb-20 no-scrollbar flex flex-col gap-3">
-                   {characters.map(char => (
+                   {personaScope.hasLinkedFocus && (
+                       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[11px] leading-relaxed text-indigo-500">
+                           当前面具「{personaScope.activeMaskLabel || '未命名面具'}」已链接角色会排在前面；未链接角色仍可打开或加入当前面具。
+                       </div>
+                   )}
+                   {directoryCharacters.map(char => (
                        <CharacterCard 
                            key={char.id} 
                            char={char} 
                            avatarFramePreset={resolveAvatarFramePreset(theme, char.avatarFramePresetId)}
                            subtitle={getCharacterSubtitle(char)}
                            isActive={char.id === activeCharacterId}
+                           isLinkedToMask={linkedCharacterIdSet.has(char.id)}
+                           onLinkToMask={(e) => handleLinkCharacterToActiveMask(char, e)}
                            onClick={() => { setEditingId(char.id); setView('detail'); }} 
                            onSetWanted={(e) => {
                                e.stopPropagation();

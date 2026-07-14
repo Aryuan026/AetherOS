@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { CharacterProfile, Message, DateState } from '../types';
@@ -10,7 +10,89 @@ import Modal from '../components/os/Modal';
 import DateSession from '../components/date/DateSession';
 import DateSettings from '../components/date/DateSettings';
 import AppHeader from '../components/shell/AppHeader';
+import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 import { BookOpen } from '@phosphor-icons/react';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import { DATE_EXPERIENCE_BOUNDARY, getBuiltInDateBackgroundForHour, getDateFallbackMood, resolveDateDefaultPortrait } from '../utils/dateExperience';
+import { DateCharacterSelectCard } from '../components/date/DateCharacterSelectCard';
+import { DatePersonaScopeNotice, DateSelectIntro } from '../components/date/DateSelectIntro';
+
+type DateHistorySession = {
+    id: string;
+    date: string;
+    timestamp: number;
+    msgs: Message[];
+    excerpt: string;
+    isFavorite: boolean;
+    anchorMessageId?: number;
+};
+
+const cleanDateHistoryText = (text: string) => (
+    (text || '')
+        .replace(/\[[^\]]*?\]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+);
+
+const cleanDateHistoryLine = (text: string) => (
+    (text || '')
+        .replace(/\[[^\]]*?\]/g, '')
+        .trim()
+);
+
+const getDateHistoryLines = (text: string) => (
+    (text || '')
+        .split(/\n+/)
+        .map(cleanDateHistoryLine)
+        .filter(Boolean)
+);
+
+const isDateHistoryDialogueLine = (text: string) => /^[""\u201C\u300C]/.test(text.trim());
+
+const stripDateHistoryDialogueQuotes = (text: string) => (
+    text
+        .trim()
+        .replace(/^[""\u201C\u300C]\s*/, '')
+        .replace(/\s*[""\u201D\u300D]$/, '')
+        .trim()
+);
+
+const splitUserDateHistoryLine = (text: string) => {
+    const trimmed = text.trim();
+    const match = trimmed.match(/^([（(][^）)]{1,80}[）)])\s*(.*)$/);
+    if (!match) return { action: '', text: trimmed };
+    return { action: match[1], text: match[2].trim() };
+};
+
+const getDateHistoryExcerpt = (msgs: Message[]) => {
+    const preferred = msgs.find(m => m.role === 'assistant' && !m.metadata?.isOpening && cleanDateHistoryText(m.content));
+    const fallback = msgs.find(m => cleanDateHistoryText(m.content));
+    const sourceText = cleanDateHistoryText((preferred || fallback)?.content || '');
+    if (!sourceText) return '这次见面还没留下可读片段。';
+    return sourceText.length > 92 ? `${sourceText.slice(0, 92)}…` : sourceText;
+};
+
+const DATE_PEEK_LOADING_LINES = [
+    '门还没完全推开，里面的声响先轻了一点。',
+    '你在门口停了一下，灯影慢慢稳住。',
+    '空气安静下来，像有人刚好把目光收回。',
+    '脚步声被地面吞掉一点，场景正在成形。',
+];
+
+const DATE_PEEK_READY_LINES = [
+    '可以过去了。',
+    '他在那边，等你靠近。',
+    '这一刻已经安静下来。',
+    '再往前一步，就能进入他的时间里。',
+];
+
+const pickDatePeekLine = (lines: string[], seed: string) => {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+        hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    }
+    return lines[hash % lines.length];
+};
 
 const DateApp: React.FC = () => {
     const { closeApp, characters, activeCharacterId, setActiveCharacterId, apiConfig, addToast, updateCharacter, virtualTime, userProfile, setShellStatusBarVariantOverride } = useOS();
@@ -22,9 +104,13 @@ const DateApp: React.FC = () => {
     
     const [peekStatus, setPeekStatus] = useState<string>('');
     const [peekLoading, setPeekLoading] = useState(false);
+    const [peekCopySeed, setPeekCopySeed] = useState(0);
+    const [showAllDateCharacters, setShowAllDateCharacters] = useState(false);
     
     // History State
-    const [historySessions, setHistorySessions] = useState<{date: string, msgs: Message[]}[]>([]);
+    const [historySessions, setHistorySessions] = useState<DateHistorySession[]>([]);
+    const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
+    const [deleteTargetSession, setDeleteTargetSession] = useState<DateHistorySession | null>(null);
     
     // Resume Logic State
     const [pendingSessionChar, setPendingSessionChar] = useState<CharacterProfile | null>(null);
@@ -39,6 +125,28 @@ const DateApp: React.FC = () => {
     const [editContent, setEditContent] = useState('');
 
     const char = characters.find(c => c.id === activeCharacterId);
+    const peekVisual = useMemo(() => {
+        if (!char) return null;
+        const portrait = resolveDateDefaultPortrait(char);
+        const mood = getDateFallbackMood(char.name, virtualTime.hours);
+        const background = char.dateBackground || getBuiltInDateBackgroundForHour(virtualTime.hours)?.src || '';
+        return { ...portrait, mood, background };
+    }, [char, virtualTime.hours]);
+    const peekLine = useMemo(() => (
+        pickDatePeekLine(
+            peekLoading ? DATE_PEEK_LOADING_LINES : DATE_PEEK_READY_LINES,
+            `${char?.id || 'date'}-${virtualTime.day}-${virtualTime.hours}-${peekCopySeed}-${peekLoading ? 'loading' : 'ready'}`
+        )
+    ), [char?.id, virtualTime.day, virtualTime.hours, peekCopySeed, peekLoading]);
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [userProfile, characters, activeCharacterId]);
+    const dateScopedCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'date' })
+    ), [characters, personaScope]);
+    const visibleDateCharacters = personaScope.hasLinkedFocus && !showAllDateCharacters
+        ? dateScopedCharacters
+        : characters;
 
     useEffect(() => {
         const isImmersiveMode = mode === 'peek' || mode === 'session';
@@ -73,6 +181,10 @@ const DateApp: React.FC = () => {
             setMode('select');
             setPeekStatus('');
         } else if (mode === 'history') {
+            if (selectedHistorySessionId) {
+                setSelectedHistorySessionId(null);
+                return;
+            }
             setMode('select');
         } else closeApp();
     };
@@ -127,17 +239,18 @@ const DateApp: React.FC = () => {
     // --- 关键修复: 进入 Session 时立即归档开场白 ---
     const handleEnterSession = async () => {
         if (!char) return;
+        const usablePeekStatus = peekStatus && !peekStatus.startsWith('(无法感知状态:') ? peekStatus : '';
 
         // 1. 如果有开场白且未保存，立即保存到数据库
         // 这确保了 user 发送第一句话时，AI 能在历史记录里读到这个开场
         // UPDATE: 添加 isOpening 标记，用于区分新会话
-        if (peekStatus && !hasSavedOpening) {
+        if (usablePeekStatus && !hasSavedOpening) {
             try {
                 await DB.saveMessage({
                     charId: char.id,
                     role: 'assistant',
                     type: 'text',
-                    content: peekStatus,
+                    content: usablePeekStatus,
                     metadata: { source: 'date', isOpening: true } // Added Flag
                 });
                 setHasSavedOpening(true);
@@ -156,6 +269,7 @@ const DateApp: React.FC = () => {
         setActiveCharacterId(c.id);
         setMode('peek');
         setPeekLoading(true);
+        setPeekCopySeed(prev => prev + 1);
         setPeekStatus('');
         setHasSavedOpening(false); 
 
@@ -189,6 +303,8 @@ const DateApp: React.FC = () => {
 ### 场景：感知 (Sense Presence)
 当前时间: ${timeStr}
 时间上下文: ${gapHint}
+
+${DATE_EXPERIENCE_BOUNDARY}
 
 ### 任务
 你现在并不在和用户直接对话。用户正在悄悄靠近你所在的地点。
@@ -269,7 +385,9 @@ const DateApp: React.FC = () => {
         const dateEmotions = [...REQUIRED_EMOTIONS, ...(char.customDateSprites || [])];
 
         // Explicitly tell AI about the scene
-        systemPrompt += `### [Visual Novel Mode: 视觉小说脚本模式]
+        systemPrompt += `${DATE_EXPERIENCE_BOUNDARY}
+
+### [Visual Novel Mode: 视觉小说脚本模式]
 你正在与用户进行**面对面**的互动。这不是聊天，是一场真实的见面。
 
 ### 核心规则：一行一念 (One Line per Beat)
@@ -365,7 +483,9 @@ const DateApp: React.FC = () => {
         let systemPrompt = `${ContextBuilder.buildCoreContext(char, userProfile)}${worldlineMemoryR.markdown ? `\n${worldlineMemoryR.markdown}\n` : ''}`;
         const REQUIRED_EMOTIONS_R = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotionsR = [...REQUIRED_EMOTIONS_R, ...(char.customDateSprites || [])];
-        systemPrompt += `### [Visual Novel Mode: 视觉小说脚本模式]
+        systemPrompt += `${DATE_EXPERIENCE_BOUNDARY}
+
+### [Visual Novel Mode: 视觉小说脚本模式]
 你正在与用户进行**面对面**的互动。
 
 ### 格式规则
@@ -415,7 +535,11 @@ const DateApp: React.FC = () => {
         if (ids.length === 0) return;
         await Promise.all(ids.map(id => DB.deleteMessage(id)));
         setDateMessages(prev => prev.filter(m => !ids.includes(m.id)));
-        addToast(`已删除 ${ids.length} 条记录`, 'success');
+    };
+
+    const handleUpdateMessage = async (id: number, content: string) => {
+        await DB.updateMessage(id, content);
+        setDateMessages(prev => prev.map(m => m.id === id ? { ...m, content } : m));
     };
 
     const confirmEditMessage = async () => {
@@ -439,11 +563,29 @@ const DateApp: React.FC = () => {
 
     const openHistory = async (c: CharacterProfile) => {
         setActiveCharacterId(c.id);
+        setSelectedHistorySessionId(null);
+        setDeleteTargetSession(null);
         const msgs = await DB.getMessagesByCharId(c.id);
         // dateMsgs sorted DESCENDING (newest first)
         const dateMsgs = msgs.filter(m => m.metadata?.source === 'date').sort((a, b) => b.timestamp - a.timestamp);
         
-        const sessions: {date: string, msgs: Message[]}[] = [];
+        const sessions: DateHistorySession[] = [];
+        const pushSession = (rawSession: Message[]) => {
+            const chrono = [...rawSession].reverse();
+            const sessionStartMsg = chrono[0];
+            const sessionEndMsg = chrono[chrono.length - 1] || sessionStartMsg;
+            const anchorMsg = chrono.find(m => m.metadata?.isOpening === true) || sessionStartMsg;
+            sessions.push({
+                id: `${anchorMsg?.id || sessionStartMsg?.id || Date.now()}-${sessionEndMsg?.id || ''}`,
+                date: new Date(sessionStartMsg.timestamp).toLocaleString('zh-CN'),
+                timestamp: sessionStartMsg.timestamp,
+                msgs: chrono,
+                excerpt: getDateHistoryExcerpt(chrono),
+                isFavorite: chrono.some(m => m.metadata?.dateFavorite === true),
+                anchorMessageId: anchorMsg?.id,
+            });
+        };
+
         if (dateMsgs.length > 0) {
             // Group by strict time gap (30 mins) OR explicit Opening flag
             let currentSession: Message[] = [dateMsgs[0]];
@@ -461,24 +603,15 @@ const DateApp: React.FC = () => {
                 const splitSincePrevWasOpening = prev.metadata?.isOpening === true;
 
                 if (isTimeBreak || splitSincePrevWasOpening) {
-                    // This session ends. 
-                    // Date label is the Start Time of this session (which is the oldest msg in currentSession)
-                    const sessionStartMsg = currentSession[currentSession.length - 1];
-                    sessions.push({ 
-                        date: new Date(sessionStartMsg.timestamp).toLocaleString(), 
-                        msgs: currentSession.reverse() // Reverse messages to be Chronological (Old->New) inside the bubble
-                    });
+                    // This session ends. Convert from DESC accumulation to chronological display data.
+                    pushSession(currentSession);
                     currentSession = [curr];
                 } else {
                     currentSession.push(curr);
                 }
             }
             // Push final session
-            const sessionStartMsg = currentSession[currentSession.length - 1];
-            sessions.push({ 
-                date: new Date(sessionStartMsg.timestamp).toLocaleString(), 
-                msgs: currentSession.reverse() 
-            });
+            pushSession(currentSession);
         }
         // Do NOT reverse sessions array. We want [NewestSession, OlderSession, OldestSession].
         // Default loop populated them New -> Old.
@@ -486,25 +619,70 @@ const DateApp: React.FC = () => {
         setMode('history');
     };
 
+    const toggleHistoryFavorite = async (session: DateHistorySession) => {
+        const nextFavorite = !session.isFavorite;
+        const anchorId = session.anchorMessageId || session.msgs[0]?.id;
+        if (!anchorId) return;
+        await DB.updateMessageMetadata(anchorId, { dateFavorite: nextFavorite });
+        setHistorySessions(prev => prev.map(item => {
+            if (item.id !== session.id) return item;
+            const nextMsgs = item.msgs.map(msg => (
+                msg.id === anchorId
+                    ? { ...msg, metadata: { ...(msg.metadata || {}), dateFavorite: nextFavorite } }
+                    : msg
+            ));
+            return { ...item, isFavorite: nextFavorite, msgs: nextMsgs };
+        }));
+        addToast(nextFavorite ? '已收藏这次见面' : '已取消收藏', 'success');
+    };
+
+    const confirmDeleteHistorySession = async () => {
+        if (!deleteTargetSession) return;
+        const ids = deleteTargetSession.msgs.map(m => m.id).filter(Boolean);
+        if (ids.length === 0) {
+            setDeleteTargetSession(null);
+            return;
+        }
+        await DB.deleteMessages(ids);
+        const deletingNewestSession = historySessions[0]?.id === deleteTargetSession.id;
+        if (char && deletingNewestSession && char.savedDateState) {
+            updateCharacter(char.id, { savedDateState: undefined });
+        }
+        setHistorySessions(prev => prev.filter(item => item.id !== deleteTargetSession.id));
+        if (selectedHistorySessionId === deleteTargetSession.id) {
+            setSelectedHistorySessionId(null);
+        }
+        setDeleteTargetSession(null);
+        addToast('见面记录已删除', 'success');
+    };
+
     // --- Render ---
 
     if (mode === 'select' || !char) {
         return (
-            <div className="h-full w-full bg-slate-50 flex flex-col font-light">
-                <AppHeader title="选择见面对象" onBack={closeApp} center />
+            <div className="h-full w-full bg-gradient-to-b from-rose-50 via-slate-50 to-white flex flex-col font-light">
+                <AppHeader
+                    title="见面"
+                    subtitle={personaScope.hasLinkedFocus && !showAllDateCharacters ? `日常陪伴 · 当前面具 ${dateScopedCharacters.length} 位` : '日常陪伴 · 轻剧情'}
+                    onBack={closeApp}
+                    center
+                />
+                <DateSelectIntro />
+                {personaScope.hasLinkedFocus && (
+                    <DatePersonaScopeNotice
+                        activeMaskLabel={personaScope.activeMaskLabel}
+                        showAll={showAllDateCharacters}
+                        onToggleShowAll={() => setShowAllDateCharacters(prev => !prev)}
+                    />
+                )}
                 <div className="p-4 grid grid-cols-2 gap-4 overflow-y-auto">
-                    {characters.map(c => (
-                        <div key={c.id} onClick={() => handleCharClick(c)} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 active:scale-95 transition-transform flex flex-col items-center gap-3 relative group">
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); openHistory(c); }}
-                                className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors z-20 active:scale-90"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>
-                            </button>
-                            <img src={c.avatar} className="w-16 h-16 rounded-full object-cover" />
-                            <span className="font-bold text-slate-700">{c.name}</span>
-                            {c.savedDateState && <div className="absolute top-2 left-2 w-2 h-2 bg-green-500 rounded-full animate-pulse" title="有存档"></div>}
-                        </div>
+                    {visibleDateCharacters.map(c => (
+                        <DateCharacterSelectCard
+                            key={c.id}
+                            character={c}
+                            onClick={() => handleCharClick(c)}
+                            onOpenHistory={(e) => { e.stopPropagation(); openHistory(c); }}
+                        />
                     ))}
                 </div>
                 <Modal isOpen={!!pendingSessionChar} title="发现进度" onClose={() => setPendingSessionChar(null)} footer={<div className="flex gap-3 w-full"><button onClick={handleStartNewSession} className="flex-1 py-3 bg-slate-100 rounded-2xl text-slate-600 font-bold">新的见面</button><button onClick={handleResumeSession} className="flex-1 py-3 bg-green-500 text-white rounded-2xl font-bold shadow-lg shadow-green-200">继续上次</button></div>}>
@@ -515,51 +693,260 @@ const DateApp: React.FC = () => {
     }
 
     if (mode === 'history') {
+        const selectedHistorySession = selectedHistorySessionId
+            ? historySessions.find(session => session.id === selectedHistorySessionId) || null
+            : null;
+
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-light">
-                <AppHeader title="见面记录" onBack={handleBack} center />
-                <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-20">
-                    {historySessions.length === 0 ? <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2"><BookOpen size={48} className="opacity-50" /><span className="text-xs">暂无见面记录</span></div> : historySessions.map((session, idx) => (
-                        <div key={idx} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                            <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center"><span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{session.date}</span><span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{session.msgs.length} 句</span></div>
-                            <div className="p-4 space-y-4">
-                                {session.msgs.map(m => {
-                                    const text = (m.content || '').replace(/\[.*?\]/g, '').trim();
-                                    return (
-                                        <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}><div className={`max-w-[90%] text-sm leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'text-slate-500 text-right italic' : 'text-slate-800'}`}>{m.role === 'user' ? <span className="bg-slate-100 px-3 py-2 rounded-xl rounded-tr-none inline-block">{text}</span> : <span>{text || '(无内容)'}</span>}</div></div>
-                                    );
-                                })}
+                <AppHeader
+                    title={selectedHistorySession ? '见面全文' : '见面记录'}
+                    subtitle={selectedHistorySession ? selectedHistorySession.date : '点开记录查看全文'}
+                    onBack={handleBack}
+                    center
+                    titleClassName="truncate text-xl font-bold tracking-wide text-slate-800"
+                />
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-20">
+                    {selectedHistorySession ? (
+                        <div className="space-y-4">
+                            <div className="rounded-3xl border border-white bg-white p-4 shadow-sm">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-[11px] font-bold tracking-[0.16em] text-slate-400 uppercase">Date Record</div>
+                                        <div className="mt-1 text-sm font-bold text-slate-700">{selectedHistorySession.date}</div>
+                                        <div className="mt-1 text-[11px] text-slate-400">{selectedHistorySession.msgs.length} 句 · {selectedHistorySession.isFavorite ? '已收藏' : '未收藏'}</div>
+                                    </div>
+                                    <div className="flex shrink-0 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleHistoryFavorite(selectedHistorySession)}
+                                            className={`h-8 rounded-full px-3 text-[11px] font-bold transition active:scale-95 ${selectedHistorySession.isFavorite ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}
+                                        >
+                                            {selectedHistorySession.isFavorite ? '已收藏' : '收藏'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDeleteTargetSession(selectedHistorySession)}
+                                            className="h-8 rounded-full bg-rose-50 px-3 text-[11px] font-bold text-rose-400 transition active:scale-95"
+                                        >
+                                            删除
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-[28px] shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="p-5 space-y-6">
+                                    {selectedHistorySession.msgs.map(m => {
+                                        const lines = getDateHistoryLines(m.content);
+                                        return (
+                                            <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                                {m.role === 'user' ? (
+                                                    <div className="flex w-full flex-col items-end gap-2">
+                                                        {lines.length === 0 ? (
+                                                            <div className="max-w-[86%] rounded-2xl rounded-tr-md bg-slate-100 px-3.5 py-2.5 text-right text-[13px] leading-6 text-slate-500 italic">(无内容)</div>
+                                                        ) : lines.map((line, lineIndex) => {
+                                                            const userLine = splitUserDateHistoryLine(line);
+                                                            return (
+                                                                <div key={`${m.id}-${lineIndex}`} className="max-w-[86%] rounded-2xl rounded-tr-md bg-slate-100 px-3.5 py-2.5 text-right text-[13px] leading-6 text-slate-500">
+                                                                    {userLine.action && <span className="italic text-slate-400">{userLine.action}</span>}
+                                                                    {userLine.action && userLine.text && <span> </span>}
+                                                                    {userLine.text && <span className="italic">{userLine.text}</span>}
+                                                                    {!userLine.action && !userLine.text && <span className="italic">(无内容)</span>}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-full space-y-3 border-l-2 border-slate-100 pl-4">
+                                                        {lines.length === 0 ? (
+                                                            <p className="text-[14px] leading-7 text-slate-500">(无内容)</p>
+                                                        ) : lines.map((line, lineIndex) => (
+                                                            isDateHistoryDialogueLine(line) ? (
+                                                                <p key={`${m.id}-${lineIndex}`} className="max-w-[86%] rounded-2xl rounded-tl-md bg-slate-50 px-3.5 py-2.5 text-[14px] leading-7 text-slate-600">
+                                                                    {stripDateHistoryDialogueQuotes(line)}
+                                                                </p>
+                                                            ) : (
+                                                                <p key={`${m.id}-${lineIndex}`} className="whitespace-pre-wrap text-[15px] leading-8 tracking-wide text-slate-700">
+                                                                    {line}
+                                                                </p>
+                                                            )
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
-                    ))}
+                    ) : historySessions.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2">
+                            <BookOpen size={48} className="opacity-50" />
+                            <span className="text-xs">暂无见面记录</span>
+                        </div>
+                    ) : (
+                        historySessions.map((session) => (
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                key={session.id}
+                                onClick={() => setSelectedHistorySessionId(session.id)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        setSelectedHistorySessionId(session.id);
+                                    }
+                                }}
+                                className="w-full text-left bg-white rounded-3xl shadow-sm border border-slate-100 p-4 active:scale-[0.99] transition-transform"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="truncate text-xs font-bold tracking-[0.12em] text-slate-500 uppercase">{session.date}</span>
+                                            {session.isFavorite && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-600">收藏</span>}
+                                        </div>
+                                        <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-slate-600">{session.excerpt}</p>
+                                        <div className="mt-3 text-[11px] font-semibold text-slate-300">{session.msgs.length} 句 · 点开查看全文</div>
+                                    </div>
+                                    <div className="flex shrink-0 flex-col gap-2">
+                                        <span className="self-end rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">{session.msgs.length} 句</span>
+                                        <div className="flex gap-1.5">
+                                            <button
+                                                type="button"
+                                                aria-label={session.isFavorite ? '取消收藏见面记录' : '收藏见面记录'}
+                                                onClick={(e) => { e.stopPropagation(); toggleHistoryFavorite(session); }}
+                                                className={`h-8 w-8 rounded-full flex items-center justify-center transition active:scale-95 ${session.isFavorite ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={session.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.8} className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.5a.6.6 0 0 1 1.04 0l2.28 4.62a.6.6 0 0 0 .45.33l5.1.74a.6.6 0 0 1 .33 1.02l-3.69 3.6a.6.6 0 0 0-.17.53l.87 5.08a.6.6 0 0 1-.87.63l-4.56-2.4a.6.6 0 0 0-.56 0l-4.56 2.4a.6.6 0 0 1-.87-.63l.87-5.08a.6.6 0 0 0-.17-.53l-3.69-3.6a.6.6 0 0 1 .33-1.02l5.1-.74a.6.6 0 0 0 .45-.33L11.48 3.5Z" /></svg>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                aria-label="删除见面记录"
+                                                onClick={(e) => { e.stopPropagation(); setDeleteTargetSession(session); }}
+                                                className="h-8 w-8 rounded-full bg-rose-50 text-rose-400 flex items-center justify-center transition active:scale-95"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.35 9m-4.78 0L9.26 9m9.97-3.21c.34.05.68.1 1.02.16M19.23 5.79 18.16 19.67A2.25 2.25 0 0 1 15.92 21H8.08a2.25 2.25 0 0 1-2.24-2.33L4.77 5.79m14.46 0a48.1 48.1 0 0 0-3.48-.34m-12 .34c.34-.06.68-.11 1.02-.16m0 0a48.11 48.11 0 0 1 3.48-.34m7.5 0V4.88c0-1.18-.91-2.16-2.09-2.2a51.96 51.96 0 0 0-3.32 0 2.25 2.25 0 0 0-2.09 2.2v.57m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
+                <Modal isOpen={!!deleteTargetSession} title="删除见面记录" onClose={() => setDeleteTargetSession(null)} footer={<div className="flex gap-3 w-full"><button onClick={() => setDeleteTargetSession(null)} className="flex-1 py-3 bg-slate-100 rounded-2xl text-slate-500 font-bold">取消</button><button onClick={confirmDeleteHistorySession} className="flex-1 py-3 bg-rose-500 text-white rounded-2xl font-bold shadow-lg shadow-rose-100">删除</button></div>}>
+                    <div className="py-4 text-center text-sm leading-relaxed text-slate-500">
+                        确定删除这次见面吗？<br/>
+                        <span className="mt-1 block text-xs text-rose-400">会删除这段见面里的全部文字记录，无法恢复。</span>
+                    </div>
+                </Modal>
             </div>
         );
     }
 
     if (mode === 'peek') {
         return (
-            <div className="h-full w-full bg-black relative flex flex-col font-sans overflow-hidden">
-                <div className="pt-24 flex flex-col items-center z-10 shrink-0">
-                     <div className="text-xs font-mono text-neutral-500 mb-2 tracking-[0.2em] font-medium">{virtualTime.day.toUpperCase()} {formatTime()}</div>
-                     <h2 className="text-4xl font-light text-white tracking-[0.3em] uppercase">{char.name}</h2>
-                </div>
-                {peekLoading && (
-                    <div className="flex-1 flex flex-col items-center justify-center -mt-20 z-10"><div className="w-12 h-[1px] bg-neutral-800 mb-12"></div><div className="w-[1px] h-12 bg-gradient-to-b from-transparent via-white to-transparent animate-pulse mb-6"></div><p className="text-sm font-light text-neutral-500 italic tracking-widest">正在感知...</p></div>
+            <div
+                className="h-full w-full relative flex flex-col font-sans overflow-hidden bg-black"
+                style={{
+                    background: peekVisual?.background
+                        ? '#050505'
+                        : `radial-gradient(circle at 50% 28%, ${peekVisual?.mood.glow || 'rgba(255,255,255,0.24)'} 0%, transparent 32%), linear-gradient(160deg, ${peekVisual?.mood.from || '#111827'} 0%, ${peekVisual?.mood.via || '#1f2937'} 52%, ${peekVisual?.mood.to || '#f5b5c8'} 140%)`,
+                }}
+            >
+                {peekVisual?.background ? (
+                    <div className="absolute inset-0 bg-cover bg-center opacity-80 blur-[0.5px] scale-105" style={{ backgroundImage: `url(${peekVisual.background})` }} />
+                ) : (
+                    <>
+                        <img src={char.avatar} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25 blur-3xl scale-125" />
+                        <div className="absolute inset-0 bg-black/35" />
+                    </>
                 )}
-                {!peekLoading && peekStatus && (
-                    <div className="flex-1 min-h-0 flex flex-col px-8 pb-10 z-10 animate-fade-in">
-                        <div className="flex-1 overflow-y-auto no-scrollbar mb-8 mask-image-gradient pt-8"><div className="min-h-full flex flex-col justify-center"><p className="text-neutral-300 text-[15px] leading-8 tracking-wide text-justify font-light select-none whitespace-pre-wrap">{peekStatus}</p></div></div>
-                        <div className="shrink-0 flex flex-col items-center gap-6">
-                             <div className="w-full flex gap-3">
-                                 {/* 修改这里：调用 handleEnterSession 确保开场白被保存 */}
-                                 <button onClick={handleEnterSession} className="flex-1 h-14 bg-white text-black rounded-full font-bold tracking-[0.1em] text-sm shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95 transition-transform hover:bg-neutral-200">走过去 (Approach)</button>
-                                 <button onClick={() => startPeek(char)} className="w-14 h-14 bg-neutral-800 text-white rounded-full flex items-center justify-center border border-neutral-700 shadow-lg active:scale-90 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg></button>
-                             </div>
-                             <div className="flex flex-col items-center gap-3 text-[10px] text-neutral-600 font-medium tracking-wider"><button onClick={() => { setPreviousMode('peek'); setMode('settings'); }} className="hover:text-neutral-400 transition-colors">布置场景 / 设定立绘</button><button onClick={handleBack} className="hover:text-neutral-400 transition-colors">悄悄离开</button></div>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.18)_54%,rgba(0,0,0,0.72)_100%)]" />
+
+                <div className="relative z-10 px-7" style={{ paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
+                    <div className="flex items-center justify-between">
+                        <button onClick={handleBack} className="h-10 w-10 rounded-full bg-black/25 text-white/80 backdrop-blur-md border border-white/10 active:scale-95">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="mx-auto h-5 w-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+                        </button>
+                        <div className="text-right">
+                            <div className="text-[10px] font-mono tracking-[0.24em] text-white/40">{virtualTime.day.toUpperCase()} {formatTime()}</div>
+                            <div className="mt-1 text-xs tracking-[0.18em] text-white/60">DAILY MEET</div>
                         </div>
                     </div>
-                )}
+                </div>
+
+                <div className="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-end px-7 pb-8">
+                    <div className="absolute inset-x-0 bottom-[340px] top-24 flex items-end justify-center pointer-events-none">
+                        {peekVisual?.hasDedicatedPortrait && peekVisual.portrait ? (
+                            <img
+                                src={peekVisual.portrait}
+                                alt={char.name}
+                                className="max-h-full max-w-[92%] object-contain drop-shadow-[0_24px_44px_rgba(0,0,0,0.52)] animate-fade-in"
+                            />
+                        ) : (
+                            <div className="mb-2 flex flex-col items-center animate-fade-in">
+                                <div className="relative h-36 w-36">
+                                    <div className="absolute inset-0 rounded-full blur-2xl opacity-70" style={{ backgroundColor: peekVisual?.mood.glow || 'rgba(255,255,255,0.35)' }} />
+                                    <div className="absolute inset-3 rounded-full border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl" />
+                                    <img src={char.avatar} alt={char.name} className="absolute inset-6 h-24 w-24 rounded-full object-cover border border-white/30 shadow-xl" />
+                                </div>
+                                <div className="mt-4 rounded-full border border-white/15 bg-black/25 px-4 py-1.5 text-xs font-bold tracking-[0.18em] text-white/70 backdrop-blur-md">
+                                    {char.name}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="w-full max-w-lg rounded-[28px] border border-white/12 bg-black/48 p-5 shadow-2xl backdrop-blur-xl animate-slide-up">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                            <div>
+                                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/40">Presence</div>
+                                <div className="mt-1 text-lg font-bold tracking-tight text-white">{char.name}</div>
+                            </div>
+                            {peekLoading && <div className="h-2 w-2 rounded-full bg-white/70 animate-pulse" />}
+                        </div>
+
+                        <div className="space-y-3 py-2">
+                            <p className="text-[13px] leading-relaxed tracking-wide text-white/70">
+                                {peekLine}
+                            </p>
+                            {peekLoading && (
+                                <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/10">
+                                    <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-white/25 to-white/10" />
+                                    <div className="date-presence-flow absolute inset-y-0 left-0 w-1/3 rounded-full bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+                                </div>
+                            )}
+                        </div>
+
+                        {!peekLoading && peekStatus.startsWith('(无法感知状态:') && (
+                            <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+                                当前开场生成失败，可重试，或先走过去进入空场。
+                            </p>
+                        )}
+
+                        <div className="mt-5 flex gap-3">
+                            <button
+                                onClick={handleEnterSession}
+                                disabled={peekLoading}
+                                className="h-12 flex-1 rounded-full bg-white text-sm font-bold tracking-[0.16em] text-black shadow-[0_12px_30px_rgba(255,255,255,0.16)] transition-transform active:scale-95 disabled:opacity-45"
+                            >
+                                走过去
+                            </button>
+                            <button
+                                onClick={() => startPeek(char)}
+                                disabled={peekLoading}
+                                className="h-12 w-12 rounded-full border border-white/15 bg-white/10 text-white/80 backdrop-blur-md active:scale-95 disabled:opacity-45"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="mx-auto h-5 w-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                            </button>
+                        </div>
+                        <div className="mt-4 flex justify-center gap-5 text-[10px] font-medium tracking-[0.16em] text-white/40">
+                            <button onClick={() => { setPreviousMode('peek'); setMode('settings'); }} className="hover:text-white/70 transition-colors">布置场景 / 设定立绘</button>
+                            <button onClick={handleBack} className="hover:text-white/70 transition-colors">悄悄离开</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -575,7 +962,7 @@ const DateApp: React.FC = () => {
                     char={char}
                     userProfile={userProfile}
                     messages={dateMessages}
-                    peekStatus={peekStatus}
+                    peekStatus={peekStatus.startsWith('(无法感知状态:') ? '' : peekStatus}
                     initialState={char.savedDateState}
                     onSendMessage={handleSendMessage}
                     onReroll={handleReroll}
@@ -583,6 +970,7 @@ const DateApp: React.FC = () => {
                     onEditMessage={(msg) => { setEditTargetMsg(msg); setEditContent(msg.content); setIsEditModalOpen(true); }}
                     onDeleteMessage={handleDeleteMessage}
                     onDeleteMessages={handleDeleteMessages}
+                    onUpdateMessage={handleUpdateMessage}
                     onSettings={() => {}} // Removed parent state change, DateSession handles it internally now
                 />
                 

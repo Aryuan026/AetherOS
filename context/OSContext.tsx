@@ -16,6 +16,7 @@ import {
 import { normalizePublicAssetUrl } from '../utils/publicAssets';
 import { useCompanionWakeupRuntime } from '../hooks/useCompanionWakeupRuntime';
 import { DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, DEEPSPACE_USER_CIRCLE_WORLDBOOK_ID } from '../utils/deepspaceIdentity';
+import { mergeUserProfileWithMaskUpdate, normalizeUserPersonaProfile } from '../utils/userPersonaMasks';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 
@@ -252,14 +253,14 @@ const generateAvatar = (seed: string) => {
     return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23${color}"/><text x="50" y="55" font-family="sans-serif" font-weight="bold" font-size="50" text-anchor="middle" dy=".3em" fill="white" opacity="0.9">${letter}</text></svg>`;
 };
 
-const defaultUserProfile: UserProfile = {
+const defaultUserProfile: UserProfile = normalizeUserPersonaProfile({
     name: 'User',
     avatar: generateAvatar('User'),
     callPortrait: undefined,
     bio: 'No description yet.',
     deepspaceIdentityMode: DEFAULT_DEEPSPACE_USER_IDENTITY_MODE,
     deepspaceIdentityNote: '',
-};
+});
 
 const LEGACY_CARD_TESTER_ID = 'builtin-card-tester';
 const BUILT_IN_CHARACTER_VERSION = 17;
@@ -1641,7 +1642,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setNovels(dbNovels);
         setSongs(dbSongs);
         setCustomThemes(dbThemes);
-        if (dbUser) setUserProfile(dbUser);
+        if (dbUser) setUserProfile(normalizeUserPersonaProfile(dbUser));
 
       } catch (err) {
         console.error('Data init failed:', err);
@@ -2207,7 +2208,13 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       await DB.deleteSong(id);
   };
 
-  const updateUserProfile = async (updates: Partial<UserProfile>) => { setUserProfile(prev => { const next = { ...prev, ...updates }; DB.saveUserProfile(next); return next; }); };
+  const updateUserProfile = async (updates: Partial<UserProfile>) => {
+      setUserProfile(prev => {
+          const next = mergeUserProfileWithMaskUpdate(prev, updates);
+          DB.saveUserProfile(next);
+          return next;
+      });
+  };
   const addCustomTheme = async (theme: ChatTheme) => { setCustomThemes(prev => { const exists = prev.find(t => t.id === theme.id); if (exists) return prev.map(t => t.id === theme.id ? theme : t); return [...prev, theme]; }); await DB.saveTheme(theme); };
   const removeCustomTheme = async (id: string) => { setCustomThemes(prev => prev.filter(t => t.id !== id)); await DB.deleteTheme(id); };
   const setCustomIcon = async (appId: string, iconUrl: string | undefined) => { setCustomIcons(prev => { const next = { ...prev }; if (iconUrl) next[appId] = iconUrl; else delete next[appId]; return next; }); if (iconUrl) { await DB.saveAsset(`icon_${appId}`, iconUrl); } else { await DB.deleteAsset(`icon_${appId}`); } };
@@ -2772,7 +2779,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           if (chars.length > 0) setCharacters(normalizeCharactersForState(chars));
           if (groupsList.length > 0) setGroups(groupsList);
           if (themes.length > 0) setCustomThemes(themes);
-          if (user) setUserProfile(user);
+          if (user) setUserProfile(normalizeUserPersonaProfile(user));
           if (books.length > 0) setWorldbooks(books);
           if (novelList.length > 0) setNovels(novelList);
           if (songList.length > 0) setSongs(songList);

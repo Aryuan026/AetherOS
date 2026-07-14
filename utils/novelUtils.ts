@@ -1,6 +1,7 @@
 
 import { CharacterProfile, NovelBook, NovelSegment, UserProfile } from '../types';
 import { ContextBuilder } from './context';
+import { formatNarrativeDirectivesForPrompt } from './narrativeBoundaries';
 import { safeResponseJson } from './safeApi';
 
 // --- Visual Themes ---
@@ -490,12 +491,15 @@ export const buildPrompt = (
     const fewShot = getFewShotExamples(char);
     const extractedTaboos = extractWritingTaboos(char); 
     const protagonistContext = activeBook?.protagonists.map(p => `- ${p.name} (${p.role}): ${p.description}`).join('\n') || '无';
+    const narrativeDirectives = formatNarrativeDirectivesForPrompt(activeBook?.directives || []);
     
     const bookInfo = `
 小说：《${activeBook?.title}》
 世界观：${activeBook?.worldSetting}
 主要角色：
 ${protagonistContext}
+悬挂指令：
+${narrativeDirectives}
 `;
     
     const systemPrompt = `

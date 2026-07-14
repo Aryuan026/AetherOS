@@ -8,6 +8,7 @@ import {
     BankTransaction, SavingsGoal, BankFullState, DollhouseState, SongSheet, QuizSession, GuidebookSession,
     LifeSimState, CompanionWakeupRule, CompanionWakeupLog
 } from '../types';
+import { normalizeUserPersonaProfile } from './userPersonaMasks';
 
 const DB_NAME = 'AetherOS_Data';
 const DB_VERSION = 40; // Bumped for companion wakeups (主动来信)
@@ -998,7 +999,7 @@ export const DB = {
   saveUserProfile: async (profile: UserProfile): Promise<void> => {
       const db = await openDB();
       const transaction = db.transaction(STORE_USER, 'readwrite');
-      transaction.objectStore(STORE_USER).put({ ...profile, id: 'me' });
+      transaction.objectStore(STORE_USER).put({ ...normalizeUserPersonaProfile(profile), id: 'me' });
   },
 
   getUserProfile: async (): Promise<UserProfile | null> => {
@@ -1010,7 +1011,7 @@ export const DB = {
           request.onsuccess = () => {
               if (request.result) {
                   const { id, ...profile } = request.result;
-                  resolve(profile as UserProfile);
+                  resolve(normalizeUserPersonaProfile(profile as UserProfile));
               } else {
                   resolve(null);
               }
@@ -1469,12 +1470,9 @@ export const DB = {
           getAllFromStore(STORE_LIFE_SIM),
       ]);
 
-      const userProfile = userProfiles.length > 0 ? {
-          name: userProfiles[0].name,
-          avatar: userProfiles[0].avatar,
-          callPortrait: userProfiles[0].callPortrait,
-          bio: userProfiles[0].bio
-      } : undefined;
+      const userProfile = userProfiles.length > 0
+          ? normalizeUserPersonaProfile(userProfiles[0] as UserProfile)
+          : undefined;
 
       const mainState = bankData.find((d: any) => d.id === 'main_state');
       const dollhouseRecord = bankData.find((d: any) => d.id === 'dollhouse_state');
@@ -1640,7 +1638,7 @@ export const DB = {
           if (availableStores.includes(STORE_USER)) {
               const store = tx.objectStore(STORE_USER);
               store.clear();
-              store.put({ ...data.userProfile, id: 'me' });
+              store.put({ ...normalizeUserPersonaProfile(data.userProfile), id: 'me' });
           }
       }
 

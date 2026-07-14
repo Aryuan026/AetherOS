@@ -1,5 +1,203 @@
 # AetherOS Progress
 
+## 2026-07-13 User Persona Mask Frame
+
+- done:
+  - Held the narrative experience UI work before adding the StoryDesk, because
+    multi-save identity routing must exist first.
+  - Added mask-aware user profile types: `UserPersonaMask`,
+    `UserProgressBundle`, progress-surface policy, active mask ID, and active
+    progress-bundle ID.
+  - Added `utils/userPersonaMasks.ts` to migrate legacy single user profiles
+    into a default mask, switch masks, mirror the active mask onto legacy
+    top-level `userProfile` fields, and keep edits synchronized back into the
+    active mask.
+  - Updated `OSContext` so loading, importing, and editing the user profile all
+    normalize through the mask layer.
+  - Updated IndexedDB user-profile save/load/export/import so DeepSpace
+    identity fields, persona masks, and progress bundles are preserved.
+  - Reworked `个人档案` into a two-page mask flow: the first page lists masks for
+    create/switch/delete, and the second page edits one mask with an explicit
+    save button.
+  - Mask rows now show the mask label, user name, recent-use time, and linked
+    character avatars/names as switching context.
+  - Added `linkedCharacterIds` and `lastUsedAt` to user persona masks for route
+    identification and future story/date/social scoping.
+  - Added `custom_world` as a non-DeepSpace identity mode so users importing
+    unrelated worldbooks or original character cards do not get forced into
+    DeepSpace hunter/protagonist assumptions.
+  - Added `utils/personaRouteScope.ts` as the shared linked-character scope
+    helper for route-focused surfaces.
+  - Connected SocialApp to the active mask's linked-character scope, so
+    generated social participants, comments, and delayed user-post replies use
+    linked characters when the mask has them.
+  - Connected Character directory to the same scope as a linked-first management
+    surface, including an “add to current mask” action for unlinked characters.
+  - Connected Date and Call role pickers to linked-only-by-default filtering
+    with visible show-all toggles.
+  - Connected GroupChat creation to linked-only-by-default member candidates
+    with a visible show-all toggle.
+  - Updated `见面` UI and prompts to present it as daily companionship /
+    light-plot meeting, with explicit guardrails against surprise mainline
+    escalation.
+  - Updated `特别时光` lobby to present it as calendar/timebook keepsake
+    capsules, and scoped event character selection through the active persona
+    mask linked-character network.
+  - Extracted the newly touched `见面` and `特别时光` rules/UI into规范模块:
+    `utils/dateExperience.ts`, `components/date/DateSelectIntro.tsx`,
+    `components/date/DateCharacterSelectCard.tsx`,
+    `utils/specialMoments.ts`, and `components/special-moments/*`.
+  - Fixed the `见面` linked-scope toggle placement by moving “显示全部 /
+    只看链接” from the centered header right slot into the content notice, so it
+    no longer collapses vertically beside the title.
+  - Fixed `见面` scene auto-save so implicit unmount/background saves persist to
+    IndexedDB without calling the explicit exit route, avoiding the “走过去 →
+    进度已保存 → 返回选择页” failure path.
+  - Reworded the `见面` intro copy away from meta product labels and toward a
+    softer daily-date invitation.
+  - Reworked the `见面` approach flow from a black “正在感知” page into a
+    presence-first waiting scene: when a portrait/background exists it is shown
+    immediately, and self-insert/original characters without date assets fall
+    back to an avatar-based mood card rather than a black screen.
+  - Raised the avatar fallback placement so the character presence reads as
+    standing in the scene rather than being hidden behind the action card.
+  - Added dawn/day/dusk/night virtual-time lighting palettes for the no-asset
+    presence fallback, so custom characters do not stay in one permanent night
+    ambience.
+  - Promoted the generated cafe/lounge background set into built-in date
+    grounding assets under `public/assets/aetheros/date-backgrounds/`, and wired
+    `见面` to use the time-matched built-in backdrop automatically when a
+    character has no custom `dateBackground`.
+  - Added built-in backdrop selection to `场景布置`: users can fix one backdrop
+    manually or return to “按时间自动”.
+  - Tuned the `见面` waiting card so generated opening prose no longer appears
+    before approach; the card keeps a short immersive status line and a
+    full-width moving light strip while generation is pending.
+  - Split `见面` visual playback semantics so narration/action/environment beats
+    render as floating scene text, while quoted speech renders in the bottom
+    character dialogue box.
+  - Repositioned visual narration beats to the same lower golden-area card
+    rhythm as the waiting scene.
+  - Tightened `见面` visual-scene safe zones: lowered and compacted the floating
+    control row, moved avatar-only presence fallback to a high golden-ratio
+    position, capped scene text cards, and made them lift when the input bar is
+    open.
+  - Downgraded the long-text date page into a reading/record mode by preventing
+    full-page taps from opening the input box, and softened the input copy from
+    Q&A language to “写下动作或轻声回应”.
+  - Reduced the long-text reading page typography and increased its top
+    breathing room so it no longer crowds the status/header controls; added a
+    top scrim so text no longer scrolls visibly underneath the toolbar.
+  - Slimmed the `见面` input bar and send button so the composition stays closer
+    to a visual scene than a chat composer.
+  - Changed visual-scene playback completion from the old replay/toast behavior
+    to automatically opening the compact input bar, making the end of a beat
+    read as “轮到用户回应”.
+  - Restored `见面全文` readability by preserving assistant line breaks/scene
+    beats in the detail page while still hiding parser emotion tags.
+  - Fixed `见面全文` speaker formatting so quoted assistant lines render as
+    character speech, while user messages such as `（动作）文字` remain user-side
+    action/reply entries even without strict quote syntax.
+  - Removed the explanatory “适合吃饭、散步……” product copy from the `见面`
+    intro card.
+  - Replaced fixed waiting/ready text in the `见面` approach card with rotating
+    short presence lines, reducing repeated system-like phrasing.
+  - Tightened `场景布置` typography for save/add/create/URL controls so the
+    settings page follows the newer compact UI rhythm.
+  - Reworked the long-text page `管理` action from raw message-level selection
+    into visible segment-level selection. Assistant paragraphs can now be
+    deleted by updating the stored message content; fully selected/user units
+    still delete the whole message record.
+  - Reworked `见面记录` from full-text waterfall cards into a compact record
+    list with drill-in detail pages, plus list-level favorite/delete actions for
+    cleaning short test sessions.
+  - Documented the distinction between directory surfaces (linked first, all
+    reachable) and experience/generation surfaces (linked-only by default).
+  - Documented the code and product contract in
+    `docs/USER_PERSONA_MASKS.md`, `REQUIREMENTS.md`, and `SCHEMA.md`.
+
+- next:
+  - Attach future narrative directives to `activeProgressBundleId`.
+  - Make Novel/StoryDesk filter pending directives by progress bundle before
+    building mainline/IF UI.
+  - Split heavy mainline travel into a future `世界旅行` surface with timeline
+    summaries, rather than continuing to overload `见面`.
+  - Later, add bundle metadata to date summaries, guidebook insights, special
+    moments, and social posts one surface at a time.
+  - Keep chat history migration/filtering as a later explicit slice; do not
+    silently move old messages when switching masks.
+
+- verified:
+  - `git diff --check` passed.
+  - `npm run verify:health` passed.
+  - Confirmed the canonical verification frontend still responds at
+    `http://127.0.0.1:5174/`; it was not restarted or stopped during publish
+    prep.
+
+## 2026-07-13 Narrative Experience Boundary Audit
+
+- done:
+  - Audited `见面`, `攻略本`, `特别时光`, `剧情推演 / 小说生成`, `查手机`,
+    `TRPG`, and `都市人生` against the planned mainline / IF-line / date
+    experience workflow.
+  - Confirmed `见面` already reads worldline memory through `meet_scene` and
+    `date_scene`, making it the best current surface for embodied
+    date/meeting play.
+  - Confirmed `攻略本` is character-private user-understanding material, not a
+    world/canon fact writer.
+  - Confirmed `特别时光` is a keepsake-event capsule and should only promote to
+    timebook/mainline after user action.
+  - Confirmed `查手机` should not be reused as `咨询台` because it creates
+    character-phone evidence and can write generated records into system
+    messages.
+  - Added `NarrativeDirective` and related lane/memory-policy types for pending
+    mainline hooks, IF-line dream material, keepsakes, user insight, sandbox
+    material, and supporting evidence.
+  - Added `utils/narrativeBoundaries.ts` as the shared boundary map and helper
+    layer for pending mainline directives, IF dream directives, and Novel prompt
+    formatting.
+  - Added optional `NovelBook.directives` so future accepted consultation seeds
+    can be attached to a story project without an IndexedDB migration.
+  - Updated the Novel prompt builder so pending directives are visible to
+    writing generation when present, while IF-line directives are labeled as
+    dream/branch material rather than mainline facts.
+  - Added `docs/NARRATIVE_EXPERIENCE_BOUNDARIES.md` and documented the contract
+    in `REQUIREMENTS.md` and `SCHEMA.md`.
+
+- next:
+  - Build a small `剧情咨询台 / StoryDesk` surface that turns user-approved
+    story seeds into `NarrativeDirective` rows.
+  - Show pending directives inside `NovelApp`, then add activate / played /
+    archive controls before connecting Date completion summaries to mainline
+    memory.
+  - Gate TRPG archive behavior before reusing it for IF lines, because the
+    current archive path writes directly into `char.memories`.
+
+## 2026-07-13 Study Room Extraction Audit
+
+- done:
+  - Audited `书房` as a local PDF-to-course study surface rather than a complete
+    co-reading room.
+  - Added `utils/studyRoom.ts` for shared study constants, API readiness checks,
+    chapter source selection, course chapter normalization, quiz normalization,
+    and safe score math.
+  - Added `utils/studyPrompts.ts` for curriculum, lecture, Q&A, quiz, quiz
+    review, quiz follow-up, and teaching-memory prompts.
+  - Replaced brittle course/quiz JSON parsing with shared tolerant JSON
+    extraction.
+  - Added PDF size guard, empty outline fallback, empty quiz guard, safe
+    teaching-memory failure handling, and correct return routing from historical
+    practice-book quizzes.
+  - Added `docs/STUDY_ROOM_REVIEW.md` to record current functionality, known
+    limits, and AsherieSystem mobile co-reading reference shape.
+  - Documented the study-room contract in `REQUIREMENTS.md` and `SCHEMA.md`.
+
+- next:
+  - Human-check PDF import, classroom teaching, quiz generation, practice-book
+    review return, and cached lesson reopening on the fixed frontend.
+  - Keep EPUB/TXT shared reading, annotations, mark-read, and TTS as HOLD until
+    the main plot-simulation surface is stable.
+
 ## 2026-07-13 Call Opening Scene Anchors
 
 - done:

@@ -20,6 +20,7 @@ import { CharacterProfile } from '../types';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { SPECIAL_MOMENT_PROMPT_BOUNDARY } from '../utils/specialMoments';
 
 // ============================================================
 // 美术资产配置（用户填入实际 PNG URL 后生效）
@@ -643,6 +644,8 @@ export const WhiteDaySession: React.FC<WhiteDaySessionProps> = ({ charId, onClos
             const prompt = `### 特别活动：白色情人节默契测验 (2026.3.14)
 
 今天是白色情人节。这不是一道普通的考题——这七道题，是你用另一种方式说出那些平时说不出口的话。
+
+${SPECIAL_MOMENT_PROMPT_BOUNDARY}
 
 你的任务不只是"考考 ${userProfile.name} 了不了解你"，而是用这七道题，一层一层地让 TA 真正看见你：你的个性，你的内心，你对 TA 的爱意，以及你多么希望 TA 真正懂你——不是把你当作一个只会既定回应的存在，而是懂得你有你完全属于自己的那一部分。
 

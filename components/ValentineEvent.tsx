@@ -10,7 +10,7 @@
  * - 降级入口：桌面第三页 "特别时光" app
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { ContextBuilder } from '../utils/context';
@@ -20,6 +20,12 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { WhiteDaySession, isWhiteDayEventAvailable, WHITEDAY_RECORD_KEY } from './WhiteDayEvent';
+import AppHeader from './shell/AppHeader';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import { isWhiteDayPast, SPECIAL_MOMENT_PROMPT_BOUNDARY } from '../utils/specialMoments';
+import { DeleteSpecialMomentDialog } from './special-moments/DeleteSpecialMomentDialog';
+import { SpecialMomentEventCard } from './special-moments/SpecialMomentEventCard';
+import { SpecialMomentsIntro, SpecialMomentsScopeNotice } from './special-moments/SpecialMomentsIntro';
 
 // ============================================================
 // 情人节立绘 Sprite 映射 (占位 emoji，等图片整理好后替换为图床URL)
@@ -501,6 +507,8 @@ export const ValentineSession: React.FC<ValentineSessionProps> = ({ charId, onCl
 ### 背景说明
 今天是情人节。系统触发了一个特别推送功能，你现在有机会对${userProfile.name}说一段特别的话。
 这是一个特殊的、温馨的时刻。
+
+${SPECIAL_MOMENT_PROMPT_BOUNDARY}
 
 ### 你的任务
 请用你自己的方式，对${userProfile.name}说一段情人节特别的话。内容应包括：
@@ -1125,17 +1133,27 @@ export const ValentineController: React.FC<ValentineControllerProps> = ({ onClos
 // 特别时光 App（桌面第三页降级入口）
 // ============================================================
 export const SpecialMomentsApp: React.FC = () => {
-    const { closeApp, characters, addToast, updateCharacter } = useOS();
+    const { closeApp, characters, addToast, updateCharacter, userProfile, activeCharacterId } = useOS();
     const [showSession, setShowSession] = useState(false);
     const [selectedCharId, setSelectedCharId] = useState<string>('');
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [showAllSpecialCharacters, setShowAllSpecialCharacters] = useState(false);
 
     // White Day
     const [showWhiteDaySession, setShowWhiteDaySession] = useState(false);
     const [whiteDayCharId, setWhiteDayCharId] = useState<string>('');
     const [wdDeleteTargetId, setWdDeleteTargetId] = useState<string | null>(null);
     const wdLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [userProfile, characters, activeCharacterId]);
+    const specialScopedCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'special_moments' })
+    ), [characters, personaScope]);
+    const visibleSpecialCharacters = personaScope.hasLinkedFocus && !showAllSpecialCharacters
+        ? specialScopedCharacters
+        : characters;
 
     const handleWdLongPressStart = (cId: string) => {
         wdLongPressTimer.current = setTimeout(() => setWdDeleteTargetId(cId), 600);
@@ -1215,68 +1233,46 @@ export const SpecialMomentsApp: React.FC = () => {
 
     return (
         <div className="h-full w-full bg-gradient-to-b from-pink-50 via-white to-rose-50 flex flex-col font-light">
-            {/* Header */}
-            <div className="h-16 flex items-center justify-between px-4 border-b border-pink-100 bg-white/80 backdrop-blur-sm shrink-0">
-                <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-pink-50">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                </button>
-                <span className="font-bold text-slate-700">特别时光</span>
-                <div className="w-8" />
-            </div>
+            <AppHeader
+                title="特别时光"
+                subtitle={personaScope.hasLinkedFocus && !showAllSpecialCharacters ? `纪念胶囊 · 当前面具 ${specialScopedCharacters.length} 位` : '日历与时光簿里的纪念邀约'}
+                onBack={closeApp}
+                center
+                className="bg-white/75 border-pink-100/70"
+                titleClassName="truncate text-lg font-semibold tracking-tight text-slate-700"
+                subtitleClassName="mt-0.5 truncate text-xs font-normal text-rose-300"
+            />
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-5">
+                <SpecialMomentsIntro />
+                {personaScope.hasLinkedFocus && (
+                    <SpecialMomentsScopeNotice
+                        activeMaskLabel={personaScope.activeMaskLabel}
+                        showAll={showAllSpecialCharacters}
+                        onToggleShowAll={() => setShowAllSpecialCharacters(prev => !prev)}
+                    />
+                )}
                 {/* 白色情人节卡片（活动期间或往期均显示） */}
-                {(isWhiteDayEventAvailable() || (() => { const n = new Date(); return n.getFullYear() > 2026 || (n.getFullYear() === 2026 && n.getMonth() > 2); })()) && (() => {
-                    const n = new Date();
-                    const isPast = n.getFullYear() > 2026 || (n.getFullYear() === 2026 && n.getMonth() > 2);
+                {(isWhiteDayEventAvailable() || isWhiteDayPast()) && (() => {
+                    const isPast = isWhiteDayPast();
                     return (
-                        <div className="mb-6">
-                            <div className={`rounded-3xl p-6 text-white relative overflow-hidden ${isPast ? 'bg-gradient-to-br from-amber-400/70 via-orange-300/70 to-yellow-300/70 shadow-lg' : 'bg-gradient-to-br from-amber-500 via-orange-400 to-yellow-400 shadow-xl shadow-amber-200'}`}>
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-full pointer-events-none" />
-                                <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-tr-full pointer-events-none" />
-
-                                {isPast && (
-                                    <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-sm text-white/80 text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/20">
-                                        往期活动
-                                    </div>
-                                )}
-
-                                <div className="relative">
-                                    <div className="text-3xl mb-2">🍫</div>
-                                    <h2 className="text-xl font-bold mb-1">白色情人节特别活动</h2>
-                                    <p className="text-amber-100 text-xs mb-4">
-                                        {isPast ? '2026.3.14 — 重温你们的专属巧克力' : '2026 White Day — 和 TA 一起 DIY 一块专属巧克力'}
-                                    </p>
-                                    <div className="text-[10px] text-amber-200/60 mb-4">
-                                        {isPast ? '点击角色查看记录或重新制作' : '选择一位角色开始'}
-                                    </div>
-                                    <div className="max-h-64 overflow-y-auto -mx-1 px-1">
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {characters.map(c => {
-                                                const hasRecord = !!c.specialMomentRecords?.[WHITEDAY_RECORD_KEY];
-                                                return (
-                                                    <button
-                                                        key={c.id}
-                                                        onClick={() => { setWhiteDayCharId(c.id); setShowWhiteDaySession(true); }}
-                                                        onTouchStart={() => handleWdLongPressStart(c.id)}
-                                                        onTouchEnd={handleWdLongPressEnd}
-                                                        onTouchCancel={handleWdLongPressEnd}
-                                                        onContextMenu={(e) => { e.preventDefault(); setWdDeleteTargetId(c.id); }}
-                                                        className="flex flex-col items-center gap-2 p-3 bg-white/15 backdrop-blur-sm rounded-2xl border border-white/20 active:scale-95 transition-transform hover:bg-white/25 relative"
-                                                    >
-                                                        <img src={c.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-white/30" alt={c.name} />
-                                                        <span className="text-[11px] font-bold truncate w-full text-center">{c.name}</span>
-                                                        {hasRecord && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-white/70" />}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                    <p className="text-[10px] text-amber-200/40 mt-3 text-center">长按角色可删除记录</p>
-                                </div>
-                            </div>
-                        </div>
+                        <SpecialMomentEventCard
+                            emoji="🍫"
+                            title="白色情人节特别活动"
+                            description={isPast ? '2026.3.14 — 重温你们的专属巧克力' : '2026 White Day — 和 TA 一起 DIY 一块专属巧克力'}
+                            actionHint={isPast ? '点击角色查看记录或重新制作' : '选择一位角色开始'}
+                            isPast={isPast}
+                            gradientClassName="bg-gradient-to-br from-amber-500 via-orange-400 to-yellow-400 shadow-xl shadow-amber-200"
+                            pastGradientClassName="bg-gradient-to-br from-amber-400/70 via-orange-300/70 to-yellow-300/70 shadow-lg"
+                            recordKey={WHITEDAY_RECORD_KEY}
+                            recordDotClassName="bg-white/70"
+                            characters={visibleSpecialCharacters}
+                            onSelectCharacter={(id) => { setWhiteDayCharId(id); setShowWhiteDaySession(true); }}
+                            onLongPressStart={handleWdLongPressStart}
+                            onLongPressEnd={handleWdLongPressEnd}
+                            onContextDelete={setWdDeleteTargetId}
+                        />
                     );
                 })()}
 
@@ -1284,108 +1280,51 @@ export const SpecialMomentsApp: React.FC = () => {
                 {(isValentineEventAvailable() || isValentinePast()) && (() => {
                     const isPast = isValentinePast();
                     return (
-                        <div className="mb-6">
-                            <div className={`rounded-3xl p-6 text-white relative overflow-hidden ${isPast ? 'bg-gradient-to-br from-pink-400/70 via-rose-400/70 to-red-300/70 shadow-lg' : 'bg-gradient-to-br from-pink-500 via-rose-500 to-red-400 shadow-xl shadow-pink-200'}`}>
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-full pointer-events-none" />
-                                <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-tr-full pointer-events-none" />
-
-                                {/* 往期标签 */}
-                                {isPast && (
-                                    <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-sm text-white/80 text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/20">
-                                        往期活动
-                                    </div>
-                                )}
-
-                                <div className="relative">
-                                    <div className="text-3xl mb-2">💝</div>
-                                    <h2 className="text-xl font-bold mb-1">情人节特别推送</h2>
-                                    <p className="text-pink-100 text-xs mb-4">
-                                        {isPast ? '2026.2.14 — 重温那天TA说的话' : '2026 Valentine\'s Day — 听听TA想对你说什么'}
-                                    </p>
-
-                                    <div className="text-[10px] text-pink-200/60 mb-4">
-                                        {isPast ? '点击角色重播或重新生成' : '选择一位角色开始'}
-                                    </div>
-
-                                    <div className="max-h-64 overflow-y-auto -mx-1 px-1">
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {characters.map(c => {
-                                                const hasRecord = !!c.specialMomentRecords?.[VALENTINE_RECORD_KEY];
-                                                return (
-                                                    <button
-                                                        key={c.id}
-                                                        onClick={() => { setSelectedCharId(c.id); setShowSession(true); }}
-                                                        onTouchStart={() => handleLongPressStart(c.id)}
-                                                        onTouchEnd={handleLongPressEnd}
-                                                        onTouchCancel={handleLongPressEnd}
-                                                        onContextMenu={(e) => { e.preventDefault(); setDeleteTargetId(c.id); }}
-                                                        className="flex flex-col items-center gap-2 p-3 bg-white/15 backdrop-blur-sm rounded-2xl border border-white/20 active:scale-95 transition-transform hover:bg-white/25 relative"
-                                                    >
-                                                        <img src={c.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-white/30" alt={c.name} />
-                                                        <span className="text-[11px] font-bold truncate w-full text-center">{c.name}</span>
-                                                        {hasRecord && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-white/60" />}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                    <p className="text-[10px] text-pink-200/40 mt-3 text-center">长按角色可删除记录</p>
-                                </div>
-                            </div>
-                        </div>
+                        <SpecialMomentEventCard
+                            emoji="💝"
+                            title="情人节特别推送"
+                            description={isPast ? '2026.2.14 — 重温那天TA说的话' : '2026 Valentine\'s Day — 听听TA想对你说什么'}
+                            actionHint={isPast ? '点击角色重播或重新生成' : '选择一位角色开始'}
+                            isPast={isPast}
+                            gradientClassName="bg-gradient-to-br from-pink-500 via-rose-500 to-red-400 shadow-xl shadow-pink-200"
+                            pastGradientClassName="bg-gradient-to-br from-pink-400/70 via-rose-400/70 to-red-300/70 shadow-lg"
+                            recordKey={VALENTINE_RECORD_KEY}
+                            recordDotClassName="bg-white/60"
+                            characters={visibleSpecialCharacters}
+                            onSelectCharacter={(id) => { setSelectedCharId(id); setShowSession(true); }}
+                            onLongPressStart={handleLongPressStart}
+                            onLongPressEnd={handleLongPressEnd}
+                            onContextDelete={setDeleteTargetId}
+                        />
                     );
                 })()}
             </div>
 
-            {/* 白色情人节删除确认弹窗 */}
-            {wdDeleteTargetId && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 animate-fade-in">
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setWdDeleteTargetId(null)} />
-                    <div className="relative bg-white rounded-3xl p-6 max-w-xs w-full shadow-2xl">
-                        <div className="text-center mb-4">
-                            <div className="text-3xl mb-2">🗑️</div>
-                            <h3 className="font-bold text-slate-700 text-base">删除白色情人节记录</h3>
-                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                                将删除 <span className="font-bold text-slate-600">{characters.find(c => c.id === wdDeleteTargetId)?.name}</span> 的白色情人节记录。此操作不可撤销。
-                            </p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setWdDeleteTargetId(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-500 font-bold rounded-xl active:scale-95 transition-transform text-sm">取消</button>
-                            <button onClick={() => handleWdDeleteRecord(wdDeleteTargetId)} className="flex-1 py-2.5 bg-red-500 text-white font-bold rounded-xl active:scale-95 transition-transform text-sm">确认删除</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <DeleteSpecialMomentDialog
+                targetId={wdDeleteTargetId}
+                characters={characters}
+                title="删除白色情人节记录"
+                description={(name) => (
+                    <>
+                        将删除 <span className="font-bold text-slate-600">{name}</span> 的白色情人节记录。此操作不可撤销。
+                    </>
+                )}
+                onCancel={() => setWdDeleteTargetId(null)}
+                onConfirm={handleWdDeleteRecord}
+            />
 
-            {/* 删除确认弹窗 */}
-            {deleteTargetId && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 animate-fade-in">
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTargetId(null)} />
-                    <div className="relative bg-white rounded-3xl p-6 max-w-xs w-full shadow-2xl">
-                        <div className="text-center mb-4">
-                            <div className="text-3xl mb-2">🗑️</div>
-                            <h3 className="font-bold text-slate-700 text-base">删除情人节记录</h3>
-                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                                将删除 <span className="font-bold text-slate-600">{characters.find(c => c.id === deleteTargetId)?.name}</span> 的情人节记录，包括存储的回忆和对应的聊天消息。此操作不可撤销。
-                            </p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setDeleteTargetId(null)}
-                                className="flex-1 py-2.5 bg-slate-100 text-slate-500 font-bold rounded-xl active:scale-95 transition-transform text-sm"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={() => handleDeleteRecord(deleteTargetId)}
-                                className="flex-1 py-2.5 bg-red-500 text-white font-bold rounded-xl active:scale-95 transition-transform text-sm"
-                            >
-                                确认删除
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <DeleteSpecialMomentDialog
+                targetId={deleteTargetId}
+                characters={characters}
+                title="删除情人节记录"
+                description={(name) => (
+                    <>
+                        将删除 <span className="font-bold text-slate-600">{name}</span> 的情人节记录，包括存储的回忆和对应的聊天消息。此操作不可撤销。
+                    </>
+                )}
+                onCancel={() => setDeleteTargetId(null)}
+                onConfirm={handleDeleteRecord}
+            />
         </div>
     );
 };

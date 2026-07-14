@@ -78,6 +78,50 @@ Asset key format:
 timebook_first_contact_${charId}
 ```
 
+## Study Room
+
+Current persisted study-course shape:
+
+```ts
+interface StudyChapter {
+  id: string;
+  title: string;
+  summary: string;
+  difficulty: 'easy' | 'normal' | 'hard';
+  isCompleted: boolean;
+  rawContentRange?: { start: number; end: number };
+  content?: string;
+}
+
+interface StudyCourse {
+  id: string;
+  title: string;
+  rawText: string;
+  chapters: StudyChapter[];
+  currentChapterIndex: number;
+  createdAt: number;
+  coverStyle: string;
+  totalProgress: number;
+  preference?: string;
+}
+```
+
+`StudyChapter.rawContentRange` is the local source anchor for chapter teaching.
+It is currently generated from proportional PDF text ranges, but it is the field
+future co-reading imports can replace with real chapter or segment boundaries.
+
+Study settings are still browser-local:
+
+```text
+localStorage.study_api_config
+localStorage.study_tutor_presets
+```
+
+Future co-reading should add a sibling reading/book model instead of overloading
+`StudyCourse`. The AsherieSystem mobile reference keeps reading context
+structured as shelf/current-book/current-chapter metadata rather than prepending
+it to user-authored chat text.
+
 If no asset exists, `时光簿` infers the first-contact date from the selected
 character's earliest imported anniversary, then earliest message, then today.
 Once a user saves a first-contact asset, that manual relationship anchor wins
@@ -575,6 +619,179 @@ turnCount?: number
 `callScene` is the per-session opening scene anchor. It is generated separately
 from dialogue, displayed as a small "所在" chip during the call, and persisted
 into call history. It should not be injected as visible spoken text.
+
+## Narrative Experience Directives
+
+Narrative boundaries are declared in:
+
+```text
+utils/narrativeBoundaries.ts
+```
+
+The shared type is:
+
+```ts
+type NarrativeSurfaceId =
+  | "consult_desk"
+  | "novel"
+  | "date"
+  | "guidebook"
+  | "special_moments"
+  | "check_phone"
+  | "game"
+  | "lifesim"
+  | "timebook"
+  | "chat"
+  | "social_feed";
+
+type NarrativeLane =
+  | "mainline"
+  | "pending_mainline"
+  | "if_line"
+  | "date_experience"
+  | "keepsake_event"
+  | "user_insight"
+  | "supporting_evidence"
+  | "sandbox"
+  | "draft";
+
+type NarrativeMemoryPolicy =
+  | "main_vault"
+  | "manual_promotion"
+  | "relationship_echo"
+  | "character_private"
+  | "dream_material"
+  | "excluded_from_main_vault"
+  | "local_keepsake"
+  | "system_trace";
+```
+
+`NarrativeDirective` is the planned bridge between consultation/story seeds and
+playable plot generation:
+
+```ts
+interface NarrativeDirective {
+  id: string;
+  title: string;
+  summary: string;
+  lane: NarrativeLane;
+  status: "pending" | "activated" | "played" | "archived" | "discarded";
+  sourceSurface: NarrativeSurfaceId;
+  targetSurface?: NarrativeSurfaceId;
+  charIds: string[];
+  npcNames?: string[];
+  tags?: string[];
+  constraints?: string[];
+  activationHint?: string;
+  memoryPolicy: NarrativeMemoryPolicy;
+  sourceRefs?: { surface: NarrativeSurfaceId; id?: string; label?: string }[];
+  createdAt: number;
+  updatedAt: number;
+  playedAt?: number;
+  dreamDelivery?: {
+    charId: string;
+    tone?: "soft" | "uneasy" | "romantic" | "ominous" | "playful";
+    instruction: string;
+    deliveredAt?: number;
+  };
+}
+```
+
+`NovelBook` may carry optional directives:
+
+```ts
+interface NovelBook {
+  // existing fields...
+  directives?: NarrativeDirective[];
+}
+```
+
+Compatibility:
+
+- No IndexedDB migration is required for this first slice because
+  `NovelBook.directives` is optional.
+- Existing novel records without `directives` remain valid.
+- Future `咨询台` work may either store accepted directives inside a target
+  `NovelBook` or add a dedicated object store after the UX is confirmed.
+- IF-line directives must use `memoryPolicy: "dream_material"` and must not be
+  promoted into `char.memories` or timebook rows without an explicit user
+  conversion.
+
+## User Persona Masks
+
+The personal profile is still stored in IndexedDB store `user_profile` under key
+`me`, but it now contains optional multi-mask fields.
+
+```ts
+interface UserProfile {
+  name: string;
+  avatar: string;
+  avatarFramePresetId?: string;
+  callPortrait?: string;
+  bio: string;
+  deepspaceIdentityMode?: UserDeepSpaceIdentityMode;
+  deepspaceIdentityNote?: string;
+  activePersonaMaskId?: string;
+  activeProgressBundleId?: string;
+  personaMasks?: UserPersonaMask[];
+  progressBundles?: UserProgressBundle[];
+}
+
+interface UserPersonaMask {
+  id: string;
+  label: string;
+  name: string;
+  avatar: string;
+  avatarFramePresetId?: string;
+  callPortrait?: string;
+  bio: string;
+  deepspaceIdentityMode?: UserDeepSpaceIdentityMode;
+  deepspaceIdentityNote?: string;
+  linkedCharacterIds?: string[];
+  progressBundleId: string;
+  createdAt: number;
+  updatedAt: number;
+  lastUsedAt?: number;
+}
+
+interface UserProgressBundle {
+  id: string;
+  maskId: string;
+  label: string;
+  description?: string;
+  surfacePolicy: Partial<Record<UserProgressSurface, UserProgressSurfacePolicy>>;
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+Compatibility:
+
+- `utils/userPersonaMasks.ts` normalizes legacy profiles into one default mask.
+- The active mask is mirrored onto top-level `UserProfile` fields before prompts
+  read it.
+- No DB version bump is required because the existing `user_profile` record is
+  extended in place.
+- Full backup/export must keep the complete `UserProfile`; do not truncate it
+  to only `name`, `avatar`, `callPortrait`, and `bio`.
+- Future route-specific records should use `activeProgressBundleId` as the
+  join key instead of copying the whole mask into each record.
+- `lastUsedAt` is display metadata for the mask switcher.
+- `linkedCharacterIds` is a lightweight UI/route marker. It does not yet filter
+  messages or memories by itself.
+- Route surfaces should resolve linked-character behavior through
+  `utils/personaRouteScope.ts` rather than open-coding their own filters. This
+  keeps directory behavior (`linked first, all reachable`) separate from
+  generation behavior (`linked only when links exist`).
+- When adding another surface, treat the helper as the boundary contract:
+  directory/contact pages may expose all characters after prioritizing links;
+  experience/generation pages should use linked-only pools when a mask has links
+  and show an explicit all-character escape hatch when useful.
+- Current connected surfaces are SocialApp generation, Character directory,
+  Date picker, Call picker, and GroupChat member creation.
+- `deepspaceIdentityMode: "custom_world"` means the profile is not using a
+  DeepSpace default identity frame; prompts should follow imported character
+  cards, mounted worldbooks, and local plot facts.
 
 ## Catalog
 

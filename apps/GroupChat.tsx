@@ -13,6 +13,7 @@ import { getVisibleEmojiScopeForCharacter, getVisibleEmojiScopeForGroup } from '
 import AppHeader, { AppHeaderAddButton } from '../components/shell/AppHeader';
 import { selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { DIALOG_VISUAL_RULES } from '../components/chat/dialogVisualRules';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -216,6 +217,7 @@ const GroupChat: React.FC = () => {
     // Create/Edit Group State
     const [tempGroupName, setTempGroupName] = useState('');
     const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
+    const [showAllGroupCandidates, setShowAllGroupCandidates] = useState(false);
     const [transferAmount, setTransferAmount] = useState('');
     
     // Refs
@@ -227,6 +229,15 @@ const GroupChat: React.FC = () => {
             ? activeGroup.members.map(id => characters.find(char => char.id === id)).filter((char): char is CharacterProfile => Boolean(char))
             : []
     ), [activeGroup, characters]);
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters)
+    ), [userProfile, characters]);
+    const groupScopedCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'group_chat' })
+    ), [characters, personaScope]);
+    const groupCandidateCharacters = personaScope.hasLinkedFocus && !showAllGroupCandidates
+        ? groupScopedCharacters
+        : characters;
 
     // Load shared archive prompts from localStorage (same key as Chat app)
     useEffect(() => {
@@ -940,7 +951,7 @@ ${recentGroupMsgs}
                     titleClassName="truncate text-lg font-semibold tracking-wide text-slate-700"
                     right={(
                     <AppHeaderAddButton
-                        onClick={() => { setModalType('create'); setSelectedMembers(new Set()); setTempGroupName(''); }}
+                        onClick={() => { setModalType('create'); setSelectedMembers(new Set()); setTempGroupName(''); setShowAllGroupCandidates(false); }}
                         className="text-violet-500 bg-violet-50 hover:bg-violet-100"
                         title="创建群聊"
                     />
@@ -984,10 +995,26 @@ ${recentGroupMsgs}
                 <Modal isOpen={modalType === 'create'} title="创建群聊" onClose={() => setModalType('none')} footer={<button onClick={handleCreateGroup} className="w-full py-3 bg-violet-500 text-white font-bold rounded-2xl shadow-lg shadow-violet-200">创建</button>}>
                     <div className="space-y-4">
                         <input value={tempGroupName} onChange={e => setTempGroupName(e.target.value)} placeholder="群聊名称" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/20 transition-all" />
+                        {personaScope.hasLinkedFocus && (
+                            <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-3 py-2 text-[11px] leading-relaxed text-violet-500">
+                                默认只从当前面具「{personaScope.activeMaskLabel || '未命名面具'}」链接的角色里建群；如果这次要临时拉入其他人，可以展开全部。
+                            </div>
+                        )}
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">选择成员</label>
+                            <div className="mb-2 flex items-center justify-between gap-3">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">选择成员</label>
+                                {personaScope.hasLinkedFocus && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAllGroupCandidates(prev => !prev)}
+                                        className="rounded-full bg-white px-3 py-1 text-[10px] font-bold text-slate-500 shadow-sm active:scale-95"
+                                    >
+                                        {showAllGroupCandidates ? '只看链接' : '显示全部'}
+                                    </button>
+                                )}
+                            </div>
                             <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
-                                {characters.map(c => (
+                                {groupCandidateCharacters.map(c => (
                                     <div key={c.id} onClick={() => toggleMemberSelection(c.id)} className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all cursor-pointer ${selectedMembers.has(c.id) ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-slate-100 bg-white hover:border-slate-300'}`}>
                                         <img src={c.avatar} className="w-10 h-10 rounded-full object-cover" />
                                         <span className="text-[9px] text-slate-600 truncate w-full text-center font-medium">{c.name}</span>

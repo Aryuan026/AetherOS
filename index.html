@@ -164,6 +164,15 @@
       .pb-safe {
         padding-bottom: env(safe-area-inset-bottom);
       }
+      @keyframes datePresenceFlow {
+        0% { transform: translateX(-120%); opacity: 0; }
+        18% { opacity: 0.85; }
+        62% { opacity: 0.85; }
+        100% { transform: translateX(220%); opacity: 0; }
+      }
+      .date-presence-flow {
+        animation: datePresenceFlow 1.45s ease-in-out infinite;
+      }
     </style>
   <script type="importmap">
 {
