@@ -61,6 +61,39 @@ route mutation proposals, memory promotion, life-event application, and
 Character Virtual Life. No function in the foundation calls an API, IndexedDB,
 character memory, or a background clock.
 
+## Implemented Read-Only StoryDesk Slice — 2026-07-15
+
+The first visible slice is deliberately an inspector rather than a generator:
+
+- `NovelApp` now keeps `activeBookId` and derives the current book from the OS
+  `novels` collection, so child views do not keep reading a stale book object
+  after a save;
+- the previous direct `NovelWriter` mount was first extracted without behavior
+  changes into `components/novel/NovelWorkspace.tsx` and sealed separately;
+- the workspace now exposes peer `手稿 / 剧情台` panels while keeping the old
+  manuscript editor, generation, settings, history, and archive behavior under
+  `NovelWriter`;
+- `domain/narrative/inspection.ts` normalizes imported state and returns only
+  directives, runs, scenes, and receipts belonging to the active progress
+  bundle. Other bundles expose counts only; unscoped legacy directives remain
+  visible as locked migration material;
+- `StoryDeskInspector` shows pending direction, route continuity, active scene,
+  and user-confirmed receipts without offering activate, generate, play,
+  confirm, promote, or memory-write actions;
+- internal hardware back now returns StoryDesk -> Manuscript -> Shelf before
+  allowing the OS to close the app.
+
+The deterministic narrative fixture now covers inspection isolation with two
+progress bundles and one unscoped legacy directive. The phone UI was checked at
+430x932 through the real Launcher entry (`AppID.Novel` is currently labelled
+`笔友会`, while `书房` is the separate Study app), including manuscript open,
+StoryDesk empty state, semantic renderer output, return-to-shelf, and cleanup of
+the temporary book.
+
+HOLD after this slice: directive authoring/activation, route creation, scene
+generation/player, receipt review actions, memory promotion, Character Virtual
+Life, and launcher renaming. The inspector performs no persistence mutation.
+
 ## Code-Grounded Starting Point
 
 AetherOS already has useful pieces:

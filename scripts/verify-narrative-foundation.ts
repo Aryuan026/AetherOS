@@ -12,6 +12,7 @@ import {
     markNarrativeScenePlayed,
     normalizeNovelNarrativeState,
 } from '../domain/narrative/state.ts';
+import { inspectNovelNarrative } from '../domain/narrative/inspection.ts';
 import type { NarrativeExperienceReceipt, NovelBook } from '../types.ts';
 
 const T0 = 1_700_000_000_000;
@@ -213,5 +214,88 @@ const legacyBook: NovelBook = {
     lastActiveAt: T0,
 };
 assert.deepEqual(normalizeNovelNarrativeState(legacyBook.narrative, T0 + 41).runs, []);
+
+const otherBundleRun = {
+    ...ifLine.runs[0],
+    id: 'run-bundle-2',
+    progressBundleId: 'bundle-user-2',
+};
+const otherBundleScene = {
+    ...ifLine.scenes[0],
+    id: 'scene-bundle-2',
+    runId: otherBundleRun.id,
+};
+const otherBundleReceipt = {
+    ...ifLine.receipts[0],
+    id: 'receipt-bundle-2',
+    progressBundleId: otherBundleRun.progressBundleId,
+    runId: otherBundleRun.id,
+    sceneId: otherBundleScene.id,
+};
+const inspectionSource = {
+    createdAt: T0,
+    lastActiveAt: T0 + 50,
+    directives: [
+        {
+            id: 'directive-bundle-1',
+            title: '当前面具的约定',
+            summary: '只属于 bundle-user-1。',
+            lane: 'pending_mainline' as const,
+            status: 'pending' as const,
+            sourceSurface: 'consult_desk' as const,
+            charIds: ['char-a'],
+            memoryPolicy: 'manual_promotion' as const,
+            progressBundleId: 'bundle-user-1',
+            createdAt: T0,
+            updatedAt: T0,
+        },
+        {
+            id: 'directive-bundle-2',
+            title: '另一个面具的约定',
+            summary: '不能在当前面具里出现。',
+            lane: 'pending_mainline' as const,
+            status: 'pending' as const,
+            sourceSurface: 'consult_desk' as const,
+            charIds: ['char-a'],
+            memoryPolicy: 'manual_promotion' as const,
+            progressBundleId: 'bundle-user-2',
+            createdAt: T0,
+            updatedAt: T0,
+        },
+        {
+            id: 'directive-legacy',
+            title: '旧指令',
+            summary: '未绑定面具，只能作为待整理记录显示。',
+            lane: 'draft' as const,
+            status: 'pending' as const,
+            sourceSurface: 'novel' as const,
+            charIds: ['char-a'],
+            memoryPolicy: 'manual_promotion' as const,
+            createdAt: T0,
+            updatedAt: T0,
+        },
+    ],
+    narrative: {
+        schemaVersion: 1,
+        runs: [...mainline.runs, otherBundleRun],
+        scenes: [...mainline.scenes, otherBundleScene],
+        receipts: [...mainline.receipts, otherBundleReceipt],
+        activeRunId: mainline.activeRunId,
+        updatedAt: T0 + 50,
+    },
+};
+const bundleOneInspection = inspectNovelNarrative(inspectionSource, 'bundle-user-1');
+assert.deepEqual(bundleOneInspection.directives.map(directive => directive.id), ['directive-bundle-1']);
+assert.deepEqual(bundleOneInspection.runs.map(run => run.id), ['run-mainline-1']);
+assert.deepEqual(bundleOneInspection.scenes.map(scene => scene.id), ['scene-station-rain']);
+assert.deepEqual(bundleOneInspection.receipts.map(receipt => receipt.id), ['receipt-station-rain']);
+assert.deepEqual(bundleOneInspection.unscopedDirectives.map(directive => directive.id), ['directive-legacy']);
+assert.equal(bundleOneInspection.otherBundleDirectiveCount, 1);
+assert.equal(bundleOneInspection.otherBundleRunCount, 1);
+
+const missingBundleInspection = inspectNovelNarrative(inspectionSource);
+assert.equal(missingBundleInspection.directives.length, 0);
+assert.equal(missingBundleInspection.runs.length, 0);
+assert.deepEqual(missingBundleInspection.unscopedDirectives.map(directive => directive.id), ['directive-legacy']);
 
 console.log('narrative foundation fixtures passed');

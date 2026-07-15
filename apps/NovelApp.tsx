@@ -6,15 +6,16 @@ import Modal from '../components/os/Modal';
 import ConfirmDialog from '../components/os/ConfirmDialog';
 import { processImage } from '../utils/file';
 import { NOVEL_THEMES, analyzeWriterPersonaSimple } from '../utils/novelUtils';
-import NovelWorkspace from '../components/novel/NovelWorkspace';
+import NovelWorkspace, { type NovelWorkspacePanel } from '../components/novel/NovelWorkspace';
 import { Robot, MaskHappy, PenNib, Books, FolderOpen } from '@phosphor-icons/react';
 
 const NovelApp: React.FC = () => {
-    const { closeApp, novels, addNovel, updateNovel, deleteNovel, characters, updateCharacter, apiConfig, addToast, userProfile, worldbooks } = useOS();
+    const { closeApp, novels, addNovel, updateNovel, deleteNovel, characters, updateCharacter, apiConfig, addToast, userProfile, worldbooks, registerBackHandler } = useOS();
     
     // Navigation State
     const [view, setView] = useState<'shelf' | 'create' | 'write' | 'settings' | 'library'>('shelf');
-    const [activeBook, setActiveBook] = useState<NovelBook | null>(null);
+    const [activeBookId, setActiveBookId] = useState<string | null>(null);
+    const [workspacePanel, setWorkspacePanel] = useState<NovelWorkspacePanel>('manuscript');
     const [activeTheme, setActiveTheme] = useState(NOVEL_THEMES[0]);
 
     // Create / Settings Form
@@ -54,6 +55,10 @@ const NovelApp: React.FC = () => {
     // Helpers
     const getTheme = (styleId: string) => NOVEL_THEMES.find(t => t.id === styleId) || NOVEL_THEMES[0];
 
+    const activeBook = useMemo(() => (
+        activeBookId ? novels.find(book => book.id === activeBookId) || null : null
+    ), [activeBookId, novels]);
+
     const collaborators = useMemo(() => {
         if (!activeBook) return [];
         return characters.filter(c => activeBook.collaboratorIds.includes(c.id));
@@ -83,6 +88,20 @@ const NovelApp: React.FC = () => {
         }
     }, [activeBook]);
 
+    useEffect(() => registerBackHandler(() => {
+        if (view === 'shelf') return false;
+        if (view === 'write' && workspacePanel === 'story_desk') {
+            setWorkspacePanel('manuscript');
+            return true;
+        }
+        if (view === 'settings') {
+            setView('write');
+            return true;
+        }
+        setView('shelf');
+        return true;
+    }), [registerBackHandler, view, workspacePanel]);
+
     // --- CRUD ---
 
     const handleCreateBook = () => {
@@ -95,7 +114,8 @@ const NovelApp: React.FC = () => {
             segments: [], createdAt: Date.now(), lastActiveAt: Date.now()
         };
         addNovel(newBook);
-        setActiveBook(newBook);
+        setActiveBookId(newBook.id);
+        setWorkspacePanel('manuscript');
         setView('write');
         resetTempState();
     };
@@ -123,7 +143,6 @@ const NovelApp: React.FC = () => {
             segments: activeBook.segments, lastActiveAt: Date.now()
         };
         await updateNovel(activeBook.id, updated);
-        setActiveBook(updated);
         setView('write');
         addToast('设定已更新，内容完好', 'success');
     };
@@ -135,7 +154,7 @@ const NovelApp: React.FC = () => {
     const handleDeleteBook = async (id: string) => {
         setConfirmDialog({
             isOpen: true, title: '删除作品', message: '确定要删除这本小说吗？此操作无法撤销。', variant: 'danger',
-            onConfirm: () => { deleteNovel(id); if (activeBook?.id === id) setView('shelf'); addToast('已删除', 'success'); setConfirmDialog(null); }
+            onConfirm: () => { deleteNovel(id); if (activeBookId === id) { setActiveBookId(null); setView('shelf'); } addToast('已删除', 'success'); setConfirmDialog(null); }
         });
     };
 
@@ -252,7 +271,7 @@ const NovelApp: React.FC = () => {
                         const wordCount = book.segments.reduce((acc, seg) => acc + (seg.type === 'story' ? seg.content.length : 0), 0);
                         const bgStyle = book.coverImage ? { backgroundImage: `url(${book.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
                         return (
-                            <div key={book.id} onClick={() => { setActiveBook(book); setView('write'); }} className="group relative aspect-auto min-h-[14rem] bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-100 cursor-pointer flex flex-col">
+                            <div key={book.id} onClick={() => { setActiveBookId(book.id); setWorkspacePanel('manuscript'); setView('write'); }} className="group relative aspect-auto min-h-[14rem] bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-100 cursor-pointer flex flex-col">
                                 <div className={`h-28 shrink-0 ${style.bg} relative p-4 flex flex-col justify-end`} style={bgStyle}>
                                     <div className={`absolute inset-0 ${book.coverImage ? 'bg-black/30' : ''}`}></div>
                                     <div className="relative z-10"><h3 className={`font-bold text-lg leading-tight line-clamp-2 ${book.coverImage ? 'text-white drop-shadow-md' : style.text}`}>{book.title}</h3>{book.subtitle && <p className={`text-[10px] font-bold opacity-80 uppercase tracking-wide truncate ${book.coverImage ? 'text-white' : style.text}`}>{book.subtitle}</p>}</div>
@@ -323,6 +342,8 @@ const NovelApp: React.FC = () => {
         return (
             <NovelWorkspace
                 activeBook={activeBook}
+                activePanel={workspacePanel}
+                onPanelChange={setWorkspacePanel}
                 updateNovel={updateNovel}
                 characters={characters}
                 userProfile={userProfile}
