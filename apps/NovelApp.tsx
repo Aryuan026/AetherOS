@@ -6,7 +6,7 @@ import Modal from '../components/os/Modal';
 import ConfirmDialog from '../components/os/ConfirmDialog';
 import { processImage } from '../utils/file';
 import { NOVEL_THEMES, analyzeWriterPersonaSimple } from '../utils/novelUtils';
-import NovelWriter from '../components/novel/NovelWriter';
+import NovelWorkspace from '../components/novel/NovelWorkspace';
 import { Robot, MaskHappy, PenNib, Books, FolderOpen } from '@phosphor-icons/react';
 
 const NovelApp: React.FC = () => {
@@ -321,7 +321,7 @@ const NovelApp: React.FC = () => {
     // 3. Writing View (Delegated)
     if (view === 'write' && activeBook) {
         return (
-            <NovelWriter 
+            <NovelWorkspace
                 activeBook={activeBook}
                 updateNovel={updateNovel}
                 characters={characters}
