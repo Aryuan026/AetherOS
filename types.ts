@@ -1355,6 +1355,10 @@ export interface FullBackupData {
         content: string;
         dueAt: number;
         createdAt: number;
+        messageType?: MessageType;
+        metadata?: Record<string, unknown>;
+        notificationPreview?: string;
+        deliveryPolicy?: 'fixed' | 'quiet_today';
     }[];
 
     companionWakeupRules?: CompanionWakeupRule[];

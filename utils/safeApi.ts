@@ -44,12 +44,11 @@ export async function safeResponseJson(response: Response): Promise<any> {
  */
 export async function safeFetchJson(
     url: string,
-    options: RequestInit,
+    options: RequestInit & { aetherHandledFailure?: boolean },
     maxRetries: number = 2
 ): Promise<any> {
     const retryableStatuses = new Set([429, 500, 502, 503, 504]);
     let lastError: Error | null = null;
-
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             const response = await fetch(url, options);
@@ -58,7 +57,7 @@ export async function safeFetchJson(
                 // For retryable status codes, retry before giving up
                 if (retryableStatuses.has(response.status) && attempt < maxRetries) {
                     const delay = Math.pow(2, attempt) * 1000; // 1s, 2s
-                    console.warn(`[SafeAPI] HTTP ${response.status}, retry ${attempt + 1}/${maxRetries} in ${delay}ms...`);
+                    console.info(`[SafeAPI] HTTP ${response.status}, retry ${attempt + 1}/${maxRetries} in ${delay}ms...`);
                     await new Promise(r => setTimeout(r, delay));
                     continue;
                 }
@@ -76,7 +75,7 @@ export async function safeFetchJson(
             // Network errors (fetch itself failed) are retryable
             if (e.name === 'TypeError' && attempt < maxRetries) {
                 const delay = Math.pow(2, attempt) * 1000;
-                console.warn(`[SafeAPI] Network error, retry ${attempt + 1}/${maxRetries} in ${delay}ms:`, e.message);
+                console.info(`[SafeAPI] Network error, retry ${attempt + 1}/${maxRetries} in ${delay}ms:`, e.message);
                 await new Promise(r => setTimeout(r, delay));
                 continue;
             }
@@ -84,7 +83,7 @@ export async function safeFetchJson(
             // For HTML/parse errors on non-ok responses during retry, continue
             if (attempt < maxRetries && e.message?.includes('API返回了HTML')) {
                 const delay = Math.pow(2, attempt) * 1000;
-                console.warn(`[SafeAPI] HTML response, retry ${attempt + 1}/${maxRetries} in ${delay}ms`);
+                console.info(`[SafeAPI] HTML response, retry ${attempt + 1}/${maxRetries} in ${delay}ms`);
                 await new Promise(r => setTimeout(r, delay));
                 continue;
             }

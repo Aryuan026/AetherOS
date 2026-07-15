@@ -5,12 +5,14 @@ export const DeleteSpecialMomentDialog: React.FC<{
     targetId: string | null;
     characters: CharacterProfile[];
     title: string;
+    targetName?: string;
+    confirmLabel?: string;
     description: (characterName: string) => React.ReactNode;
     onCancel: () => void;
     onConfirm: (characterId: string) => void;
-}> = ({ targetId, characters, title, description, onCancel, onConfirm }) => {
+}> = ({ targetId, characters, title, targetName, confirmLabel = '确认删除', description, onCancel, onConfirm }) => {
     if (!targetId) return null;
-    const characterName = characters.find(c => c.id === targetId)?.name || '';
+    const characterName = targetName ?? characters.find(c => c.id === targetId)?.name ?? '';
 
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 animate-fade-in">
@@ -25,7 +27,7 @@ export const DeleteSpecialMomentDialog: React.FC<{
                 </div>
                 <div className="flex gap-3">
                     <button onClick={onCancel} className="flex-1 py-2.5 bg-slate-100 text-slate-500 font-bold rounded-xl active:scale-95 transition-transform text-sm">取消</button>
-                    <button onClick={() => onConfirm(targetId)} className="flex-1 py-2.5 bg-red-500 text-white font-bold rounded-xl active:scale-95 transition-transform text-sm">确认删除</button>
+                    <button onClick={() => onConfirm(targetId)} className="flex-1 py-2.5 bg-red-500 text-white font-bold rounded-xl active:scale-95 transition-transform text-sm">{confirmLabel}</button>
                 </div>
             </div>
         </div>

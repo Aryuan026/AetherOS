@@ -1100,11 +1100,15 @@ const Chat: React.FC = () => {
                                 const diff = (card.finalAffinity ?? 0) - (card.initialAffinity ?? 0);
                                 content = `[攻略本游戏结算] ${char.name}和${userProfile.name}玩了一局"攻略本"恋爱小游戏（${card.rounds || '?'}回合）。结局：「${card.title || '???'}」 好感度变化：${card.initialAffinity} → ${card.finalAffinity}（${diff >= 0 ? '+' : ''}${diff}） ${char.name}的评语：${card.charVerdict || '无'} ${char.name}对${userProfile.name}的新发现：${card.charNewInsight || '无'}`;
                             } else if (card?.type === 'whiteday_card') {
-                                const passedStr = card.passed ? `通过测验，解锁了DIY巧克力` : `未通过测验`;
-                                const questionsText = (card.questions as any[])?.map((q: any, i: number) =>
-                                    `第${i + 1}题"${q.question}"：${userProfile.name}选"${q.userAnswer}"（${q.isCorrect ? '✓' : '✗'}）${q.review ? `，${char.name}评语：${q.review}` : ''}`
-                                ).join('；') || '';
-                                content = `[白色情人节默契测验] ${userProfile.name}完成了${char.name}出的白色情人节测验，答对${card.score}/${card.total}题，${passedStr}。${questionsText}${card.finalDialogue ? `。${char.name}最终评价：${card.finalDialogue}` : ''}`;
+                                const letterTitle = card.letterTitle || '心契留信';
+                                const letterBody = card.letterBody || card.chocolateDialogue || card.finalDialogue || '';
+                                const scoreNote = Number.isFinite(card.score) && Number.isFinite(card.total)
+                                    ? `合拍值 ${card.score}/${card.total}。`
+                                    : '';
+                                const profileNote = Array.isArray(card.profileInsights) && card.profileInsights.length > 0
+                                    ? `侧写线索：${card.profileInsights.join('；')}`
+                                    : card.profileSummary ? `侧写线索：${card.profileSummary}` : '';
+                                content = `[心契] ${userProfile.name}完成了与${char.name}的双人互动游戏，收到一封「${letterTitle}」。${scoreNote}${letterBody ? `信件内容：${letterBody}` : ''}${profileNote}`;
                             } else {
                                 content = '[系统卡片]';
                             }

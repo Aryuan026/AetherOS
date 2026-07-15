@@ -244,6 +244,7 @@ const MessageItem = React.memo(({
 }: MessageItemProps) => {
     const isUser = m.role === 'user';
     const isSystem = m.role === 'system';
+    const [whiteDayLetterOpen, setWhiteDayLetterOpen] = useState(false);
     const timestampClass = showTimestamp === 'hover'
         ? 'pointer-events-none absolute top-full mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity'
         : 'mt-1';
@@ -687,65 +688,83 @@ const MessageItem = React.memo(({
             );
         }
 
-        // White Day Quiz Card
+        // White Day Letter Card
         if (scoreData?.type === 'whiteday_card') {
-            const passed = scoreData.passed;
+            const letterTitle = scoreData.letterTitle || `${scoreData.charName || charName}留给你的心契信`;
+            const letterBody = scoreData.letterBody || scoreData.chocolateDialogue || scoreData.finalDialogue || '这封信暂时只有一个很轻的开头。等下次心契，再让 TA 把没说完的话慢慢补上。';
+            const letterLines = String(letterBody).split(/\n+/).map(line => line.trim()).filter(Boolean);
             return commonLayout(
-                <div className="w-72 rounded-2xl overflow-hidden shadow-md" style={{ background: 'linear-gradient(180deg, #fff8f0 0%, #fff 30%, #fdf3e8 100%)', border: '1.5px solid rgba(251,191,110,0.4)' }} {...interactionProps}>
-                    {/* Header */}
-                    <div className="px-4 pt-3 pb-2.5 flex items-center gap-2.5" style={{ background: 'linear-gradient(135deg, rgba(251,191,110,0.25), rgba(249,168,96,0.15))', borderBottom: '1px solid rgba(251,191,110,0.2)' }}>
-                        {scoreData.charAvatar ? (
-                            <img src={scoreData.charAvatar} className="w-9 h-9 rounded-xl object-cover shadow-sm shrink-0" style={{ boxShadow: '0 0 0 2px rgba(251,191,110,0.4)' }} />
-                        ) : (
-                            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>{scoreData.charName?.[0] || '?'}</div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                            <div className="text-[9px] font-bold tracking-widest" style={{ color: '#b45309' }}>白色情人节 · 默契测验</div>
-                            <div className="text-xs font-bold truncate" style={{ color: '#78350f' }}>{scoreData.charName}</div>
-                        </div>
-                        <div className="shrink-0 text-right">
-                            <div className={`text-lg font-black ${passed ? 'text-amber-500' : 'text-slate-400'}`}>
-                                {scoreData.score}<span className="text-xs opacity-60">/{scoreData.total}</span>
+                <>
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); if (!selectionMode) setWhiteDayLetterOpen(true); }}
+                        className="w-72 overflow-hidden rounded-[22px] text-left shadow-md active:scale-[0.98] transition-transform"
+                        style={{ background: 'linear-gradient(180deg, #fffaf3 0%, #fff 42%, #fff4e4 100%)', border: '1.5px solid rgba(251,191,110,0.42)' }}
+                    >
+                        <div className="px-4 pt-3.5 pb-3 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, rgba(251,191,110,0.23), rgba(251,207,232,0.22))', borderBottom: '1px solid rgba(251,191,110,0.18)' }}>
+                            <div className="relative shrink-0">
+                                {scoreData.charAvatar ? (
+                                    <img src={scoreData.charAvatar} className="h-10 w-10 rounded-2xl object-cover shadow-sm" style={{ boxShadow: '0 0 0 2px rgba(255,255,255,0.75)' }} />
+                                ) : (
+                                    <div className="h-10 w-10 rounded-2xl flex items-center justify-center text-white text-sm font-bold" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>{scoreData.charName?.[0] || '?'}</div>
+                                )}
+                                <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[12px] shadow-sm">💌</span>
                             </div>
-                            <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${passed ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
-                                {passed ? '解锁 🍫' : '未达标'}
+                            <div className="min-w-0 flex-1">
+                                <div className="text-[9px] font-bold tracking-[0.18em] uppercase" style={{ color: '#b45309' }}>Heart Letter</div>
+                                <div className="mt-0.5 truncate text-sm font-black" style={{ color: '#78350f' }}>{letterTitle}</div>
+                                <div className="mt-0.5 truncate text-[10px]" style={{ color: '#b7791f' }}>来自 {scoreData.charName || charName}</div>
+                            </div>
+                            <div className="shrink-0 rounded-full bg-white/75 px-2 py-1 text-[10px] font-black" style={{ color: '#d97706' }}>
+                                信件
                             </div>
                         </div>
-                    </div>
-                    {/* Questions list */}
-                    <div className="px-3 py-2.5 flex flex-col gap-2">
-                        {scoreData.questions?.map((q: any, i: number) => (
-                            <div key={i} className="flex items-start gap-2">
-                                <span className={`text-xs font-bold shrink-0 mt-0.5 ${q.isCorrect ? 'text-emerald-500' : 'text-red-400'}`}>
-                                    {q.isCorrect ? '✓' : '✗'}
-                                </span>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-[11px] font-medium leading-tight" style={{ color: '#4a3520' }}>{q.question}</p>
-                                    <p className="text-[10px] mt-0.5" style={{ color: q.isCorrect ? '#6b7280' : '#dc2626' }}>
-                                        你选：{q.userAnswer}
-                                    </p>
-                                    {!q.isCorrect && (
-                                        <p className="text-[10px]" style={{ color: '#059669' }}>正确：{q.correctAnswer}</p>
-                                    )}
-                                    {q.review && (
-                                        <p className="text-[10px] italic mt-0.5" style={{ color: '#92400e' }}>「{q.review}」</p>
-                                    )}
+                        <div className="px-4 py-3">
+                            <div className="rounded-2xl bg-white/70 px-3 py-2.5 shadow-inner" style={{ border: '1px solid rgba(251,191,110,0.16)' }}>
+                                <div className="line-clamp-3 text-[12px] leading-relaxed italic" style={{ color: '#7c4a1d' }}>
+                                    {letterLines[0] || letterBody}
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                    {/* Final dialogue */}
-                    {scoreData.finalDialogue && (
-                        <div className="px-3 pb-3">
-                            <div className="text-[11px] rounded-xl px-3 py-2 leading-relaxed" style={{ background: passed ? 'rgba(251,191,110,0.15)' : 'rgba(0,0,0,0.04)', color: '#78350f', border: '1px solid rgba(251,191,110,0.2)' }}>
-                                {scoreData.finalDialogue}
+                            <div className="mt-2 flex items-center justify-between">
+                                <span className="text-[9px]" style={{ color: '#d97706' }}>心契留信</span>
+                                <span className="text-[10px] font-bold" style={{ color: '#c2410c' }}>点开读信</span>
+                            </div>
+                        </div>
+                    </button>
+
+                    {whiteDayLetterOpen && (
+                        <div className="fixed inset-0 z-[120] flex flex-col animate-fade-in" style={{ background: 'linear-gradient(180deg, #fff7ed 0%, #fff 34%, #fff1f2 100%)' }} onClick={(e) => e.stopPropagation()}>
+                            <div className="shrink-0 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] flex items-center gap-3 border-b border-amber-100/70 bg-white/70 backdrop-blur-md">
+                                <button onClick={() => setWhiteDayLetterOpen(false)} className="p-2 -ml-2 rounded-full text-slate-500 hover:bg-white">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                    <div className="truncate text-base font-black text-slate-800">{letterTitle}</div>
+                                    <div className="mt-0.5 text-[11px] text-amber-600">心契 · 来自 {scoreData.charName || charName}</div>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto px-5 py-6">
+                                <article className="mx-auto max-w-md rounded-[28px] bg-white/92 px-5 py-6 shadow-sm ring-1 ring-amber-100">
+                                    <div className="mb-5 flex items-center gap-3">
+                                        {scoreData.charAvatar && <img src={scoreData.charAvatar} className="h-11 w-11 rounded-2xl object-cover ring-2 ring-amber-100" />}
+                                        <div>
+                                            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-400">A Letter</div>
+                                            <div className="text-sm font-bold text-slate-700">{scoreData.charName || charName}</div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-4 text-[15px] leading-8 tracking-wide text-slate-700">
+                                        {letterLines.map((line, index) => (
+                                            <p key={index} className="whitespace-pre-wrap">{line}</p>
+                                        ))}
+                                    </div>
+                                    <div className="mt-8 text-right text-sm font-bold text-amber-700">
+                                        —— {scoreData.charName || charName}
+                                    </div>
+                                </article>
                             </div>
                         </div>
                     )}
-                    <div className="px-3 pb-2.5 flex justify-end">
-                        <span className="text-[9px]" style={{ color: '#d97706' }}>2026.3.14 白色情人节 🍫</span>
-                    </div>
-                </div>
+                </>
             );
         }
 

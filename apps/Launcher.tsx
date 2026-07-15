@@ -5,6 +5,7 @@ import AppIcon from '../components/os/AppIcon';
 import { DB } from '../utils/db';
 import { CharacterProfile, Anniversary, AppID } from '../types';
 import { formatBondTimeLabelFromMessages } from '../utils/bondTime';
+import { getMessagePreview } from '../utils/messagePreview';
 import CharacterWidget from '../components/launcher/CharacterWidget';
 import {
   CharacterWidgetImage,
@@ -245,8 +246,7 @@ const Launcher: React.FC = () => {
                       .sort((a, b) => a.timestamp - b.timestamp);
                   if (visibleMsgs.length > 0) {
                       const last = visibleMsgs[visibleMsgs.length - 1];
-                      const cleanContent = last.content.replace(/\[.*?\]/g, '').trim();
-                      setLastMessage(cleanContent || (last.type === 'image' ? '[图片]' : '[消息]'));
+                      setLastMessage(getMessagePreview(last));
                   } else {
                       setLastMessage(fallbackStatus);
                   }

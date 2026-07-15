@@ -19,6 +19,7 @@ import { DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, DEEPSPACE_USER_CIRCLE_WORLDBOOK_I
 import { mergeUserProfileWithMaskUpdate, normalizeUserPersonaProfile } from '../utils/userPersonaMasks';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
+import { COMPANION_WAKEUP_USER_COOLDOWN_MS } from '../utils/companionWakeups';
 
 
 type JSZipLike = {
@@ -1287,13 +1288,15 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       const originalFetch = window.fetch;
       const patchedFetch = async (...args: [RequestInfo | URL, RequestInit?]) => {
           const [resource, config] = args;
-          
+          const failureIsHandledByCaller = Boolean(
+              (config as (RequestInit & { aetherHandledFailure?: boolean }) | undefined)?.aetherHandledFailure
+          );
           const urlStr = String(resource);
           
           try {
               const response = await originalFetch(...args);
               
-              if (!response.ok) {
+              if (!response.ok && !failureIsHandledByCaller) {
                   // Only log if it's likely an API call (contains chat/completions or models)
                   if (urlStr.includes('/chat/completions') || urlStr.includes('/models')) {
                       try {
@@ -1322,14 +1325,16 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
               return response;
           } catch (err: any) {
               // Network Failure
-              setSystemLogs(prev => [{
-                  id: `log-${Date.now()}`,
-                  timestamp: Date.now(),
-                  type: 'network',
-                  source: 'Network',
-                  message: err.message || 'Fetch Failed',
-                  detail: `URL: ${urlStr}`
-              }, ...prev.slice(0, 49)]);
+              if (!failureIsHandledByCaller) {
+                  setSystemLogs(prev => [{
+                      id: `log-${Date.now()}`,
+                      timestamp: Date.now(),
+                      type: 'network',
+                      source: 'Network',
+                      message: err.message || 'Fetch Failed',
+                      detail: `URL: ${urlStr}`
+                  }, ...prev.slice(0, 49)]);
+              }
               throw err;
           }
       };
@@ -1687,16 +1692,39 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                   const dueMessages = await DB.getDueScheduledMessages(char.id);
                   if (cancelled) return;
                   if (dueMessages.length > 0) {
+                      const deliveredMessages: typeof dueMessages = [];
+                      let latestUserMessageAt: number | null = null;
+                      if (dueMessages.some(message => message.deliveryPolicy === 'quiet_today')) {
+                          const history = await DB.getMessagesByCharId(char.id);
+                          latestUserMessageAt = [...history]
+                              .reverse()
+                              .find(message => message.role === 'user')
+                              ?.timestamp || null;
+                      }
                       for (const msg of dueMessages) {
+                          if (
+                              msg.deliveryPolicy === 'quiet_today'
+                              && latestUserMessageAt
+                              && Date.now() - latestUserMessageAt < COMPANION_WAKEUP_USER_COOLDOWN_MS
+                          ) {
+                              await DB.saveScheduledMessage({
+                                  ...msg,
+                                  dueAt: latestUserMessageAt + COMPANION_WAKEUP_USER_COOLDOWN_MS,
+                              });
+                              continue;
+                          }
                           await DB.saveMessage({
                                charId: msg.charId,
                                role: 'assistant',
-                               type: 'text',
-                               content: msg.content
+                               type: msg.messageType || 'text',
+                               content: msg.content,
+                               metadata: msg.metadata,
                           });
                           await DB.deleteScheduledMessage(msg.id);
+                          deliveredMessages.push(msg);
                       }
                       if (cancelled) return;
+                      if (deliveredMessages.length === 0) continue;
                       hasNewMessage = true;
                       // Use refs for latest state (avoids stale closure & unnecessary deps)
                       const isChattingWithThisChar = activeAppRef.current === AppID.Chat && activeCharIdScheduleRef.current === char.id;
@@ -1704,13 +1732,13 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                       // If not chatting specifically with this char right now, mark as unread
                       if (!isChattingWithThisChar) {
                           addToast(`${char.name} 发来了一条消息`, 'success');
-                          unreadUpdates[char.id] = dueMessages.length;
+                          unreadUpdates[char.id] = deliveredMessages.length;
 
                           // Web Notification
                           if (!Capacitor.isNativePlatform() && window.Notification && Notification.permission === 'granted') {
                               try {
                                   const notif = new Notification(char.name, {
-                                      body: dueMessages[0].content,
+                                      body: deliveredMessages[0].notificationPreview || deliveredMessages[0].content,
                                       icon: char.avatar,
                                       silent: false
                                   });

@@ -6,7 +6,7 @@ import {
     Task, Anniversary, DiaryEntry, RoomTodo, RoomNote,
     GalleryImage, FullBackupData, GroupProfile, SocialPost, StudyCourse, GameSession, Worldbook, NovelBook, Emoji, EmojiCategory,
     BankTransaction, SavingsGoal, BankFullState, DollhouseState, SongSheet, QuizSession, GuidebookSession,
-    LifeSimState, CompanionWakeupRule, CompanionWakeupLog
+    LifeSimState, CompanionWakeupRule, CompanionWakeupLog, MessageType
 } from '../types';
 import { normalizeUserPersonaProfile } from './userPersonaMasks';
 
@@ -49,6 +49,10 @@ export interface ScheduledMessage {
     content: string;
     dueAt: number;
     createdAt: number;
+    messageType?: MessageType;
+    metadata?: Record<string, unknown>;
+    notificationPreview?: string;
+    deliveryPolicy?: 'fixed' | 'quiet_today';
 }
 
 type PublicEmojiSticker = {

@@ -7,10 +7,10 @@
  * - 弹窗提示 → 查看 / 没兴趣 / 先检查API
  * - 特殊页面：向AI发送情人节提示词，DateApp风格立绘展示
  * - 对话存入 chat/date 通用上下文
- * - 降级入口：桌面第三页 "特别时光" app
+ * “特别时光”总入口已迁移到 components/special-moments/SpecialMomentsApp.tsx。
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { ContextBuilder } from '../utils/context';
@@ -19,13 +19,9 @@ import { CharacterProfile, SpecialMomentRecord } from '../types';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { WhiteDaySession, isWhiteDayEventAvailable, WHITEDAY_RECORD_KEY } from './WhiteDayEvent';
 import AppHeader from './shell/AppHeader';
-import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
-import { isWhiteDayPast, SPECIAL_MOMENT_PROMPT_BOUNDARY } from '../utils/specialMoments';
+import { SPECIAL_MOMENT_PROMPT_BOUNDARY } from '../utils/specialMoments';
 import { DeleteSpecialMomentDialog } from './special-moments/DeleteSpecialMomentDialog';
-import { SpecialMomentEventCard } from './special-moments/SpecialMomentEventCard';
-import { SpecialMomentsIntro, SpecialMomentsScopeNotice } from './special-moments/SpecialMomentsIntro';
 
 // ============================================================
 // 情人节立绘 Sprite 映射 (占位 emoji，等图片整理好后替换为图床URL)
@@ -42,7 +38,7 @@ const VALENTINE_SPRITES: Record<string, string> = {
 // localStorage keys
 const VALENTINE_DISMISSED_KEY = 'aetheros_valentine_2026_dismissed';
 const VALENTINE_COMPLETED_KEY = 'aetheros_valentine_2026_completed';
-const VALENTINE_RECORD_KEY = 'valentine_2026';
+export const VALENTINE_RECORD_KEY = 'valentine_2026';
 
 // ============================================================
 // 工具函数
@@ -377,7 +373,7 @@ export const ValentineSession: React.FC<ValentineSessionProps> = ({ charId, onCl
             }
             addToast(`已删除 ${targetChar?.name || ''} 的情人节记录`, 'success');
         } catch (e) {
-            console.error('Delete valentine record failed:', e);
+            console.warn('Delete valentine record failed:', e);
             addToast('删除失败', 'error');
         } finally {
             setDeleteTargetId(null);
@@ -1127,204 +1123,4 @@ export const ValentineController: React.FC<ValentineControllerProps> = ({ onClos
 
     // 从弹窗进入时，直接给默认角色的 charId，跳过角色选择
     return <ValentineSession charId={targetId} onClose={onClose} />;
-};
-
-// ============================================================
-// 特别时光 App（桌面第三页降级入口）
-// ============================================================
-export const SpecialMomentsApp: React.FC = () => {
-    const { closeApp, characters, addToast, updateCharacter, userProfile, activeCharacterId } = useOS();
-    const [showSession, setShowSession] = useState(false);
-    const [selectedCharId, setSelectedCharId] = useState<string>('');
-    const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [showAllSpecialCharacters, setShowAllSpecialCharacters] = useState(false);
-
-    // White Day
-    const [showWhiteDaySession, setShowWhiteDaySession] = useState(false);
-    const [whiteDayCharId, setWhiteDayCharId] = useState<string>('');
-    const [wdDeleteTargetId, setWdDeleteTargetId] = useState<string | null>(null);
-    const wdLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const personaScope = useMemo(() => (
-        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
-    ), [userProfile, characters, activeCharacterId]);
-    const specialScopedCharacters = useMemo(() => (
-        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'special_moments' })
-    ), [characters, personaScope]);
-    const visibleSpecialCharacters = personaScope.hasLinkedFocus && !showAllSpecialCharacters
-        ? specialScopedCharacters
-        : characters;
-
-    const handleWdLongPressStart = (cId: string) => {
-        wdLongPressTimer.current = setTimeout(() => setWdDeleteTargetId(cId), 600);
-    };
-    const handleWdLongPressEnd = () => {
-        if (wdLongPressTimer.current) { clearTimeout(wdLongPressTimer.current); wdLongPressTimer.current = null; }
-    };
-    const handleWdDeleteRecord = async (cId: string) => {
-        try {
-            const targetChar = characters.find(c => c.id === cId);
-            if (targetChar) {
-                const updated = { ...(targetChar.specialMomentRecords || {}) };
-                delete updated[WHITEDAY_RECORD_KEY];
-                updateCharacter(cId, { specialMomentRecords: updated });
-            }
-            addToast(`已删除 ${targetChar?.name || ''} 的白色情人节记录`, 'success');
-        } catch {
-            addToast('删除失败', 'error');
-        } finally {
-            setWdDeleteTargetId(null);
-        }
-    };
-
-    const handleLongPressStart = (cId: string) => {
-        longPressTimer.current = setTimeout(() => {
-            setDeleteTargetId(cId);
-        }, 600);
-    };
-    const handleLongPressEnd = () => {
-        if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-        }
-    };
-    const handleDeleteRecord = async (cId: string) => {
-        try {
-            const targetChar = characters.find(c => c.id === cId);
-            if (targetChar) {
-                const updatedRecords = { ...(targetChar.specialMomentRecords || {}) };
-                delete updatedRecords[VALENTINE_RECORD_KEY];
-                updateCharacter(cId, { specialMomentRecords: updatedRecords });
-            }
-            const msgs = await DB.getMessagesByCharId(cId);
-            const valentineIds = msgs
-                .filter(m => m.metadata?.valentineEvent)
-                .map(m => m.id)
-                .filter((id): id is number => id !== undefined);
-            if (valentineIds.length > 0) {
-                await DB.deleteMessages(valentineIds);
-            }
-            addToast(`已删除 ${targetChar?.name || ''} 的情人节记录`, 'success');
-        } catch (e) {
-            console.error('Delete valentine record failed:', e);
-            addToast('删除失败', 'error');
-        } finally {
-            setDeleteTargetId(null);
-        }
-    };
-
-    if (showSession && selectedCharId) {
-        return (
-            <ValentineSession
-                charId={selectedCharId}
-                onClose={() => { setShowSession(false); setSelectedCharId(''); }}
-            />
-        );
-    }
-
-    if (showWhiteDaySession && whiteDayCharId) {
-        return (
-            <WhiteDaySession
-                charId={whiteDayCharId}
-                onClose={() => { setShowWhiteDaySession(false); setWhiteDayCharId(''); }}
-            />
-        );
-    }
-
-    return (
-        <div className="h-full w-full bg-gradient-to-b from-pink-50 via-white to-rose-50 flex flex-col font-light">
-            <AppHeader
-                title="特别时光"
-                subtitle={personaScope.hasLinkedFocus && !showAllSpecialCharacters ? `纪念胶囊 · 当前面具 ${specialScopedCharacters.length} 位` : '日历与时光簿里的纪念邀约'}
-                onBack={closeApp}
-                center
-                className="bg-white/75 border-pink-100/70"
-                titleClassName="truncate text-lg font-semibold tracking-tight text-slate-700"
-                subtitleClassName="mt-0.5 truncate text-xs font-normal text-rose-300"
-            />
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-5">
-                <SpecialMomentsIntro />
-                {personaScope.hasLinkedFocus && (
-                    <SpecialMomentsScopeNotice
-                        activeMaskLabel={personaScope.activeMaskLabel}
-                        showAll={showAllSpecialCharacters}
-                        onToggleShowAll={() => setShowAllSpecialCharacters(prev => !prev)}
-                    />
-                )}
-                {/* 白色情人节卡片（活动期间或往期均显示） */}
-                {(isWhiteDayEventAvailable() || isWhiteDayPast()) && (() => {
-                    const isPast = isWhiteDayPast();
-                    return (
-                        <SpecialMomentEventCard
-                            emoji="🍫"
-                            title="白色情人节特别活动"
-                            description={isPast ? '2026.3.14 — 重温你们的专属巧克力' : '2026 White Day — 和 TA 一起 DIY 一块专属巧克力'}
-                            actionHint={isPast ? '点击角色查看记录或重新制作' : '选择一位角色开始'}
-                            isPast={isPast}
-                            gradientClassName="bg-gradient-to-br from-amber-500 via-orange-400 to-yellow-400 shadow-xl shadow-amber-200"
-                            pastGradientClassName="bg-gradient-to-br from-amber-400/70 via-orange-300/70 to-yellow-300/70 shadow-lg"
-                            recordKey={WHITEDAY_RECORD_KEY}
-                            recordDotClassName="bg-white/70"
-                            characters={visibleSpecialCharacters}
-                            onSelectCharacter={(id) => { setWhiteDayCharId(id); setShowWhiteDaySession(true); }}
-                            onLongPressStart={handleWdLongPressStart}
-                            onLongPressEnd={handleWdLongPressEnd}
-                            onContextDelete={setWdDeleteTargetId}
-                        />
-                    );
-                })()}
-
-                {/* 情人节卡片（活动期间或往期均显示） */}
-                {(isValentineEventAvailable() || isValentinePast()) && (() => {
-                    const isPast = isValentinePast();
-                    return (
-                        <SpecialMomentEventCard
-                            emoji="💝"
-                            title="情人节特别推送"
-                            description={isPast ? '2026.2.14 — 重温那天TA说的话' : '2026 Valentine\'s Day — 听听TA想对你说什么'}
-                            actionHint={isPast ? '点击角色重播或重新生成' : '选择一位角色开始'}
-                            isPast={isPast}
-                            gradientClassName="bg-gradient-to-br from-pink-500 via-rose-500 to-red-400 shadow-xl shadow-pink-200"
-                            pastGradientClassName="bg-gradient-to-br from-pink-400/70 via-rose-400/70 to-red-300/70 shadow-lg"
-                            recordKey={VALENTINE_RECORD_KEY}
-                            recordDotClassName="bg-white/60"
-                            characters={visibleSpecialCharacters}
-                            onSelectCharacter={(id) => { setSelectedCharId(id); setShowSession(true); }}
-                            onLongPressStart={handleLongPressStart}
-                            onLongPressEnd={handleLongPressEnd}
-                            onContextDelete={setDeleteTargetId}
-                        />
-                    );
-                })()}
-            </div>
-
-            <DeleteSpecialMomentDialog
-                targetId={wdDeleteTargetId}
-                characters={characters}
-                title="删除白色情人节记录"
-                description={(name) => (
-                    <>
-                        将删除 <span className="font-bold text-slate-600">{name}</span> 的白色情人节记录。此操作不可撤销。
-                    </>
-                )}
-                onCancel={() => setWdDeleteTargetId(null)}
-                onConfirm={handleWdDeleteRecord}
-            />
-
-            <DeleteSpecialMomentDialog
-                targetId={deleteTargetId}
-                characters={characters}
-                title="删除情人节记录"
-                description={(name) => (
-                    <>
-                        将删除 <span className="font-bold text-slate-600">{name}</span> 的情人节记录，包括存储的回忆和对应的聊天消息。此操作不可撤销。
-                    </>
-                )}
-                onCancel={() => setDeleteTargetId(null)}
-                onConfirm={handleDeleteRecord}
-            />
-        </div>
-    );
 };
