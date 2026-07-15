@@ -1,3 +1,26 @@
+import type { NarrativeDirective, NovelNarrativeState } from './domain/narrative/types';
+
+export type {
+    NarrativeBeat,
+    NarrativeBeatKind,
+    NarrativeDirective,
+    NarrativeDirectiveSourceRef,
+    NarrativeDirectiveStatus,
+    NarrativeExperienceReceipt,
+    NarrativeLane,
+    NarrativeMemoryPolicy,
+    NarrativeNpcState,
+    NarrativeOpenThread,
+    NarrativeReceiptMemoryPolicy,
+    NarrativeRouteState,
+    NarrativeRun,
+    NarrativeRunLane,
+    NarrativeRunStatus,
+    NarrativeScene,
+    NarrativeSceneStatus,
+    NarrativeSurfaceId,
+    NovelNarrativeState,
+} from './domain/narrative/types';
 
 export enum AppID {
   Launcher = 'launcher',
@@ -445,79 +468,6 @@ export interface NovelSegment {
     };
 }
 
-export type NarrativeSurfaceId =
-    | 'consult_desk'
-    | 'novel'
-    | 'date'
-    | 'guidebook'
-    | 'special_moments'
-    | 'check_phone'
-    | 'game'
-    | 'lifesim'
-    | 'timebook'
-    | 'chat'
-    | 'social_feed';
-
-export type NarrativeLane =
-    | 'mainline'
-    | 'pending_mainline'
-    | 'if_line'
-    | 'date_experience'
-    | 'keepsake_event'
-    | 'user_insight'
-    | 'supporting_evidence'
-    | 'sandbox'
-    | 'draft';
-
-export type NarrativeMemoryPolicy =
-    | 'main_vault'
-    | 'manual_promotion'
-    | 'relationship_echo'
-    | 'character_private'
-    | 'dream_material'
-    | 'excluded_from_main_vault'
-    | 'local_keepsake'
-    | 'system_trace';
-
-export type NarrativeDirectiveStatus =
-    | 'pending'
-    | 'activated'
-    | 'played'
-    | 'archived'
-    | 'discarded';
-
-export interface NarrativeDirectiveSourceRef {
-    surface: NarrativeSurfaceId;
-    id?: string;
-    label?: string;
-}
-
-export interface NarrativeDirective {
-    id: string;
-    title: string;
-    summary: string;
-    lane: NarrativeLane;
-    status: NarrativeDirectiveStatus;
-    sourceSurface: NarrativeSurfaceId;
-    targetSurface?: NarrativeSurfaceId;
-    charIds: string[];
-    npcNames?: string[];
-    tags?: string[];
-    constraints?: string[];
-    activationHint?: string;
-    memoryPolicy: NarrativeMemoryPolicy;
-    sourceRefs?: NarrativeDirectiveSourceRef[];
-    createdAt: number;
-    updatedAt: number;
-    playedAt?: number;
-    dreamDelivery?: {
-        charId: string;
-        tone?: 'soft' | 'uneasy' | 'romantic' | 'ominous' | 'playful';
-        instruction: string;
-        deliveredAt?: number;
-    };
-}
-
 export interface NovelBook {
     id: string;
     title: string;
@@ -530,6 +480,7 @@ export interface NovelBook {
     protagonists: NovelProtagonist[];
     segments: NovelSegment[];
     directives?: NarrativeDirective[];
+    narrative?: NovelNarrativeState;
     createdAt: number;
     lastActiveAt: number;
 }
