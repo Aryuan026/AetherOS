@@ -8,6 +8,7 @@ import Modal from '../components/os/Modal';
 import { extractJson, safeResponseJson } from '../utils/safeApi';
 import { Notepad, Check, X, CheckCircle, XCircle, Hand } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
+import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 import {
     DEFAULT_STUDY_QUIZ_TYPES,
     STUDY_COVER_GRADIENTS,
@@ -1699,7 +1700,7 @@ const StudyApp: React.FC = () => {
             <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
 
             {/* Header Overlay */}
-            <div className="absolute top-0 w-full p-4 flex justify-between z-30 pointer-events-none">
+            <div className="absolute top-0 w-full px-4 pb-4 flex justify-between z-30 pointer-events-none" style={{ paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                 <button onClick={() => setMode('bookshelf')} className="bg-black/30 text-white/80 p-2 rounded-full backdrop-blur-md hover:bg-black/50 transition-colors pointer-events-auto border border-white/10">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                 </button>

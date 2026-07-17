@@ -2,6 +2,7 @@
 import React from 'react';
 import { useOS } from '../context/OSContext';
 import { Sparkle } from '@phosphor-icons/react';
+import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
 
 const FAQ_DATA = [
     {
@@ -89,7 +90,7 @@ const FAQApp: React.FC = () => {
     return (
         <div className="h-full w-full bg-slate-50 flex flex-col font-light">
             {/* Header */}
-            <div className="h-20 bg-white/70 backdrop-blur-md flex items-end pb-3 px-4 border-b border-white/40 shrink-0 sticky top-0 z-10">
+            <div className="bg-white/70 backdrop-blur-md flex items-center px-4 border-b border-white/40 shrink-0 sticky top-0 z-10" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                 <div className="flex items-center gap-2 w-full">
                     <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600">

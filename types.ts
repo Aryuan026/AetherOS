@@ -110,6 +110,8 @@ export interface AvatarFramePreset {
   updatedAt?: number;
 }
 
+export type ShellChromeMode = 'simulated_phone' | 'software' | 'virtual_city';
+
 export interface OSTheme {
   hue: number;
   saturation: number;
@@ -122,6 +124,8 @@ export interface OSTheme {
   desktopDecorations?: DesktopDecoration[];
   avatarFramePresets?: AvatarFramePreset[];
   customFont?: string;
+  shellChromeMode?: ShellChromeMode;
+  /** @deprecated Read only during the software-shell migration. */
   hideStatusBar?: boolean;
   // Chat UI customization (global)
   chatAvatarShape?: 'circle' | 'rounded' | 'square';

@@ -3,6 +3,7 @@ import { useOS } from '../context/OSContext';
 import { Worldbook } from '../types';
 import Modal from '../components/os/Modal';
 import { DiamondsFour, BookOpen } from '@phosphor-icons/react';
+import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
 
 const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 const worldbookCollator = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' });
@@ -147,7 +148,7 @@ const WorldbookApp: React.FC = () => {
     if (isEditing) {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans animate-fade-in">
-                <div className="h-16 flex items-center justify-between px-4 bg-white/80 backdrop-blur-md border-b border-slate-200 shrink-0 z-20">
+                <div className="flex items-center justify-between px-4 bg-white/80 backdrop-blur-md border-b border-slate-200 shrink-0 z-20" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                     <button onClick={() => setIsEditing(false)} className="px-3 py-1 text-slate-500 font-bold text-sm">取消</button>
                     <span className="font-bold text-slate-800">{editingBook ? '编辑条目' : '新建条目'}</span>
                     <button onClick={handleSave} className="px-4 py-1.5 bg-indigo-500 text-white rounded-full text-xs font-bold shadow-md active:scale-95 transition-transform">保存</button>
@@ -208,7 +209,7 @@ const WorldbookApp: React.FC = () => {
             <div className="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-white/80 to-transparent pointer-events-none z-10"></div>
 
             {/* Header */}
-            <div className="h-20 bg-white/70 backdrop-blur-xl flex items-end pb-3 px-6 border-b border-white/40 shrink-0 sticky top-0 z-20 shadow-sm">
+            <div className="bg-white/70 backdrop-blur-xl flex items-center px-6 border-b border-white/40 shrink-0 sticky top-0 z-20 shadow-sm" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                 <div className="flex justify-between items-center w-full">
                     <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>

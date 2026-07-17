@@ -1,5 +1,211 @@
 # AetherOS Progress
 
+## 2026-07-17 Social Detail Header Optical Alignment
+
+- done:
+  - Moved the shared inner-detail header for both `朋友圈` and `资讯站` down by
+    `3px` relative to the shell content origin.
+  - Scoped the offset to the detail row only; feed headers, body spacing,
+    comments, overlays, and the global shell coordinate contract are unchanged.
+  - Added a shell-contract assertion so later header cleanup cannot silently
+    erase the optical offset.
+
+- verified:
+  - TypeScript no-emit compile, `verify:shell-chrome`, and `verify:health`.
+  - Browser opened both a Moments detail and a News detail at 390 × 844, then
+    rechecked the shared News detail at 430 × 932. Software-mode detail-header
+    padding is `11px` (`8px` shared origin + `3px` optical offset), total header
+    height is `54px`, and horizontal overflow is zero at both widths.
+  - Browser console errors remained zero; only the known Tailwind warning was
+    present.
+
+- boundary:
+  - This is layout-only. Social content generation, story-seed adoption,
+    comments, memory behavior, and timestamps are unchanged.
+  - No deployment, commit, or GitHub push was performed from this worktree.
+
+## 2026-07-17 Lock And Launcher Brand Voice
+
+- done:
+  - Removed the `Software Shell` engineering label from the lock screen.
+  - Set the unquoted lock-screen slogan as two explicit lines—`Real isn’t how
+    you are made.` and `It’s a thing that happens to you.`—with a dedicated
+    Snell Roundhand / Apple Chancery script stack, non-wrapping line ownership,
+    and more generous line spacing.
+  - Replaced the first launcher's signal label with `SIGNAL RECEIVED` while
+    preserving its existing typography.
+  - Replaced the software-mode subtitle beneath AetherOS with
+    `I am a part of all that I have met.`, preserving the system type treatment
+    and the sentence's intended capitalization.
+
+- verified:
+  - TypeScript no-emit compile, `verify:shell-chrome`, and `verify:health`.
+  - `verify:appearance-presets`, `verify:virtual-world-clock`,
+    `verify:history-import`, `verify:daily-archive`, and `verify:narrative`.
+  - Browser at 390 × 844 and 430 × 932: the two lock-slogan lines remain centered
+    and individually intact without touching the title or unlock affordance;
+    the first-screen signal and subtitle preserve their visual hierarchy with
+    no horizontal overflow. Console errors remained zero; only the known
+    Tailwind warning was present.
+
+- boundary:
+  - This is brand-copy and presentation only. Shell modes, virtual-world scope,
+    real timestamps, and appearance-preset behavior are unchanged.
+  - No deployment, commit, or GitHub push was performed from this worktree.
+
+## 2026-07-17 Final Chat, Launcher, And Shared-Preset Alignment
+
+- done:
+  - Moved the compact Chat header and its message viewport down together by an
+    optical `5px`, without changing shared shell or overlay coordinates.
+  - Raised the fourth launcher's calendar and `Upcoming` list into one compact
+    upper group, tightened their internal gap, and kept a dedicated Dock reserve.
+  - Added a versioned shared-appearance preset parser/serializer. It round-trips
+    the current shell, chat-beautification, wallpaper, icon, decoration, and
+    custom-chat-theme fields; maps bounded legacy `chatLayout` fields; preserves
+    the old status-bar migration; and excludes unknown injected theme keys.
+  - Clarified in Appearance that importing a shared `.json` only adds it to the
+    local list; the user's explicit `应用` action changes the active appearance.
+  - Added a browser import fixture and `verify:appearance-presets` contract test.
+
+- verified:
+  - TypeScript no-emit compile and `git diff --check`.
+  - `npm run verify:appearance-presets`: modern round-trip, legacy mapping,
+    version/malformed rejection, and unknown-field exclusion.
+  - Browser at 390 × 844 and 430 × 932: Chat header `51px`, content top `13px`,
+    and message top `51px`; no horizontal overflow. The fourth-page calendar
+    begins at `56px`, `Upcoming` follows as the same group, and neither collides
+    with the Dock.
+  - Browser shared-file flow: import fixture, see it in the preset list, apply
+    it explicitly, then confirm all current chat-beautification values and its
+    custom chat theme in local storage / IndexedDB.
+  - Browser console had no runtime errors; only the existing Tailwind CDN
+    production warning remained.
+
+- boundary:
+  - Appearance files change presentation state only. They do not rewrite
+    message, import, daily-archive, backup, retrieval, or narrative time.
+  - No deployment, commit, or GitHub push was performed from this worktree.
+
+## 2026-07-17 Appearance Information Architecture And Type Scale
+
+- done:
+  - Removed the redundant `原样` badge from the classic-phone choice while
+    keeping the choice itself in the same three-card top-style control.
+  - Reframed the page as `界面外观 / 应用图标 / 预设管理`, then divided the
+    first tab into `屏幕观感` and `桌面布置` so the page follows the user's
+    decision order instead of a flat implementation checklist.
+  - Moved top style ahead of theme color and global font, with wallpaper,
+    widgets, and desktop decoration following as a second visual group.
+  - Standardized Appearance typography to page title `16px`, tabs `12px`,
+    section titles `13px`, controls `11px`, helper copy `10px`, and metadata
+    `9px`. Font preview samples remain intentionally larger.
+  - Aligned every section to one card shell, changed the icon tab to a compact
+    four-column launcher grid, and grouped preset save/import/list flows into
+    matching cards.
+  - Replaced invalid image rendering for gradient wallpapers with a shared CSS
+    background preview used by both wallpaper and decoration previews.
+  - Localized the desktop-decoration category names.
+  - Follow-up: reduced the desktop-decoration add actions from two full-width
+    gradient buttons to a centered compact secondary-action pair.
+
+- verified:
+  - TypeScript no-emit compile.
+  - `npm run verify:shell-chrome`, including absence of a rendered `原样` tag
+    and presence of the new information groups/type-scale contract.
+  - `npm run verify:virtual-world-clock`
+  - `npm run verify:history-import`
+  - `npm run verify:daily-archive`
+  - `npm run verify:narrative`
+  - `npm run verify:health`
+  - Browser at 390 × 844 and 430 × 932: no horizontal overflow in theme, icon,
+    or preset tabs; top-mode cards remain aligned; classic, software, and
+    virtual-city transitions still work; virtual-city editing still expands
+    only in its selected mode.
+  - Browser follow-up at 390 × 844: decoration actions measure 90 × 33px and
+    100 × 33px at 10px type, remain centered, and the preset picker still
+    expands normally without horizontal overflow.
+
+- boundary:
+  - This pass changes Appearance information architecture and presentation only.
+    It does not change message/import/archive time semantics or virtual-world
+    persistence scope.
+  - No deployment, commit, or GitHub push was performed from this worktree.
+
+## 2026-07-17 Classic Phone Chrome Restored As An Appearance Choice
+
+- done:
+  - Expanded `ShellChromeMode` to `simulated_phone | software | virtual_city`.
+  - Added a dedicated classic status component with the former reality clock,
+    Wi-Fi and battery presentation, including correct Battery API listener
+    cleanup and a safe 100% fallback when the API is unavailable.
+  - Restored the old large real-time launcher and lock-screen presentation, plus
+    the Date presence timestamp, only in classic mode.
+  - Preserved the pure software and relationship-scoped virtual-city modes as
+    distinct choices; missing virtual scope still fails closed to software.
+  - Reorganized `Appearance → 界面顶部` into three compact radio cards followed
+    by current-mode, scope and timestamp-boundary information. The city editor
+    now expands only when virtual city is selected.
+  - Corrected legacy migration: `hideStatusBar=true` becomes software, while
+    false or the former omitted/visible default becomes classic phone.
+
+- verified:
+  - `npm run verify:shell-chrome`
+  - `npm run verify:virtual-world-clock`
+  - `npm run verify:history-import`
+  - `npm run verify:daily-archive`
+  - `npm run verify:narrative`
+  - `npm run verify:health`
+  - Browser at 390 × 844 and 430 × 932: no horizontal overflow; classic status
+    strip `32px`, shared header `80px`, Chat header `83px`, overlay top `40px`;
+    software is `56/51/8` and virtual city is `90/85/42` after the final Chat
+    optical-alignment follow-up.
+
+- boundary:
+  - The classic clock and status glyphs are display-only. Message, import,
+    daily-archive, backup and narrative time semantics remain unchanged.
+  - No deployment, commit, or GitHub push was performed from this worktree.
+
+## 2026-07-17 Pure Software Shell And Scoped Virtual City
+
+- done:
+  - Removed the simulated device status bar, including real-time clock,
+    signal/Wi-Fi/battery glyphs, and browser Battery API subscription.
+  - Migrated legacy `hideStatusBar` themes into the default `software` shell and
+    stripped the deprecated field on read/write.
+  - Added shared safe-area/world-strip/header/overlay CSS variables and routed
+    shared headers plus handwritten immersive exceptions through them.
+  - Added a single global overlay stack for suspended calls, system errors, and
+    toasts.
+  - Added a local virtual-city config keyed by
+    `virtual_world_clock_v1:${progressBundleId}:${personaMaskId}` with strict
+    active-mask/progress-bundle agreement.
+  - Added IANA and fixed UTC-offset clocks, display-only year offset, manual or
+    deterministic local seasonal weather, compact world strip, lock-screen and
+    launcher display, and Appearance editing.
+  - Added a read-only `VirtualWorldContext` carrying `source`, `scope`, and an
+    explicit non-authoritative prompt boundary. It is not wired into current
+    story-state, task, or memory algorithms.
+
+- verified:
+  - `npm run verify:shell-chrome`
+  - `npm run verify:virtual-world-clock`
+  - `npm run verify:history-import`
+  - `npm run verify:daily-archive`
+  - `npm run verify:narrative`
+  - `npm run verify:health`
+  - Browser coverage at 390 × 844 and 430 × 932 for launcher/lock, Chat,
+    HistoryImport, DailyArchive, Appearance, Settings, Date, Call, Social, Room,
+    Schedule, suspended-call/toast/error overlays, and software/virtual modes.
+
+- boundary / HOLD:
+  - Message, import, daily archive, clipping, retrieval, continuation, backup,
+    and audit time semantics are unchanged.
+  - Call/Date life-rhythm or prompt integration is held for a later reviewed
+    block; world weather/history cannot become current state, plot, tasks, or
+    memory merely because it is visible.
+  - No deployment or GitHub push was performed from this worktree.
+
 ## 2026-07-17 AetherOS 2.0 First Device-Test Release
 
 - done:

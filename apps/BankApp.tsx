@@ -14,6 +14,7 @@ import { processImage } from '../utils/file';
 import { ContextBuilder } from '../utils/context';
 import { Coffee, ClipboardText, ChartBar, Coin, Target, UserCircle, BookOpen, Lightning, Storefront } from '@phosphor-icons/react';
 import { isLegacyUpstreamAssetUrl } from '../utils/publicReleaseSanitization';
+import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 
 const INITIAL_STATE: BankFullState = {
     config: {
@@ -768,8 +769,8 @@ ${previousGuestbook}
         <div className="h-full w-full flex flex-col font-sans relative overflow-hidden" style={{ background: 'linear-gradient(180deg, #FDF6E3 0%, #FFF8E1 100%)' }}>
 
             {/* Premium Header */}
-            <div className="pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-3 px-4 sticky top-0 z-[50] shrink-0"
-                 style={{ background: 'linear-gradient(180deg, rgba(141, 110, 99, 0.95) 0%, rgba(109, 76, 65, 0.95) 100%)', backdropFilter: 'blur(10px)' }}>
+            <div className="pb-3 px-4 sticky top-0 z-[50] shrink-0"
+                 style={{ background: 'linear-gradient(180deg, rgba(141, 110, 99, 0.95) 0%, rgba(109, 76, 65, 0.95) 100%)', backdropFilter: 'blur(10px)', paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <button
@@ -898,8 +899,8 @@ ${previousGuestbook}
             {showGuestbook && (
                 <div className="absolute inset-0 z-[100] flex flex-col animate-slide-up" style={{ background: 'linear-gradient(180deg, #FDF6E3 0%, #FFF8E1 100%)' }}>
                     {/* Header */}
-                    <div className="pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 px-4 shrink-0"
-                         style={{ background: 'linear-gradient(180deg, rgba(141, 110, 99, 0.95) 0%, rgba(109, 76, 65, 0.95) 100%)', backdropFilter: 'blur(10px)' }}>
+                    <div className="pb-3 px-4 shrink-0"
+                         style={{ background: 'linear-gradient(180deg, rgba(141, 110, 99, 0.95) 0%, rgba(109, 76, 65, 0.95) 100%)', backdropFilter: 'blur(10px)', paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center">

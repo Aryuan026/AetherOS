@@ -9,6 +9,7 @@ import Modal from '../components/os/Modal';
 import { safeResponseJson } from '../utils/safeApi';
 import { Sparkle } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
+import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -600,7 +601,10 @@ Structure:
     if (mode === 'calendar' && selectedChar) {
         return (
             <div className="h-full w-full bg-white flex flex-col font-light relative">
-                <div className="pt-10 pb-5 px-5 bg-amber-500 shadow-lg shrink-0 rounded-b-[1.75rem] z-20">
+                <div
+                    className="pb-5 px-5 bg-amber-500 shadow-lg shrink-0 rounded-b-[1.75rem] z-20"
+                    style={{ paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}
+                >
                     <div className="flex justify-between items-start mb-3">
                          <button onClick={() => setMode('select')} className="w-9 h-9 -ml-2 rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
@@ -678,7 +682,7 @@ Structure:
         <div className="h-full w-full bg-[#1a1a1a] flex flex-col relative overflow-hidden">
             
             {/* Editor Header */}
-            <div className="pt-12 pb-3 px-4 bg-[#1a1a1a]/90 backdrop-blur-md flex items-center justify-between text-white shrink-0 z-30 h-24 box-border">
+            <div className="px-4 bg-[#1a1a1a]/90 backdrop-blur-md flex items-center justify-between text-white shrink-0 z-30 box-border" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                 <button onClick={() => setMode('calendar')} className="p-2 -ml-2 text-white/60 hover:text-white rounded-full active:bg-white/10 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                 </button>

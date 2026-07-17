@@ -11,6 +11,8 @@ import DateSession from '../components/date/DateSession';
 import DateSettings from '../components/date/DateSettings';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
+import { resolveShellChromeMode } from '../utils/shellChrome';
+import { useVirtualWorldClock } from '../hooks/useVirtualWorldClock';
 import { BookOpen } from '@phosphor-icons/react';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 import { DATE_EXPERIENCE_BOUNDARY, getBuiltInDateBackgroundForHour, getDateFallbackMood, resolveDateDefaultPortrait } from '../utils/dateExperience';
@@ -95,7 +97,12 @@ const pickDatePeekLine = (lines: string[], seed: string) => {
 };
 
 const DateApp: React.FC = () => {
-    const { closeApp, characters, activeCharacterId, setActiveCharacterId, apiConfig, addToast, updateCharacter, virtualTime, userProfile, setShellStatusBarVariantOverride } = useOS();
+    const { closeApp, characters, activeCharacterId, setActiveCharacterId, apiConfig, addToast, updateCharacter, virtualTime, userProfile, theme, setShellStatusBarVariantOverride } = useOS();
+    const virtualWorld = useVirtualWorldClock(userProfile);
+    const requestedShellChromeMode = resolveShellChromeMode(theme);
+    const shellChromeMode = requestedShellChromeMode === 'virtual_city'
+      ? (virtualWorld.context ? 'virtual_city' : 'software')
+      : requestedShellChromeMode;
     
     // Modes: 'select' -> 'peek' -> 'session' | 'settings' | 'history'
     const [mode, setMode] = useState<'select' | 'peek' | 'session' | 'settings' | 'history'>('select');
@@ -870,7 +877,16 @@ ${DATE_EXPERIENCE_BOUNDARY}
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="mx-auto h-5 w-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                         </button>
                         <div className="text-right">
-                            <div className="text-[10px] font-mono tracking-[0.24em] text-white/40">{virtualTime.day.toUpperCase()} {formatTime()}</div>
+                            {shellChromeMode === 'virtual_city' && virtualWorld.context && (
+                                <div className="text-[10px] font-mono tracking-[0.18em] text-white/40">
+                                    {virtualWorld.context.locationLabel} · {virtualWorld.context.clock.timeLabel}
+                                </div>
+                            )}
+                            {shellChromeMode === 'simulated_phone' && (
+                                <div className="text-[10px] font-mono tracking-[0.24em] text-white/40">
+                                    {virtualTime.day.toUpperCase()} {formatTime()}
+                                </div>
+                            )}
                             <div className="mt-1 text-xs tracking-[0.18em] text-white/60">DAILY MEET</div>
                         </div>
                     </div>

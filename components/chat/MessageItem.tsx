@@ -8,6 +8,7 @@ import { getChatBubbleContainerStyle } from './ChatConstants';
 import AvatarWithFrame from '../common/AvatarWithFrame';
 import { DIALOG_VISUAL_RULES } from './dialogVisualRules';
 import { cleanCallKeepsakeLine } from '../../utils/callTranscript';
+import { SHELL_APP_HEADER_CONTENT_TOP } from '../shell/shellLayout';
 
 // --- Forward Card with expand/collapse ---
 const ForwardCard: React.FC<{
@@ -52,7 +53,7 @@ const ForwardCard: React.FC<{
             {expanded && (
                 <div className="fixed inset-0 z-[100] bg-slate-50 flex flex-col animate-fade-in" onClick={(e) => e.stopPropagation()}>
                     {/* Header */}
-                    <div className="pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 px-4 bg-white border-b border-slate-100 shrink-0 flex items-center gap-3">
+                    <div className="pb-3 px-4 bg-white border-b border-slate-100 shrink-0 flex items-center gap-3" style={{ paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                         <button onClick={() => setExpanded(false)} className="p-2 -ml-2 rounded-full hover:bg-slate-100 text-slate-600">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                         </button>
@@ -734,7 +735,7 @@ const MessageItem = React.memo(({
 
                     {whiteDayLetterOpen && (
                         <div className="fixed inset-0 z-[120] flex flex-col animate-fade-in" style={{ background: 'linear-gradient(180deg, #fff7ed 0%, #fff 34%, #fff1f2 100%)' }} onClick={(e) => e.stopPropagation()}>
-                            <div className="shrink-0 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] flex items-center gap-3 border-b border-amber-100/70 bg-white/70 backdrop-blur-md">
+                            <div className="shrink-0 px-4 pb-3 flex items-center gap-3 border-b border-amber-100/70 bg-white/70 backdrop-blur-md" style={{ paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                                 <button onClick={() => setWhiteDayLetterOpen(false)} className="p-2 -ml-2 rounded-full text-slate-500 hover:bg-white">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                                 </button>

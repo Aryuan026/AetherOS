@@ -1,5 +1,114 @@
 # AetherOS Public Sticker Schema
 
+## Shell Chrome And Virtual World Clock
+
+The global appearance preference is intentionally separate from relationship
+world facts:
+
+```ts
+type ShellChromeMode = 'simulated_phone' | 'software' | 'virtual_city';
+
+interface OSTheme {
+  shellChromeMode?: ShellChromeMode;
+  /** deprecated migration input only */
+  hideStatusBar?: boolean;
+}
+```
+
+`software` is the new-config default. `simulated_phone` restores the former
+reality clock / Wi-Fi / battery presentation without changing any record time.
+A `virtual_city` request renders only when the active relationship resolves to a
+valid scoped config; otherwise it fails closed to software chrome.
+
+Legacy migration preserves user intent:
+
+```text
+hideStatusBar=true   -> software
+hideStatusBar=false  -> simulated_phone
+legacy field omitted -> simulated_phone (the former visible default)
+```
+
+Virtual-city config lives in the existing local `assets` store:
+
+```text
+virtual_world_clock_v1:${progressBundleId}:${personaMaskId}
+```
+
+```ts
+interface VirtualWorldClockConfigV1 {
+  version: 1;
+  progressBundleId: string;
+  personaMaskId: string;
+  locationLabel: string;
+  eraLabel?: string;
+  timeZoneMode: 'iana' | 'fixed_offset';
+  timeZoneId?: string;
+  utcOffsetMinutes?: number; // -840..840
+  yearOffset: number;        // display only, -3000..3000
+  weatherMode: 'manual' | 'seasonal_sim';
+  weather: {
+    condition: string;
+    temperatureLabel?: string;
+    icon?: string;
+  };
+  updatedAt: number;         // config metadata, not world/message time
+}
+```
+
+The active scope is valid only when the selected persona mask points to the
+selected progress bundle and that bundle points back to the same mask.
+
+Consumers receive a projection rather than mutable story state:
+
+```ts
+interface VirtualWorldContext {
+  source: 'virtual_world_clock_v1';
+  readOnly: true;
+  scope: { progressBundleId: string; personaMaskId: string };
+  storageKey: string;
+  locationLabel: string;
+  eraLabel?: string;
+  clock: {
+    year: number; month: number; day: number; weekday: string;
+    hour: number; minute: number; dateLabel: string; timeLabel: string;
+  };
+  weather: {
+    source: 'manual' | 'seasonal_sim';
+    condition: string; temperatureLabel?: string; icon?: string;
+  };
+}
+```
+
+This context has no message timestamp field and is not a persistence shape for
+history, daily archives, current story state, tasks, receipts, buffs, or memory.
+
+## Shared Appearance Preset File
+
+Appearance exchange uses one versioned file envelope rather than assigning
+untrusted JSON directly into `OSTheme`:
+
+```ts
+interface AppearancePresetFileV1 {
+  type: 'aether_appearance_preset';
+  version: 1;
+  id: string;
+  name: string;
+  createdAt: number;
+  theme: OSTheme;
+  customIcons?: Record<string, string>;
+  chatThemes?: ChatTheme[];
+  chatLayout?: ChatLayoutPreset; // legacy compatibility input
+}
+```
+
+Import validates the envelope and complete core theme before it adds a fresh
+local preset ID. It allowlists current shell/chat/desktop fields, sanitizes
+custom icons/decorations/chat themes, maps bounded legacy `chatLayout` values,
+and ignores unknown injected theme keys. Import does not activate the preset;
+the existing explicit `应用` action owns that local state change. The legacy
+`hideStatusBar` input remains migration-only and is normalized by the shell
+chrome migration when the preset is applied.
+
 ## User DeepSpace Identity
 
 `UserProfile` may persist a structured DeepSpace identity mode in addition to

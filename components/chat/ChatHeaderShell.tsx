@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CaretLeft, Lightning } from '@phosphor-icons/react';
 import { AvatarFramePreset, CharacterBuff, CharacterProfile } from '../../types';
-import { SHELL_APP_HEADER_CONTENT_TOP } from '../shell/shellLayout';
+import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_TOP_INSET } from '../shell/shellLayout';
 import AvatarWithFrame from '../common/AvatarWithFrame';
 
 interface TokenBreakdown {
@@ -43,6 +43,7 @@ interface ChatHeaderShellProps {
 const COLLAPSED_BUFF_MIN = 2;
 const COLLAPSED_BUFF_MAX = 3;
 const CHIP_GAP_PX = 2;
+const CHAT_HEADER_VERTICAL_OFFSET_PX = 5;
 
 const normalizeIntensity = (n: number | undefined | null): 1 | 2 | 3 => {
     const parsed = Number.isFinite(n) ? Math.round(Number(n)) : 2;
@@ -204,8 +205,11 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
                       ? 'bg-white/85 backdrop-blur-xl border-b border-white/70 shadow-sm'
                       : 'bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm';
     const headerDensityClass = signatureText
-        ? (headerDensity === 'airy' ? 'h-[92px] px-5 pb-2' : headerDensity === 'default' ? 'h-[84px] px-4 pb-1.5' : 'h-[78px] px-4 pb-1')
-        : headerDensity === 'compact' ? 'h-20 px-4 pb-3' : headerDensity === 'airy' ? 'h-28 px-6 pb-5' : 'h-24 px-5 pb-4';
+        ? (headerDensity === 'airy' ? 'px-5 pb-2' : headerDensity === 'default' ? 'px-4 pb-1.5' : 'px-4 pb-1')
+        : headerDensity === 'compact' ? 'px-4 pb-3' : headerDensity === 'airy' ? 'px-6 pb-5' : 'px-5 pb-4';
+    const headerBodyHeightPx = signatureText
+        ? (headerDensity === 'airy' ? 60 : headerDensity === 'default' ? 52 : 46)
+        : headerDensity === 'compact' ? 48 : headerDensity === 'airy' ? 80 : 64;
     const headerAlignClass = signatureText ? 'items-center' : 'items-end';
     const headerBackgroundStyle: React.CSSProperties | undefined =
         useHeaderBackgroundImage
@@ -233,7 +237,8 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
           : 'bg-slate-300 shadow-[0_0_0_3px_rgba(148,163,184,0.12)]';
     const headerShellStyle: React.CSSProperties = {
         ...headerBackgroundStyle,
-        paddingTop: SHELL_APP_HEADER_CONTENT_TOP,
+        paddingTop: `calc(${SHELL_APP_HEADER_CONTENT_TOP} + ${CHAT_HEADER_VERTICAL_OFFSET_PX}px)`,
+        height: `calc(${SHELL_TOP_INSET} + ${headerBodyHeightPx + CHAT_HEADER_VERTICAL_OFFSET_PX}px)`,
     };
 
     const onlineStatusNode =
