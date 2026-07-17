@@ -23,18 +23,6 @@ import AppHeader from './shell/AppHeader';
 import { SPECIAL_MOMENT_PROMPT_BOUNDARY } from '../utils/specialMoments';
 import { DeleteSpecialMomentDialog } from './special-moments/DeleteSpecialMomentDialog';
 
-// ============================================================
-// 情人节立绘 Sprite 映射 (占位 emoji，等图片整理好后替换为图床URL)
-// ============================================================
-const VALENTINE_SPRITES: Record<string, string> = {
-    happy:   'https://sharkpan.xyz/f/m3adhW/Vha.png',
-    sad:     'https://sharkpan.xyz/f/BZgDfa/Vsad.png',
-    normal:  'https://sharkpan.xyz/f/4rzdtj/VNormal.png',
-    angry:   'https://sharkpan.xyz/f/NdlVfv/VAn.png',
-    shy:     'https://sharkpan.xyz/f/VyontY/Vshy.png',
-    love:    'https://sharkpan.xyz/f/xl8muX/VBl.png',
-};
-
 // localStorage keys
 const VALENTINE_DISMISSED_KEY = 'aetheros_valentine_2026_dismissed';
 const VALENTINE_COMPLETED_KEY = 'aetheros_valentine_2026_completed';
@@ -127,7 +115,7 @@ const getAvailableEmotions = (char: CharacterProfile): string[] => {
 /** 获取情绪对应的立绘 */
 const getSpriteForEmotion = (emotion: string, char?: CharacterProfile): { type: 'image' | 'emoji', value: string } => {
     if (!char) {
-        return { type: 'emoji', value: VALENTINE_SPRITES['normal'] };
+        return { type: 'emoji', value: '💌' };
     }
 
     // 使用角色自己的见面立绘（和 DateApp 一致）

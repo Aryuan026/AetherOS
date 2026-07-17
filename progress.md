@@ -1,5 +1,28 @@
 # AetherOS Progress
 
+## 2026-07-17 Public Release Sanitization And Asset Budget
+
+- done:
+  - Restored the retired `preset-sully-v2` ID to the startup migration filter,
+    so an IndexedDB database created by the former `/sullyos/` route cannot
+    make the upstream private character preset reappear under `/aetheros/`.
+  - Added cleanup for the legacy Sully-only emoji category and orphaned sticker
+    records while preserving user chat messages and unrelated user assets.
+  - Replaced remaining runtime references to upstream-hosted private artwork in
+    the café and Valentine surfaces with neutral local defaults.
+  - Added a public-release regression check covering retired IDs, sticker data,
+    forbidden runtime markers, native app naming, and large-asset budgets.
+  - Changed the native display name to `AetherOS`.
+  - Re-encoded the Timebook desk and four built-in date backgrounds as
+    same-resolution JPEGs, reducing their combined size from about 9.6 MB to
+    about 1.5 MB without changing layout dimensions.
+
+- boundary:
+  - This block changes the local release candidate only. The existing public
+    static deployment and gateway configuration remain untouched.
+  - User-authored chat messages are not deleted when the retired character card
+    is removed.
+
 ## 2026-07-13 User Persona Mask Frame
 
 - done:
