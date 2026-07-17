@@ -37,6 +37,22 @@ const sourceUnitsFromDocumentXml = (xml: string): HistorySourceUnit[] => {
     let cellNumber = 0;
     let paragraphNumber = 0;
 
+    const finishParagraph = (): void => {
+        if (paragraphText !== null && paragraphLocator) {
+            units.push({
+                sourceOrder: units.length,
+                locator: paragraphLocator,
+                text: paragraphText,
+            });
+            if (units.length > MAX_HISTORY_SOURCE_UNITS) {
+                throw new Error(`DOCX 超过 ${MAX_HISTORY_SOURCE_UNITS.toLocaleString('en-US')} 个段落/单元格，请先拆分后再预览。`);
+            }
+        }
+        paragraphText = null;
+        paragraphLocator = null;
+        captureText = false;
+    };
+
     for (const token of tokens) {
         if (!token.startsWith('<')) {
             if (captureText && paragraphText !== null) {
@@ -85,22 +101,11 @@ const sourceUnitsFromDocumentXml = (xml: string): HistorySourceUnit[] => {
                     end: paragraphNumber,
                     label: `第 ${paragraphNumber} 段`,
                 };
+            if (selfClosing) finishParagraph();
             continue;
         }
         if (closing && tagName === 'p') {
-            if (paragraphText !== null && paragraphLocator) {
-                units.push({
-                    sourceOrder: units.length,
-                    locator: paragraphLocator,
-                    text: paragraphText,
-                });
-                if (units.length > MAX_HISTORY_SOURCE_UNITS) {
-                    throw new Error(`DOCX 超过 ${MAX_HISTORY_SOURCE_UNITS.toLocaleString('en-US')} 个段落/单元格，请先拆分后再预览。`);
-                }
-            }
-            paragraphText = null;
-            paragraphLocator = null;
-            captureText = false;
+            finishParagraph();
             continue;
         }
         if (!closing && tagName === 't') {

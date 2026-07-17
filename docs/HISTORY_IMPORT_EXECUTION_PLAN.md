@@ -413,7 +413,9 @@ future adapter label:
   GB18030 with explicit warnings/failures and line locators;
 - `utils/historyImport/parsers/docx.ts` validates the OpenXML ZIP carrier,
   bounds entry/document size, reads `word/document.xml`, and preserves paragraph
-  or table-cell position while extracting Word text runs, tabs, and breaks;
+  or table-cell position while extracting Word text runs, tabs, and breaks. It
+  accepts valid self-closing empty paragraphs emitted by WPS/mobile Word while
+  still rejecting a genuinely unfinished paragraph at the end of truncated XML;
 - `utils/historyImport/parsers/sourcePreview.ts` applies the same conservative
   turn cleanup to both sources. It keeps missing speaker/time uncertain, does
   not attach a wrapped line to the previous turn, preserves missing media as an

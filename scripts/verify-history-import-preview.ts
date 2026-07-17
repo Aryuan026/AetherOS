@@ -59,7 +59,10 @@ const createSyntheticDocx = async (): Promise<Uint8Array> => {
     return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
 };
 
-const createParagraphOnlyDocx = async (paragraphs: string[]): Promise<Uint8Array> => {
+const createParagraphOnlyDocx = async (
+    paragraphs: string[],
+    trailingBodyXml = '',
+): Promise<Uint8Array> => {
     const zip = new JSZip();
     zip.file('[Content_Types].xml', [
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
@@ -73,6 +76,7 @@ const createParagraphOnlyDocx = async (paragraphs: string[]): Promise<Uint8Array
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
         '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>',
         ...paragraphs.map(paragraphXml),
+        trailingBodyXml,
         '<w:sectPr/></w:body></w:document>',
     ].join(''));
     return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
@@ -179,6 +183,24 @@ assert.equal(paidMeaningfulRows[0].sourceLocator.end, 2);
 assert.equal(paidMeaningfulRows[0].sourceLocator.label, '第 1-2 段');
 assert.equal(paidDocxPreview.speakerCandidates.some(candidate => candidate.label === 'timestamp'), false);
 
+const wpsSelfClosingPreview = await buildHistoryImportPreview({
+    name: 'synthetic-wps-self-closing-paragraph.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    bytes: await createParagraphOnlyDocx(paidExportLines, '<w:p/>'),
+    bindingDraft,
+});
+const wpsMeaningfulRows = wpsSelfClosingPreview.rows.filter(row => row.status !== 'skipped');
+assert.deepEqual(
+    wpsMeaningfulRows.map(row => [row.speakerLabel, row.content, row.sourceTime.originalText]),
+    paidMeaningfulRows.map(row => [row.speakerLabel, row.content, row.sourceTime.originalText]),
+);
+assert.equal(wpsSelfClosingPreview.sourceUnitCount, 9);
+assert.equal(wpsSelfClosingPreview.totalPreviewRowCount, 6);
+assert.equal(wpsSelfClosingPreview.counts.skipped, 3);
+assert.ok(
+    wpsSelfClosingPreview.rows[wpsSelfClosingPreview.rows.length - 1]?.issues.includes('empty_source_unit'),
+);
+
 const orphanTimestampPreview = await buildHistoryImportPreview({
     name: 'synthetic-orphan-timestamp.txt',
     mimeType: 'text/plain',
@@ -240,6 +262,14 @@ await assert.rejects(
         bindingDraft,
     }),
     /无法打开 DOCX/,
+);
+await assert.rejects(
+    buildHistoryImportPreview({
+        name: 'truncated-document-xml.docx',
+        bytes: await createParagraphOnlyDocx(['user:正文仍然完整'], '<w:p>'),
+        bindingDraft,
+    }),
+    /document\.xml 段落结构不完整/,
 );
 
 const intakeSource = readFileSync(

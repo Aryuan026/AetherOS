@@ -206,6 +206,33 @@
     memory merely because it is visible.
   - No deployment or GitHub push was performed from this worktree.
 
+## 2026-07-17 WPS/Mobile Word Self-Closing Paragraph Compatibility
+
+- done:
+  - Diagnosed the real-device import failure before speaker/timestamp parsing:
+    valid OpenXML `<w:p/>` empty paragraphs were treated as opened but never
+    closed, so a trailing WPS/mobile Word spacer falsely triggered the
+    `document.xml 段落结构不完整` safety gate.
+  - Unified paragraph finalization in the DOCX adapter. Paired paragraphs and
+    self-closing empty paragraphs now produce the same bounded source-unit
+    contract; empty spacers remain visible to normalization as skipped rows.
+  - Added a synthetic paid-export DOCX with a trailing self-closing paragraph
+    and proved its three meaningful `user/assistant + timestamp` turns are
+    unchanged. Added a separate truly unfinished paragraph fixture so the
+    corruption guard remains active.
+- boundary:
+  - No private friend export was copied, stored, or committed. The regression is
+    represented only by fictional in-memory OpenXML fixtures.
+  - ZIP CRC, entry count, uncompressed-size, UTF-8, legacy `.doc`, and genuinely
+    truncated paragraph protections remain unchanged.
+- verified:
+  - `npm run verify:history-import`, `npm run verify:daily-archive`,
+    `npm run verify:narrative`, `npm run verify:health`, and `git diff --check`
+    pass. The only build note is the existing Vite large-chunk warning.
+- next:
+  - Build the subpath-safe static bundle and replace only the isolated AetherOS
+    lab directory with an atomic rollback point.
+
 ## 2026-07-17 AetherOS 2.0 First Device-Test Release
 
 - done:
