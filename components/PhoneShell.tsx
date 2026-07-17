@@ -403,7 +403,7 @@ const PhoneShell: React.FC = () => {
         className="relative w-full h-full bg-cover bg-center cursor-pointer overflow-hidden group font-light select-none overscroll-none"
         style={{ backgroundImage: bgImageValue, color: contentColor }}
       >
-        <div className="absolute inset-0 bg-black/5 backdrop-blur-sm transition-all group-hover:backdrop-blur-none group-hover:bg-transparent duration-700" />
+        <div className="absolute inset-0 bg-black/5 transition-colors duration-700 group-hover:bg-transparent" />
         
         <div className="absolute top-24 z-10 w-full text-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
            <div className="text-8xl tracking-tighter opacity-95 font-bold">
