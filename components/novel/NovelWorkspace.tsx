@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { inspectNovelNarrative } from '../../domain/narrative/inspection';
 import { resolvePersonaRouteScope } from '../../utils/personaRouteScope';
 import NovelWriter from './NovelWriter';
@@ -24,6 +24,20 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
         writerProps.activeBook,
         personaScope.activeProgressBundleId,
     ), [personaScope.activeProgressBundleId, writerProps.activeBook]);
+    const availableStoryCharacters = useMemo(() => (
+        personaScope.hasLinkedFocus ? personaScope.linkedCharacters : writerProps.characters
+    ), [personaScope.hasLinkedFocus, personaScope.linkedCharacters, writerProps.characters]);
+    const defaultStoryCharacterIds = useMemo(() => {
+        const availableIds = new Set(availableStoryCharacters.map(character => character.id));
+        const collaboratorIds = writerProps.activeBook.collaboratorIds.filter(id => availableIds.has(id));
+        if (collaboratorIds.length > 0) return collaboratorIds;
+        if (personaScope.preferredActiveCharacter) return [personaScope.preferredActiveCharacter.id];
+        return availableStoryCharacters.length === 1 ? [availableStoryCharacters[0].id] : [];
+    }, [availableStoryCharacters, personaScope.preferredActiveCharacter, writerProps.activeBook.collaboratorIds]);
+    const saveDirectives = useCallback(async (directives: NonNullable<typeof writerProps.activeBook.directives>) => {
+        await writerProps.updateNovel(writerProps.activeBook.id, { directives });
+    }, [writerProps.activeBook.id, writerProps.updateNovel]);
+    const pendingDirectiveCount = inspection.directives.filter(directive => directive.status === 'pending').length;
 
     useEffect(() => {
         const testWindow = window as typeof window & { render_game_to_text?: () => string };
@@ -34,6 +48,7 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
             bookId: writerProps.activeBook.id,
             progressBundleId: inspection.progressBundleId || null,
             directiveCount: inspection.directives.length,
+            pendingDirectiveCount,
             unscopedDirectiveCount: inspection.unscopedDirectives.length,
             otherBundleDirectiveCount: inspection.otherBundleDirectiveCount,
             runCount: inspection.runs.length,
@@ -46,7 +61,7 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
             if (previousRenderer) testWindow.render_game_to_text = previousRenderer;
             else delete testWindow.render_game_to_text;
         };
-    }, [activePanel, inspection, writerProps.activeBook.id]);
+    }, [activePanel, inspection, pendingDirectiveCount, writerProps.activeBook.id]);
 
     return (
         <div className="h-full w-full flex flex-col bg-slate-50">
@@ -75,8 +90,11 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
                     <StoryDeskInspector
                         activeBook={writerProps.activeBook}
                         characters={writerProps.characters}
+                        availableCharacters={availableStoryCharacters}
+                        defaultCharacterIds={defaultStoryCharacterIds}
                         activeMaskLabel={personaScope.activeMaskLabel}
                         inspection={inspection}
+                        onDirectivesChange={saveDirectives}
                         onExit={writerProps.onBack}
                     />
                 )}

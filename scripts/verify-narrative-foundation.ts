@@ -13,6 +13,12 @@ import {
     normalizeNovelNarrativeState,
 } from '../domain/narrative/state.ts';
 import { inspectNovelNarrative } from '../domain/narrative/inspection.ts';
+import {
+    appendStoryDirection,
+    createStoryDirection,
+    discardStoryDirection,
+    reviseStoryDirection,
+} from '../domain/narrative/directives.ts';
 import type { NarrativeExperienceReceipt, NovelBook } from '../types.ts';
 
 const T0 = 1_700_000_000_000;
@@ -297,5 +303,104 @@ const missingBundleInspection = inspectNovelNarrative(inspectionSource);
 assert.equal(missingBundleInspection.directives.length, 0);
 assert.equal(missingBundleInspection.runs.length, 0);
 assert.deepEqual(missingBundleInspection.unscopedDirectives.map(directive => directive.id), ['directive-legacy']);
+
+const manualMainline = createStoryDirection({
+    id: 'directive-manual-mainline',
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    title: ' 雨停以前先谈谈 ',
+    summary: ' 两个人留在站台，把一直没说完的话说完。 ',
+    lane: 'pending_mainline',
+    charIds: ['char-a', 'char-a', '  '],
+}, T0 + 60);
+assert.equal(manualMainline.title, '雨停以前先谈谈');
+assert.deepEqual(manualMainline.charIds, ['char-a']);
+assert.equal(manualMainline.status, 'pending');
+assert.equal(manualMainline.memoryPolicy, 'manual_promotion');
+assert.equal(manualMainline.activationMode, 'manual');
+assert.deepEqual(manualMainline.sourceRefs, [{
+    surface: 'consult_desk',
+    id: 'book-1',
+    label: '剧情台手工方向',
+}]);
+
+const manualIf = createStoryDirection({
+    id: 'directive-manual-if',
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    title: '如果错过末班车',
+    summary: '只在 IF 线看看另一种可能。',
+    lane: 'if_line',
+    charIds: ['char-a'],
+}, T0 + 61);
+assert.equal(manualIf.memoryPolicy, 'dream_material');
+assert.throws(() => createStoryDirection({
+    id: 'directive-missing-bundle',
+    bookId: 'book-1',
+    progressBundleId: ' ',
+    title: '不会保存',
+    summary: '缺少身份进度包。',
+    lane: 'pending_mainline',
+    charIds: ['char-a'],
+}, T0 + 62), /progressBundleId/);
+assert.throws(() => createStoryDirection({
+    id: 'directive-missing-character',
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    title: '不会保存',
+    summary: '缺少同行角色。',
+    lane: 'pending_mainline',
+    charIds: [],
+}, T0 + 62), /participant/);
+
+const originalManualList = [manualMainline];
+const appendedManualList = appendStoryDirection(originalManualList, manualIf);
+assert.equal(originalManualList.length, 1, 'append must not mutate the source list');
+assert.equal(appendedManualList.length, 2);
+assert.throws(() => appendStoryDirection(appendedManualList, manualIf), /already exists/);
+
+const revisedManualList = reviseStoryDirection(appendedManualList, manualMainline.id, {
+    progressBundleId: 'bundle-user-1',
+    expectedUpdatedAt: manualMainline.updatedAt,
+    title: '雨停以后再出发',
+    summary: '先休息，再决定下一站。',
+    lane: 'if_line',
+    charIds: ['char-a'],
+}, T0 + 63);
+assert.equal(appendedManualList[0].title, '雨停以前先谈谈', 'revision must be immutable');
+assert.equal(revisedManualList[0].title, '雨停以后再出发');
+assert.equal(revisedManualList[0].memoryPolicy, 'dream_material');
+assert.throws(() => reviseStoryDirection(revisedManualList, manualMainline.id, {
+    progressBundleId: 'bundle-user-1',
+    expectedUpdatedAt: manualMainline.updatedAt,
+    title: '过期复核',
+    summary: '旧页面不能覆盖新内容。',
+    lane: 'if_line',
+    charIds: ['char-a'],
+}, T0 + 64), /changed after this review/);
+assert.throws(() => discardStoryDirection(
+    revisedManualList,
+    manualMainline.id,
+    'bundle-user-2',
+    revisedManualList[0].updatedAt,
+    T0 + 65,
+), /progress bundle/);
+
+const discardedManualList = discardStoryDirection(
+    revisedManualList,
+    manualMainline.id,
+    'bundle-user-1',
+    revisedManualList[0].updatedAt,
+    T0 + 65,
+);
+assert.equal(discardedManualList[0].status, 'discarded');
+assert.equal(revisedManualList[0].status, 'pending', 'discard must not mutate the source list');
+assert.throws(() => discardStoryDirection(
+    discardedManualList,
+    manualMainline.id,
+    'bundle-user-1',
+    discardedManualList[0].updatedAt,
+    T0 + 66,
+), /only pending manual/);
 
 console.log('narrative foundation fixtures passed');

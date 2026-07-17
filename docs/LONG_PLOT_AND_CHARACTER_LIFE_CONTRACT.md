@@ -1,7 +1,7 @@
 # Long Plot And Character Life Simulation Contract
 
-Status: confirmed contract; long-plot domain foundation implemented, UI and character-life runtime pending
-Last updated: 2026-07-15
+Status: confirmed contract; long-plot foundation and manual direction review implemented, runtime and character-life pending
+Last updated: 2026-07-17
 
 This document defines two connected but non-identical systems:
 
@@ -93,6 +93,42 @@ the temporary book.
 HOLD after this slice: directive authoring/activation, route creation, scene
 generation/player, receipt review actions, memory promotion, Character Virtual
 Life, and launcher renaming. The inspector performs no persistence mutation.
+
+## Implemented Manual Story Direction Slice — 2026-07-17
+
+StoryDesk now permits one bounded mutation before any route can start:
+
+- `domain/narrative/directives.ts` owns pure immutable create, append, revise,
+  and discard transitions for manual StoryDesk directions;
+- a new direction requires a non-empty active `progressBundleId`, one or more
+  participants available to the active persona scope, a title, a summary, and
+  an explicit `主线候选 / IF 支线` lane;
+- new records are always `pending`, `activationMode: manual`, and carry source
+  references back to the current book. Mainline candidates use
+  `manual_promotion`; IF candidates use `dream_material`;
+- editing and discarding are limited to still-pending manual StoryDesk records
+  in the same progress bundle. An `updatedAt` review token prevents an older
+  review screen from silently overwriting a newer edit;
+- the mobile composer separates drafting from a second review step that states
+  plainly that save does not start a route, advance character time, or write
+  character memory;
+- discard is an auditable status transition, not physical deletion. Directives
+  from other bundles, unscoped legacy records, and non-manual sources are
+  preserved and cannot be changed through this panel;
+- writes replace only the book's full directive array through the existing
+  `updateNovel` seam, preserving hidden directives that belong to other persona
+  bundles.
+
+`npm run verify:narrative` now fixtures creation gates, participant
+normalization, mainline/IF memory policies, duplicate IDs, immutable edit and
+discard, cross-bundle rejection, stale-review rejection, and terminal status
+protection.
+
+HOLD after this slice: directive activation, route creation, AI direction
+generation, historical-material adoption, scene generation/player, receipt
+review actions, memory promotion, Character Virtual Life, and launcher
+renaming. No new function calls an AI API, history search, daily archive,
+character memory, or a background clock.
 
 ## Code-Grounded Starting Point
 

@@ -1,12 +1,17 @@
 import React, { useMemo } from 'react';
 import type { CharacterProfile, NovelBook } from '../../types';
+import type { NarrativeDirective } from '../../domain/narrative/types';
 import type { NarrativeInspectionSnapshot } from '../../domain/narrative/inspection';
+import { StoryDeskDirectivePanel } from './StoryDeskDirectivePanel';
 
 interface StoryDeskInspectorProps {
     activeBook: NovelBook;
     characters: CharacterProfile[];
+    availableCharacters: CharacterProfile[];
+    defaultCharacterIds: string[];
     activeMaskLabel?: string;
     inspection: NarrativeInspectionSnapshot;
+    onDirectivesChange: (directives: NarrativeDirective[]) => Promise<void>;
     onExit: () => void;
 }
 
@@ -16,14 +21,6 @@ const RUN_STATUS_LABELS = {
     paused: '暂停',
     completed: '已完成',
     abandoned: '已放下',
-} as const;
-
-const DIRECTIVE_STATUS_LABELS = {
-    pending: '待采纳',
-    activated: '已激活',
-    played: '已游玩',
-    archived: '已归档',
-    discarded: '已舍弃',
 } as const;
 
 const MEMORY_POLICY_LABELS = {
@@ -46,8 +43,11 @@ const formatUpdatedAt = (timestamp: number): string => {
 export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
     activeBook,
     characters,
+    availableCharacters,
+    defaultCharacterIds,
     activeMaskLabel,
     inspection,
+    onDirectivesChange,
     onExit,
 }) => {
     const characterNameById = useMemo(() => new Map(
@@ -61,6 +61,7 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
     const sortedReceipts = useMemo(() => [...inspection.receipts].sort(
         (left, right) => (right.confirmedAt || right.playedAt) - (left.confirmedAt || left.playedAt),
     ), [inspection.receipts]);
+    const pendingDirectiveCount = inspection.directives.filter(directive => directive.status === 'pending').length;
 
     return (
         <div className="h-full w-full bg-[#f4f1eb] flex flex-col font-sans text-slate-800" data-testid="story-desk-inspector">
@@ -70,9 +71,9 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
                 </button>
                 <div className="min-w-0 flex-1">
                     <div className="font-black text-base truncate">{activeBook.title}</div>
-                    <div className="text-[10px] tracking-[0.18em] text-slate-400 uppercase">剧情台 · 只读总览</div>
+                    <div className="text-[10px] tracking-[0.18em] text-slate-400 uppercase">剧情台 · 方向与线路</div>
                 </div>
-                <span className="px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-bold">只读</span>
+                <span className="px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-bold">草拟</span>
             </header>
 
             <main className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 pb-12 no-scrollbar">
@@ -83,7 +84,7 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
                         <div className="text-[10px] font-bold tracking-[0.2em] text-white/50 mb-2">CURRENT WORLDLINE</div>
                         <h2 className="font-black text-xl">{activeMaskLabel || '当前身份'}的剧情工作台</h2>
                         <p className="mt-2 text-xs leading-relaxed text-white/65">
-                            这里只读取已经存在的剧情指令、游玩线路和确认回执。小说正文不会因此被算作真实发生。
+                            可以先把想走的方向写下来并复核。保存后仍只是待采纳意图；没有开演、游玩和确认，就不会成为角色经历。
                         </p>
                         <div className="mt-4 text-[10px] font-bold tracking-wide text-white/45">
                             {inspection.progressBundleId ? '已绑定当前身份进度' : '尚未建立进度包 · 当前锁定'}
@@ -93,7 +94,7 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
 
                 <section className="grid grid-cols-3 gap-2.5">
                     {[
-                        ['待演指令', inspection.directives.length],
+                        ['待演指令', pendingDirectiveCount],
                         ['剧情线路', inspection.runs.length],
                         ['确认经历', inspection.receipts.length],
                     ].map(([label, value]) => (
@@ -110,34 +111,16 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
                     </div>
                 )}
 
-                <section className="space-y-3">
-                    <div className="flex items-end justify-between px-1">
-                        <div>
-                            <h3 className="font-black text-sm">待演方向</h3>
-                            <p className="text-[10px] text-slate-400 mt-0.5">意图不是经历，尚未游玩就不会进记忆</p>
-                        </div>
-                        <span className="text-[10px] font-mono text-slate-400">{inspection.directives.length}</span>
-                    </div>
-                    {inspection.directives.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-slate-300 bg-white/55 p-5 text-center text-xs text-slate-400">
-                            当前身份还没有已绑定的剧情指令。
-                        </div>
-                    ) : inspection.directives.map(directive => (
-                        <article key={directive.id} className="rounded-2xl bg-white border border-slate-200/70 p-4 shadow-sm">
-                            <div className="flex items-start gap-3">
-                                <div className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${directive.lane === 'if_line' ? 'bg-violet-400' : 'bg-amber-400'}`}></div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <h4 className="font-bold text-sm">{directive.title}</h4>
-                                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-bold">{DIRECTIVE_STATUS_LABELS[directive.status]}</span>
-                                        <span className="text-[9px] font-bold text-slate-400">{directive.lane === 'if_line' ? 'IF' : '主线候选'}</span>
-                                    </div>
-                                    <p className="mt-2 text-xs leading-relaxed text-slate-500">{directive.summary}</p>
-                                </div>
-                            </div>
-                        </article>
-                    ))}
-                </section>
+                <StoryDeskDirectivePanel
+                    bookId={activeBook.id}
+                    progressBundleId={inspection.progressBundleId}
+                    directives={inspection.directives}
+                    allDirectives={activeBook.directives || []}
+                    characters={characters}
+                    availableCharacters={availableCharacters}
+                    defaultCharacterIds={defaultCharacterIds}
+                    onDirectivesChange={onDirectivesChange}
+                />
 
                 <section className="space-y-3">
                     <div className="flex items-end justify-between px-1">
