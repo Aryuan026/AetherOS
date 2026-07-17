@@ -82,7 +82,15 @@ for (const path of publicRuntimeFiles) {
 const capacitorConfig = JSON.parse(read('capacitor.config.json')) as { appName?: string };
 assert.equal(capacitorConfig.appName, 'AetherOS', 'native package display name must be AetherOS');
 
+const packageManifest = JSON.parse(read('package.json')) as { version?: string };
+assert.equal(packageManifest.version, '2.0.0', 'first device-test release must carry the 2.0.0 major version');
+assert.match(read('README.md'), /第一次实机测试/, 'README must record the first real-device test milestone');
+
 const optimizedAssets = [
+    ['public/brand/aetheros-starcore.jpg', 400_000],
+    ['public/icons/icon-512.png', 500_000],
+    ['public/icons/icon-192.png', 100_000],
+    ['public/icons/apple-touch-icon.png', 100_000],
     ['public/assets/aetheros/timebook-desk-bg.jpg', 400_000],
     ['public/assets/aetheros/date-backgrounds/cafe-dawn.jpg', 450_000],
     ['public/assets/aetheros/date-backgrounds/cafe-day.jpg', 450_000],

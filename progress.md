@@ -1,5 +1,23 @@
 # AetherOS Progress
 
+## 2026-07-17 AetherOS 2.0 First Device-Test Release
+
+- done:
+  - Promoted the project to `2.0.0` for its first small real-phone browser test.
+  - Added the generated AetherOS star-core brand emblem and derived 512 px,
+    192 px, and Apple touch icons for PWA and mobile installation surfaces.
+  - Replaced the plain loading spinner with the star-core boot mark and added a
+    restrained lock-screen brand placement; internal feature apps keep their
+    simpler line icons for readability.
+  - Added the first-device-test milestone, live lab link, and GitHub Pages link
+    to the README.
+  - Extended the public-release guard with version, milestone-copy, logo, and
+    icon size budgets.
+
+- release intent:
+  - Publish the same reviewed static build to GitHub Pages and the isolated
+    `/aetheros/` lab route. Do not add a backend or restart the main gateway.
+
 ## 2026-07-17 Public Release Sanitization And Asset Budget
 
 - done:

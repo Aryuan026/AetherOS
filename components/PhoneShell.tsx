@@ -15,6 +15,9 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { isIOSStandaloneWebApp } from '../utils/iosStandalone';
 import AppErrorBoundary from './os/AppErrorBoundary';
+import { publicAsset } from '../utils/publicAssets';
+
+const AETHEROS_BRAND_ICON = publicAsset('brand/aetheros-starcore.jpg');
 
 // Keep the launcher and global controllers eager, but load feature apps only when
 // opened. This prevents every large app module from occupying the initial tab and
@@ -355,7 +358,18 @@ const PhoneShell: React.FC = () => {
   }, [theme.wallpaper]);
 
   if (!isDataLoaded) {
-    return <div className="w-full h-full bg-black flex items-center justify-center"><div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin"></div></div>;
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-5 bg-[#080719] text-white">
+        <img
+          src={AETHEROS_BRAND_ICON}
+          alt="AetherOS"
+          className="h-24 w-24 rounded-[1.8rem] shadow-[0_0_44px_rgba(155,126,255,0.42)]"
+        />
+        <div className="h-1 w-20 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full w-1/2 animate-pulse rounded-full bg-violet-300/80" />
+        </div>
+      </div>
+    );
   }
 
   const getBgStyle = (wp: string) => {
@@ -396,6 +410,11 @@ const PhoneShell: React.FC = () => {
              {virtualTime.hours.toString().padStart(2,'0')}<span className="animate-pulse">:</span>{virtualTime.minutes.toString().padStart(2,'0')}
            </div>
            <div className="text-lg tracking-widest opacity-90 mt-2 uppercase text-xs font-bold">AetherOS Simulation</div>
+           <img
+             src={AETHEROS_BRAND_ICON}
+             alt="AetherOS 星核徽记"
+             className="mx-auto mt-5 h-14 w-14 rounded-[1.1rem] opacity-95 shadow-[0_0_28px_rgba(167,139,250,0.42)]"
+           />
         </div>
 
         {unreadCount > 0 && (

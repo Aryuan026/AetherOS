@@ -1,8 +1,20 @@
 # AetherOS
 
+<div align="center">
+  <img src="./public/brand/aetheros-starcore.jpg" width="188" alt="AetherOS 星核徽记" />
+  <p><strong>AetherOS 2.0 · 首次实机测试版</strong></p>
+  <p>
+    <a href="https://lab.asherie.cloud/aetheros/">小范围实机测试站</a>
+    ·
+    <a href="https://aryuan026.github.io/AetherOS/">GitHub Pages</a>
+  </p>
+</div>
+
 ---
 
 > 一个以本机存储为主的虚拟手机与陪伴型角色交互实验。
+
+> **2026-07-17｜第一次实机测试。** AetherOS 进入 2.0 大版本：首次在真实手机浏览器中进行少量熟人测试。本轮带来了 TXT / Word 旧日迁入、按日归档的对话日历、关系内全文检索、原句剪藏、本机存储边界，以及旧历史与当前状态的严格隔离。当前仍是小范围实验版，不把用户聊天原文存到运营服务器。
 
 ## 这是什么？
 
