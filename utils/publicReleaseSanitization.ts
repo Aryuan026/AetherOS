@@ -11,31 +11,40 @@ export const LEGACY_PRIVATE_EMOJI_PACK_IDS = [
     'sully',
 ] as const;
 
-const LEGACY_PRIVATE_ASSET_URLS = [
-    'https://sharkpan.xyz/f/5n1gSj/bg.png',
-    'https://sharkpan.xyz/f/gXayCw/XT.png',
-    'https://sharkpan.xyz/f/2WzAFQ/CAFE.png',
-    'https://sharkpan.xyz/f/pWg6HQ/night.png',
-    'https://sharkpan.xyz/f/75wvuj/w.png',
-    'https://sharkpan.xyz/f/MK77Ia/see.png',
-    'https://sharkpan.xyz/f/3WwMHe/fight.png',
-    'https://sharkpan.xyz/f/5nwxCj/an.png',
-    'https://sharkpan.xyz/f/ylWpfN/sDN.png',
-    'https://sharkpan.xyz/f/QdnaU6/sorry.png',
-    'https://sharkpan.xyz/f/5nrJsj/wait.png',
-] as const;
-
 const legacyPrivateCharacterIdSet = new Set<string>(LEGACY_PRIVATE_CHARACTER_IDS);
 const legacyPrivateEmojiCategoryIdSet = new Set<string>(LEGACY_PRIVATE_EMOJI_CATEGORY_IDS);
 const legacyPrivateEmojiPackIdSet = new Set<string>(LEGACY_PRIVATE_EMOJI_PACK_IDS);
-const legacyPrivateAssetUrlSet = new Set<string>(LEGACY_PRIVATE_ASSET_URLS);
+// Keep only one-way fingerprints in the public runtime. This lets old browser
+// data be recognized and removed without shipping the retired source URLs.
+const legacyPrivateAssetUrlHashSet = new Set<number>([
+    3270017412,
+    484479212,
+    3451460093,
+    1753122768,
+    470992314,
+    2710152634,
+    2525373074,
+    2435822681,
+    2366744216,
+    4061143003,
+    2084623554,
+]);
+
+const stableStringHash = (value: string): number => {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+};
 
 export const isLegacyPrivateCharacterId = (id: string | null | undefined): boolean => (
     typeof id === 'string' && legacyPrivateCharacterIdSet.has(id)
 );
 
 export const isLegacyUpstreamAssetUrl = (value: string | null | undefined): boolean => (
-    typeof value === 'string' && legacyPrivateAssetUrlSet.has(value.trim())
+    typeof value === 'string' && legacyPrivateAssetUrlHashSet.has(stableStringHash(value.trim()))
 );
 
 export const isLegacyPrivateEmojiCategoryId = (id: string | null | undefined): boolean => (

@@ -13,6 +13,9 @@
     to the README.
   - Extended the public-release guard with version, milestone-copy, logo, and
     icon size budgets.
+  - Replaced the legacy private-asset URL migration table with one-way numeric
+    fingerprints, retaining exact old-data cleanup without distributing the
+    retired source URLs in the production JavaScript bundle.
 
 - release intent:
   - Publish the same reviewed static build to GitHub Pages and the isolated
