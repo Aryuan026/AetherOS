@@ -47,6 +47,13 @@ const searchHitDate = (hit: DailyArchiveSearchHit): string => (
     hit.dateKey?.replace(/-/gu, '.') || '未标日期'
 );
 
+const searchHitSpeaker = (hit: DailyArchiveSearchHit, characterName: string): string => {
+    if (hit.role === 'character') return characterName;
+    if (hit.role === 'user') return '我';
+    if (hit.role === 'system') return '来源说明';
+    return '待整理片段';
+};
+
 const ConversationClippingLibrary: React.FC<ConversationClippingLibraryProps> = ({
     clippings,
     characterName,
@@ -197,7 +204,7 @@ const ConversationClippingLibrary: React.FC<ConversationClippingLibraryProps> = 
                                     >
                                         <div className="min-w-0 flex-1">
                                             <p className="text-[9px] font-black text-violet-500">
-                                                {searchHitDate(hit)} · {hit.role === 'character' ? characterName : '我'}
+                                                {searchHitDate(hit)} · {searchHitSpeaker(hit, characterName)}
                                             </p>
                                             <p className="mt-1.5 max-h-[4.5rem] overflow-hidden whitespace-pre-wrap break-words text-[11px] font-semibold leading-5 text-slate-700">
                                                 <SearchHitText content={hit.content} query={submittedQuery} />

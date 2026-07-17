@@ -170,7 +170,7 @@ const HistorySourceIntake: React.FC<HistorySourceIntakeProps> = ({
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
             {[
               ['可直接保留', workspace.counts.accepted, 'text-emerald-600'],
-              ['需要确认', workspace.counts.uncertain, 'text-amber-600'],
+              ['稍后整理', workspace.counts.uncertain, 'text-amber-600'],
               ['重复或空行', workspace.counts.duplicates + workspace.counts.skipped, 'text-slate-500'],
             ].map(([label, count, color]) => (
               <div key={String(label)} className="rounded-xl bg-slate-50 px-1 py-2">
@@ -191,7 +191,7 @@ const HistorySourceIntake: React.FC<HistorySourceIntakeProps> = ({
             </div>
           )}
 
-          <p className="mt-3 text-center text-[9px] font-bold text-violet-600">下一步：校对说话人和需要确认的内容</p>
+          <p className="mt-3 text-center text-[9px] font-bold text-violet-600">下一步：确认分析结果，导入后直接继续聊天</p>
         </div>
       )}
 

@@ -157,7 +157,7 @@ const paidDocxPreview = await buildHistoryImportPreview({
 const paidMeaningfulRows = paidDocxPreview.rows.filter(row => row.status !== 'skipped');
 
 assert.deepEqual(normalizedSignature(paidDocxPreview), normalizedSignature(paidTxtPreview));
-assert.equal(paidDocxPreview.parserVersion, 'history-preview-v2');
+assert.equal(paidDocxPreview.parserVersion, 'history-preview-v3');
 assert.equal(paidDocxPreview.sourceUnitCount, 8);
 assert.equal(paidDocxPreview.totalPreviewRowCount, 5);
 assert.equal(paidDocxPreview.counts.accepted, 3);
@@ -183,6 +183,38 @@ assert.equal(paidMeaningfulRows[0].sourceLocator.end, 2);
 assert.equal(paidMeaningfulRows[0].sourceLocator.label, '第 1-2 段');
 assert.equal(paidDocxPreview.speakerCandidates.some(candidate => candidate.label === 'timestamp'), false);
 
+const oneParagraphExport = [
+    'assistant:第一句仍在同一个 Word 段落里',
+    '这一行只是角色正文的换行，不应该单独变成无名字消息。',
+    'timestamp:2025-07-16 12:04:35',
+    '',
+    'user：我也在同一个段落里',
+    'timestamp：2025-07-16 12:07:24',
+    'assistant:正文里提到 assistant: 这个字样不会被错误拆开。',
+    'timestamp:2025-07-16 12:07:25',
+].join('\n');
+const oneParagraphPreview = await buildHistoryImportPreview({
+    name: 'synthetic-one-paragraph-paid-export.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    bytes: await createParagraphOnlyDocx([oneParagraphExport]),
+    bindingDraft,
+});
+assert.equal(oneParagraphPreview.sourceUnitCount, 1);
+assert.equal(oneParagraphPreview.totalPreviewRowCount, 3);
+assert.equal(oneParagraphPreview.counts.accepted, 3);
+assert.equal(oneParagraphPreview.counts.uncertain, 0);
+assert.deepEqual(
+    oneParagraphPreview.rows.map(row => [row.speakerLabel, row.sourceTime.originalText]),
+    [
+        ['assistant', '2025-07-16 12:04:35'],
+        ['user', '2025-07-16 12:07:24'],
+        ['assistant', '2025-07-16 12:07:25'],
+    ],
+);
+assert.match(oneParagraphPreview.rows[0].content, /只是角色正文的换行/u);
+assert.match(oneParagraphPreview.rows[2].content, /assistant: 这个字样/u);
+assert.match(oneParagraphPreview.rows[1].sourceLocator.label || '', /片段 2/u);
+
 const wpsSelfClosingPreview = await buildHistoryImportPreview({
     name: 'synthetic-wps-self-closing-paragraph.docx',
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -207,7 +239,8 @@ const orphanTimestampPreview = await buildHistoryImportPreview({
     bytes: new TextEncoder().encode('timestamp:2025-07-16 12:04:35\nuser:仍然保留这条消息'),
     bindingDraft,
 });
-assert.equal(orphanTimestampPreview.rows[0].status, 'uncertain');
+assert.equal(orphanTimestampPreview.rows[0].status, 'skipped');
+assert.ok(orphanTimestampPreview.rows[0].issues.includes('empty_content'));
 assert.equal(orphanTimestampPreview.rows[0].speakerLabel, undefined);
 assert.equal(orphanTimestampPreview.speakerCandidates.some(candidate => candidate.label === 'timestamp'), false);
 
@@ -218,7 +251,7 @@ const separatedTimestampPreview = await buildHistoryImportPreview({
     bindingDraft,
 });
 assert.equal(separatedTimestampPreview.rows[0].sourceTime.precision, 'unknown');
-assert.equal(separatedTimestampPreview.rows[2].status, 'uncertain');
+assert.equal(separatedTimestampPreview.rows[2].status, 'skipped');
 
 for (let attempt = 0; attempt < 3; attempt += 1) {
     const repeated = await buildHistoryImportPreview({

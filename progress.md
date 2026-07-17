@@ -206,6 +206,41 @@
     memory merely because it is visible.
   - No deployment or GitHub push was performed from this worktree.
 
+## 2026-07-17 History Import Fast Reconnect
+
+- done:
+  - Replaced the import-time speaker/type/time review wall with a high-tolerance
+    reconnect path: choose the relationship, choose the file, then import and
+    open Chat. Existing persisted review workspaces are settled by the same
+    rule, so old pending rows no longer strand the completion button.
+  - Added parser v3 logical splitting for line-start `user:` / `assistant:`
+    boundaries inside one TXT/DOCX source unit. Wrapped message lines remain in
+    their turn, while empty paragraphs and orphan timestamp rows are skipped.
+  - Preserved every non-empty unresolved fragment as local source evidence.
+    Unknown/system evidence is visible and keyword-searchable in Dialogue
+    Calendar as `待整理片段`, but does not impersonate the user and is not yet
+    eligible for voice clipping.
+  - Kept source timestamps unchanged during transport. Import no longer asks
+    for mutually exclusive companion/roleplay semantics or virtual-time
+    interpretation; those belong to later multi-label analysis.
+  - Collapsed the 24-message/token explanation behind an optional disclosure so
+    the main path stays focused on reconnecting the companion.
+- boundary:
+  - This slice moves semantic cleanup out of transport and establishes the safe
+    Calendar/search handoff. The Calendar role/tag editor and companion + plot
+    multi-label analyzer remain a later explicit slice.
+  - Imported source evidence still cannot independently change current emotion,
+    care state, open threads, Character Life state, NarrativeRun, receipt, or
+    memory writes.
+- verified:
+  - A 430 x 932 real-browser flow imported a synthetic DOCX containing one
+    paragraph with three marked turns plus one unowned fragment, opened Chat in
+    one action, and found the unowned fragment through Calendar search with the
+    `待整理片段` label and zero console errors.
+  - `npm run verify:history-import`, `npm run verify:daily-archive`,
+    `npm run verify:narrative`, `npm run verify:health`, and `git diff --check`
+    pass. The only build note is the existing Vite large-chunk warning.
+
 ## 2026-07-17 WPS/Mobile Word Self-Closing Paragraph Compatibility
 
 - done:

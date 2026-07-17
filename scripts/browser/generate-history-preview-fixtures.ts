@@ -48,7 +48,38 @@ zip.file('word/document.xml', [
 await mkdir(outputDirectory, { recursive: true });
 const txtPath = resolve(outputDirectory, 'synthetic-history.txt');
 const docxPath = resolve(outputDirectory, 'synthetic-history.docx');
+const fastImportDocxPath = resolve(outputDirectory, 'synthetic-fast-import.docx');
 await writeFile(txtPath, lines.join('\n'), 'utf8');
 await writeFile(docxPath, await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }));
 
-console.log(`history preview browser fixtures ready: ${txtPath} ${docxPath}`);
+const fastImportZip = new JSZip();
+fastImportZip.file('[Content_Types].xml', [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+    '<Default Extension="xml" ContentType="application/xml"/>',
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>',
+    '</Types>',
+].join(''));
+fastImportZip.file('word/document.xml', [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>',
+    paragraphXml([
+        '这一段暂时没有说话人，但仍然应该可见、可检索。',
+        'assistant:第一句仍在同一个 Word 段落里',
+        '这一行只是正文换行，不应变成无名字卡片。',
+        'timestamp:2025-07-16 12:04:35',
+        'user:我也在同一个段落里',
+        'timestamp:2025-07-16 12:07:24',
+        'assistant:我会保留它，正文里的 assistant: 字样也不会误切。',
+        'timestamp:2025-07-16 12:07:25',
+    ].join('\n')),
+    '<w:p/>',
+    '<w:sectPr/></w:body></w:document>',
+].join(''));
+await writeFile(
+    fastImportDocxPath,
+    await fastImportZip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }),
+);
+
+console.log(`history preview browser fixtures ready: ${txtPath} ${docxPath} ${fastImportDocxPath}`);

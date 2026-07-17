@@ -27,7 +27,7 @@ const countOccurrences = (content: string, query: string): number => {
 };
 
 export interface DailyArchiveChunkKeywordMatch {
-    message: DailyArchiveMessage & { role: 'user' | 'character' };
+    message: DailyArchiveMessage;
     messageOffset: number;
     matchCount: number;
 }
@@ -54,12 +54,11 @@ export const searchDailyArchiveChunk = (input: {
         const messageOffset = activeIndex;
         activeIndex += 1;
         scannedMessageCount += 1;
-        if (message.role !== 'user' && message.role !== 'character') return;
         const normalizedContent = normalizeDailyArchiveKeyword(message.content);
         const matchCount = countOccurrences(normalizedContent, query);
         if (matchCount > 0) {
             matches.push({
-                message: message as DailyArchiveMessage & { role: 'user' | 'character' },
+                message,
                 messageOffset,
                 matchCount,
             });

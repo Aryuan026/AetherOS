@@ -56,7 +56,7 @@ const HistoryImportApp: React.FC = () => {
       })
       .catch(error => {
         if (!cancelled) {
-          setErrorMessage(error instanceof Error ? error.message : '暂时无法恢复上次校对。');
+          setErrorMessage(error instanceof Error ? error.message : '暂时无法恢复上次导入进度。');
         }
       })
       .finally(() => {
@@ -93,7 +93,7 @@ const HistoryImportApp: React.FC = () => {
 
   const discardWorkspace = async () => {
     if (!activeWorkspace) return;
-    const confirmed = window.confirm('这会删除当前校对工作台并重新选择身份和文件；已经生效的历史档案不会被删除。确定继续吗？');
+    const confirmed = window.confirm('这会删除当前解析草稿并重新选择身份和文件；已经导入的历史档案不会被删除。确定继续吗？');
     if (!confirmed) return;
     setErrorMessage(undefined);
     try {
@@ -127,26 +127,25 @@ const HistoryImportApp: React.FC = () => {
             <div className="min-w-0">
               <h1 className="text-xl font-black tracking-tight text-slate-800">导入聊天记录</h1>
               <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                选好身份和 TXT / Word 文件，再校对谁说了什么。
+                选好身份和 TXT / Word 文件，本机会粗分后直接接回聊天。
               </p>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-4 gap-2 text-center text-[9px] font-black">
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[9px] font-black">
             <span className="rounded-xl bg-indigo-50 px-2 py-2 text-indigo-600">1 选身份</span>
             <span className="rounded-xl bg-rose-50 px-2 py-2 text-rose-600">2 选文件</span>
-            <span className="rounded-xl bg-violet-50 px-2 py-2 text-violet-600">3 校对</span>
-            <span className="rounded-xl bg-emerald-50 px-2 py-2 text-emerald-600">4 导入</span>
+            <span className="rounded-xl bg-emerald-50 px-2 py-2 text-emerald-600">3 接回聊天</span>
           </div>
         </section>
 
         <div className="mt-3 flex items-start gap-2 rounded-2xl border border-amber-100 bg-amber-50/80 px-3 py-2.5 text-[9px] leading-relaxed text-amber-800">
           <Info size={14} className="mt-0.5 shrink-0" />
-          <span>校对和历史档案只留在本机，不会上传；导入完成后，可在“设置”里另外备份整机数据。</span>
+          <span>解析草稿和历史档案只留在本机，不会上传；导入完成后，可在“设置”里另外备份整机数据。</span>
         </div>
 
         {workspaceLoading && (
           <div className="mt-4 rounded-2xl bg-white/75 p-4 text-center text-[10px] text-slate-400">
-            正在看看有没有上次留下的校对草稿…
+            正在看看有没有上次留下的导入进度…
           </div>
         )}
 
@@ -177,7 +176,7 @@ const HistoryImportApp: React.FC = () => {
                   <CheckCircle size={21} weight="fill" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-black text-emerald-600">本机校对草稿</div>
+                  <div className="text-[10px] font-black text-emerald-600">本机解析结果</div>
                   <h2 className="mt-0.5 truncate text-sm font-black text-slate-800">
                     {activeWorkspace.identity.maskLabel} × {activeWorkspace.identity.characterLabel}
                   </h2>
@@ -197,7 +196,7 @@ const HistoryImportApp: React.FC = () => {
               </div>
               <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[9px] text-slate-500">
                 <FileText size={14} className="shrink-0 text-violet-500" />
-                <span className="truncate">完整规范化结果已保存，页面只按需读取当前一页。</span>
+                <span className="truncate">完整解析结果已保存；不确定的片段不会阻止导入。</span>
               </div>
             </section>
 

@@ -50,6 +50,8 @@ const PAID_EXPORT_TIMESTAMP = new RegExp(
     `^\\s*timestamp\\s*[：:]\\s*(${TIMESTAMP_TOKEN})\\s*$`,
     'iu',
 );
+const STRONG_ROLE_LINE = /^\s*(user|assistant)\s*[：:]\s*([\s\S]*)$/iu;
+const STRONG_ROLE_BOUNDARY = /(^|\n)[\t ]*(?:user|assistant)\s*[：:]/giu;
 const SPEAKER_TURN = /^\s*(.{1,40}?)[：:]\s*([\s\S]*)$/u;
 const SEPARATOR_ONLY = /^\s*(?:[-—_=*~·•]{3,}|[.。]{4,})\s*$/u;
 const SYSTEM_OR_OOC = /^\s*(?:[\[【(（]?\s*(?:系统|system|ooc|旁白)\s*[\]】)）]?|ooc\s*[：:])/iu;
@@ -149,6 +151,47 @@ interface ParsedTurn {
     content: string;
 }
 
+const splitStrongRoleSourceUnits = (units: HistorySourceUnit[]): HistorySourceUnit[] => {
+    const expanded: HistorySourceUnit[] = [];
+    units.forEach(unit => {
+        const text = unit.text.replace(/\r\n?/g, '\n');
+        const starts: number[] = [];
+        STRONG_ROLE_BOUNDARY.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = STRONG_ROLE_BOUNDARY.exec(text))) {
+            starts.push(match.index + (match[1] ? match[1].length : 0));
+        }
+
+        if (starts.length === 0 || (starts.length === 1 && starts[0] === 0)) {
+            expanded.push({ ...unit, sourceOrder: expanded.length, text });
+            return;
+        }
+
+        const boundaries = starts[0] > 0 && text.slice(0, starts[0]).trim()
+            ? [0, ...starts]
+            : starts;
+        boundaries.forEach((start, partIndex) => {
+            const end = boundaries[partIndex + 1] ?? text.length;
+            const part = text.slice(start, end).replace(/^\n+|\n+$/gu, '');
+            if (!part.trim()) return;
+            expanded.push({
+                sourceOrder: expanded.length,
+                locator: {
+                    ...unit.locator,
+                    label: boundaries.length > 1
+                        ? `${unit.locator.label || `第 ${unit.locator.start} 处`} · 片段 ${partIndex + 1}`
+                        : unit.locator.label,
+                },
+                text: part,
+            });
+        });
+    });
+    if (expanded.length > MAX_HISTORY_SOURCE_UNITS) {
+        throw new Error(`文件按 user / assistant 拆分后超过 ${MAX_HISTORY_SOURCE_UNITS.toLocaleString('en-US')} 段，请先拆分文件后再预览。`);
+    }
+    return expanded;
+};
+
 const parsePaidExportTimestamp = (originalText: string): string | undefined => (
     originalText.match(PAID_EXPORT_TIMESTAMP)?.[1]?.trim()
 );
@@ -156,6 +199,27 @@ const parsePaidExportTimestamp = (originalText: string): string | undefined => (
 const isPaidExportSpeaker = (speakerLabel?: string): boolean => (
     /^(?:assistant|user)$/iu.test(speakerLabel?.trim() || '')
 );
+
+const parseStrongRoleBlock = (originalText: string): ParsedTurn | undefined => {
+    const lines = originalText.replace(/\r\n?/g, '\n').split('\n');
+    const firstLine = lines[0]?.match(STRONG_ROLE_LINE);
+    if (!firstLine) return undefined;
+
+    let timestampText: string | undefined;
+    let contentEnd = lines.length;
+    for (let index = lines.length - 1; index >= 1; index -= 1) {
+        if (!lines[index].trim()) continue;
+        timestampText = parsePaidExportTimestamp(lines[index]);
+        if (timestampText) contentEnd = index;
+        break;
+    }
+    const content = [firstLine[2], ...lines.slice(1, contentEnd)].join('\n').trim();
+    return {
+        speakerLabel: firstLine[1].toLowerCase(),
+        timestampText,
+        content,
+    };
+};
 
 const extendLocatorThroughMetadata = (
     row: HistoryPreviewRow,
@@ -181,6 +245,9 @@ const extendLocatorThroughMetadata = (
 };
 
 const parseTurn = (originalText: string): ParsedTurn => {
+    const strongRoleBlock = parseStrongRoleBlock(originalText);
+    if (strongRoleBlock) return strongRoleBlock;
+
     const paidExportTimestamp = parsePaidExportTimestamp(originalText);
     if (paidExportTimestamp) {
         return { timestampText: paidExportTimestamp, content: '' };
@@ -233,7 +300,7 @@ const normalizeUnit = (
         }
         if (!content) {
             issues.push('empty_content');
-            status = 'uncertain';
+            status = 'skipped';
         }
         if (attachment) {
             kind = 'attachment_placeholder';
@@ -312,11 +379,12 @@ export const buildHistoryImportPreview = async (
     const parsed = format === 'txt'
         ? parseTxtSourceUnits(input.bytes)
         : await parseDocxSourceUnits(input.bytes);
+    const logicalUnits = splitStrongRoleSourceUnits(parsed.units);
     const allRows: HistoryPreviewRow[] = [];
     let previousMeaningfulRowId: string | undefined;
     let pendingPaidExportRow: HistoryPreviewRow | undefined;
 
-    parsed.units.forEach(unit => {
+    logicalUnits.forEach(unit => {
         const paidExportTimestamp = parsePaidExportTimestamp(unit.text);
         if (paidExportTimestamp && pendingPaidExportRow) {
             pendingPaidExportRow.sourceTime = parseSourceTime(paidExportTimestamp);

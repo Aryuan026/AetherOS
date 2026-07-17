@@ -216,7 +216,7 @@ const appSource = readFileSync(
 assert.ok(appSource.includes('<HistoryPagedReview'));
 assert.ok(appSource.includes('getLatestHistoryReviewWorkspace'));
 assert.ok(appSource.includes('不会上传'));
-assert.ok(appSource.includes('4 导入'));
+assert.ok(appSource.includes('3 接回聊天'));
 assert.equal(appSource.includes('生产写入仍 HOLD'), false);
 assert.equal(appSource.includes('<HistoryImportSafetyGate'), false);
 assert.equal(appSource.includes('<HistoryRescueRehearsal'), false);
@@ -231,10 +231,10 @@ const contextNoticeSource = readFileSync(
     'utf8',
 );
 for (const required of [
-    'pageHistoryReviewWorkspaceRows',
     'completeHistoryReviewWorkspace',
-    '页面每次只读取',
-    '全量校验分成',
+    '导入并继续聊天',
+    '不再要求你逐条认领',
+    '稍后整理',
     '<HistoryArchiveCommit',
     '<HistoryContextNotice',
 ]) {

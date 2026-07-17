@@ -129,7 +129,7 @@ export interface DailyArchiveSearchHit {
     undatedKey?: string;
     messageId: string;
     messageOffset: number;
-    role: 'user' | 'character';
+    role: DailyArchiveMessage['role'];
     content: string;
     time: DailyArchiveMessageTime;
     source: DailyArchiveSource;

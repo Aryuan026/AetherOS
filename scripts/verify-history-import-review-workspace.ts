@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildHistoryIdentityBindingDraft } from '../domain/historyImport/identityBinding.ts';
@@ -16,6 +17,15 @@ import {
     buildHistoryImportFullPreview,
     buildHistoryImportPreview,
 } from '../utils/historyImport/parsers/sourcePreview.ts';
+import {
+    HISTORY_REVIEW_WORKSPACE_STORES,
+    completeHistoryReviewWorkspace,
+    createHistoryReviewWorkspaceFromSource,
+    deleteHistoryReviewWorkspaceDatabase,
+    getHistoryReviewWorkspaceAssessment,
+    iterateHistoryReviewWorkspaceRows,
+    openHistoryReviewWorkspaceDatabase,
+} from '../utils/historyImport/storage/reviewWorkspace.ts';
 
 const ROW_COUNT = 1_201;
 const T0 = 1_768_406_700_000;
@@ -200,8 +210,85 @@ const pagedReviewSource = readFileSync(
 assert.ok(pagedReviewSource.includes('workspace.counts.parsed'));
 assert.ok(pagedReviewSource.includes('workspace.counts.skipped'));
 assert.ok(pagedReviewSource.includes('自动忽略'));
-assert.ok(pagedReviewSource.includes('record.source.sourceTime.originalText'));
+assert.ok(pagedReviewSource.includes('导入并继续聊天'));
+assert.ok(pagedReviewSource.includes('对话日历'));
+
+await deleteHistoryReviewWorkspaceDatabase();
+const fastWorkspace = await createHistoryReviewWorkspaceFromSource({
+    bindingDraft,
+    now: T0 + 10,
+    source: {
+        name: 'fast-import-legacy-workspace.txt',
+        mimeType: 'text/plain',
+        bytes: new TextEncoder().encode([
+            'user:我把旧聊天带回来了',
+            'timestamp:2025-07-16 12:04:35',
+            'assistant:我会接住它',
+            'timestamp:2025-07-16 12:04:36',
+            '这一段没有名字，但内容不能丢',
+            'user:',
+            'timestamp:2025-07-16 12:04:37',
+        ].join('\n')),
+    },
+});
+assert.deepEqual(
+    fastWorkspace.settings.speakerMappings.map(mapping => [mapping.sourceLabel, mapping.role, mapping.confirmedByUser]),
+    [['assistant', 'character', false], ['user', 'user', false]],
+);
+
+const fastRecords: HistoryReviewWorkspaceRowRecord[] = [];
+for await (const record of iterateHistoryReviewWorkspaceRows(fastWorkspace.id)) fastRecords.push(record);
+const unnamedRecord = fastRecords.find(record => record.source.content.includes('内容不能丢'))!;
+const emptyRecord = fastRecords.find(record => record.source.issues.includes('empty_content'))!;
+assert.equal(unnamedRecord.review.resolution, 'accepted');
+assert.equal(unnamedRecord.attentionKey, 0);
+assert.equal(emptyRecord.review.resolution, 'excluded');
+
+const legacyDatabase = await openHistoryReviewWorkspaceDatabase();
+try {
+    const transaction = legacyDatabase.transaction([
+        HISTORY_REVIEW_WORKSPACE_STORES.workspaces,
+        HISTORY_REVIEW_WORKSPACE_STORES.rows,
+    ], 'readwrite');
+    transaction.objectStore(HISTORY_REVIEW_WORKSPACE_STORES.workspaces).put({
+        ...fastWorkspace,
+        settings: {
+            sourceMode: 'roleplay',
+            timezonePolicy: 'unknown',
+            metadataConfirmedByUser: false,
+            speakerMappings: [],
+        },
+        revision: fastWorkspace.revision + 1,
+    });
+    transaction.objectStore(HISTORY_REVIEW_WORKSPACE_STORES.rows).put({
+        ...unnamedRecord,
+        review: { ...unnamedRecord.review, resolution: 'pending' },
+        bucket: 'pending',
+        attentionKey: 1,
+        revision: unnamedRecord.revision + 1,
+    });
+    await new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+    });
+} finally {
+    legacyDatabase.close();
+}
+assert.equal((await getHistoryReviewWorkspaceAssessment(fastWorkspace.id)).canComplete, false);
+const fastComplete = await completeHistoryReviewWorkspace(fastWorkspace.id);
+assert.equal(fastComplete.status, 'review_complete');
+assert.equal(fastComplete.decision?.sourceMode, 'unknown');
+assert.equal(fastComplete.decision?.timezonePolicy, 'source');
+assert.deepEqual(fastComplete.decision?.counts, { included: 3, excluded: 2, merged: 0, edited: 0 });
+const settledRecords: HistoryReviewWorkspaceRowRecord[] = [];
+for await (const record of iterateHistoryReviewWorkspaceRows(fastWorkspace.id)) settledRecords.push(record);
+assert.equal(
+    settledRecords.find(record => record.id === unnamedRecord.id)?.review.resolution,
+    'accepted',
+);
+await deleteHistoryReviewWorkspaceDatabase();
 
 console.log(
-    `history review workspace OK: rows=${ROW_COUNT} preview=${MAX_HISTORY_PREVIEW_ROWS} chunks=${uninterrupted.chunkDigests.length} resumed=${uninterrupted.fingerprint === resumed.fingerprint}`,
+    `history review workspace OK: rows=${ROW_COUNT} preview=${MAX_HISTORY_PREVIEW_ROWS} chunks=${uninterrupted.chunkDigests.length} resumed=${uninterrupted.fingerprint === resumed.fingerprint} fast=${fastComplete.decision?.counts.included}`,
 );

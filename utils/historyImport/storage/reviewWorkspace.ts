@@ -3,10 +3,12 @@ import type { HistoryPreviewRowReviewDraft } from '../../../domain/historyImport
 import {
     HISTORY_REVIEW_WORKSPACE_VERSION,
     assessHistoryReviewWorkspace,
+    createAutomaticHistorySpeakerMappings,
     createHistoryReviewWorkspaceManifest,
     createHistoryReviewWorkspaceRow,
     freezeHistoryReviewWorkspaceDecision,
     patchHistoryReviewWorkspaceRowRecord,
+    settleHistoryReviewWorkspaceRowForImport,
     type FrozenHistoryReviewWorkspaceDecision,
     type HistoryReviewWorkspaceAssessment,
     type HistoryReviewWorkspaceFilter,
@@ -472,10 +474,9 @@ export const iterateHistoryReviewWorkspaceRows = async function* (
 export const completeHistoryReviewWorkspace = async (
     workspaceId: string,
 ): Promise<HistoryReviewWorkspaceManifest> => {
-    const manifest = await getHistoryReviewWorkspace(workspaceId);
-    if (!manifest) throw new Error('找不到这份本机校对草稿。');
+    const manifest = await settleHistoryReviewWorkspaceForImport(workspaceId);
     const assessment = await getHistoryReviewWorkspaceAssessment(workspaceId);
-    if (!assessment.canComplete) throw new Error('还有未确认的说话人、内容或时间解释。');
+    if (!assessment.canComplete) throw new Error('本机分析还没有完整保存，请稍后再试。');
     const expectedRevision = manifest.revision;
     const decision = await freezeHistoryReviewWorkspaceDecision({
         manifest,
@@ -495,6 +496,61 @@ export const completeHistoryReviewWorkspace = async (
             ...current,
             status: 'review_complete',
             decision,
+            updatedAt: now,
+            revision: current.revision + 1,
+        };
+        await requestAsPromise(
+            transaction.objectStore(HISTORY_REVIEW_WORKSPACE_STORES.workspaces).put(next),
+        );
+        await done;
+        return next;
+    } finally {
+        database.close();
+    }
+};
+
+export const settleHistoryReviewWorkspaceForImport = async (
+    workspaceId: string,
+    now = Date.now(),
+): Promise<HistoryReviewWorkspaceManifest> => {
+    const database = await openHistoryReviewWorkspaceDatabase();
+    try {
+        const transaction = database.transaction([
+            HISTORY_REVIEW_WORKSPACE_STORES.workspaces,
+            HISTORY_REVIEW_WORKSPACE_STORES.rows,
+        ], 'readwrite', { durability: 'strict' });
+        const done = transactionAsPromise(transaction);
+        const current = assertReviewing(await getManifestInsideTransaction(transaction, workspaceId));
+        const rows = transaction.objectStore(HISTORY_REVIEW_WORKSPACE_STORES.rows);
+        await new Promise<void>((resolve, reject) => {
+            const request = rows.index('workspace_order').openCursor(workspaceOrderRange(workspaceId));
+            request.onerror = () => reject(request.error ?? new Error('无法完成本机粗分。'));
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (!cursor) {
+                    resolve();
+                    return;
+                }
+                const record = cursor.value as HistoryReviewWorkspaceRowRecord;
+                const settled = settleHistoryReviewWorkspaceRowForImport(record, now);
+                if (settled !== record) cursor.update(settled);
+                cursor.continue();
+            };
+        });
+        const next: HistoryReviewWorkspaceManifest = {
+            ...current,
+            settings: {
+                sourceMode: 'unknown',
+                timezonePolicy: 'source',
+                selectedTimezone: undefined,
+                metadataConfirmedByUser: false,
+                speakerMappings: createAutomaticHistorySpeakerMappings({
+                    speakerCandidates: current.speakerCandidates,
+                    scope: current.scope,
+                    existing: current.settings.speakerMappings,
+                }),
+            },
+            decision: undefined,
             updatedAt: now,
             revision: current.revision + 1,
         };

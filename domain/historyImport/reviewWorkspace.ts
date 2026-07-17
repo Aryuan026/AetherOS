@@ -121,27 +121,47 @@ const cloneSpeakerMappings = (mappings: HistorySpeakerMapping[]): HistorySpeaker
     mappings.map(mapping => ({ ...mapping }))
 );
 
-const normalizeMappings = (
-    manifest: HistoryReviewWorkspaceManifest,
-): HistorySpeakerMapping[] => {
-    const byLabel = new Map(manifest.settings.speakerMappings.map(mapping => [mapping.sourceLabel, mapping]));
-    return manifest.speakerCandidates.map(candidate => {
-        const mapping = byLabel.get(candidate.label);
-        if (!mapping?.confirmedByUser) {
-            throw new Error(`说话人“${candidate.label}”还没有确认归属。`);
-        }
-        const targetId = mapping.role === 'user'
-            ? manifest.scope.personaMaskId
-            : mapping.role === 'character' ? manifest.scope.charId : undefined;
+const automaticRoleForLabel = (label: string): HistorySpeakerRole => {
+    const normalized = label.trim().toLocaleLowerCase();
+    if (normalized === 'user') return 'user';
+    if (normalized === 'assistant') return 'character';
+    return 'unknown';
+};
+
+export const createAutomaticHistorySpeakerMappings = (input: {
+    speakerCandidates: HistoryPreviewSpeakerCandidate[];
+    scope: HistoryScope;
+    existing?: HistorySpeakerMapping[];
+}): HistorySpeakerMapping[] => {
+    const existingByLabel = new Map(
+        (input.existing || []).map(mapping => [mapping.sourceLabel, mapping]),
+    );
+    return input.speakerCandidates.map(candidate => {
+        const existing = existingByLabel.get(candidate.label);
+        const role = existing?.confirmedByUser
+            ? existing.role
+            : automaticRoleForLabel(candidate.label);
         return {
             sourceLabel: candidate.label,
-            role: mapping.role,
-            targetId,
-            confidence: 1,
-            confirmedByUser: true,
+            role,
+            targetId: role === 'user'
+                ? input.scope.personaMaskId
+                : role === 'character' ? input.scope.charId : undefined,
+            confidence: existing?.confirmedByUser
+                ? 1
+                : role === 'unknown' ? 0 : 0.99,
+            confirmedByUser: Boolean(existing?.confirmedByUser),
         };
     });
 };
+
+const normalizeMappings = (
+    manifest: HistoryReviewWorkspaceManifest,
+): HistorySpeakerMapping[] => createAutomaticHistorySpeakerMappings({
+    speakerCandidates: manifest.speakerCandidates,
+    scope: manifest.scope,
+    existing: manifest.settings.speakerMappings,
+});
 
 export const isValidHistoryReviewTimezone = (value?: string): boolean => {
     const normalized = value?.trim() || '';
@@ -151,9 +171,8 @@ export const isValidHistoryReviewTimezone = (value?: string): boolean => {
 };
 
 const initialResolutionFor = (row: HistoryPreviewRow): HistoryPreviewReviewResolution => {
-    if (row.status === 'duplicate' || row.status === 'skipped') return 'excluded';
-    if (row.status === 'ready') return 'accepted';
-    return 'pending';
+    if (row.status === 'duplicate' || row.status === 'skipped' || !row.content.trim()) return 'excluded';
+    return 'accepted';
 };
 
 const bucketFor = (resolution: HistoryPreviewReviewResolution): HistoryReviewWorkspaceBucket => {
@@ -169,7 +188,6 @@ const needsAttention = (
     if (review.resolution === 'pending') return true;
     if (review.resolution === 'accepted' || review.resolution === 'edited') {
         if (!review.content.trim()) return true;
-        if (!source.speakerLabel && !review.speakerRoleConfirmedByUser) return true;
     }
     if (review.resolution === 'merged') {
         return (
@@ -217,9 +235,12 @@ export const createHistoryReviewWorkspaceManifest = (input: {
         warnings: [...input.preview.warnings],
         settings: {
             sourceMode: 'unknown',
-            timezonePolicy: 'unknown',
+            timezonePolicy: 'source',
             metadataConfirmedByUser: false,
-            speakerMappings: [],
+            speakerMappings: createAutomaticHistorySpeakerMappings({
+                speakerCandidates: input.preview.speakerCandidates,
+                scope: input.preview.scope,
+            }),
         },
         rawRetained: false,
         createdAt: input.now,
@@ -283,6 +304,23 @@ export const patchHistoryReviewWorkspaceRowRecord = (
     };
 };
 
+export const settleHistoryReviewWorkspaceRowForImport = (
+    record: HistoryReviewWorkspaceRowRecord,
+    now: number,
+): HistoryReviewWorkspaceRowRecord => {
+    const resolution = record.review.resolution === 'pending'
+        ? record.review.content.trim() ? 'accepted' : 'excluded'
+        : (record.review.resolution === 'accepted' || record.review.resolution === 'edited')
+            && !record.review.content.trim()
+            ? 'excluded'
+            : record.review.resolution;
+    const stable = resolution === record.review.resolution
+        && needsAttention(record.source, { ...record.review, resolution }) === false
+        && record.attentionKey === 0;
+    if (stable) return record;
+    return patchHistoryReviewWorkspaceRowRecord(record, { resolution }, now);
+};
+
 export const assessHistoryReviewWorkspace = (input: {
     manifest: HistoryReviewWorkspaceManifest;
     attentionRows: number;
@@ -290,9 +328,7 @@ export const assessHistoryReviewWorkspace = (input: {
     excludedRows: number;
 }): HistoryReviewWorkspaceAssessment => {
     const mapped = new Set(
-        input.manifest.settings.speakerMappings
-            .filter(mapping => mapping.confirmedByUser)
-            .map(mapping => mapping.sourceLabel),
+        input.manifest.settings.speakerMappings.map(mapping => mapping.sourceLabel),
     );
     const missingSpeakerMappings = input.manifest.speakerCandidates
         .map(candidate => candidate.label)
@@ -348,9 +384,10 @@ const reviewedRowFromRecord = (
     if (resolution === 'pending' || record.attentionKey === 1) {
         throw new Error(`第 ${record.sourceOrder + 1} 条记录仍未确认。`);
     }
-    const mappedRole = record.source.speakerLabel
-        ? mappingByLabel.get(record.source.speakerLabel)?.role
+    const speakerMapping = record.source.speakerLabel
+        ? mappingByLabel.get(record.source.speakerLabel)
         : undefined;
+    const mappedRole = speakerMapping?.role;
     const speakerRole = record.review.speakerRoleConfirmedByUser
         ? record.review.speakerRole || 'unknown'
         : mappedRole || (record.source.kind === 'system_note' ? 'system' : 'unknown');
@@ -366,7 +403,7 @@ const reviewedRowFromRecord = (
         speakerRole,
         speakerId: roleTargetId(speakerRole, scope),
         speakerRoleConfirmedByUser: record.source.speakerLabel
-            ? true
+            ? Boolean(speakerMapping?.confirmedByUser)
             : record.review.speakerRoleConfirmedByUser,
         sourceTime: { ...record.source.sourceTime },
         attachment: record.source.attachment ? { ...record.source.attachment } : undefined,

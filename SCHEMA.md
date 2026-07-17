@@ -1058,3 +1058,25 @@ Synced public packs are stored in IndexedDB:
   - semantic fields copied from the catalog
 
 Chat history and per-character enablement remain local to each browser.
+
+## History Import Parser V3 And Deferred Semantics
+
+`history-preview-v3` adds a logical segmentation layer after TXT/DOCX source
+unit extraction:
+
+- a line-start `user:` or `assistant:` marker starts a new logical message;
+- following wrapped lines stay attached until the next strong marker;
+- a trailing `timestamp:` line becomes source-time metadata for that message;
+- empty content and orphan timestamp units normalize to `skipped`;
+- non-empty content without a trustworthy label remains `unknown` evidence.
+
+The review workspace may store automatic source-label mappings for `user` and
+`assistant`. These mappings are transport hints, not user-confirmed semantic
+claims. Import settlement accepts non-empty evidence, excludes skipped/empty
+rows, defaults conversation semantics to `unknown`, and preserves source time.
+
+Daily archive search accepts the full `DailyArchiveMessage.role` union. UI
+consumers must render `unknown` and `system` explicitly; they must not collapse
+every non-character hit into the user label. Voice clipping remains restricted
+to positively identified user/character messages until a later Calendar editor
+can persist explicit corrections.

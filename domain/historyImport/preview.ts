@@ -10,7 +10,7 @@ import type {
 } from './types';
 
 export const HISTORY_IMPORT_PREVIEW_VERSION = 1 as const;
-export const HISTORY_IMPORT_PARSER_VERSION = 'history-preview-v2';
+export const HISTORY_IMPORT_PARSER_VERSION = 'history-preview-v3';
 
 export type HistoryPreviewEncoding =
     | 'utf-8'

@@ -226,6 +226,21 @@ assert.equal(
     longDay.messages[keywordMatch.matches[0].messageOffset].id,
     keywordMatch.matches[0].message.id,
 );
+const unknownSearchMatch = searchDailyArchiveChunk({
+    chunk: {
+        ...chunkedLongDay.chunks[0],
+        messages: [{
+            ...chunkedLongDay.chunks[0].messages[0],
+            id: 'history:unknown-source-fragment',
+            role: 'unknown',
+            content: '这一段暂时没有说话人，但仍然可以检索。',
+        }],
+    },
+    query: '仍然可以检索',
+    activeOffset: 0,
+});
+assert.equal(unknownSearchMatch.matches.length, 1, 'deferred unknown-role source must remain human-searchable');
+assert.equal(unknownSearchMatch.matches[0].message.role, 'unknown');
 assert.equal(hydrateDailyArchiveDocument(chunkedLongDay).messageCount, 3_000);
 
 const undatedDocument = buildDailyArchiveDocument({
@@ -291,6 +306,7 @@ for (const required of [
 const clippingLibrarySource = readFileSync(new URL('../components/daily-archive/ConversationClippingLibrary.tsx', import.meta.url), 'utf8');
 assert.ok(clippingLibrarySource.includes('搜索全部聊天记录'));
 assert.ok(clippingLibrarySource.includes('daily-archive-search-results'));
+assert.ok(clippingLibrarySource.includes('待整理片段'));
 assert.ok(!clippingLibrarySource.includes('这里只收你亲手夹出的原句'));
 assert.ok(!clippingLibrarySource.includes('暂时不会变成人设、记忆或聊天提示词'));
 assert.ok(!clippingLibrarySource.includes('仅素材'));

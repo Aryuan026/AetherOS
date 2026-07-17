@@ -577,3 +577,29 @@
 - Static sticker files are shared by everyone who can access the deployed app.
 - Character-pack enablement is browser-local and not shared across users/devices.
 - Chat records, API settings, and imported local stickers stay browser-local.
+
+## History Import Fast Reconnect
+
+- History import is a transport path, not a mandatory memory-analysis wizard.
+  After relationship and file selection, a user must be able to archive the
+  source and continue chatting without classifying every fragment.
+- Line-start `user:` and `assistant:` markers are strong turn boundaries even
+  when multiple turns share one Word paragraph. A literal marker inside an
+  already-started message line remains message content.
+- Empty paragraphs and orphan timestamp metadata must not become review cards
+  or block completion. Every other non-empty unresolved fragment must be kept
+  as source evidence for later organization.
+- `user` and `assistant` labels may be mapped automatically to the selected mask
+  and character. Unknown labels must remain unknown; they must never be silently
+  assigned to the active user or character.
+- Import must preserve source timestamps as evidence. Virtual-world date/time
+  conversion is a later interpretation node and must not rewrite transport-time
+  source data.
+- Companion, roleplay, OOC, and plot are not mutually exclusive import choices.
+  Later analysis may attach multiple evidence-backed labels; none is required
+  to complete the import.
+- Unresolved non-empty evidence must remain visible and keyword-searchable in
+  Dialogue Calendar with an explicit neutral label such as `待整理片段`.
+- Detailed speaker correction, memory classification, companion/plot tagging,
+  and virtual-time interpretation belong to a later Calendar workflow and must
+  not be simulated as completed before that editor exists.

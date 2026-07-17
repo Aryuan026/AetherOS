@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
   CalendarDots,
@@ -24,6 +24,8 @@ import { syncActiveHistoryToDailyArchive } from '../../utils/dailyArchive/histor
 interface HistoryArchiveCommitProps {
   workspace: HistoryReviewWorkspaceManifest;
   onCommittedChange: (committed: boolean | undefined) => void;
+  startImmediately?: boolean;
+  openChatAfterCommit?: boolean;
 }
 
 type CommitStage =
@@ -45,6 +47,8 @@ const progressText = (progress?: HistoryArchiveCandidateProgress): string => {
 const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
   workspace,
   onCommittedChange,
+  startImmediately = false,
+  openChatAfterCommit = false,
 }) => {
   const {
     characters,
@@ -62,6 +66,7 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
   const [identityError, setIdentityError] = useState<string>();
   const [identityPlan, setIdentityPlan] = useState<HistoryIdentityMaterializationPlan>();
   const [dailyArchiveStatus, setDailyArchiveStatus] = useState<'idle' | 'syncing' | 'ready' | 'failed'>('idle');
+  const openedChatRef = useRef(false);
 
   const materializeIdentity = async (): Promise<HistoryIdentityMaterializationPlan> => {
     const plan = buildHistoryIdentityMaterializationPlan({
@@ -83,50 +88,36 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
     setCompletedCount(sourceMessageCount);
     setStage(nextStage);
     onCommittedChange(true);
+    let nextIdentityPlan: HistoryIdentityMaterializationPlan | undefined;
     try {
-      await materializeIdentity();
+      nextIdentityPlan = await materializeIdentity();
     } catch (error) {
       setIdentityError(error instanceof Error ? error.message : '身份入口暂时没有建好。');
     }
     if (workspace.decision?.scope) {
       setDailyArchiveStatus('syncing');
-      try {
-        await syncActiveHistoryToDailyArchive({ scope: workspace.decision.scope });
-        setDailyArchiveStatus('ready');
-      } catch (error) {
-        console.warn('Daily archive sync after import failed', error);
-        setDailyArchiveStatus('failed');
-      }
+      const syncDailyArchive = async () => {
+        try {
+          await syncActiveHistoryToDailyArchive({ scope: workspace.decision!.scope });
+          setDailyArchiveStatus('ready');
+        } catch (error) {
+          console.warn('Daily archive sync after import failed', error);
+          setDailyArchiveStatus('failed');
+        }
+      };
+      if (openChatAfterCommit) void syncDailyArchive();
+      else await syncDailyArchive();
+    }
+    if (openChatAfterCommit && nextIdentityPlan && !openedChatRef.current) {
+      openedChatRef.current = true;
+      updateUserProfile(nextIdentityPlan.activationPatch);
+      setActiveCharacterId(nextIdentityPlan.character.id);
+      openApp(AppID.Chat);
+      addToast('旧聊天已经接回来了', 'success');
     }
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    setStage('checking');
-    onCommittedChange(undefined);
-    setErrorMessage(undefined);
-    setIdentityError(undefined);
-    void readHistoryArchiveWorkspaceImportStatus({ manifest: workspace })
-      .then(async status => {
-        if (cancelled) return;
-        if (status) {
-          await finishCommitted('already_imported', status.sourceMessageCount);
-        } else {
-          setStage('idle');
-          onCommittedChange(false);
-        }
-      })
-      .catch(error => {
-        if (cancelled) return;
-        setStage('idle');
-        setErrorMessage(error instanceof Error ? error.message : '暂时无法确认这份记录是否已经导入。');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [onCommittedChange, workspace]);
-
-  const startImport = async () => {
+  const performImport = async () => {
     setStage('preparing');
     setProgress(undefined);
     setErrorMessage(undefined);
@@ -145,6 +136,38 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
       setStage('idle');
       setErrorMessage(error instanceof Error ? error.message : '暂时无法导入这份历史档案。');
     }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setStage('checking');
+    onCommittedChange(undefined);
+    setErrorMessage(undefined);
+    setIdentityError(undefined);
+    void readHistoryArchiveWorkspaceImportStatus({ manifest: workspace })
+      .then(async status => {
+        if (cancelled) return;
+        if (status) {
+          await finishCommitted('already_imported', status.sourceMessageCount);
+        } else if (startImmediately) {
+          await performImport();
+        } else {
+          setStage('idle');
+          onCommittedChange(false);
+        }
+      })
+      .catch(error => {
+        if (cancelled) return;
+        setStage('idle');
+        setErrorMessage(error instanceof Error ? error.message : '暂时无法确认这份记录是否已经导入。');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onCommittedChange, startImmediately, workspace]);
+
+  const startImport = async () => {
+    await performImport();
   };
 
   if (stage === 'active' || stage === 'already_imported') {
@@ -243,7 +266,7 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
           <TrayArrowDown size={19} weight="duotone" />
         </span>
         <div>
-          <h3 className="text-xs font-black text-slate-800">第 4 步 · 导入本机</h3>
+          <h3 className="text-xs font-black text-slate-800">正在导入本机</h3>
           <p className="mt-1 text-[9px] leading-relaxed text-slate-500">
             确认后直接写入本机历史档案。备份和加密可以以后在“设置”里单独处理。
           </p>
@@ -257,7 +280,7 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-xs font-black text-white shadow-[0_10px_24px_rgba(124,58,237,0.24)]"
         >
           <TrayArrowDown size={16} weight="bold" />
-          导入 {workspace.decision?.counts.included ?? 0} 条聊天
+          {openChatAfterCommit ? '导入并继续聊天' : `导入 ${workspace.decision?.counts.included ?? 0} 条聊天`}
         </button>
       )}
 
