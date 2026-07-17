@@ -77,7 +77,7 @@ npm run dev
 
 - **React + TypeScript** - 前端骨架
 - **Vite** - 构建工具，快得像作弊
-- **IndexedDB** - 本地数据存储（你的聊天记录不会上传到任何地方）
+- **IndexedDB** - 数据默认在本地持久化；调用模型时会按具体功能把必要上下文发送到你配置的 API
 - **Neon PostgreSQL** - 仓库保留的可选云端能力依赖；当前历史迁入不会把记录写上云
 - **Capacitor** - 可打包成安卓 App，真·手机模拟器
 - **Phosphor Icons** - 图标库，看起来挺酷的
