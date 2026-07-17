@@ -188,7 +188,8 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     const isPixelHeader = headerStyle === 'pixel';
     const useCenteredLayout = headerAlign === 'center' || headerStyle === 'minimal';
     const avatarRadiusClass = avatarShape === 'square' ? 'rounded-sm' : avatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full';
-    const signatureText = activeCharacter.chatSignature?.trim();
+    const signatureText = activeCharacter.chatSignature?.trim()
+        || (activeCharacter.id.startsWith('history-placeholder-char-') ? '旧日记录已接回。' : '');
 
     const headerToneClass =
         headerStyle === 'minimal'
@@ -238,15 +239,15 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     const onlineStatusNode =
         statusStyle === 'pill' ? (
             <div className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold border ${isPixelHeader ? 'bg-[#fff7ed] text-[#8f674a] border-[#8f674a]/25' : 'bg-emerald-50 text-emerald-500 border-emerald-100'}`}>
-                online
+                在线
             </div>
         ) : statusStyle === 'dot' ? (
             <div className={`flex items-center gap-1 text-[10px] ${secondaryTextClass}`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span>Online</span>
+                <span>在线</span>
             </div>
         ) : (
-            <div className={`text-[10px] uppercase ${secondaryTextClass}`}>Online</div>
+            <div className={`text-[10px] ${secondaryTextClass}`}>在线</div>
         );
 
     const renderBuffRow = (centered: boolean) => {

@@ -9,14 +9,20 @@ import { KeepAlive } from '../utils/keepAlive';
 import { ProactiveChat } from '../utils/proactiveChat';
 import { ContextBuilder } from '../utils/context';
 import { loadMemoryDMSettings, runMemoryDMPass, selectWorldlineMemoryContext } from '../utils/memoryCore';
+import {
+    filterCurrentStateMessages,
+    isHistoricalContextMessage,
+    relationshipScopeFromMessage,
+    selectEmotionEvaluationMessages,
+} from '../utils/messageContext';
 
 // ─── 情绪评估（副API，fire & forget）───
 
-function buildEmotionEvalPrompt(char: CharacterProfile, userProfile: UserProfile, msgs: Message[]): string {
+export function buildEmotionEvalPrompt(char: CharacterProfile, userProfile: UserProfile, msgs: Message[]): string {
     const roleContext = ContextBuilder.buildRoleSettingsContext(char);
     const currentBuffs = char.activeBuffs || [];
 
-    const recentLines = msgs.slice(-100).map(m => {
+    const recentLines = selectEmotionEvaluationMessages(msgs).map(m => {
         const role = m.role === 'user' ? '用户' : (m.role === 'assistant' ? char.name : '系统');
         const text = typeof m.content === 'string' ? m.content.slice(0, 300) : '';
         return `[${role}]: ${text}`;
@@ -108,14 +114,16 @@ injection是注入角色系统提示词的叙事型情绪指令，必须使用**
 }`;
 }
 
-async function evaluateEmotionBackground(
+export async function evaluateEmotionBackground(
     charData: CharacterProfile,
     userProfile: UserProfile,
     msgs: Message[],
     api: { baseUrl: string; apiKey: string; model: string }
 ): Promise<void> {
     try {
-        const prompt = buildEmotionEvalPrompt(charData, userProfile, msgs);
+        const currentStateMessages = selectEmotionEvaluationMessages(msgs);
+        if (currentStateMessages.length === 0) return;
+        const prompt = buildEmotionEvalPrompt(charData, userProfile, currentStateMessages);
 
         const baseUrl = api.baseUrl.replace(/\/+$/, '');
         const headers = {
@@ -301,6 +309,29 @@ export const useChatAI = ({
         setIsTyping(true);
         setRecallStatus('');
 
+        const importedHistoryMessages = currentMsgs.filter(isHistoricalContextMessage);
+        const initiatingUserMessage = [...filterCurrentStateMessages(currentMsgs)]
+            .reverse()
+            .find(message => message.role === 'user' && !message.metadata?.proactiveHint);
+        const initiatingRelationshipScope = initiatingUserMessage
+            ? relationshipScopeFromMessage(initiatingUserMessage)
+            : undefined;
+        const historyTailBatchIds = [...new Set(importedHistoryMessages
+            .map(message => message.metadata?.historyBatchId)
+            .filter((batchId): batchId is string => typeof batchId === 'string' && batchId.length > 0))];
+        const saveAiMessage = (
+            message: Omit<Message, 'id' | 'timestamp'> & { timestamp?: number },
+        ): Promise<number> => DB.saveMessage({
+            ...message,
+            metadata: {
+                ...(message.metadata || {}),
+                temporalClass: 'live',
+                relationshipScope: initiatingRelationshipScope || null,
+                historyTailContinuation: importedHistoryMessages.length > 0 || undefined,
+                historyTailBatchIds: historyTailBatchIds.length > 0 ? historyTailBatchIds : undefined,
+            },
+        });
+
         // Keep the Service Worker alive while we make potentially long AI calls
         await KeepAlive.start();
         let aiCompleted = false;
@@ -310,7 +341,7 @@ export const useChatAI = ({
             const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApi.apiKey || 'sk-none'}` };
 
             // 1. Build System Prompt (包含实时世界信息)
-            const lastUserMessage = [...currentMsgs].reverse().find(m => m.role === 'user' && !m.metadata?.proactiveHint);
+            const lastUserMessage = [...filterCurrentStateMessages(currentMsgs)].reverse().find(m => m.role === 'user' && !m.metadata?.proactiveHint);
             const worldlineMemory = await selectWorldlineMemoryContext({
                 char,
                 user: userProfile,
@@ -362,12 +393,18 @@ export const useChatAI = ({
             // not from React state which is capped at 200 for rendering performance
             const limit = char.contextLimit || 500;
             let contextMsgs = currentMsgs;
-            if (limit > currentMsgs.length && char.id) {
+            const importedHistoryTail = currentMsgs.filter(message => (
+                message.metadata?.source === 'history_import_tail'
+            ));
+            const providedLiveMessages = currentMsgs.filter(message => (
+                message.metadata?.source !== 'history_import_tail'
+            ));
+            if (limit > providedLiveMessages.length && char.id) {
                 try {
                     const fullHistory = await DB.getRecentMessagesByCharId(char.id, limit);
-                    if (fullHistory.length > currentMsgs.length) {
-                        console.log(`📊 [Context] Loaded ${fullHistory.length} msgs from DB (React state had ${currentMsgs.length}, contextLimit=${limit})`);
-                        contextMsgs = fullHistory;
+                    if (fullHistory.length > providedLiveMessages.length) {
+                        console.log(`📊 [Context] Loaded ${fullHistory.length} live msgs from DB (React state had ${providedLiveMessages.length}, imported tail=${importedHistoryTail.length}, contextLimit=${limit})`);
+                        contextMsgs = [...importedHistoryTail, ...fullHistory];
                     }
                 } catch (e) {
                     console.error('Failed to load full history from DB, using React state:', e);
@@ -405,9 +442,14 @@ export const useChatAI = ({
             }
 
             // 3. Fire-and-forget emotion evaluation in parallel with main API call
-            if (char.emotionConfig?.enabled && char.emotionConfig.api?.baseUrl) {
+            const currentStateEmotionMessages = selectEmotionEvaluationMessages(contextMsgs);
+            if (
+                currentStateEmotionMessages.length > 0
+                && char.emotionConfig?.enabled
+                && char.emotionConfig.api?.baseUrl
+            ) {
                 setEmotionStatus('evaluating');
-                evaluateEmotionBackground(char, userProfile, contextMsgs.slice(-100), char.emotionConfig.api).finally(() => {
+                evaluateEmotionBackground(char, userProfile, currentStateEmotionMessages, char.emotionConfig.api).finally(() => {
                     setEmotionStatus('');
                 });
             }
@@ -551,7 +593,7 @@ export const useChatAI = ({
                                     if (!chunk) continue;
                                     const replyData = globalMsgIndex === 0 ? aiReplyTarget : undefined;
                                     await new Promise(r => setTimeout(r, Math.min(Math.max(chunk.length * 50, 500), 2000)));
-                                    await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: chunk, replyTo: replyData });
+                                    await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: chunk, replyTo: replyData });
                                     setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
                                     globalMsgIndex++;
                                 }
@@ -567,7 +609,7 @@ export const useChatAI = ({
                                 : (originalText || translatedText);
                             const replyData = globalMsgIndex === 0 ? aiReplyTarget : undefined;
                             await new Promise(r => setTimeout(r, Math.min(Math.max(biContent.length * 30, 400), 2000)));
-                            await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: biContent, replyTo: replyData });
+                            await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: biContent, replyTo: replyData });
                             setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
                             globalMsgIndex++;
                         }
@@ -586,7 +628,7 @@ export const useChatAI = ({
                                 if (!chunk) continue;
                                 const replyData = globalMsgIndex === 0 ? aiReplyTarget : undefined;
                                 await new Promise(r => setTimeout(r, Math.min(Math.max(chunk.length * 50, 500), 2000)));
-                                await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: chunk, replyTo: replyData });
+                                await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: chunk, replyTo: replyData });
                                 setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
                                 globalMsgIndex++;
                             }
@@ -598,7 +640,7 @@ export const useChatAI = ({
                         const foundEmoji = emojis.find(e => e.name === emojiName);
                         if (foundEmoji) {
                             await new Promise(r => setTimeout(r, Math.random() * 500 + 300));
-                            await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'emoji', content: foundEmoji.url });
+                            await saveAiMessage({ charId: char.id, role: 'assistant', type: 'emoji', content: foundEmoji.url });
                             setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
                         }
                     }
@@ -613,7 +655,7 @@ export const useChatAI = ({
                             const foundEmoji = emojis.find(e => e.name === part.content);
                             if (foundEmoji) {
                                 await new Promise(r => setTimeout(r, Math.random() * 500 + 300));
-                                await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'emoji', content: foundEmoji.url });
+                                await saveAiMessage({ charId: char.id, role: 'assistant', type: 'emoji', content: foundEmoji.url });
                                 setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
                             }
                         } else {
@@ -650,7 +692,7 @@ export const useChatAI = ({
                                 if (ChatParser.hasDisplayContent(chunk)) {
                                     const cleanChunk = ChatParser.sanitize(chunk);
                                     if (cleanChunk) {
-                                        await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: cleanChunk, replyTo: replyData });
+                                        await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: cleanChunk, replyTo: replyData });
                                         setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
                                         globalMsgIndex++;
                                     }
@@ -667,7 +709,16 @@ export const useChatAI = ({
 
             aiCompleted = true;
         } catch (e: any) {
-            await DB.saveMessage({ charId: char.id, role: 'system', type: 'text', content: `[连接中断: ${e.message}]` });
+            await DB.saveMessage({
+                charId: char.id,
+                role: 'system',
+                type: 'text',
+                content: `[连接中断: ${e.message}]`,
+                metadata: {
+                    temporalClass: 'live',
+                    relationshipScope: initiatingRelationshipScope || null,
+                },
+            });
             setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
         } finally {
             KeepAlive.stop();

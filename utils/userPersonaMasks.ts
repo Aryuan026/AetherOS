@@ -5,7 +5,7 @@ import type {
     UserProgressSurface,
     UserProgressSurfacePolicy,
 } from '../types';
-import { DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, resolveDeepSpaceIdentityMode } from './deepspaceIdentity';
+import { DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, resolveDeepSpaceIdentityMode } from './deepspaceIdentity.ts';
 
 export const DEFAULT_USER_PERSONA_MASK_ID = 'mask-primary';
 export const DEFAULT_USER_PROGRESS_BUNDLE_ID = 'progress-primary';

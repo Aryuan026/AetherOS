@@ -20,6 +20,16 @@ import { mergeUserProfileWithMaskUpdate, normalizeUserPersonaProfile } from '../
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { COMPANION_WAKEUP_USER_COOLDOWN_MS } from '../utils/companionWakeups';
+import {
+    buildDailyArchiveBackupFiles,
+    deleteDailyArchiveDatabase,
+    listAllConversationClippings,
+    listAllDailyArchiveDocuments,
+    replaceConversationClippings,
+    replaceDailyArchiveDocuments,
+    verifyDailyArchiveBackupFiles,
+} from '../utils/dailyArchive/storage';
+import type { ConversationClipping, DailyArchiveDocument } from '../domain/dailyArchive/types';
 
 
 type JSZipLike = {
@@ -138,6 +148,7 @@ interface OSContextType {
   characters: CharacterProfile[];
   activeCharacterId: string;
   addCharacter: () => void;
+  addPreparedCharacter: (character: CharacterProfile) => Promise<void>;
   updateCharacter: (id: string, updates: Partial<CharacterProfile>) => void;
   deleteCharacter: (id: string) => void;
   setActiveCharacterId: (id: string) => void;
@@ -2031,6 +2042,14 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const removeApiPreset = (id: string) => { setApiPresets(prev => { const next = prev.filter(p => p.id !== id); localStorage.setItem('os_api_presets', JSON.stringify(next)); return next; }); };
   const savePresets = (presets: ApiPreset[]) => { setApiPresets(presets); localStorage.setItem('os_api_presets', JSON.stringify(presets)); };
   const addCharacter = async () => { const name = 'New Character'; const newChar: CharacterProfile = { id: `char-${Date.now()}`, name: name, avatar: generateAvatar(name), description: '点击编辑设定...', systemPrompt: '', memories: [], contextLimit: 500 }; setCharacters(prev => normalizeCharactersForState([...prev, newChar])); setActiveCharacterId(newChar.id); await DB.saveCharacter(newChar); };
+  const addPreparedCharacter = async (character: CharacterProfile) => {
+      setCharacters(prev => (
+          prev.some(existing => existing.id === character.id)
+              ? prev
+              : normalizeCharactersForState([...prev, character])
+      ));
+      await DB.saveCharacter(character);
+  };
   const updateCharacter = async (id: string, updates: Partial<CharacterProfile>) => { setCharacters(prev => { const updated = normalizeCharactersForState(prev.map(c => c.id === id ? { ...c, ...updates } : c)); const target = updated.find(c => c.id === id); if (target) DB.saveCharacter(target); return updated; }); };
   useEffect(() => {
       if (!isDataLoaded || characters.length === 0) return;
@@ -2459,7 +2478,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
           const backupData: Partial<FullBackupData> = {
               timestamp: Date.now(),
-              version: 3,
+              version: 5,
               apiConfig: (mode === 'text_only' || mode === 'full') ? apiConfig : undefined,
               apiPresets: (mode === 'text_only' || mode === 'full') ? apiPresets : undefined,
               availableModels: (mode === 'text_only' || mode === 'full') ? availableModels : undefined,
@@ -2627,6 +2646,14 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }
 
           setSysOperation({ status: 'processing', message: '正在生成压缩包...', progress: 95 });
+
+          if (mode === 'text_only' || mode === 'full') {
+              const dailyDocuments = await listAllDailyArchiveDocuments();
+              const dailyBackup = await buildDailyArchiveBackupFiles({ documents: dailyDocuments });
+              backupData.dailyArchiveManifest = dailyBackup.manifest;
+              backupData.conversationClippings = await listAllConversationClippings();
+              dailyBackup.files.forEach(file => zip.file(file.path, file.json));
+          }
           
           zip.file("data.json", JSON.stringify(backupData));
           
@@ -2651,6 +2678,8 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           setSysOperation({ status: 'processing', message: '正在解析备份文件...', progress: 0 });
           let data: FullBackupData;
           let zip: JSZipLike | null = null;
+          let dailyArchiveDocumentsToRestore: DailyArchiveDocument[] | undefined;
+          let conversationClippingsToRestore: ConversationClipping[] | undefined;
 
           if (typeof fileOrJson === 'string') {
               data = JSON.parse(fileOrJson);
@@ -2671,6 +2700,23 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                   const jsonStr = await dataFile.async("string");
                   data = JSON.parse(jsonStr);
               }
+          }
+
+          if (data.dailyArchiveDocuments) {
+              dailyArchiveDocumentsToRestore = data.dailyArchiveDocuments;
+          } else if (zip && data.dailyArchiveManifest) {
+              const files = await Promise.all(data.dailyArchiveManifest.files.map(async expected => {
+                  const file = zip!.file(expected.path);
+                  if (!file) throw new Error(`损坏的备份包: 缺少 ${expected.path}`);
+                  return { path: expected.path, json: await file.async('string') };
+              }));
+              dailyArchiveDocumentsToRestore = await verifyDailyArchiveBackupFiles({
+                  manifest: data.dailyArchiveManifest,
+                  files,
+              });
+          }
+          if (Array.isArray(data.conversationClippings)) {
+              conversationClippingsToRestore = data.conversationClippings;
           }
 
           const restoreAssets = async (obj: any): Promise<any> => {
@@ -2721,6 +2767,12 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }
 
           await DB.importFullData(data);
+          if (dailyArchiveDocumentsToRestore) {
+              await replaceDailyArchiveDocuments({ documents: dailyArchiveDocumentsToRestore });
+          }
+          if (conversationClippingsToRestore) {
+              await replaceConversationClippings({ clippings: conversationClippingsToRestore });
+          }
           
           if (data.theme) {
               await updateTheme(data.theme);
@@ -2824,7 +2876,17 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       }
   };
 
-  const resetSystem = async () => { try { await DB.deleteDB(); localStorage.clear(); window.location.reload(); } catch (e) { console.error(e); addToast('重置失败，请手动清除浏览器数据', 'error'); } };
+  const resetSystem = async () => {
+      try {
+          await DB.deleteDB();
+          await deleteDailyArchiveDatabase();
+          localStorage.clear();
+          window.location.reload();
+      } catch (e) {
+          console.error(e);
+          addToast('重置失败，请手动清除浏览器数据', 'error');
+      }
+  };
   const openApp = (appId: AppID) => {
     setShellStatusBarVariantOverride(null);
     setActiveApp(appId);
@@ -2884,6 +2946,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     characters,
     activeCharacterId,
     addCharacter,
+    addPreparedCharacter,
     updateCharacter,
     deleteCharacter,
     setActiveCharacterId: handleSetActiveCharacter,

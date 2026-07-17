@@ -5,6 +5,7 @@ import { DB } from './db';
 import { formatLifeSimResetCardForContext } from './lifeSimChatCard';
 import { buildRealitySyncContext } from './realitySync';
 import { loadCompanionWakeupSettings, resolveCompanionWakeupMode } from './companionWakeups';
+import { filterCurrentStateMessages, isHistoricalContextMessage } from './messageContext';
 
 export const ChatPrompts = {
     // 格式化时间戳
@@ -68,6 +69,10 @@ export const ChatPrompts = {
         // 情绪底色（buffInjection）已移入 ContextBuilder.buildCoreContext()，所有 App 统一注入
         if (worldlineMemoryContext?.trim()) {
             baseSystemPrompt += `\n${worldlineMemoryContext.trim()}\n`;
+        }
+
+        if (currentMsgs.some(isHistoricalContextMessage)) {
+            baseSystemPrompt += `\n### 旧日档案边界\n标有“旧日档案”的消息是用户导入的关系背景，只用于理解彼此和自然接续，不代表今天或刚刚发生。不得只凭这些旧消息推导当前受伤、生病、失眠、情绪 Buff、未完约定、所在地点、可用时间或独立生活状态；也不得据此创建提醒、日程、NarrativeRun、ExperienceReceipt 或记忆写入。只有本轮未标为旧日档案的实时消息，才能改变当前状态。\n`;
         }
 
         // 注入现实同频规则与实时信号（时间、昼夜、可选天气）
@@ -141,7 +146,8 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
    - **一次性定时发送消息（兼容旧功能）**: 只有明确约定了具体日期时间时才使用: \`[schedule_message | YYYY-MM-DD HH:MM:SS | fixed | 消息内容]\`。
 `;
 
-        const previousMsg = currentMsgs.length > 1 ? currentMsgs[currentMsgs.length - 2] : null;
+        const currentStateMsgs = filterCurrentStateMessages(currentMsgs);
+        const previousMsg = currentStateMsgs.length > 1 ? currentStateMsgs[currentStateMsgs.length - 2] : null;
         if (previousMsg && previousMsg.metadata?.source === 'date') {
             baseSystemPrompt += `\n\n[System Note: You just finished a face-to-face meeting. You are now back on the phone. Switch back to texting style.]`;
         }
@@ -231,7 +237,11 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
             let lastRealMsg: Message | undefined;
             for (let i = historySlice.length - 2; i >= 0; i--) {
                 const m = historySlice[i];
-                if (!m.metadata?.proactiveHint && !(m.role === 'assistant' && i > 0 && historySlice[i - 1]?.metadata?.proactiveHint)) {
+                if (
+                    !isHistoricalContextMessage(m)
+                    && !m.metadata?.proactiveHint
+                    && !(m.role === 'assistant' && i > 0 && historySlice[i - 1]?.metadata?.proactiveHint)
+                ) {
                     lastRealMsg = m;
                     break;
                 }
@@ -243,6 +253,7 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
             apiMessages: historySlice.map((m, index) => {
                 let content: any = m.content;
                 const timeStr = `[${ChatPrompts.formatDate(m.timestamp)}]`;
+                const temporalTag = isHistoricalContextMessage(m) ? '[旧日档案·非当前状态]' : '';
                 const sourceTag = (() => {
                     const source = m.metadata?.source;
                     if (source === 'call') return '[通话]';
@@ -253,7 +264,7 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
                 if (m.replyTo) content = `[回复 "${m.replyTo.content.substring(0, 50)}..."]: ${content}`;
                 
                 if (m.type === 'image') {
-                     let textPart = `${timeStr} [User sent an image]`;
+                     let textPart = `${timeStr}${temporalTag ? ` ${temporalTag}` : ''} [User sent an image]`;
                      if (index === historySlice.length - 1 && timeGapHint && m.role === 'user') textPart += `\n\n${timeGapHint}`;
                      return { role: m.role, content: [{ type: "text", text: textPart }, { type: "image_url", image_url: { url: m.content } }] };
                 }
@@ -318,6 +329,10 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
                     }
                 }
                 else content = `${timeStr} ${sourceTag} ${content}`;
+
+                if (temporalTag && typeof content === 'string') {
+                    content = `${temporalTag} ${content}`;
+                }
                 
                 return { role: m.role, content };
             }),
