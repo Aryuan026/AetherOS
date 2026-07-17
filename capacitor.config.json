@@ -1,6 +1,6 @@
 {
   "appId": "com.aetheros.simulator",
-  "appName": "手抓糯米机",
+  "appName": "AetherOS",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",

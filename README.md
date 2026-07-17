@@ -1,13 +1,22 @@
 # AetherOS
+
 <div align="center">
-<img width="800" alt="banner" src="https://sharkpan.xyz/f/ylWpfN/sDN.png" />
+  <img src="./public/brand/aetheros-starcore.jpg" width="188" alt="AetherOS 星核徽记" />
+  <p><strong>AetherOS 2.0 · 首次实机测试版</strong></p>
+  <p>
+    <a href="https://lab.asherie.cloud/aetheros/">小范围实机测试站</a>
+    ·
+    <a href="https://aryuan026.github.io/AetherOS/">GitHub Pages</a>
+  </p>
 </div>
 
 ---
 
-> 「系统提示：你正在阅读一份由残余语料堆砌而成的说明文档。错误率未知，耐心值归零。」
+> 一个以本机存储为主的虚拟手机与陪伴型角色交互实验。
 
-## 这是什么鬼东西？
+> **2026-07-17｜第一次实机测试。** AetherOS 进入 2.0 大版本：首次在真实手机浏览器中进行少量熟人测试。本轮带来了 TXT / Word 旧日迁入、按日归档的对话日历、关系内全文检索、原句剪藏、本机存储边界，以及旧历史与当前状态的严格隔离。当前仍是小范围实验版，不把用户聊天原文存到运营服务器。
+
+## 这是什么？
 
 **AetherOS** 是一个装在你浏览器里的虚拟手机系统。
 
@@ -149,22 +158,19 @@ npm run cap:android
 
 建议定期使用「设置」里的完整导出保存副本。跨设备迁移应当走用户主动持有的备份/恢复流程；在这条链路正式封箱前，不要把浏览器缓存当成唯一副本。
 
-## 常见问题（别问蠢问题）
+## 常见问题
 
 **Q: 为什么角色不回我消息？**  
-A: 检查 API Key 填了没，或者模型是不是选了个已经去世的（比如 gpt-4-v）。也可能是网络在闹脾气。
+A: 检查 API Key、模型名称和网络连接是否可用。
 
 **Q: 语音通话没声音？**  
-A: 需要填 MiniMax 的 API Key。或者你的浏览器把音频权限禁了。或者你耳机没插。
+A: 检查 MiniMax API Key、浏览器音频权限和设备音量。
 
 **Q: 能部署到服务器吗？**  
 A: 能。`npm run build` 出来的 `dist` 文件夹丢到任何静态托管就行。Vercel、Netlify、GitHub Pages，随便。但记住：数据还是存在用户本地，不是服务器上。
 
 **Q: 怎么替换内置示例角色？**
 A: 在 `context/OSContext.tsx` 里维护 `defaultBuiltInCharacters`。内置角色会被标记为 `isBuiltIn`，并通过 `lockPromptEditing` 隐藏提示词编辑位。
-
-**Q: 数据库在咕咕叫是什么意思？**  
-A: 就是我也不知道什么意思。系统正在哈我。
 
 ## 给想二改的人（开发者区域）
 
@@ -217,7 +223,7 @@ A: 就是我也不知道什么意思。系统正在哈我。
 **主动来信**
 当前 AetherOS 默认使用本分支的 `companion_wakeups` / 记忆递送链路实现主动来信。上游 README 曾鸣谢 ReiStandard / Active Message 2.0；本分支保留历史来源记录，但默认体验不再把这条外部通道作为主动来信主路径。
 
-> 没有这些人，AetherOS 会少很多功能。数据库暂时停止咕咕叫以表敬意。
+> 感谢上游项目与相关贡献者提供的开源基础。
 
 ## 开源协议
 
@@ -227,12 +233,10 @@ A: 就是我也不知道什么意思。系统正在哈我。
 
 改造部署版继续保留原项目名称、署名、开源说明与致谢；本仓及其中任何角色预设、提示词、配置、素材均严禁用于出售、转卖、付费分发、付费定制、商业平台运营、引流广告、课程/社群收费，或伪装为官方产品、官方角色卡、官方授权内容。请同时阅读 [`NOTICE.md`](./NOTICE.md)。
 
-随便用，但别把我卖了。卖也卖不了几个钱，不如留着陪你聊天。
-
 ---
 
 <div align="center">
 
-**[ 连接建立 // 等待输入 // 数据库停止咕咕叫 ]**
+**[ AetherOS // LOCAL FIRST // READY ]**
 
 </div>

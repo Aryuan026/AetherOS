@@ -1,6 +1,6 @@
 {
   "name": "aetheros",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "license": "SEE LICENSE IN NOTICE.md",
   "type": "module",
   "scripts": {
@@ -14,7 +14,8 @@
     "verify:narrative": "node --experimental-strip-types scripts/verify-narrative-foundation.ts",
     "verify:history-import": "tsx scripts/verify-history-import.ts",
     "verify:daily-archive": "tsx scripts/verify-daily-archive.ts",
-    "verify:health": "npm run typecheck && npm run build:quiet",
+    "verify:public-release": "node --experimental-strip-types scripts/verify-public-release.ts",
+    "verify:health": "npm run verify:public-release && npm run typecheck && npm run build:quiet",
     "preview": "vite preview",
     "mock:api": "node scripts/mock-openai-server.mjs",
     "cap:sync": "cap sync",

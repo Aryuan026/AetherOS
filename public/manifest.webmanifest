@@ -2,8 +2,8 @@
   "short_name": "AetherOS",
   "name": "AetherOS",
   "display": "standalone",
-  "theme_color": "#0f1115",
-  "background_color": "#0f1115",
+  "theme_color": "#17133d",
+  "background_color": "#080719",
   "start_url": "./",
   "scope": "./",
   "icons": [

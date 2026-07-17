@@ -141,7 +141,7 @@ const FAQApp: React.FC = () => {
                 </div>
 
                 <div className="mt-8 text-center text-[10px] text-slate-400">
-                    AetherOS Help Center • v1.1
+                    AetherOS Help Center • v2.0
                 </div>
             </div>
         </div>

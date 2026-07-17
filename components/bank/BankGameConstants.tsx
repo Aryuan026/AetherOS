@@ -163,7 +163,6 @@ export const INITIAL_DOLLHOUSE: DollhouseState = {
             wallpaperLeft: 'linear-gradient(180deg, #FEF9F0, #F5EBD8)',
             wallpaperRight: 'linear-gradient(180deg, #FEF9F0, #F5EBD8)',
             floorStyle: 'linear-gradient(135deg, #C4A77D, #B8956E)',
-            roomTextureUrl: 'https://sharkpan.xyz/f/2WzAFQ/CAFE.png',
             stickers: [],
             staffIds: [],
         },

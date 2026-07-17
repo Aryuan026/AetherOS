@@ -1,5 +1,46 @@
 # AetherOS Progress
 
+## 2026-07-17 AetherOS 2.0 First Device-Test Release
+
+- done:
+  - Promoted the project to `2.0.0` for its first small real-phone browser test.
+  - Added the generated AetherOS star-core brand emblem and derived 512 px,
+    192 px, and Apple touch icons for PWA and mobile installation surfaces.
+  - Replaced the plain loading spinner with the star-core boot mark and added a
+    restrained lock-screen brand placement; internal feature apps keep their
+    simpler line icons for readability.
+  - Added the first-device-test milestone, live lab link, and GitHub Pages link
+    to the README.
+  - Extended the public-release guard with version, milestone-copy, logo, and
+    icon size budgets.
+
+- release intent:
+  - Publish the same reviewed static build to GitHub Pages and the isolated
+    `/aetheros/` lab route. Do not add a backend or restart the main gateway.
+
+## 2026-07-17 Public Release Sanitization And Asset Budget
+
+- done:
+  - Restored the retired `preset-sully-v2` ID to the startup migration filter,
+    so an IndexedDB database created by the former `/sullyos/` route cannot
+    make the upstream private character preset reappear under `/aetheros/`.
+  - Added cleanup for the legacy Sully-only emoji category and orphaned sticker
+    records while preserving user chat messages and unrelated user assets.
+  - Replaced remaining runtime references to upstream-hosted private artwork in
+    the café and Valentine surfaces with neutral local defaults.
+  - Added a public-release regression check covering retired IDs, sticker data,
+    forbidden runtime markers, native app naming, and large-asset budgets.
+  - Changed the native display name to `AetherOS`.
+  - Re-encoded the Timebook desk and four built-in date backgrounds as
+    same-resolution JPEGs, reducing their combined size from about 9.6 MB to
+    about 1.5 MB without changing layout dimensions.
+
+- boundary:
+  - This block changes the local release candidate only. The existing public
+    static deployment and gateway configuration remain untouched.
+  - User-authored chat messages are not deleted when the retired character card
+    is removed.
+
 ## 2026-07-13 User Persona Mask Frame
 
 - done:

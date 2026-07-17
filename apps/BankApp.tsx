@@ -13,6 +13,7 @@ import { SHOP_RECIPES, INITIAL_DOLLHOUSE } from '../components/bank/BankGameCons
 import { processImage } from '../utils/file';
 import { ContextBuilder } from '../utils/context';
 import { Coffee, ClipboardText, ChartBar, Coin, Target, UserCircle, BookOpen, Lightning, Storefront } from '@phosphor-icons/react';
+import { isLegacyUpstreamAssetUrl } from '../utils/publicReleaseSanitization';
 
 const INITIAL_STATE: BankFullState = {
     config: {
@@ -24,12 +25,12 @@ const INITIAL_STATE: BankFullState = {
         shopName: '咖啡馆',
         shopLevel: 1,
         appeal: 100,
-        background: 'https://sharkpan.xyz/f/5n1gSj/bg.png', 
+        background: '',
         staff: [
             {
                 id: 'staff-001',
                 name: '系统',
-                avatar: 'https://sharkpan.xyz/f/gXayCw/XT.png',
+                avatar: '☕',
                 role: 'manager',
                 fatigue: 0,
                 maxFatigue: 100,
@@ -183,10 +184,9 @@ const BankApp: React.FC = () => {
             }
         }
 
-        // Migration v2 (one-time): Force-update staff-001 defaults, shop bg, and room texture
-        // to canonical URL-based assets. Only runs once — subsequent user edits are preserved.
+        // Migration v2 (one-time): normalize the original built-in café defaults.
         if (!currentState.dataVersion || currentState.dataVersion < 2) {
-            const EXPECTED_STAFF_001 = INITIAL_STATE.shop.staff[0]; // "系统" with URL avatar
+            const EXPECTED_STAFF_001 = INITIAL_STATE.shop.staff[0];
             const systemStaff = currentState.shop.staff.find(s => s.id === 'staff-001');
             if (systemStaff) {
                 currentState = {
@@ -205,13 +205,11 @@ const BankApp: React.FC = () => {
                 };
             }
 
-            // Force-update shop background to canonical URL
             currentState = {
                 ...currentState,
                 shop: { ...currentState.shop, background: INITIAL_STATE.shop.background }
             };
 
-            // Force-update café room texture URL in dollhouse
             const cafeRoom = dh.rooms.find(r => r.id === 'room-1f-left');
             const expectedCafeTexture = INITIAL_DOLLHOUSE.rooms.find(r => r.id === 'room-1f-left')?.roomTextureUrl;
             if (cafeRoom && expectedCafeTexture) {
@@ -228,6 +226,39 @@ const BankApp: React.FC = () => {
 
             // Mark migration as done so it never runs again
             currentState = { ...currentState, dataVersion: 2 };
+        }
+
+        // Migration v3: remove upstream-hosted private art without overwriting
+        // user-uploaded or independently configured café assets.
+        if (!currentState.dataVersion || currentState.dataVersion < 3) {
+            const safeDefaultStaff = INITIAL_STATE.shop.staff[0];
+            currentState = {
+                ...currentState,
+                shop: {
+                    ...currentState.shop,
+                    background: isLegacyUpstreamAssetUrl(currentState.shop.background)
+                        ? INITIAL_STATE.shop.background
+                        : currentState.shop.background,
+                    staff: currentState.shop.staff.map(staff => (
+                        isLegacyUpstreamAssetUrl(staff.avatar)
+                            ? { ...staff, avatar: safeDefaultStaff.avatar }
+                            : staff
+                    )),
+                },
+                dataVersion: 3,
+            };
+
+            const sanitizedDollhouse: DollhouseState = {
+                ...dollhouseRef.current,
+                rooms: dollhouseRef.current.rooms.map(room => (
+                    isLegacyUpstreamAssetUrl(room.roomTextureUrl)
+                        ? { ...room, roomTextureUrl: undefined }
+                        : room
+                )),
+            };
+            dollhouseRef.current = sanitizedDollhouse;
+            setDollhouseState(sanitizedDollhouse);
+            await DB.saveBankDollhouse(sanitizedDollhouse);
         }
 
         // DAILY RESET LOGIC

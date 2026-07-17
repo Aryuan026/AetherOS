@@ -21,6 +21,11 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { COMPANION_WAKEUP_USER_COOLDOWN_MS } from '../utils/companionWakeups';
 import {
+    isLegacyPrivateCharacterId,
+    isLegacyPrivateEmojiCategoryId,
+    isLegacyPrivateEmojiRecord,
+} from '../utils/publicReleaseSanitization';
+import {
     buildDailyArchiveBackupFiles,
     deleteDailyArchiveDatabase,
     listAllConversationClippings,
@@ -274,7 +279,6 @@ const defaultUserProfile: UserProfile = normalizeUserPersonaProfile({
     deepspaceIdentityNote: '',
 });
 
-const LEGACY_CARD_TESTER_ID = 'builtin-card-tester';
 const BUILT_IN_CHARACTER_VERSION = 17;
 const BUILT_IN_WORLDBOOK_VERSION = 12;
 const BUILT_IN_WORLDBOOK_TIMESTAMP = Date.UTC(2026, 6, 3);
@@ -283,7 +287,6 @@ const XAVIER_BUILT_IN_ID = 'builtin-xavier';
 const ZAYNE_BUILT_IN_ID = 'builtin-zayne';
 const SYLUS_BUILT_IN_ID = 'builtin-sylus';
 const CALEB_BUILT_IN_ID = 'builtin-caleb';
-const REMOVED_CHARACTER_IDS = new Set([LEGACY_CARD_TESTER_ID]);
 const BUILT_IN_CHARACTER_DISPLAY_ORDER = new Map<string, number>([
     [XAVIER_BUILT_IN_ID, 0],
     [ZAYNE_BUILT_IN_ID, 1],
@@ -356,7 +359,7 @@ const compareCharactersForDisplay = (a: CharacterProfile, b: CharacterProfile) =
 
 const normalizeCharactersForState = (chars: CharacterProfile[]) => (
     chars
-        .filter(char => !REMOVED_CHARACTER_IDS.has(char.id))
+        .filter(char => !isLegacyPrivateCharacterId(char.id))
         .map(normalizeCharacterImpression)
         .sort(compareCharactersForDisplay)
 );
@@ -1522,22 +1525,44 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       try {
         await loadSettings();
 
-        const [dbChars, dbThemes, dbUser, dbGroups, dbWorldbooks, dbNovels, dbSongs] = await Promise.all([
+        const [
+            dbChars,
+            dbThemes,
+            dbUser,
+            dbGroups,
+            dbWorldbooks,
+            dbNovels,
+            dbSongs,
+            dbEmojiCategories,
+            dbEmojis,
+        ] = await Promise.all([
             DB.getAllCharacters(),
             DB.getThemes(),
             DB.getUserProfile(),
             DB.getGroups(),
             DB.getAllWorldbooks(),
             DB.getAllNovels(),
-            DB.getAllSongs()
+            DB.getAllSongs(),
+            DB.getEmojiCategories(),
+            DB.getEmojis(),
         ]);
 
-        const removedChars = dbChars.filter(c => REMOVED_CHARACTER_IDS.has(c.id));
+        const removedChars = dbChars.filter(c => isLegacyPrivateCharacterId(c.id));
         if (removedChars.length > 0) {
             await Promise.all(removedChars.map(char => DB.deleteCharacter(char.id)));
         }
 
-        let finalChars = dbChars.filter(c => !REMOVED_CHARACTER_IDS.has(c.id));
+        const removedEmojiCategories = dbEmojiCategories.filter(category => (
+            isLegacyPrivateEmojiCategoryId(category.id)
+        ));
+        for (const category of removedEmojiCategories) {
+            await DB.deleteEmojiCategory(category.id);
+        }
+
+        const removedOrphanEmojis = dbEmojis.filter(isLegacyPrivateEmojiRecord);
+        await Promise.all(removedOrphanEmojis.map(emoji => DB.deleteEmoji(emoji.name)));
+
+        let finalChars = dbChars.filter(c => !isLegacyPrivateCharacterId(c.id));
         let finalWorldbooks = dbWorldbooks;
 
         for (const builtInWorldbook of DEEPSPACE_BUILT_IN_LIBRARY_WORLDBOOKS) {
