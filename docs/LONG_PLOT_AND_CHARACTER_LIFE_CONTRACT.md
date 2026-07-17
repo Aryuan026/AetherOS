@@ -1,6 +1,6 @@
 # Long Plot And Character Life Simulation Contract
 
-Status: confirmed contract; long-plot foundation and manual direction review implemented, runtime and character-life pending
+Status: confirmed contract; manual direction review and draft-route activation implemented, playable runtime and character-life pending
 Last updated: 2026-07-17
 
 This document defines two connected but non-identical systems:
@@ -129,6 +129,42 @@ generation, historical-material adoption, scene generation/player, receipt
 review actions, memory promotion, Character Virtual Life, and launcher
 renaming. No new function calls an AI API, history search, daily archive,
 character memory, or a background clock.
+
+## Implemented Draft Route Activation Slice — 2026-07-17
+
+StoryDesk now supports one explicit transition after manual direction review:
+
+- `domain/narrative/activation.ts` owns the atomic pure transaction that marks
+  one pending manual direction `activated` and creates exactly one
+  `NarrativeRun` with `status: draft`;
+- the transaction revalidates the current progress bundle, StoryDesk book
+  source reference, review timestamp, playable lane, and that every participant
+  remains available to the active persona scope;
+- run, route, and root-branch IDs derive stably from the directive ID. A retry
+  or inconsistent partial record collides closed instead of creating a second
+  route for the same intention;
+- mainline candidates create `mainline / branch-main`; IF directions create
+  `if_line / branch-if-root`. The directive stores the same route and branch
+  identity, while the run retains the source directive ID;
+- one existing `updateNovel` call persists both the complete directive array
+  and narrative state. Hidden directives and runs belonging to other persona
+  bundles remain preserved;
+- the activation review states what will and will not happen. A draft route has
+  zero scenes, zero receipts, no active run selection, no played timestamp, and
+  no character-time or memory mutation;
+- StoryDesk displays the resulting zero-scene route as a `线路草稿`, making the
+  created container visible without presenting it as active play.
+
+The narrative fixture covers mainline and IF mapping, immutable atomic output,
+stable identities, stale review, cross-bundle/book/persona rejection,
+non-manual-source rejection, duplicate-route collision, terminal-status
+protection, and preservation of other-bundle directives and runs.
+
+HOLD after this slice: selecting/starting an active run, scene planning or
+generation, in-world action input, DM/Character turns, played/confirmed receipt
+review, historical-material adoption, memory promotion, life-event application,
+Character Virtual Life, and launcher renaming. Activation calls no AI API,
+history/archive service, character store, memory service, or clock.
 
 ## Code-Grounded Starting Point
 

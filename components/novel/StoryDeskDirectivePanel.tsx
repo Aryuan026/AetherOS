@@ -7,25 +7,32 @@ import {
     reviseStoryDirection,
     type StoryDirectionDraft,
 } from '../../domain/narrative/directives';
-import type { NarrativeDirective } from '../../domain/narrative/types';
+import { activateStoryDirection } from '../../domain/narrative/activation';
+import type { NarrativeDirective, NovelNarrativeState } from '../../domain/narrative/types';
 import type { CharacterProfile } from '../../types';
+import { StoryDeskRouteActivationAction } from './StoryDeskRouteActivationAction';
 
 interface StoryDeskDirectivePanelProps {
     bookId: string;
     progressBundleId?: string;
     directives: NarrativeDirective[];
     allDirectives: NarrativeDirective[];
+    narrative: unknown;
     characters: CharacterProfile[];
     availableCharacters: CharacterProfile[];
     defaultCharacterIds: string[];
     onDirectivesChange: (directives: NarrativeDirective[]) => Promise<void>;
+    onActivationChange: (
+        directives: NarrativeDirective[],
+        narrative: NovelNarrativeState,
+    ) => Promise<void>;
 }
 
 type EditorStep = 'closed' | 'draft' | 'review';
 
 const DIRECTIVE_STATUS_LABELS = {
     pending: '待采纳',
-    activated: '已激活',
+    activated: '已建线路',
     played: '已游玩',
     archived: '已归档',
     discarded: '已舍弃',
@@ -59,10 +66,12 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
     progressBundleId,
     directives,
     allDirectives,
+    narrative,
     characters,
     availableCharacters,
     defaultCharacterIds,
     onDirectivesChange,
+    onActivationChange,
 }) => {
     const [step, setStep] = useState<EditorStep>('closed');
     const [draft, setDraft] = useState<StoryDirectionDraft>(() => emptyDraft(defaultCharacterIds));
@@ -188,6 +197,20 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const activateDirection = async (directive: NarrativeDirective) => {
+        if (!progressBundleId) throw new Error('progress bundle is missing');
+        const result = activateStoryDirection({
+            bookId,
+            progressBundleId,
+            directiveId: directive.id,
+            expectedUpdatedAt: directive.updatedAt,
+            availableCharIds: availableCharacters.map(character => character.id),
+            directives: allDirectives,
+            narrative,
+        }, Date.now());
+        await onActivationChange(result.directives, result.narrative);
     };
 
     return (
@@ -359,6 +382,7 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
                     .map(charId => characterById.get(charId)?.name || charId)
                     .join('、');
                 const isConfirmingDiscard = discardingDirectiveId === directive.id;
+                const participantOutsideScope = directive.charIds.some(charId => !availableIdSet.has(charId));
                 return (
                     <article key={directive.id} className={`rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm ${directive.status === 'discarded' ? 'opacity-55' : ''}`}>
                         <div className="flex items-start gap-3">
@@ -384,9 +408,15 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-3">
+                                    <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
                                         <button type="button" onClick={() => setDiscardingDirectiveId(directive.id)} className="rounded-lg px-3 py-1.5 text-[10px] font-bold text-slate-400">舍弃</button>
                                         <button type="button" onClick={() => openExistingDirection(directive)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-[10px] font-bold text-slate-700">修改</button>
+                                        <StoryDeskRouteActivationAction
+                                            directive={directive}
+                                            participantNames={participantNames}
+                                            disabledReason={participantOutsideScope ? '参与者已不在当前身份范围' : undefined}
+                                            onActivate={() => activateDirection(directive)}
+                                        />
                                     </div>
                                 )
                             ) : (

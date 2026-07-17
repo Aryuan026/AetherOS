@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { CharacterProfile, NovelBook } from '../../types';
-import type { NarrativeDirective } from '../../domain/narrative/types';
+import type { NarrativeDirective, NovelNarrativeState } from '../../domain/narrative/types';
 import type { NarrativeInspectionSnapshot } from '../../domain/narrative/inspection';
 import { StoryDeskDirectivePanel } from './StoryDeskDirectivePanel';
 
@@ -12,11 +12,15 @@ interface StoryDeskInspectorProps {
     activeMaskLabel?: string;
     inspection: NarrativeInspectionSnapshot;
     onDirectivesChange: (directives: NarrativeDirective[]) => Promise<void>;
+    onActivationChange: (
+        directives: NarrativeDirective[],
+        narrative: NovelNarrativeState,
+    ) => Promise<void>;
     onExit: () => void;
 }
 
 const RUN_STATUS_LABELS = {
-    draft: '草稿',
+    draft: '线路草稿',
     active: '进行中',
     paused: '暂停',
     completed: '已完成',
@@ -48,6 +52,7 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
     activeMaskLabel,
     inspection,
     onDirectivesChange,
+    onActivationChange,
     onExit,
 }) => {
     const characterNameById = useMemo(() => new Map(
@@ -116,10 +121,12 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
                     progressBundleId={inspection.progressBundleId}
                     directives={inspection.directives}
                     allDirectives={activeBook.directives || []}
+                    narrative={activeBook.narrative}
                     characters={characters}
                     availableCharacters={availableCharacters}
                     defaultCharacterIds={defaultCharacterIds}
                     onDirectivesChange={onDirectivesChange}
+                    onActivationChange={onActivationChange}
                 />
 
                 <section className="space-y-3">
@@ -134,7 +141,7 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
                         <div className="rounded-3xl bg-white border border-slate-200/70 p-6 text-center shadow-sm">
                             <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-100 grid place-items-center text-xl">⌁</div>
                             <h4 className="mt-3 font-bold text-sm">还没有游玩中的长剧情</h4>
-                            <p className="mt-1.5 text-xs leading-relaxed text-slate-400">这不是生成按钮。下一阶段会先审阅方向，再由你明确开始一条线路。</p>
+                            <p className="mt-1.5 text-xs leading-relaxed text-slate-400">从一条待演方向明确建立线路草稿后，它才会出现在这里。</p>
                         </div>
                     ) : sortedRuns.map(run => {
                         const runScenes = inspection.scenes.filter(scene => scene.runId === run.id);
@@ -166,6 +173,11 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
                                 {activeScene && (
                                     <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-700">
                                         正停在：<span className="font-bold">{activeScene.title}</span>
+                                    </div>
+                                )}
+                                {run.status === 'draft' && runScenes.length === 0 && (
+                                    <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2.5 text-xs leading-relaxed text-indigo-700">
+                                        线路整理夹已建立；还没有生成或游玩任何场景。
                                     </div>
                                 )}
                                 <div className="mt-3 text-[9px] text-slate-400">最后整理于 {formatUpdatedAt(run.updatedAt)}</div>

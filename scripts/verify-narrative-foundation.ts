@@ -19,6 +19,7 @@ import {
     discardStoryDirection,
     reviseStoryDirection,
 } from '../domain/narrative/directives.ts';
+import { activateStoryDirection } from '../domain/narrative/activation.ts';
 import type { NarrativeExperienceReceipt, NovelBook } from '../types.ts';
 
 const T0 = 1_700_000_000_000;
@@ -402,5 +403,158 @@ assert.throws(() => discardStoryDirection(
     discardedManualList[0].updatedAt,
     T0 + 66,
 ), /only pending manual/);
+
+const activationSourceDirectives = [manualMainline, manualIf, {
+    ...manualIf,
+    id: 'directive-other-bundle',
+    progressBundleId: 'bundle-user-2',
+}];
+const mainlineActivation = activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    directiveId: manualMainline.id,
+    expectedUpdatedAt: manualMainline.updatedAt,
+    availableCharIds: ['char-a'],
+    directives: activationSourceDirectives,
+    narrative: undefined,
+}, T0 + 70);
+assert.equal(activationSourceDirectives[0].status, 'pending', 'activation must not mutate directives');
+assert.equal(mainlineActivation.directive.status, 'activated');
+assert.equal(mainlineActivation.directive.routeId, `route-${manualMainline.id}`);
+assert.equal(mainlineActivation.directive.branchId, 'branch-main');
+assert.equal(mainlineActivation.run.id, `run-${manualMainline.id}`);
+assert.equal(mainlineActivation.run.status, 'draft');
+assert.equal(mainlineActivation.run.lane, 'mainline');
+assert.deepEqual(mainlineActivation.run.directiveIds, [manualMainline.id]);
+assert.equal(mainlineActivation.narrative.runs.length, 1);
+assert.equal(mainlineActivation.narrative.scenes.length, 0);
+assert.equal(mainlineActivation.narrative.receipts.length, 0);
+assert.equal(mainlineActivation.narrative.activeRunId, undefined);
+assert.equal(mainlineActivation.directives[2], activationSourceDirectives[2], 'other bundles must be preserved');
+
+const ifActivation = activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    directiveId: manualIf.id,
+    expectedUpdatedAt: manualIf.updatedAt,
+    availableCharIds: ['char-a'],
+    directives: activationSourceDirectives,
+    narrative: undefined,
+}, T0 + 71);
+assert.equal(ifActivation.run.lane, 'if_line');
+assert.equal(ifActivation.run.branchId, 'branch-if-root');
+assert.equal(ifActivation.directive.memoryPolicy, 'dream_material');
+
+const preservedRunState = addNarrativeRun(
+    createEmptyNovelNarrativeState(T0 + 71),
+    createNarrativeRun({
+        id: 'run-preserved-other-bundle',
+        progressBundleId: 'bundle-user-2',
+        bookId: 'book-1',
+        routeId: 'route-preserved-other-bundle',
+        branchId: 'branch-main',
+        lane: 'mainline',
+        participantCharIds: ['char-b'],
+    }, T0 + 71),
+    T0 + 71,
+);
+const preservedRunActivation = activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    directiveId: manualMainline.id,
+    expectedUpdatedAt: manualMainline.updatedAt,
+    availableCharIds: ['char-a'],
+    directives: activationSourceDirectives,
+    narrative: preservedRunState,
+}, T0 + 72);
+assert.deepEqual(
+    preservedRunActivation.narrative.runs.map(run => run.id),
+    ['run-preserved-other-bundle', `run-${manualMainline.id}`],
+    'activation must preserve runs from other bundles',
+);
+
+assert.throws(() => activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-2',
+    directiveId: manualMainline.id,
+    expectedUpdatedAt: manualMainline.updatedAt,
+    availableCharIds: ['char-a'],
+    directives: activationSourceDirectives,
+    narrative: undefined,
+}, T0 + 72), /progress bundle/);
+assert.throws(() => activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    directiveId: manualMainline.id,
+    expectedUpdatedAt: manualMainline.updatedAt - 1,
+    availableCharIds: ['char-a'],
+    directives: activationSourceDirectives,
+    narrative: undefined,
+}, T0 + 72), /changed after this activation review/);
+assert.throws(() => activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    directiveId: manualMainline.id,
+    expectedUpdatedAt: manualMainline.updatedAt,
+    availableCharIds: ['char-b'],
+    directives: activationSourceDirectives,
+    narrative: undefined,
+}, T0 + 72), /outside the active persona scope/);
+assert.throws(() => activateStoryDirection({
+    bookId: 'book-2',
+    progressBundleId: 'bundle-user-1',
+    directiveId: manualMainline.id,
+    expectedUpdatedAt: manualMainline.updatedAt,
+    availableCharIds: ['char-a'],
+    directives: activationSourceDirectives,
+    narrative: undefined,
+}, T0 + 72), /does not belong to this StoryDesk book/);
+assert.throws(() => activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    directiveId: manualMainline.id,
+    expectedUpdatedAt: manualMainline.updatedAt,
+    availableCharIds: ['char-a'],
+    directives: [{ ...manualMainline, sourceSurface: 'novel' }],
+    narrative: undefined,
+}, T0 + 72), /only pending manual/);
+assert.throws(() => activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    directiveId: mainlineActivation.directive.id,
+    expectedUpdatedAt: mainlineActivation.directive.updatedAt,
+    availableCharIds: ['char-a'],
+    directives: mainlineActivation.directives,
+    narrative: mainlineActivation.narrative,
+}, T0 + 73), /only pending manual/);
+
+const inconsistentPending = {
+    ...manualMainline,
+    id: 'directive-inconsistent-pending',
+};
+const conflictingRun = createNarrativeRun({
+    id: `run-${inconsistentPending.id}`,
+    progressBundleId: 'bundle-user-1',
+    bookId: 'book-1',
+    routeId: `route-${inconsistentPending.id}`,
+    branchId: 'branch-main',
+    lane: 'mainline',
+    participantCharIds: ['char-a'],
+}, T0 + 73);
+const conflictingNarrative = addNarrativeRun(
+    createEmptyNovelNarrativeState(T0 + 73),
+    conflictingRun,
+    T0 + 73,
+);
+assert.throws(() => activateStoryDirection({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    directiveId: inconsistentPending.id,
+    expectedUpdatedAt: inconsistentPending.updatedAt,
+    availableCharIds: ['char-a'],
+    directives: [inconsistentPending],
+    narrative: conflictingNarrative,
+}, T0 + 74), /derived narrative route identity already exists/);
+assert.equal(conflictingNarrative.runs.length, 1, 'failed activation must not mutate narrative state');
 
 console.log('narrative foundation fixtures passed');
