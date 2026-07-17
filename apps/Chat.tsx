@@ -6,6 +6,7 @@ import { processImage } from '../utils/file';
 import { safeResponseJson } from '../utils/safeApi';
 import { formatLifeSimResetCardForContext } from '../utils/lifeSimChatCard';
 import MessageItem from '../components/chat/MessageItem';
+import ImportedHistoryTimeline from '../components/chat/ImportedHistoryTimeline';
 import { DEFAULT_CHAT_BACKGROUND_IMAGE, PRESET_THEMES, DEFAULT_ARCHIVE_PROMPTS, DEEP_SPACE_APPEARANCE_PRESET_ID, normalizeChatAppearancePresetId, resolveChatAppearanceTheme } from '../components/chat/ChatConstants';
 import ChatHeader from '../components/chat/ChatHeaderShell';
 import ChatInputArea from '../components/chat/ChatInputArea';
@@ -27,6 +28,11 @@ import {
 } from '../utils/companionWakeups';
 import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule, mergeDefaultHeartbeatRules, syncBuiltInCareWakeupRules } from '../utils/companionWakeupRules';
 import { resolveAvatarFramePreset } from '../utils/avatarFrames';
+import type { HistoryScope } from '../domain/historyImport/types';
+import {
+    historySourceMessagesToContext,
+    readActiveHistoryChatTail,
+} from '../utils/historyImport/archive/chatTimeline';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
 
@@ -189,6 +195,18 @@ const Chat: React.FC = () => {
 
     const char = characters.find(c => c.id === activeCharacterId) || characters[0];
     charRef.current = char; // Keep ref in sync for async callbacks
+    const importedHistoryScope = useMemo<HistoryScope | undefined>(() => {
+        if (!char || !userProfile.activePersonaMaskId || !userProfile.activeProgressBundleId) return undefined;
+        return {
+            progressBundleId: userProfile.activeProgressBundleId,
+            personaMaskId: userProfile.activePersonaMaskId,
+            charId: char.id,
+        };
+    }, [
+        char?.id,
+        userProfile.activePersonaMaskId,
+        userProfile.activeProgressBundleId,
+    ]);
     const charAvatarFramePreset = useMemo(
         () => char ? resolveAvatarFramePreset(rawOsTheme, char.avatarFramePresetId) : undefined,
         [rawOsTheme.avatarFramePresets, char?.avatarFramePresetId]
@@ -748,6 +766,35 @@ const Chat: React.FC = () => {
         return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     };
 
+    const withImportedHistoryContext = useCallback(async (liveMessages: Message[]): Promise<Message[]> => {
+        if (!char || !importedHistoryScope) return liveMessages;
+        try {
+            const sourceTail = await readActiveHistoryChatTail({
+                scope: importedHistoryScope,
+                limit: 24,
+            });
+            const importedTail = historySourceMessagesToContext(sourceTail, char.id);
+            return importedTail.length > 0 ? [...importedTail, ...liveMessages] : liveMessages;
+        } catch (error) {
+            console.warn('[HistoryImport] Failed to attach the bounded archive tail:', error);
+            return liveMessages;
+        }
+    }, [
+        char?.id,
+        importedHistoryScope?.charId,
+        importedHistoryScope?.personaMaskId,
+        importedHistoryScope?.progressBundleId,
+    ]);
+
+    const handleImportedHistoryInitialLoaded = useCallback((count: number) => {
+        if (count < 1) return;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }
+        }));
+    }, []);
+
     // --- Actions ---
 
     const handleSendText = async (customContent?: string, customType?: MessageType, metadata?: any) => {
@@ -792,7 +839,8 @@ const Chat: React.FC = () => {
 
         if (apiConfig.baseUrl && !isTyping && autoReplyEnabled) {
             const updatedMessages = await DB.getRecentMessagesByCharId(char.id, visibleCountRef.current);
-            void triggerAI(updatedMessages);
+            const contextMessages = await withImportedHistoryContext(updatedMessages);
+            void triggerAI(contextMessages);
         }
     };
 
@@ -816,7 +864,7 @@ const Chat: React.FC = () => {
         setMessages(newHistory);
         addToast('回溯对话中...', 'info');
 
-        triggerAI(newHistory);
+        triggerAI(await withImportedHistoryContext(newHistory));
     };
 
     const handleImageSelect = async (file: File) => {
@@ -1444,7 +1492,9 @@ const Chat: React.FC = () => {
                 lastTokenUsage={lastTokenUsage}
                 tokenBreakdown={tokenBreakdown}
                 onClose={closeApp}
-                onTriggerAI={() => triggerAI(messages)}
+                onTriggerAI={() => {
+                    void withImportedHistoryContext(messages).then(contextMessages => triggerAI(contextMessages));
+                }}
                 onOpenReplyControls={() => setShowReplyModeModal(true)}
                 onShowCharsPanel={() => setShowPanel('chars')}
                 onDeleteBuff={(buffId) => {
@@ -1472,6 +1522,14 @@ const Chat: React.FC = () => {
                 style={chatScrollStyle}
             >
                 <div className="pointer-events-none sticky top-0 z-0 h-0" />
+                {importedHistoryScope && (
+                    <ImportedHistoryTimeline
+                        scope={importedHistoryScope}
+                        userName={userProfile.name}
+                        characterName={char.name}
+                        onInitialLoaded={handleImportedHistoryInitialLoaded}
+                    />
+                )}
                 {collapsedCount > 0 && (
                     <div className="relative z-10 flex justify-center mb-6">
                         <button onClick={async () => {

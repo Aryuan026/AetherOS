@@ -29,6 +29,8 @@ import {
   Crosshair,
   Smiley,
   ImageSquare,
+  TrayArrowDown,
+  CalendarDots,
 } from '@phosphor-icons/react';
 
 // SVG 图标库 - Phosphor Icons
@@ -61,6 +63,8 @@ export const Icons: Record<string, React.FC<{ className?: string }>> = {
   Guidebook: ({ className }) => <Crosshair className={className} weight="bold" />,
   LifeSim: ({ className }) => <Smiley className={className} weight="bold" />,
   Widget: ({ className }) => <ImageSquare className={className} weight="bold" />,
+  HistoryImport: ({ className }) => <TrayArrowDown className={className} weight="bold" />,
+  DailyArchive: ({ className }) => <CalendarDots className={className} weight="bold" />,
 };
 
 export const INSTALLED_APPS: AppConfig[] = [
@@ -72,6 +76,7 @@ export const INSTALLED_APPS: AppConfig[] = [
   { id: AppID.Journal, name: '交换日记', icon: 'Journal', color: 'amber' },
   { id: AppID.CompanionPlan, name: '同行计划', icon: 'CompanionPlan', color: 'emerald' },
   { id: AppID.Schedule, name: '时光簿', icon: 'Schedule', color: 'cyan' },
+  { id: AppID.DailyArchive, name: '对话日历', icon: 'DailyArchive', color: 'violet' },
   { id: AppID.Study, name: '书房', icon: 'Study', color: 'emerald' },
   { id: AppID.Social, name: '朋友圈', icon: 'Social', color: 'red' },
   { id: AppID.User, name: '档案', icon: 'User', color: 'blue' },
@@ -89,6 +94,12 @@ export const INSTALLED_APPS: AppConfig[] = [
   { id: AppID.ThemeMaker, name: '聊天装扮', icon: 'ThemeMaker', color: 'purple' },
   { id: AppID.Appearance, name: '外观', icon: 'Appearance', color: 'slate' },
   { id: AppID.Widget, name: '小组件', icon: 'Widget', color: 'cyan' },
+  {
+    id: AppID.HistoryImport,
+    name: '旧日迁入',
+    icon: 'HistoryImport',
+    color: 'violet',
+  },
   { id: AppID.Novel, name: '笔友会', icon: 'Novel', color: 'amber' },
   { id: AppID.Songwriting, name: '写歌', icon: 'Songwriting', color: 'fuchsia' },
   { id: AppID.Bank, name: '存钱罐', icon: 'Bank', color: 'lime' },
@@ -133,6 +144,8 @@ export const LAUNCHER_APP_GROUPS = [
       AppID.ThemeMaker,
       AppID.Appearance,
       AppID.Widget,
+      AppID.HistoryImport,
+      AppID.DailyArchive,
       AppID.Room,
       AppID.Novel,
       AppID.Songwriting,

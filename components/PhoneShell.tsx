@@ -47,6 +47,8 @@ const VoiceDesignerApp = React.lazy(() => import('../apps/VoiceDesignerApp'));
 const GuidebookApp = React.lazy(() => import('../apps/GuidebookApp'));
 const LifeSimApp = React.lazy(() => import('../apps/LifeSimApp'));
 const WidgetApp = React.lazy(() => import('../apps/WidgetApp'));
+const HistoryImportApp = React.lazy(() => import('../apps/HistoryImportApp'));
+const DailyArchiveApp = React.lazy(() => import('../apps/DailyArchiveApp'));
 
 const AppChunkFallback = () => (
   <div className="flex h-full w-full items-center justify-center bg-white/45 text-xs font-semibold text-slate-400">
@@ -453,6 +455,8 @@ const PhoneShell: React.FC = () => {
       case AppID.Guidebook: return <GuidebookApp />;
       case AppID.LifeSim: return <LifeSimApp />;
       case AppID.Widget: return <WidgetApp />;
+      case AppID.HistoryImport: return <HistoryImportApp />;
+      case AppID.DailyArchive: return <DailyArchiveApp />;
       case AppID.SpecialMoments: return <SpecialMomentsApp />;
       case AppID.Launcher:
       default: return <Launcher />;

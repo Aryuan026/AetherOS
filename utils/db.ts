@@ -9,6 +9,7 @@ import {
     LifeSimState, CompanionWakeupRule, CompanionWakeupLog, MessageType
 } from '../types';
 import { normalizeUserPersonaProfile } from './userPersonaMasks';
+import { archiveLiveMessage } from './dailyArchive/liveSync';
 
 const DB_NAME = 'AetherOS_Data';
 const DB_VERSION = 40; // Bumped for companion wakeups (主动来信)
@@ -256,6 +257,41 @@ const openDB = (): Promise<IDBDatabase> => {
   });
 };
 
+const readUserProfileForDailyArchive = async (): Promise<UserProfile | null> => {
+    const db = await openDB();
+    return new Promise((resolve) => {
+        const transaction = db.transaction(STORE_USER, 'readonly');
+        const request = transaction.objectStore(STORE_USER).get('me');
+        request.onsuccess = () => resolve(
+            request.result ? normalizeUserPersonaProfile(request.result as UserProfile) : null,
+        );
+        request.onerror = () => resolve(null);
+    });
+};
+
+const nextDailyArchiveRevision = (message: Message): Message => ({
+    ...message,
+    metadata: {
+        ...(message.metadata || {}),
+        dailyArchiveRevision: Number(message.metadata?.dailyArchiveRevision || 1) + 1,
+    },
+});
+
+const reconcileLiveMessageWithDailyArchive = async (
+    message: Message | undefined,
+    status: 'active' | 'tombstoned',
+): Promise<void> => {
+    if (!message) return;
+    try {
+        const userProfile = await readUserProfileForDailyArchive();
+        await archiveLiveMessage({ message, userProfile, status });
+    } catch (error) {
+        // Chat storage is authoritative for the live write. The daily archive is
+        // independently repairable and must never make edit/delete unusable.
+        console.warn(`Daily archive ${status} reconciliation failed`, error);
+    }
+};
+
 export const DB = {
   deleteDB: async (): Promise<void> => {
       return new Promise((resolve, reject) => {
@@ -391,7 +427,21 @@ export const DB = {
         const timestamp = typeof msg.timestamp === 'number' ? msg.timestamp : Date.now();
         const { timestamp: _ignored, ...payload } = msg;
         const request = store.add({ ...payload, timestamp });
-        request.onsuccess = () => resolve(request.result as number);
+        request.onsuccess = async () => {
+            const id = request.result as number;
+            try {
+                const userProfile = await readUserProfileForDailyArchive();
+                await archiveLiveMessage({
+                    message: { ...payload, timestamp, id } as Message,
+                    userProfile,
+                });
+            } catch (error) {
+                // The operational message is already durable in AetherOS_Data.
+                // The day archive can reconcile it later without breaking chat.
+                console.warn('Daily archive append failed; live message remains saved', error);
+            }
+            resolve(id);
+        };
         request.onerror = () => reject(request.error);
     });
   },
@@ -400,20 +450,27 @@ export const DB = {
     const db = await openDB();
     const transaction = db.transaction(STORE_MESSAGES, 'readwrite');
     const store = transaction.objectStore(STORE_MESSAGES);
-    
+
     return new Promise((resolve, reject) => {
+        let updatedMessage: Message | undefined;
         const req = store.get(id);
         req.onsuccess = () => {
             const data = req.result as Message;
             if (data) {
-                data.content = content;
-                store.put(data);
-                resolve();
+                updatedMessage = nextDailyArchiveRevision({ ...data, content });
+                store.put(updatedMessage);
             } else {
+                transaction.abort();
                 reject(new Error('Message not found'));
             }
         };
         req.onerror = () => reject(req.error);
+        transaction.oncomplete = async () => {
+            await reconcileLiveMessageWithDailyArchive(updatedMessage, 'active');
+            resolve();
+        };
+        transaction.onerror = () => reject(transaction.error ?? new Error('Message update failed'));
+        transaction.onabort = () => reject(transaction.error ?? new Error('Message update aborted'));
     });
   },
 
@@ -449,16 +506,47 @@ export const DB = {
   deleteMessage: async (id: number): Promise<void> => {
     const db = await openDB();
     const transaction = db.transaction(STORE_MESSAGES, 'readwrite');
-    transaction.objectStore(STORE_MESSAGES).delete(id);
+    const store = transaction.objectStore(STORE_MESSAGES);
+    return new Promise((resolve, reject) => {
+        let deletedMessage: Message | undefined;
+        const request = store.get(id);
+        request.onsuccess = () => {
+            const data = request.result as Message | undefined;
+            if (data) deletedMessage = nextDailyArchiveRevision(data);
+            store.delete(id);
+        };
+        request.onerror = () => reject(request.error);
+        transaction.oncomplete = async () => {
+            await reconcileLiveMessageWithDailyArchive(deletedMessage, 'tombstoned');
+            resolve();
+        };
+        transaction.onerror = () => reject(transaction.error ?? new Error('Message delete failed'));
+        transaction.onabort = () => reject(transaction.error ?? new Error('Message delete aborted'));
+    });
   },
 
   deleteMessages: async (ids: number[]): Promise<void> => {
       const db = await openDB();
       const transaction = db.transaction(STORE_MESSAGES, 'readwrite');
       const store = transaction.objectStore(STORE_MESSAGES);
-      ids.forEach(id => store.delete(id));
-      return new Promise((resolve) => {
-          transaction.oncomplete = () => resolve();
+      const deletedMessages: Message[] = [];
+      ids.forEach(id => {
+          const request = store.get(id);
+          request.onsuccess = () => {
+              const data = request.result as Message | undefined;
+              if (data) deletedMessages.push(nextDailyArchiveRevision(data));
+              store.delete(id);
+          };
+      });
+      return new Promise((resolve, reject) => {
+          transaction.oncomplete = async () => {
+              await Promise.all(deletedMessages.map(message => (
+                  reconcileLiveMessageWithDailyArchive(message, 'tombstoned')
+              )));
+              resolve();
+          };
+          transaction.onerror = () => reject(transaction.error ?? new Error('Messages delete failed'));
+          transaction.onabort = () => reject(transaction.error ?? new Error('Messages delete aborted'));
       });
   },
 
@@ -467,17 +555,29 @@ export const DB = {
     const transaction = db.transaction(STORE_MESSAGES, 'readwrite');
     const store = transaction.objectStore(STORE_MESSAGES);
     const index = store.index('charId');
+    const deletedMessages: Message[] = [];
     const request = index.openCursor(IDBKeyRange.only(charId));
     request.onsuccess = () => {
       const cursor = request.result;
       if (cursor) { 
           const m = cursor.value as Message;
-          if (!m.groupId) { 
+          if (!m.groupId) {
+              deletedMessages.push(nextDailyArchiveRevision(m));
               store.delete(cursor.primaryKey); 
           }
           cursor.continue(); 
       }
     };
+    return new Promise((resolve, reject) => {
+        transaction.oncomplete = async () => {
+            await Promise.all(deletedMessages.map(message => (
+                reconcileLiveMessageWithDailyArchive(message, 'tombstoned')
+            )));
+            resolve();
+        };
+        transaction.onerror = () => reject(transaction.error ?? new Error('Messages clear failed'));
+        transaction.onabort = () => reject(transaction.error ?? new Error('Messages clear aborted'));
+    });
   },
 
   getGroups: async (): Promise<GroupProfile[]> => {

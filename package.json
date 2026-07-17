@@ -12,6 +12,8 @@
     "build:quiet": "vite build --logLevel warn",
     "typecheck": "tsc --noEmit",
     "verify:narrative": "node --experimental-strip-types scripts/verify-narrative-foundation.ts",
+    "verify:history-import": "node --experimental-strip-types scripts/verify-history-import.ts",
+    "verify:daily-archive": "node --experimental-strip-types scripts/verify-daily-archive.ts",
     "verify:health": "npm run typecheck && npm run build:quiet",
     "preview": "vite preview",
     "mock:api": "node scripts/mock-openai-server.mjs",

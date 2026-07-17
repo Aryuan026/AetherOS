@@ -1,4 +1,5 @@
 import type { NarrativeDirective, NovelNarrativeState } from './domain/narrative/types';
+import type { ConversationClipping, DailyArchiveBackupManifest, DailyArchiveDocument } from './domain/dailyArchive/types';
 
 export type {
     NarrativeBeat,
@@ -54,6 +55,8 @@ export enum AppID {
   Guidebook = 'guidebook', // 攻略本 — 角色攻略用户小游戏
   LifeSim = 'lifesim', // 模拟人生 — 与角色共同经营的小世界
   Widget = 'widget', // 首屏小组件管理
+  HistoryImport = 'history_import', // 旧日对话迁入与本机档案整理
+  DailyArchive = 'daily_archive', // 按日期保藏与回看本机对话日档
 }
 
 export interface SystemLog {
@@ -70,6 +73,7 @@ export interface AppConfig {
   name: string;
   icon: string;
   color: string;
+  builtInIconUrl?: string;
 }
 
 export interface DesktopDecoration {
@@ -1238,6 +1242,9 @@ export interface Emoji {
 export interface FullBackupData {
     timestamp: number;
     version: number;
+    dailyArchiveManifest?: DailyArchiveBackupManifest;
+    dailyArchiveDocuments?: DailyArchiveDocument[];
+    conversationClippings?: ConversationClipping[];
     theme?: OSTheme;
     apiConfig?: APIConfig;
     apiPresets?: ApiPreset[];

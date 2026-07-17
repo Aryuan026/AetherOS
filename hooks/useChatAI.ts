@@ -362,12 +362,18 @@ export const useChatAI = ({
             // not from React state which is capped at 200 for rendering performance
             const limit = char.contextLimit || 500;
             let contextMsgs = currentMsgs;
-            if (limit > currentMsgs.length && char.id) {
+            const importedHistoryTail = currentMsgs.filter(message => (
+                message.metadata?.source === 'history_import_tail'
+            ));
+            const providedLiveMessages = currentMsgs.filter(message => (
+                message.metadata?.source !== 'history_import_tail'
+            ));
+            if (limit > providedLiveMessages.length && char.id) {
                 try {
                     const fullHistory = await DB.getRecentMessagesByCharId(char.id, limit);
-                    if (fullHistory.length > currentMsgs.length) {
-                        console.log(`📊 [Context] Loaded ${fullHistory.length} msgs from DB (React state had ${currentMsgs.length}, contextLimit=${limit})`);
-                        contextMsgs = fullHistory;
+                    if (fullHistory.length > providedLiveMessages.length) {
+                        console.log(`📊 [Context] Loaded ${fullHistory.length} live msgs from DB (React state had ${providedLiveMessages.length}, imported tail=${importedHistoryTail.length}, contextLimit=${limit})`);
+                        contextMsgs = [...importedHistoryTail, ...fullHistory];
                     }
                 } catch (e) {
                     console.error('Failed to load full history from DB, using React state:', e);
