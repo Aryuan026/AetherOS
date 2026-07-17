@@ -54,6 +54,7 @@ const publicRuntimeFiles = [
     'components/bank/BankGameConstants.tsx',
     'context/OSContext.tsx',
     'utils/db.ts',
+    'utils/publicReleaseSanitization.ts',
 ];
 const forbiddenRuntimeMarkers = [
     'sharkpan.xyz',
