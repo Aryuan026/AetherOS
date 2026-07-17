@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { normalizeUserPersonaProfile } from './userPersonaMasks';
 import { archiveLiveMessage } from './dailyArchive/liveSync';
+import { relationshipScopeForProfile } from './messageContext';
 
 const DB_NAME = 'AetherOS_Data';
 const DB_VERSION = 40; // Bumped for companion wakeups (主动来信)
@@ -283,8 +284,7 @@ const reconcileLiveMessageWithDailyArchive = async (
 ): Promise<void> => {
     if (!message) return;
     try {
-        const userProfile = await readUserProfileForDailyArchive();
-        await archiveLiveMessage({ message, userProfile, status });
+        await archiveLiveMessage({ message, status });
     } catch (error) {
         // Chat storage is authoritative for the live write. The daily archive is
         // independently repairable and must never make edit/delete unusable.
@@ -421,19 +421,34 @@ export const DB = {
 
   saveMessage: async (msg: Omit<Message, 'id' | 'timestamp'> & { timestamp?: number }): Promise<number> => {
     const db = await openDB();
+    const timestamp = typeof msg.timestamp === 'number' ? msg.timestamp : Date.now();
+    const { timestamp: _ignored, ...inputPayload } = msg;
+    let payload = inputPayload;
+    const hasDeclaredRelationshipScope = Object.prototype.hasOwnProperty.call(
+        inputPayload.metadata || {},
+        'relationshipScope',
+    );
+    if (!inputPayload.groupId && !hasDeclaredRelationshipScope) {
+        const userProfile = await readUserProfileForDailyArchive();
+        const relationshipScope = relationshipScopeForProfile(inputPayload.charId, userProfile);
+        payload = {
+            ...inputPayload,
+            metadata: {
+                ...(inputPayload.metadata || {}),
+                temporalClass: inputPayload.metadata?.temporalClass || 'live',
+                relationshipScope: relationshipScope || null,
+            },
+        };
+    }
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(STORE_MESSAGES, 'readwrite');
         const store = transaction.objectStore(STORE_MESSAGES);
-        const timestamp = typeof msg.timestamp === 'number' ? msg.timestamp : Date.now();
-        const { timestamp: _ignored, ...payload } = msg;
         const request = store.add({ ...payload, timestamp });
         request.onsuccess = async () => {
             const id = request.result as number;
             try {
-                const userProfile = await readUserProfileForDailyArchive();
                 await archiveLiveMessage({
                     message: { ...payload, timestamp, id } as Message,
-                    userProfile,
                 });
             } catch (error) {
                 // The operational message is already durable in AetherOS_Data.
@@ -486,6 +501,10 @@ export const DB = {
             if (data) {
                 const nextMetadata = { ...(data.metadata || {}) };
                 Object.entries(metadataPatch).forEach(([key, value]) => {
+                    // Relationship ownership is write-once. Legacy migration, if
+                    // introduced later, must use an explicit audited path rather
+                    // than the generic metadata editor.
+                    if (key === 'relationshipScope') return;
                     if (typeof value === 'undefined') {
                         delete nextMetadata[key];
                     } else {

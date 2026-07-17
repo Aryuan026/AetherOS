@@ -330,3 +330,4 @@ for (const required of [
 }
 
 console.log(`daily archive contract OK: days=1 undated=1 messages=${backup.manifest.messageCount} chunks=${chunkedLongDay.manifest.chunkCount} files=${backup.manifest.files.length}`);
+await import('./verify-daily-archive-db.ts');

@@ -1,5 +1,6 @@
 import type { Anniversary, MemoryFragment, Message } from '../../types';
 import { DB } from '../db';
+import { filterCurrentStateMessages } from '../messageContext';
 import { classifyWorldlineDelivery, extractMemorySearchTerms } from './deliveryProfile';
 import { formatHotStatePrompt, resolveWorldlineHotState } from './hotState';
 import { formatWorldlinePromptBlock } from './promptFormatter';
@@ -301,6 +302,7 @@ export const selectWorldlineMemoryContext = async (
   } catch (error) {
     warnings.push(`recent_messages_unavailable:${error instanceof Error ? error.message : 'unknown'}`);
   }
+  const currentStateMessages = filterCurrentStateMessages(messages);
 
   const candidates: WorldlineMemoryCandidate[] = [];
 
@@ -325,10 +327,10 @@ export const selectWorldlineMemoryContext = async (
   }
 
   candidates.push(...buildCharacterMemoryCandidates(input.char.id, input.char.memories));
-  candidates.push(...buildRecentIntersectionCandidates(input.char.id, messages, input.mode));
+  candidates.push(...buildRecentIntersectionCandidates(input.char.id, currentStateMessages, input.mode));
 
   const queryTerms = extractMemorySearchTerms(input.query);
-  const openThreads = buildOpenThreads(messages, input.mode)
+  const openThreads = buildOpenThreads(currentStateMessages, input.mode)
     .sort((a, b) => b.weight - a.weight)
     .slice(0, deliveryProfile.openThreadLimit);
   const uniqueCandidates = dedupeCandidates(
@@ -343,7 +345,7 @@ export const selectWorldlineMemoryContext = async (
       ? resolveWorldlineHotState({
         charId: input.char.id,
         mode: input.mode,
-        messages,
+        messages: currentStateMessages,
       })
       : Promise.resolve(null),
     loadCharacterVoiceCore(input.char.id),

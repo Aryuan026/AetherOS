@@ -33,6 +33,10 @@ import {
     historySourceMessagesToContext,
     readActiveHistoryChatTail,
 } from '../utils/historyImport/archive/chatTimeline';
+import {
+    hasSuccessfulHistoryTailContinuation,
+    withRelationshipScope,
+} from '../utils/messageContext';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
 
@@ -768,6 +772,8 @@ const Chat: React.FC = () => {
 
     const withImportedHistoryContext = useCallback(async (liveMessages: Message[]): Promise<Message[]> => {
         if (!char || !importedHistoryScope) return liveMessages;
+        const alreadyContinued = hasSuccessfulHistoryTailContinuation(liveMessages, importedHistoryScope);
+        if (alreadyContinued) return liveMessages;
         try {
             const sourceTail = await readActiveHistoryChatTail({
                 scope: importedHistoryScope,
@@ -821,7 +827,15 @@ const Chat: React.FC = () => {
             addToast('图片已保存至相册', 'info');
         }
 
-        const msgPayload: any = { charId: char.id, role: 'user', type, content: text, metadata };
+        const msgPayload: Omit<Message, 'id' | 'timestamp'> = withRelationshipScope({
+            charId: char.id,
+            role: 'user' as const,
+            type,
+            content: text,
+            metadata,
+        }, importedHistoryScope || null, {
+            temporalClass: 'live',
+        });
         
         if (replyTarget) {
             msgPayload.replyTo = {

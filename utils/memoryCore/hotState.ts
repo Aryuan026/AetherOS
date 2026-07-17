@@ -1,5 +1,6 @@
 import type { Message } from '../../types';
 import { DB } from '../db';
+import { filterCurrentStateMessages } from '../messageContext';
 import type { SourceRef, WorldlineHotState, WorldlinePromptMode } from './types';
 
 export const HOT_STATE_ASSET_PREFIX = 'aetheros_worldline_hot_state_';
@@ -72,7 +73,7 @@ const deriveHotState = (
   mode: WorldlinePromptMode,
   messages: Message[],
 ): WorldlineHotState | null => {
-  const visible = messages.filter(isVisibleMessage).slice(-24);
+  const visible = filterCurrentStateMessages(messages).filter(isVisibleMessage).slice(-24);
   const activeThreads: string[] = [];
   const storySignals: string[] = [];
   const pendingCare: string[] = [];

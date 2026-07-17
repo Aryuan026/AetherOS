@@ -190,6 +190,12 @@ export const historySourceMessagesToContext = (
         timestamp: historySourceMessageTimestamp(message),
         metadata: {
             source: 'history_import_tail',
+            temporalClass: 'historical',
+            relationshipScope: {
+                progressBundleId: message.scope.progressBundleId,
+                personaMaskId: message.scope.personaMaskId,
+                charId: message.scope.charId,
+            },
             historySourceMessageId: message.id,
             historyBatchId: message.batchId,
             readOnly: true,

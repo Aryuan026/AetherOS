@@ -1,34 +1,29 @@
-import type { Message, UserProfile } from '../../types.ts';
+import type { Message } from '../../types.ts';
 import {
     dailyArchiveMessageFromLive,
     type DailyArchiveMessage,
 } from '../../domain/dailyArchive/index.ts';
 import type { HistoryScope } from '../../domain/historyImport/types.ts';
+import {
+    isHistoricalContextMessage,
+    relationshipScopeFromMessage,
+} from '../messageContext.ts';
 import { upsertDailyArchiveMessages } from './storage.ts';
 
 export const dailyArchiveScopeForLiveMessage = (input: {
-    charId: string;
-    userProfile: UserProfile | null;
+    message: Pick<Message, 'charId' | 'metadata'>;
 }): HistoryScope | undefined => {
-    const profile = input.userProfile;
-    if (!profile?.activeProgressBundleId || !profile.activePersonaMaskId || !input.charId) return undefined;
-    return {
-        progressBundleId: profile.activeProgressBundleId,
-        personaMaskId: profile.activePersonaMaskId,
-        charId: input.charId,
-    };
+    return relationshipScopeFromMessage(input.message);
 };
 
 export const archiveLiveMessage = async (input: {
     message: Omit<Message, 'id'> & { id: number };
-    userProfile: UserProfile | null;
     status?: DailyArchiveMessage['status'];
     factory?: IDBFactory;
 }): Promise<boolean> => {
-    if (input.message.groupId) return false;
+    if (input.message.groupId || isHistoricalContextMessage(input.message)) return false;
     const scope = dailyArchiveScopeForLiveMessage({
-        charId: input.message.charId,
-        userProfile: input.userProfile,
+        message: input.message,
     });
     if (!scope) return false;
     await upsertDailyArchiveMessages({

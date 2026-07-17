@@ -1197,6 +1197,21 @@ export interface GameSession {
 
 export type MessageType = 'text' | 'image' | 'emoji' | 'interaction' | 'transfer' | 'system' | 'social_card' | 'chat_forward' | 'score_card';
 
+export type MessageTemporalClass = 'live' | 'historical';
+
+export interface MessageRelationshipScope {
+    progressBundleId: string;
+    personaMaskId: string;
+    charId: string;
+}
+
+export interface MessageMetadata extends Record<string, any> {
+    temporalClass?: MessageTemporalClass;
+    relationshipScope?: MessageRelationshipScope | null;
+    historyTailContinuation?: boolean;
+    historyTailBatchIds?: string[];
+}
+
 export interface Message {
     id: number;
     charId: string; 
@@ -1205,7 +1220,7 @@ export interface Message {
     type: MessageType;
     content: string;
     timestamp: number;
-    metadata?: any; 
+    metadata?: MessageMetadata;
     replyTo?: {
         id: number;
         content: string;
