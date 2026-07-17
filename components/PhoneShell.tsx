@@ -405,7 +405,7 @@ const PhoneShell: React.FC = () => {
       >
         <div className="absolute inset-0 bg-black/5 backdrop-blur-sm transition-all group-hover:backdrop-blur-none group-hover:bg-transparent duration-700" />
         
-        <div className="absolute top-24 w-full text-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
+        <div className="absolute top-24 z-10 w-full text-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
            <div className="text-8xl tracking-tighter opacity-95 font-bold">
              {virtualTime.hours.toString().padStart(2,'0')}<span className="animate-pulse">:</span>{virtualTime.minutes.toString().padStart(2,'0')}
            </div>
@@ -436,7 +436,7 @@ const PhoneShell: React.FC = () => {
             </div>
         )}
 
-        <div className="absolute bottom-12 w-full flex flex-col items-center gap-3 animate-pulse opacity-80 drop-shadow-md">
+        <div className="absolute bottom-12 z-10 w-full flex flex-col items-center gap-3 animate-pulse opacity-80 drop-shadow-md">
           <div className="w-1 h-8 rounded-full bg-gradient-to-b from-transparent to-current"></div>
           <span className="text-[10px] tracking-widest uppercase font-semibold">Tap to Unlock</span>
         </div>
