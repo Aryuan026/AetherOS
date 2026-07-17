@@ -3,7 +3,8 @@
 
 import React, { Suspense, useState, useEffect } from 'react';
 import { useOS } from '../context/OSContext';
-import StatusBar from './os/StatusBar';
+import SystemErrorIndicator from './os/SystemErrorIndicator';
+import SimulatedPhoneStatusBar from './os/SimulatedPhoneStatusBar';
 import Launcher from '../apps/Launcher';
 import { ValentineController, shouldShowValentinePopup } from './ValentineEvent';
 import { SpecialMomentsApp } from './special-moments/SpecialMomentsApp';
@@ -16,8 +17,17 @@ import { Capacitor } from '@capacitor/core';
 import { isIOSStandaloneWebApp } from '../utils/iosStandalone';
 import AppErrorBoundary from './os/AppErrorBoundary';
 import { publicAsset } from '../utils/publicAssets';
+import { buildShellChromeStyle, resolveShellChromeMode } from '../utils/shellChrome';
+import { SHELL_OVERLAY_TOP } from './shell/shellLayout';
+import VirtualCityStrip from './shell/VirtualCityStrip';
+import { useVirtualWorldClock } from '../hooks/useVirtualWorldClock';
 
 const AETHEROS_BRAND_ICON = publicAsset('brand/aetheros-starcore.jpg');
+const LOCK_SCREEN_SLOGAN_LINES = [
+  'Real isn’t how you are made.',
+  'It’s a thing that happens to you.',
+] as const;
+const LOCK_SCREEN_SCRIPT_FONT = '"Snell Roundhand", "Apple Chancery", "URW Chancery L", cursive';
 
 // Keep the launcher and global controllers eager, but load feature apps only when
 // opened. This prevents every large app module from occupying the initial tab and
@@ -223,8 +233,26 @@ const DisclaimerPopup: React.FC<{ onAccept: () => void }> = ({ onAccept }) => (
 );
 
 const PhoneShell: React.FC = () => {
-  const { theme, isLocked, unlock, activeApp, closeApp, virtualTime, isDataLoaded, toasts, unreadMessages, characters, handleBack, suspendedCall, resumeCall, activeCharacterId, shellStatusBarVariantOverride } = useOS();
+  const {
+    theme,
+    virtualTime,
+    isLocked,
+    unlock,
+    activeApp,
+    closeApp,
+    isDataLoaded,
+    toasts,
+    unreadMessages,
+    characters,
+    handleBack,
+    suspendedCall,
+    resumeCall,
+    activeCharacterId,
+    userProfile,
+    shellStatusBarVariantOverride,
+  } = useOS();
   const useIOSStandaloneLayout = isIOSStandaloneWebApp();
+  const virtualWorld = useVirtualWorldClock(userProfile);
 
   // Disclaimer popup for first-time users
   const [showDisclaimer, setShowDisclaimer] = useState(() => {
@@ -379,12 +407,20 @@ const PhoneShell: React.FC = () => {
 
   const bgImageValue = getBgStyle(theme.wallpaper);
   const contentColor = theme.contentColor || '#ffffff';
-  const baseStatusBarVariant = activeApp === AppID.Launcher
-      ? 'launcher'
-      : activeApp === AppID.Call || activeApp === AppID.CheckPhone
-        ? 'dark'
-        : 'app';
-  const statusBarVariant = shellStatusBarVariantOverride || baseStatusBarVariant;
+  const requestedShellChromeMode = resolveShellChromeMode(theme);
+  // A virtual-city request without a valid scoped config fails closed to the
+  // software shell, so a stale/mismatched relationship never leaves a blank bar.
+  // Classic simulated-phone chrome does not depend on relationship scope.
+  const shellChromeMode = requestedShellChromeMode === 'virtual_city'
+    ? (virtualWorld.context ? 'virtual_city' : 'software')
+    : requestedShellChromeMode;
+  const shellChromeStyle = buildShellChromeStyle(shellChromeMode);
+  const baseShellTone = activeApp === AppID.Launcher
+    ? 'launcher'
+    : activeApp === AppID.Call || activeApp === AppID.CheckPhone
+      ? 'dark'
+      : 'app';
+  const shellTone = shellStatusBarVariantOverride || baseShellTone;
 
   if (isLocked) {
     const unreadCount = Object.values(unreadMessages).reduce((a,b) => a+b, 0);
@@ -401,15 +437,42 @@ const PhoneShell: React.FC = () => {
             unlock();
         }}
         className="relative w-full h-full bg-cover bg-center cursor-pointer overflow-hidden group font-light select-none overscroll-none"
-        style={{ backgroundImage: bgImageValue, color: contentColor }}
+        data-shell-chrome-mode={shellChromeMode}
+        style={{ ...shellChromeStyle, backgroundImage: bgImageValue, color: contentColor }}
       >
         <div className="absolute inset-0 bg-black/5 transition-colors duration-700 group-hover:bg-transparent" />
+        {shellChromeMode === 'virtual_city' && virtualWorld.context && (
+          <VirtualCityStrip context={virtualWorld.context} tone="dark" />
+        )}
+        {shellChromeMode === 'simulated_phone' && <SimulatedPhoneStatusBar tone="dark" />}
         
         <div className="absolute top-24 z-10 w-full text-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
-           <div className="text-8xl tracking-tighter opacity-95 font-bold">
-             {virtualTime.hours.toString().padStart(2,'0')}<span className="animate-pulse">:</span>{virtualTime.minutes.toString().padStart(2,'0')}
-           </div>
-           <div className="text-lg tracking-widest opacity-90 mt-2 uppercase text-xs font-bold">AetherOS Simulation</div>
+           {shellChromeMode === 'virtual_city' && virtualWorld.context ? (
+             <>
+               <div className="text-6xl tracking-[0.04em] opacity-95 font-bold">{virtualWorld.context.clock.timeLabel}</div>
+               <div className="mt-3 text-xs font-bold tracking-[0.22em] opacity-80">
+                 {virtualWorld.context.locationLabel} · {virtualWorld.context.clock.dateLabel}
+               </div>
+             </>
+           ) : shellChromeMode === 'simulated_phone' ? (
+             <>
+               <div className="text-8xl font-bold tracking-tighter opacity-95">
+                 {virtualTime.hours.toString().padStart(2, '0')}<span className="animate-pulse">:</span>{virtualTime.minutes.toString().padStart(2, '0')}
+               </div>
+               <div className="mt-2 text-xs font-bold uppercase tracking-widest opacity-90">AetherOS Simulation</div>
+             </>
+           ) : (
+             <div className="text-5xl tracking-[0.08em] opacity-95 font-bold">AetherOS</div>
+           )}
+           <p
+             data-lock-screen-slogan
+             className="mx-auto mt-7 max-w-[22rem] px-3 text-[20px] leading-[1.9] tracking-[0.01em] opacity-90"
+             style={{ fontFamily: LOCK_SCREEN_SCRIPT_FONT, fontWeight: 500 }}
+           >
+             {LOCK_SCREEN_SLOGAN_LINES.map(line => (
+               <span key={line} className="block whitespace-nowrap">{line}</span>
+             ))}
+           </p>
         </div>
 
         {unreadCount > 0 && (
@@ -478,7 +541,11 @@ const PhoneShell: React.FC = () => {
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-gradient-to-br from-pink-200 via-purple-200 to-indigo-200 text-slate-900 font-sans select-none overscroll-none">
+    <div
+      className="relative w-full h-full overflow-hidden bg-gradient-to-br from-pink-200 via-purple-200 to-indigo-200 text-slate-900 font-sans select-none overscroll-none"
+      data-shell-chrome-mode={shellChromeMode}
+      style={shellChromeStyle}
+    >
        {/* Optimized Background Layer */}
        <div 
          className="absolute inset-0 bg-cover bg-center transition-all duration-700 ease-[cubic-bezier(0.25,0.1,0.25,1)]"
@@ -503,10 +570,15 @@ const PhoneShell: React.FC = () => {
       <div 
   className="absolute inset-0 z-10 w-full h-full overflow-hidden bg-transparent overscroll-none flex flex-col"
   style={{ 
-      paddingTop: activeApp !== AppID.Launcher ? 'env(safe-area-inset-top)' : 0,
       paddingBottom: activeApp !== AppID.Launcher ? 'env(safe-area-inset-bottom)' : 0
   }}
 > 
+          {shellChromeMode === 'virtual_city' && virtualWorld.context && (
+            <VirtualCityStrip context={virtualWorld.context} tone={shellTone} />
+          )}
+          {shellChromeMode === 'simulated_phone' && (
+            <SimulatedPhoneStatusBar tone={shellTone} />
+          )}
           {/* App Container */}
          <div className="flex-1 relative overflow-hidden" style={{ contain: useIOSStandaloneLayout ? undefined : 'layout style paint' }}>
     <AppErrorBoundary onCloseApp={closeApp} resetKey={`${activeApp}:${activeCharacterId || 'none'}`}>
@@ -516,32 +588,33 @@ const PhoneShell: React.FC = () => {
     </AppErrorBoundary>
 </div>
 
-          {/* Overlays: Status Bar (Top) */}
-          {!theme.hideStatusBar && <StatusBar variant={statusBarVariant} />}
-          
-          {/* Overlays: Suspended Call Bar */}
-          {suspendedCall && activeApp !== AppID.Call && (
-            <button
-              onClick={resumeCall}
-              className="absolute top-7 left-0 w-full z-[55] flex items-center justify-center gap-2 bg-emerald-500 text-white text-xs font-bold py-1.5 animate-pulse cursor-pointer active:bg-emerald-600 transition-colors"
-            >
-              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-              <span>通话中 · {suspendedCall.charName}</span>
-              <span className="opacity-70">点击返回</span>
-            </button>
-          )}
-
-          {/* Overlays: Toasts (Top) */}
-          <div className="absolute top-12 left-0 w-full flex flex-col items-center gap-2 pointer-events-none z-[60]">
+          {/* One top coordinate source for suspended calls, errors, and toasts. */}
+          <div
+            data-shell-overlay-stack
+            className="pointer-events-none absolute inset-x-0 z-[60] flex flex-col items-stretch gap-2"
+            style={{ top: SHELL_OVERLAY_TOP }}
+          >
+              {suspendedCall && activeApp !== AppID.Call && (
+                <button
+                  type="button"
+                  onClick={resumeCall}
+                  className="pointer-events-auto flex w-full cursor-pointer items-center justify-center gap-2 bg-emerald-500 py-1.5 text-xs font-bold text-white transition-colors animate-pulse active:bg-emerald-600"
+                >
+                  <span className="h-2 w-2 rounded-full bg-white animate-ping" />
+                  <span>通话中 · {suspendedCall.charName}</span>
+                  <span className="opacity-70">点击返回</span>
+                </button>
+              )}
+              <SystemErrorIndicator />
               {toasts.map(toast => (
-                 <div key={toast.id} className="animate-fade-in bg-white/95 backdrop-blur-xl px-4 py-3 rounded-2xl shadow-xl border border-black/5 flex items-center gap-3 max-w-[85%] ring-1 ring-white/20">
+                 <div key={toast.id} className="self-center animate-fade-in bg-white/95 backdrop-blur-xl px-4 py-3 rounded-2xl shadow-xl border border-black/5 flex items-center gap-3 max-w-[85%] ring-1 ring-white/20">
                      {toast.type === 'success' && <div className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0"></div>}
                      {toast.type === 'error' && <div className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0"></div>}
                      {toast.type === 'info' && <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0"></div>}
                      <span className="text-xs font-bold text-slate-800 truncate leading-none">{toast.message}</span>
                  </div>
               ))}
-           </div>
+          </div>
        </div>
 
        {/* First-time disclaimer popup */}

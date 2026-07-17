@@ -6,6 +6,7 @@ import { GalleryImage, CharacterProfile } from '../types';
 import { safeResponseJson } from '../utils/safeApi';
 import ConfirmDialog from '../components/os/ConfirmDialog';
 import AppHeader from '../components/shell/AppHeader';
+import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 
 const Gallery: React.FC = () => {
     const { closeApp, characters, apiConfig, addToast } = useOS();
@@ -359,7 +360,7 @@ CRITICAL: Stay in character. If there's conversation context, your comment shoul
     const renderDetail = () => selectedImage && (
         <div className="flex flex-col h-full bg-black relative animate-fade-in">
             {/* Header */}
-            <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-50 pointer-events-none">
+            <div className="absolute top-0 left-0 w-full px-4 pb-4 flex justify-between items-start z-50 pointer-events-none" style={{ paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                 <button onClick={() => setView('grid')} className="text-white bg-black/40 backdrop-blur-md p-2 rounded-full pointer-events-auto active:scale-95 transition-transform hover:bg-black/60 border border-white/10">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                 </button>
@@ -370,7 +371,7 @@ CRITICAL: Stay in character. If there's conversation context, your comment shoul
 
             {/* Date badge */}
             {selectedImage.savedDate && (
-                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50">
+                <div className="absolute left-1/2 -translate-x-1/2 z-50" style={{ top: `calc(${SHELL_APP_HEADER_CONTENT_TOP} + 3rem)` }}>
                     <span className="text-[10px] text-white/60 bg-black/40 backdrop-blur-sm px-3 py-1 rounded-full font-mono">{selectedImage.savedDate}</span>
                 </div>
             )}

@@ -1,25 +1,78 @@
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useOS } from '../context/OSContext';
-import { OSTheme, DesktopDecoration, AppearancePreset, Toast } from '../types';
+import { OSTheme, DesktopDecoration, AppearancePreset, ShellChromeMode, Toast } from '../types';
 import { INSTALLED_APPS, Icons } from '../constants';
 import { processImage } from '../utils/file';
 import { Sparkle } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
+import { useVirtualWorldClock } from '../hooks/useVirtualWorldClock';
+import {
+  VirtualWorldClockConfigV1,
+  createDefaultVirtualWorldClockConfig,
+} from '../utils/virtualWorldClock';
+import { resolveShellChromeMode } from '../utils/shellChrome';
 
 const TwemojiImg: React.FC<{ code: string; alt?: string; className?: string }> = ({ code, alt, className = 'w-4 h-4 inline-block' }) => (
   <img src={`https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/${code}.png`} alt={alt || ''} className={className} draggable={false} />
 );
 
 const CATEGORY_LABELS: Record<string, { code: string; label: string }> = {
-  'stars': { code: '2728', label: 'Stars' },
-  'hearts': { code: '1f496', label: 'Hearts' },
-  'flowers': { code: '1f338', label: 'Flowers' },
-  'ribbons': { code: '1f380', label: 'Ribbons' },
-  'animals': { code: '1f431', label: 'Animals' },
-  'shapes': { code: '1f52e', label: 'Shapes' },
-  'badges': { code: '1f3f7', label: 'Badges' },
+  'stars': { code: '2728', label: '星光' },
+  'hearts': { code: '1f496', label: '爱心' },
+  'flowers': { code: '1f338', label: '花与叶' },
+  'ribbons': { code: '1f380', label: '丝带' },
+  'animals': { code: '1f431', label: '小动物' },
+  'shapes': { code: '1f52e', label: '形状' },
+  'badges': { code: '1f3f7', label: '文字牌' },
 };
+
+const SHELL_MODE_COPY: Record<ShellChromeMode, { title: string; summary: string }> = {
+  simulated_phone: {
+    title: '经典手机',
+    summary: '恢复原来的现实时间、Wi-Fi 与电量状态栏。',
+  },
+  software: {
+    title: '纯软件界面',
+    summary: '不显示顶部信息带，页面收回这块空间。',
+  },
+  virtual_city: {
+    title: '虚拟城区',
+    summary: '显示当前关系世界里的地点、时间与天气。',
+  },
+};
+
+// Appearance type scale: page 16 / tabs 12 / sections 13 / controls 11 / helpers 10 / metadata 9.
+const APPEARANCE_CARD_CLASS = 'rounded-[22px] border border-slate-200/70 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.035)]';
+
+const AppearanceSectionHeader: React.FC<{
+  title: string;
+  description?: string;
+  aside?: React.ReactNode;
+  className?: string;
+}> = ({ title, description, aside, className = '' }) => (
+  <div className={`mb-3 flex items-start justify-between gap-3 ${className}`}>
+    <div className="min-w-0">
+      <h2 className="text-[13px] font-semibold leading-5 tracking-[0.02em] text-slate-700">{title}</h2>
+      {description && <p className="mt-1 text-[10px] leading-[1.55] text-slate-400">{description}</p>}
+    </div>
+    {aside}
+  </div>
+);
+
+const AppearanceGroupLabel: React.FC<{ title: string; description: string; className?: string }> = ({
+  title,
+  description,
+  className = '',
+}) => (
+  <div className={`flex items-end justify-between gap-3 px-1 pt-1 ${className}`}>
+    <div>
+      <div className="text-[11px] font-semibold tracking-[0.08em] text-slate-500">{title}</div>
+      <div className="mt-0.5 text-[9px] leading-4 text-slate-400">{description}</div>
+    </div>
+    <div className="mb-1 h-px min-w-8 flex-1 bg-slate-200/80" aria-hidden="true" />
+  </div>
+);
 
 // --- Preset Manager Component ---
 interface PresetManagerProps {
@@ -83,47 +136,51 @@ const PresetManager: React.FC<PresetManagerProps> = ({ presets, onSave, onApply,
     };
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-4">
             {/* Save Current */}
-            <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">保存当前外观</h2>
-                <p className="text-[10px] text-slate-400 mb-3">将当前的主题色、壁纸、字体、图标、装饰等完整外观保存为预设，方便随时切换。</p>
+            <section className={APPEARANCE_CARD_CLASS}>
+                <AppearanceSectionHeader
+                  title="保存当前外观"
+                  description="把当前顶部样式、主题色、字体、壁纸、图标和装饰收成一套。"
+                />
                 <div className="flex gap-2">
                     <input
                         value={newName}
                         onChange={e => setNewName(e.target.value)}
                         placeholder="预设名称（可选）"
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-primary transition-all"
+                        className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] outline-none transition-all focus:border-primary"
                         onKeyDown={e => e.key === 'Enter' && handleSave()}
                     />
                     <button onClick={handleSave}
-                        className="px-5 py-2.5 bg-primary text-white font-bold text-xs rounded-xl shadow-md active:scale-95 transition-transform shrink-0">
+                        className="shrink-0 rounded-xl bg-primary px-4 py-2.5 text-[11px] font-semibold text-white shadow-sm transition-transform active:scale-95">
                         保存
                     </button>
                 </div>
             </section>
 
             {/* Import */}
-            <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">导入外观预设</h2>
-                <p className="text-[10px] text-slate-400 mb-3">从 .json 文件导入他人分享的外观预设。系统整合备份也会包含当前外观设置，单独预设文件更适合分享。</p>
+            <section className={APPEARANCE_CARD_CLASS}>
+                <AppearanceSectionHeader
+                  title="导入预设"
+                  description="读取别人分享的 .json 外观文件并加入列表；点“应用”后才会修改本机外观。"
+                />
                 <input type="file" ref={importRef} className="hidden" accept=".json" onChange={handleImport} />
                 <button onClick={() => importRef.current?.click()}
-                    className="w-full py-2.5 bg-gradient-to-r from-blue-50 to-cyan-50 text-blue-500 font-bold text-xs rounded-xl border border-blue-200 active:scale-95 transition-transform flex items-center justify-center gap-2">
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 py-2.5 text-[11px] font-semibold text-blue-500 transition-transform active:scale-95">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
                     选择文件导入
                 </button>
             </section>
 
             {/* Preset List */}
-            <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">已保存预设 ({presets.length})</h2>
+            <section className={APPEARANCE_CARD_CLASS}>
+                <AppearanceSectionHeader title={`已保存预设 · ${presets.length}`} />
                 {presets.length === 0 ? (
-                    <div className="text-center py-8">
-                        <div className="text-3xl mb-2 opacity-40">
-                            <Sparkle size={48} weight="fill" className="mx-auto text-slate-300" />
+                    <div className="py-7 text-center">
+                        <div className="mb-2 opacity-40">
+                            <Sparkle size={36} weight="fill" className="mx-auto text-slate-300" />
                         </div>
-                        <p className="text-xs text-slate-400">还没有外观预设</p>
+                        <p className="text-[11px] font-medium text-slate-400">还没有外观预设</p>
                         <p className="text-[10px] text-slate-300 mt-1">保存当前外观或导入预设文件开始使用</p>
                     </div>
                 ) : (
@@ -158,7 +215,7 @@ const PresetManager: React.FC<PresetManagerProps> = ({ presets, onSave, onApply,
                                             <input
                                                 value={editName}
                                                 onChange={e => setEditName(e.target.value)}
-                                                className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-primary"
+                                                className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] outline-none focus:border-primary"
                                                 autoFocus
                                                 onKeyDown={e => { if (e.key === 'Enter') handleRename(preset.id); if (e.key === 'Escape') setEditingId(null); }}
                                             />
@@ -168,7 +225,7 @@ const PresetManager: React.FC<PresetManagerProps> = ({ presets, onSave, onApply,
                                     ) : (
                                         <div className="flex items-center justify-between mb-2">
                                             <div>
-                                                <div className="text-xs font-bold text-slate-700">{preset.name}</div>
+                                                <div className="text-[11px] font-semibold text-slate-700">{preset.name}</div>
                                                 <div className="text-[9px] text-slate-400">{new Date(preset.createdAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                                             </div>
                                         </div>
@@ -212,7 +269,7 @@ const PresetManager: React.FC<PresetManagerProps> = ({ presets, onSave, onApply,
                 )}
             </section>
 
-            <div className="text-[10px] text-slate-400 text-center px-4 pb-4">
+            <div className="px-4 pb-3 text-center text-[10px] leading-[1.55] text-slate-400">
                 外观预设既可以单独导入/导出，也会随系统整合备份一起保存。你可以保存多个预设并随时切换。
             </div>
         </div>
@@ -220,7 +277,7 @@ const PresetManager: React.FC<PresetManagerProps> = ({ presets, onSave, onApply,
 };
 
 const Appearance: React.FC = () => {
-  const { theme, updateTheme, closeApp, setCustomIcon, customIcons, addToast, appearancePresets, saveAppearancePreset, applyAppearancePreset, deleteAppearancePreset, renameAppearancePreset, exportAppearancePreset, importAppearancePreset } = useOS();
+  const { theme, updateTheme, closeApp, setCustomIcon, customIcons, addToast, appearancePresets, saveAppearancePreset, applyAppearancePreset, deleteAppearancePreset, renameAppearancePreset, exportAppearancePreset, importAppearancePreset, userProfile } = useOS();
   const [activeTab, setActiveTab] = useState<'theme' | 'icons' | 'presets'>('theme');
   const wallpaperInputRef = useRef<HTMLInputElement>(null);
   const widgetInputRef = useRef<HTMLInputElement>(null);
@@ -237,9 +294,61 @@ const Appearance: React.FC = () => {
   const decoInputRef = useRef<HTMLInputElement>(null);
   const [editingDecoId, setEditingDecoId] = useState<string | null>(null);
   const [showPresetPicker, setShowPresetPicker] = useState(false);
+  const virtualWorld = useVirtualWorldClock(userProfile);
+  const [worldDraft, setWorldDraft] = useState<VirtualWorldClockConfigV1 | null>(null);
+  const shellChromeMode = resolveShellChromeMode(theme);
+
+  useEffect(() => {
+    if (!virtualWorld.scope) {
+      setWorldDraft(null);
+      return;
+    }
+    setWorldDraft(virtualWorld.config || createDefaultVirtualWorldClockConfig(virtualWorld.scope));
+  }, [
+    virtualWorld.scope?.progressBundleId,
+    virtualWorld.scope?.personaMaskId,
+    virtualWorld.config?.updatedAt,
+  ]);
+
+  const updateWorldDraft = (updates: Partial<VirtualWorldClockConfigV1>) => {
+    setWorldDraft(previous => previous ? { ...previous, ...updates } : previous);
+  };
+
+  const handleShellModeChange = async (mode: ShellChromeMode) => {
+    if (mode !== 'virtual_city') {
+      updateTheme({ shellChromeMode: mode });
+      return;
+    }
+    if (!virtualWorld.scope || !worldDraft) {
+      addToast('当前关系作用域不完整，仍保持纯软件界面。', 'error');
+      return;
+    }
+    try {
+      await virtualWorld.saveConfig(worldDraft);
+      updateTheme({ shellChromeMode: 'virtual_city' });
+      addToast('虚拟城区信息带已开启。', 'success');
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : '虚拟城区没有保存。', 'error');
+    }
+  };
+
+  const handleSaveVirtualWorld = async () => {
+    if (!worldDraft) return;
+    try {
+      await virtualWorld.saveConfig(worldDraft);
+      updateTheme({ shellChromeMode: 'virtual_city' });
+      addToast('这条关系的城区时间与天气已保存。', 'success');
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : '虚拟城区没有保存。', 'error');
+    }
+  };
 
   const decorations = theme.desktopDecorations || [];
   const editingDeco = editingDecoId ? decorations.find(d => d.id === editingDecoId) : null;
+  const wallpaperIsImage = /^(?:https?:|data:|blob:)/.test(theme.wallpaper || '');
+  const wallpaperPreviewStyle: React.CSSProperties = wallpaperIsImage
+    ? { backgroundImage: `url(${theme.wallpaper})`, backgroundPosition: 'center', backgroundSize: 'cover' }
+    : { background: theme.wallpaper };
 
   // Preset decoration SVGs (cute decorative elements)
   const PRESET_DECOS: { name: string; content: string; category: string }[] = [
@@ -398,56 +507,71 @@ const Appearance: React.FC = () => {
   };
 
   return (
-    <div className="h-full w-full bg-slate-50 flex flex-col font-light">
-      <AppHeader title="外观定制" onBack={closeApp} />
+    <div className="h-full w-full bg-slate-50 flex flex-col font-normal text-slate-700">
+      <AppHeader
+        title="外观"
+        subtitle="界面、图标与预设"
+        onBack={closeApp}
+        titleClassName="truncate text-[16px] font-semibold tracking-[0.02em] text-slate-800"
+        subtitleClassName="mt-0.5 truncate text-[9px] font-medium tracking-[0.08em] text-slate-400"
+      />
 
-      <div className="flex shrink-0 border-b border-slate-200 bg-white z-20">
-          <button onClick={() => setActiveTab('theme')} className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'theme' ? 'text-primary border-b-2 border-primary' : 'text-slate-400'}`}>系统主题</button>
-          <button onClick={() => setActiveTab('icons')} className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'icons' ? 'text-primary border-b-2 border-primary' : 'text-slate-400'}`}>应用图标</button>
-          <button onClick={() => setActiveTab('presets')} className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'presets' ? 'text-primary border-b-2 border-primary' : 'text-slate-400'}`}>外观预设</button>
+      <div className="z-20 flex shrink-0 border-b border-slate-200/80 bg-white px-3">
+          <button onClick={() => setActiveTab('theme')} className={`flex-1 border-b-2 py-2.5 text-[12px] font-medium transition-colors ${activeTab === 'theme' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>界面外观</button>
+          <button onClick={() => setActiveTab('icons')} className={`flex-1 border-b-2 py-2.5 text-[12px] font-medium transition-colors ${activeTab === 'icons' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>应用图标</button>
+          <button onClick={() => setActiveTab('presets')} className={`flex-1 border-b-2 py-2.5 text-[12px] font-medium transition-colors ${activeTab === 'presets' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>预设管理</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-6 no-scrollbar">
+      <div className="flex-1 overflow-y-auto px-4 py-4 no-scrollbar">
         {activeTab === 'theme' ? (
-            <>
-                <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Preset Themes</h2>
-                    <div className="flex gap-3 mb-6 overflow-x-auto no-scrollbar pb-1">
+            <div className="flex flex-col gap-4">
+                <AppearanceGroupLabel
+                  title="屏幕观感"
+                  description="先定界面方式，再调整颜色与文字。"
+                  className="order-1"
+                />
+
+                <section className={`${APPEARANCE_CARD_CLASS} order-3`}>
+                    <AppearanceSectionHeader
+                      title="主题色"
+                      description="先选一个基础气质，再微调主色与桌面文字颜色。"
+                    />
+                    <div className="mb-5 flex gap-3 overflow-x-auto pb-1 no-scrollbar">
                         {THEME_PRESETS.map(preset => (
                             <button 
                                 key={preset.name}
                                 onClick={() => updateTheme(preset.config)}
                                 className="flex flex-col items-center gap-1.5 shrink-0 group"
                             >
-                                <div className="w-10 h-10 rounded-full shadow-sm border-2 border-white ring-1 ring-black/5 transition-transform group-active:scale-95" style={{ backgroundColor: preset.color }}></div>
-                                <span className="text-[10px] text-slate-500 font-medium">{preset.name}</span>
+                                <div className="h-9 w-9 rounded-full border-2 border-white shadow-sm ring-1 ring-black/5 transition-transform group-active:scale-95" style={{ backgroundColor: preset.color }}></div>
+                                <span className="text-[9px] font-medium text-slate-500">{preset.name}</span>
                             </button>
                         ))}
                     </div>
 
-                    <div className="space-y-5">
+                    <div className="space-y-4">
                         <div>
-                            <div className="flex justify-between text-xs text-slate-500 mb-2 font-medium">
-                                <span>Hue</span><span>{theme.hue}°</span>
+                            <div className="mb-2 flex justify-between text-[11px] font-medium text-slate-500">
+                                <span>色相</span><span className="font-mono text-[10px] text-slate-400">{theme.hue}°</span>
                             </div>
                             <input type="range" min="0" max="360" value={theme.hue} onChange={(e) => updateTheme({ hue: parseInt(e.target.value) })} className="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-primary" />
                             <div className="h-2 w-full rounded-full mt-3 opacity-50" style={{ background: `linear-gradient(to right, hsl(0, 50%, 80%), hsl(60, 50%, 80%), hsl(120, 50%, 80%), hsl(180, 50%, 80%), hsl(240, 50%, 80%), hsl(300, 50%, 80%), hsl(360, 50%, 80%))`}}></div>
                         </div>
                         <div>
-                            <div className="flex justify-between text-xs text-slate-500 mb-2 font-medium">
-                                <span>Saturation</span><span>{theme.saturation}%</span>
+                            <div className="mb-2 flex justify-between text-[11px] font-medium text-slate-500">
+                                <span>饱和度</span><span className="font-mono text-[10px] text-slate-400">{theme.saturation}%</span>
                             </div>
                             <input type="range" min="0" max="100" value={theme.saturation} onChange={(e) => updateTheme({ saturation: parseInt(e.target.value) })} className="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-primary" />
                         </div>
                         <div>
-                            <div className="flex justify-between text-xs text-slate-500 mb-2 font-medium">
-                                <span>Lightness</span><span>{theme.lightness}%</span>
+                            <div className="mb-2 flex justify-between text-[11px] font-medium text-slate-500">
+                                <span>明度</span><span className="font-mono text-[10px] text-slate-400">{theme.lightness}%</span>
                             </div>
                             <input type="range" min="10" max="95" value={theme.lightness} onChange={(e) => updateTheme({ lightness: parseInt(e.target.value) })} className="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-primary" />
                         </div>
                         <div>
-                            <div className="flex justify-between text-xs text-slate-500 mb-2 font-medium">
-                                <span>Text/Widget Color</span>
+                            <div className="mb-2 flex justify-between text-[11px] font-medium text-slate-500">
+                                <span>桌面文字颜色</span>
                             </div>
                             <div className="flex gap-4 items-center bg-slate-50 p-2 rounded-xl border border-slate-100">
                                 <div 
@@ -467,40 +591,43 @@ const Appearance: React.FC = () => {
                                     onChange={(e) => updateTheme({ contentColor: e.target.value })}
                                     className="w-8 h-8 rounded-lg border-none cursor-pointer bg-transparent p-0" 
                                 />
-                                <span className="text-xs text-slate-400 font-mono">{theme.contentColor}</span>
+                                <span className="font-mono text-[10px] text-slate-400">{theme.contentColor}</span>
                             </div>
                         </div>
                     </div>
                 </section>
 
                 {/* Global Font Section */}
-                <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">全局字体 (Global Font)</h2>
+                <section className={`${APPEARANCE_CARD_CLASS} order-4`}>
+                    <AppearanceSectionHeader
+                      title="全局字体"
+                      description="统一系统里的主要文字；聊天内容仍会尊重各自的装扮设置。"
+                    />
                     
-                    <div className="flex bg-slate-100 p-1 rounded-xl mb-4">
-                        <button onClick={() => setFontMode('local')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${fontMode === 'local' ? 'bg-white text-primary shadow-sm' : 'text-slate-400'}`}>本地文件</button>
-                        <button onClick={() => setFontMode('web')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${fontMode === 'web' ? 'bg-white text-primary shadow-sm' : 'text-slate-400'}`}>网络 URL</button>
+                    <div className="mb-3 flex rounded-xl bg-slate-100 p-1">
+                        <button onClick={() => setFontMode('local')} className={`flex-1 rounded-lg py-1.5 text-[11px] font-semibold transition-all ${fontMode === 'local' ? 'bg-white text-primary shadow-sm' : 'text-slate-400'}`}>本地文件</button>
+                        <button onClick={() => setFontMode('web')} className={`flex-1 rounded-lg py-1.5 text-[11px] font-semibold transition-all ${fontMode === 'web' ? 'bg-white text-primary shadow-sm' : 'text-slate-400'}`}>网络链接</button>
                     </div>
 
                     {fontMode === 'local' ? (
                         <>
                             <div 
-                                className="w-full h-24 bg-slate-100 rounded-2xl overflow-hidden relative shadow-inner mb-2 group cursor-pointer border-2 border-dashed border-slate-200 hover:border-primary/50 flex items-center justify-center flex-col gap-2" 
+                                className="group relative mb-2 flex h-20 w-full cursor-pointer flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl border border-dashed border-slate-200 bg-slate-50 shadow-inner hover:border-primary/50"
                                 onClick={() => fontInputRef.current?.click()}
                             >
                                 {theme.customFont && theme.customFont.startsWith('data:') ? (
                                     <>
-                                        <span className="text-lg font-bold text-slate-700">Abc 字体预览</span>
+                                        <span className="text-[15px] font-semibold text-slate-700">Abc 字体预览</span>
                                         <span className="text-[10px] text-slate-400">已应用本地字体</span>
                                     </>
                                 ) : (
                                     <>
-                                        <span className="text-2xl text-slate-400">Aa</span>
-                                        <span className="text-xs text-slate-400">上传字体文件 (.ttf / .otf)</span>
+                                        <span className="text-[18px] text-slate-400">Aa</span>
+                                        <span className="text-[10px] text-slate-400">上传字体文件（.ttf / .otf）</span>
                                     </>
                                 )}
                                 <div className="absolute inset-0 bg-black/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <span className="text-white text-xs font-bold bg-black/40 px-3 py-1 rounded-full backdrop-blur-md">更换字体</span>
+                                    <span className="rounded-full bg-black/40 px-3 py-1 text-[10px] font-semibold text-white backdrop-blur-md">更换字体</span>
                                 </div>
                             </div>
                             <input type="file" ref={fontInputRef} className="hidden" accept=".ttf,.otf,.woff,.woff2" onChange={handleFontUpload} />
@@ -511,9 +638,9 @@ const Appearance: React.FC = () => {
                                 value={webFontUrl} 
                                 onChange={e => setWebFontUrl(e.target.value)} 
                                 placeholder="输入字体文件 URL (https://...)" 
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs outline-none focus:border-primary transition-all"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] outline-none transition-all focus:border-primary"
                             />
-                            <button onClick={applyWebFont} className="w-full py-2 bg-primary text-white font-bold text-xs rounded-xl shadow-md active:scale-95 transition-transform">
+                            <button onClick={applyWebFont} className="w-full rounded-xl bg-primary py-2 text-[11px] font-semibold text-white shadow-sm transition-transform active:scale-95">
                                 应用网络字体
                             </button>
                             <div className="text-[10px] text-slate-400 px-1">
@@ -525,44 +652,258 @@ const Appearance: React.FC = () => {
                     )}
 
                     {theme.customFont && (
-                        <button onClick={() => updateTheme({ customFont: undefined })} className="w-full py-2 text-xs font-bold text-red-400 bg-red-50 rounded-lg hover:bg-red-100 mt-2">恢复默认字体</button>
+                        <button onClick={() => updateTheme({ customFont: undefined })} className="mt-2 w-full rounded-xl bg-red-50 py-2 text-[11px] font-semibold text-red-400 hover:bg-red-100">恢复默认字体</button>
                     )}
                 </section>
 
-                {/* Status Bar Toggle */}
-                <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">状态栏 (Status Bar)</h2>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <div className="text-sm font-medium text-slate-700">隐藏顶部时间栏</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">隐藏屏幕顶部的时间、电量等信息</div>
-                        </div>
+                {/* Global top appearance / scoped virtual city */}
+                <section className={`${APPEARANCE_CARD_CLASS} order-2`}>
+                    <AppearanceSectionHeader
+                      title="顶部样式"
+                      description="先决定屏幕顶部显示什么。三种模式只改变界面，不改变消息和档案里的真实时间。"
+                    />
+
+                    <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="界面顶部样式">
                         <button
-                            onClick={() => updateTheme({ hideStatusBar: !theme.hideStatusBar })}
-                            className={`w-12 h-7 rounded-full transition-colors relative ${theme.hideStatusBar ? 'bg-primary' : 'bg-slate-200'}`}
+                            type="button"
+                            role="radio"
+                            onClick={() => void handleShellModeChange('simulated_phone')}
+                            aria-checked={shellChromeMode === 'simulated_phone'}
+                            className={`min-h-[82px] rounded-2xl border p-2.5 text-left transition active:scale-[0.98] ${
+                                shellChromeMode === 'simulated_phone'
+                                    ? 'border-slate-400 bg-slate-100 text-slate-800 shadow-sm'
+                                    : 'border-slate-100 bg-slate-50 text-slate-500'
+                            }`}
                         >
-                            <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${theme.hideStatusBar ? 'translate-x-6' : 'translate-x-1'}`} />
+                            <div className="text-[11px] font-semibold">经典手机</div>
+                            <div className="mt-1.5 text-[9px] leading-[1.45] opacity-70">现实时间、Wi-Fi 与电量</div>
+                        </button>
+                        <button
+                            type="button"
+                            role="radio"
+                            onClick={() => void handleShellModeChange('software')}
+                            aria-checked={shellChromeMode === 'software'}
+                            className={`min-h-[82px] rounded-2xl border p-2.5 text-left transition active:scale-[0.98] ${
+                                shellChromeMode === 'software'
+                                    ? 'border-violet-300 bg-violet-50 text-violet-700'
+                                    : 'border-slate-100 bg-slate-50 text-slate-500'
+                            }`}
+                        >
+                            <div className="text-[11px] font-semibold">纯软件界面</div>
+                            <div className="mt-1.5 text-[9px] leading-[1.45] opacity-70">无信息带，完整收回顶部</div>
+                        </button>
+                        <button
+                            type="button"
+                            role="radio"
+                            onClick={() => void handleShellModeChange('virtual_city')}
+                            aria-checked={shellChromeMode === 'virtual_city'}
+                            disabled={!virtualWorld.scope || virtualWorld.loading}
+                            className={`min-h-[82px] rounded-2xl border p-2.5 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 ${
+                                shellChromeMode === 'virtual_city'
+                                    ? 'border-cyan-300 bg-cyan-50 text-cyan-700'
+                                    : 'border-slate-100 bg-slate-50 text-slate-500'
+                            }`}
+                        >
+                            <div className="text-[11px] font-semibold">虚拟城区</div>
+                            <div className="mt-1.5 text-[9px] leading-[1.45] opacity-70">关系世界的地点、时间与天气</div>
                         </button>
                     </div>
+
+                    <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="text-[10px] text-slate-400">当前</span>
+                            <span className="text-[11px] font-semibold text-slate-700">{SHELL_MODE_COPY[shellChromeMode].title}</span>
+                            <span className="ml-auto shrink-0 text-[9px] font-medium text-slate-400">全局保存</span>
+                        </div>
+                        <p className="mt-1.5 border-t border-slate-200/70 pt-2 text-[10px] leading-[1.55] text-slate-400">
+                            {SHELL_MODE_COPY[shellChromeMode].summary}
+                            {shellChromeMode === 'virtual_city' && ' 城区资料仅按当前面具 × 进度套组保存在本机。'}
+                        </p>
+                    </div>
+
+                    {shellChromeMode === 'virtual_city' && (virtualWorld.scope && worldDraft ? (
+                        <div className="mt-3 space-y-3 rounded-2xl border border-cyan-100 bg-cyan-50/45 p-3.5">
+                            <div className="flex items-center justify-between gap-2">
+                                <div>
+                                    <div className="text-[11px] font-semibold text-slate-700">这条关系的城区</div>
+                                    <div className="mt-0.5 max-w-[250px] truncate font-mono text-[8px] text-slate-400">
+                                        {virtualWorld.scope.progressBundleId} · {virtualWorld.scope.personaMaskId}
+                                    </div>
+                                </div>
+                                <span className="rounded-full bg-white px-2 py-1 text-[9px] font-bold text-cyan-600 shadow-sm">仅本机</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <label className="text-[10px] font-semibold text-slate-500">
+                                    地点
+                                    <input
+                                        aria-label="虚拟城区地点"
+                                        value={worldDraft.locationLabel}
+                                        onChange={event => updateWorldDraft({ locationLabel: event.target.value })}
+                                        className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none focus:border-cyan-300"
+                                        placeholder="雾港"
+                                    />
+                                </label>
+                                <label className="text-[10px] font-semibold text-slate-500">
+                                    年代 / 世界纪年
+                                    <input
+                                        aria-label="虚拟城区年代"
+                                        value={worldDraft.eraLabel || ''}
+                                        onChange={event => updateWorldDraft({ eraLabel: event.target.value })}
+                                        className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none focus:border-cyan-300"
+                                        placeholder="新历 47 年"
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <label className="text-[10px] font-semibold text-slate-500">
+                                    时区方式
+                                    <select
+                                        aria-label="虚拟城区时区方式"
+                                        value={worldDraft.timeZoneMode}
+                                        onChange={event => updateWorldDraft({ timeZoneMode: event.target.value as VirtualWorldClockConfigV1['timeZoneMode'] })}
+                                        className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none"
+                                    >
+                                        <option value="iana">城市时区</option>
+                                        <option value="fixed_offset">固定偏移</option>
+                                    </select>
+                                </label>
+                                {worldDraft.timeZoneMode === 'iana' ? (
+                                    <label className="text-[10px] font-semibold text-slate-500">
+                                        IANA 时区
+                                        <input
+                                            aria-label="虚拟城区 IANA 时区"
+                                            value={worldDraft.timeZoneId || ''}
+                                            onChange={event => updateWorldDraft({ timeZoneId: event.target.value })}
+                                            className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none focus:border-cyan-300"
+                                            placeholder="Asia/Shanghai"
+                                        />
+                                    </label>
+                                ) : (
+                                    <label className="text-[10px] font-semibold text-slate-500">
+                                        UTC 偏移（分钟）
+                                        <input
+                                            aria-label="虚拟城区 UTC 偏移分钟"
+                                            type="number"
+                                            min={-840}
+                                            max={840}
+                                            value={worldDraft.utcOffsetMinutes ?? 0}
+                                            onChange={event => updateWorldDraft({ utcOffsetMinutes: Number(event.target.value) })}
+                                            className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none focus:border-cyan-300"
+                                        />
+                                    </label>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <label className="text-[10px] font-semibold text-slate-500">
+                                    年份偏移
+                                    <input
+                                        aria-label="虚拟城区年份偏移"
+                                        type="number"
+                                        min={-3000}
+                                        max={3000}
+                                        value={worldDraft.yearOffset}
+                                        onChange={event => updateWorldDraft({ yearOffset: Number(event.target.value) })}
+                                        className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none focus:border-cyan-300"
+                                    />
+                                </label>
+                                <label className="text-[10px] font-semibold text-slate-500">
+                                    天气来源
+                                    <select
+                                        aria-label="虚拟城区天气来源"
+                                        value={worldDraft.weatherMode}
+                                        onChange={event => updateWorldDraft({ weatherMode: event.target.value as VirtualWorldClockConfigV1['weatherMode'] })}
+                                        className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none"
+                                    >
+                                        <option value="manual">手动设定</option>
+                                        <option value="seasonal_sim">本地季节模拟</option>
+                                    </select>
+                                </label>
+                            </div>
+
+                            {worldDraft.weatherMode === 'manual' && (
+                                <div className="grid grid-cols-[1fr_1fr_64px] gap-2">
+                                    <label className="text-[10px] font-semibold text-slate-500">
+                                        天气
+                                        <input
+                                            aria-label="虚拟城区天气"
+                                            value={worldDraft.weather.condition}
+                                            onChange={event => updateWorldDraft({ weather: { ...worldDraft.weather, condition: event.target.value } })}
+                                            className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none"
+                                        />
+                                    </label>
+                                    <label className="text-[10px] font-semibold text-slate-500">
+                                        温度
+                                        <input
+                                            aria-label="虚拟城区温度"
+                                            value={worldDraft.weather.temperatureLabel || ''}
+                                            onChange={event => updateWorldDraft({ weather: { ...worldDraft.weather, temperatureLabel: event.target.value } })}
+                                            className="mt-1 w-full rounded-xl border border-white bg-white/85 px-3 py-2 text-[11px] font-normal text-slate-700 outline-none"
+                                        />
+                                    </label>
+                                    <label className="text-[10px] font-semibold text-slate-500">
+                                        图标
+                                        <input
+                                            aria-label="虚拟城区天气图标"
+                                            value={worldDraft.weather.icon || ''}
+                                            onChange={event => updateWorldDraft({ weather: { ...worldDraft.weather, icon: event.target.value } })}
+                                            className="mt-1 w-full rounded-xl border border-white bg-white/85 px-2 py-2 text-center text-[11px] font-normal text-slate-700 outline-none"
+                                        />
+                                    </label>
+                                </div>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={() => void handleSaveVirtualWorld()}
+                                className="w-full rounded-xl bg-cyan-600 py-2.5 text-[11px] font-semibold text-white shadow-sm transition active:scale-[0.98]"
+                            >
+                                保存并显示这座城区
+                            </button>
+                            <p className="text-[9px] leading-relaxed text-slate-400">
+                                这里只生成只读环境信息；不会改写消息、旧日迁入、对话日历，也不会自动变成剧情、任务或记忆。
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-[10px] leading-relaxed text-amber-700">
+                            当前面具与进度套组没有形成一致作用域，虚拟城区保持关闭。
+                        </div>
+                    ))}
                 </section>
 
+                <AppearanceGroupLabel
+                  title="桌面布置"
+                  description="再处理壁纸、小组件与第二页装饰。"
+                  className="order-5"
+                />
+
                 {/* Wallpaper Section */}
-                <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Wallpaper</h2>
-                    <div className="aspect-[9/16] w-1/2 mx-auto bg-slate-100 rounded-2xl overflow-hidden relative shadow-inner mb-4 group cursor-pointer" onClick={() => wallpaperInputRef.current?.click()}>
-                         <img src={theme.wallpaper} className="w-full h-full object-cover" />
+                <section className={`${APPEARANCE_CARD_CLASS} order-6`}>
+                    <AppearanceSectionHeader
+                      title="壁纸"
+                      description="同时用于锁屏与桌面背景；这里展示的是裁切后的手机比例预览。"
+                    />
+                    <div
+                      className="group relative mx-auto mb-3 aspect-[9/16] w-[44%] max-w-[150px] cursor-pointer overflow-hidden rounded-2xl bg-slate-100 shadow-inner ring-1 ring-slate-200/70"
+                      style={wallpaperPreviewStyle}
+                      onClick={() => wallpaperInputRef.current?.click()}
+                    >
                          <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                             <span className="text-white text-xs font-bold bg-black/20 px-3 py-1 rounded-full backdrop-blur-md">更换壁纸</span>
+                             <span className="rounded-full bg-black/30 px-3 py-1 text-[10px] font-semibold text-white backdrop-blur-md">更换壁纸</span>
                          </div>
                     </div>
                     <input type="file" ref={wallpaperInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleWallpaperUpload(e.target.files[0])} />
-                    <p className="text-center text-[10px] text-slate-400">点击预览图上传新壁纸 (支持原画质)</p>
+                    <p className="text-center text-[10px] leading-4 text-slate-400">点击预览图更换，支持保留原画质。</p>
                 </section>
 
                 {/* Page 2 Widget Images */}
-                <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">桌面小组件</h2>
-                    <p className="text-[10px] text-slate-400 mb-4">上传小组件图片（如时钟截图、推图等），长按移除</p>
+                <section className={`${APPEARANCE_CARD_CLASS} order-7`}>
+                    <AppearanceSectionHeader
+                      title="桌面小组件"
+                      description="设置桌面第二页的两张方形图与一张横幅；长按已有图片可移除。"
+                    />
                     <input type="file" ref={widgetInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleWidgetUpload(e.target.files[0])} />
                     <div className="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                         <div className="flex gap-2">
@@ -638,17 +979,19 @@ const Appearance: React.FC = () => {
                 </section>
 
                 {/* Desktop Decoration DIY Section */}
-                <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <div className="flex items-center justify-between mb-2">
-                        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">桌面装饰 DIY</h2>
-                        <span className="text-[10px] bg-gradient-to-r from-pink-100 to-purple-100 text-pink-500 px-2 py-0.5 rounded-full font-bold">花里胡哨模式</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mb-4">自由添加装饰贴纸，调整位置/大小/旋转/透明度，打造你的专属痛机桌面！</p>
+                <section className={`${APPEARANCE_CARD_CLASS} order-8`}>
+                    <AppearanceSectionHeader
+                      title="桌面装饰"
+                      description="在桌面第二页叠加贴纸，并调整位置、大小、旋转与透明度。"
+                      aside={<span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[9px] font-medium text-slate-400">第二页</span>}
+                    />
                     <input type="file" ref={decoInputRef} className="hidden" accept="image/*" onChange={(e) => { if (e.target.files?.[0]) handleDecoUpload(e.target.files[0]); e.target.value = ''; }} />
 
                     {/* Live Preview */}
-                    <div className="relative w-full aspect-[9/16] bg-slate-100 rounded-2xl overflow-hidden mb-4 border border-slate-200 shadow-inner"
-                         style={{ background: theme.wallpaper ? `url(${theme.wallpaper}) center/cover` : `linear-gradient(135deg, hsl(${theme.hue}, ${theme.saturation}%, ${theme.lightness}%), hsl(${theme.hue + 30}, ${theme.saturation}%, ${Math.max(theme.lightness - 15, 10)}%))` }}>
+                    <div
+                      className="relative mb-4 aspect-[9/16] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner"
+                      style={wallpaperPreviewStyle}
+                    >
                         <div className="absolute inset-0 bg-black/10"></div>
                         {/* Render widget previews */}
                         <div className="absolute top-[12%] left-4 right-4 space-y-1.5 pointer-events-none">
@@ -686,23 +1029,28 @@ const Appearance: React.FC = () => {
                         {decorations.length === 0 && (
                             <div className="absolute inset-0 flex items-center justify-center">
                                 <div className="text-center text-white/40">
-                                    <Sparkle size={48} weight="fill" className="text-white/60 mb-2" />
-                                    <div className="text-[10px] font-bold">添加装饰开始DIY</div>
+                                    <Sparkle size={36} weight="fill" className="mb-2 text-white/60" />
+                                    <div className="text-[10px] font-medium">添加装饰开始布置</div>
                                 </div>
                             </div>
                         )}
                     </div>
 
                     {/* Add Decoration Buttons */}
-                    <div className="flex gap-2 mb-4">
-                        <button onClick={() => setShowPresetPicker(!showPresetPicker)}
-                            className="flex-1 py-2.5 bg-gradient-to-r from-pink-50 to-purple-50 text-pink-500 font-bold text-xs rounded-xl border border-pink-200 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" /></svg>
+                    <div className="mb-3 flex justify-center gap-2">
+                        <button
+                            onClick={() => setShowPresetPicker(!showPresetPicker)}
+                            aria-expanded={showPresetPicker}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-pink-200 bg-pink-50 px-3.5 py-2 text-[10px] font-semibold text-pink-500 transition-transform active:scale-95"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" /></svg>
                             预设贴纸
                         </button>
-                        <button onClick={() => decoInputRef.current?.click()}
-                            className="flex-1 py-2.5 bg-gradient-to-r from-blue-50 to-cyan-50 text-blue-500 font-bold text-xs rounded-xl border border-blue-200 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                        <button
+                            onClick={() => decoInputRef.current?.click()}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-[10px] font-semibold text-blue-500 transition-transform active:scale-95"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
                             上传自定义
                         </button>
                     </div>
@@ -745,7 +1093,7 @@ const Appearance: React.FC = () => {
                                             <img src={deco.content} className="w-8 h-8 object-contain" style={{ transform: deco.flip ? 'scaleX(-1)' : undefined }} />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-bold text-slate-600">装饰 #{idx + 1}</div>
+                                            <div className="text-[11px] font-semibold text-slate-600">装饰 #{idx + 1}</div>
                                             <div className="text-[9px] text-slate-400">位置 ({Math.round(deco.x)}, {Math.round(deco.y)}) · {deco.scale}x · {deco.rotation}°</div>
                                         </div>
                                         <button onClick={(e) => { e.stopPropagation(); removeDecoration(deco.id); }} className="p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
@@ -838,45 +1186,53 @@ const Appearance: React.FC = () => {
                             ))}
                             {/* Clear all button */}
                             <button onClick={() => { updateTheme({ desktopDecorations: [] }); setEditingDecoId(null); }}
-                                className="w-full py-2 text-xs font-bold text-red-400 bg-red-50 rounded-xl hover:bg-red-100 transition-colors mt-2">
+                                className="mt-2 w-full rounded-xl bg-red-50 py-2 text-[11px] font-semibold text-red-400 transition-colors hover:bg-red-100">
                                 清空所有装饰
                             </button>
                         </div>
                     )}
-                    <div className="text-[10px] text-slate-400 mt-3 px-1">提示: 装饰会叠加显示在桌面第二页上，可自由调节每个装饰的位置、大小、旋转和透明度。支持上传自定义图片或使用预设贴纸。</div>
+                    <div className="mt-3 px-1 text-[10px] leading-[1.55] text-slate-400">装饰只显示在桌面第二页，可使用预设贴纸或上传自己的图片。</div>
                 </section>
-            </>
-        ) : activeTab === 'icons' ? (
-            <div className="grid grid-cols-3 gap-4">
-                {INSTALLED_APPS.map(app => {
-                    const Icon = Icons[app.icon];
-                    const customUrl = customIcons[app.id];
-                    return (
-                        <div key={app.id} className="flex flex-col items-center gap-2">
-                             <div 
-                                className="w-16 h-16 rounded-2xl shadow-sm bg-slate-200 overflow-hidden relative group cursor-pointer"
-                                onClick={() => { setSelectedAppId(app.id); iconInputRef.current?.click(); }}
-                             >
-                                 {customUrl ? (
-                                     <img src={customUrl} className="w-full h-full object-cover" />
-                                 ) : (
-                                     <div className={`w-full h-full ${app.color} flex items-center justify-center text-white`}>
-                                         <Icon className="w-8 h-8" />
-                                     </div>
-                                 )}
-                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-white"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                                 </div>
-                             </div>
-                             <span className="text-[10px] text-slate-500 font-medium">{app.name}</span>
-                             {customUrl && (
-                                 <button onClick={() => setCustomIcon(app.id, undefined)} className="text-[10px] text-red-400">重置</button>
-                             )}
-                        </div>
-                    );
-                })}
-                <input type="file" ref={iconInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleIconUpload(e.target.files[0])} />
             </div>
+        ) : activeTab === 'icons' ? (
+            <section className={APPEARANCE_CARD_CLASS}>
+                <AppearanceSectionHeader
+                  title="应用图标"
+                  description="点击一个图标上传替换图片；已有自定义图标可以单独恢复默认。"
+                />
+                <div className="grid grid-cols-4 gap-x-2 gap-y-4">
+                    {INSTALLED_APPS.map(app => {
+                        const Icon = Icons[app.icon];
+                        const customUrl = customIcons[app.id];
+                        return (
+                            <div key={app.id} className="flex min-w-0 flex-col items-center gap-1.5">
+                                 <button
+                                    type="button"
+                                    aria-label={`更换${app.name}图标`}
+                                    className="group relative h-14 w-14 cursor-pointer overflow-hidden rounded-[18px] bg-slate-200 shadow-sm transition-transform active:scale-95"
+                                    onClick={() => { setSelectedAppId(app.id); iconInputRef.current?.click(); }}
+                                 >
+                                     {customUrl ? (
+                                         <img src={customUrl} alt="" className="h-full w-full object-cover" />
+                                     ) : (
+                                         <div className={`flex h-full w-full items-center justify-center text-white ${app.color}`}>
+                                             <Icon className="h-7 w-7" />
+                                         </div>
+                                     )}
+                                     <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
+                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-5 w-5 text-white"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                                     </div>
+                                 </button>
+                                 <span className="max-w-full truncate text-[9px] font-medium text-slate-500">{app.name}</span>
+                                 {customUrl && (
+                                     <button onClick={() => setCustomIcon(app.id, undefined)} className="text-[9px] text-red-400">恢复</button>
+                                 )}
+                            </div>
+                        );
+                    })}
+                    <input type="file" ref={iconInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleIconUpload(e.target.files[0])} />
+                </div>
+            </section>
         ) : activeTab === 'presets' ? (
             <PresetManager
                 presets={appearancePresets}

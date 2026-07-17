@@ -17,6 +17,8 @@ import { normalizePublicAssetUrl } from '../utils/publicAssets';
 import { useCompanionWakeupRuntime } from '../hooks/useCompanionWakeupRuntime';
 import { DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, DEEPSPACE_USER_CIRCLE_WORLDBOOK_ID } from '../utils/deepspaceIdentity';
 import { mergeUserProfileWithMaskUpdate, normalizeUserPersonaProfile } from '../utils/userPersonaMasks';
+import { migrateStoredShellChromeTheme } from '../utils/shellChrome';
+import { parseAppearancePreset, serializeAppearancePreset } from '../utils/appearancePresets';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { COMPANION_WAKEUP_USER_COOLDOWN_MS } from '../utils/companionWakeups';
@@ -251,6 +253,7 @@ const defaultTheme: OSTheme = {
   wallpaper: 'linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%)', 
   darkMode: false,
   contentColor: '#334155', // Default slate text for the light pastel wallpaper
+  shellChromeMode: 'software',
   avatarFramePresets: mergeAvatarFramePresets(),
   ...DEEP_SPACE_CHAT_APPEARANCE,
 };
@@ -1397,7 +1400,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         let loadedTheme = { ...defaultTheme };
         if (savedThemeStr) {
              try {
-                 const parsed = JSON.parse(savedThemeStr);
+                 const parsed = migrateStoredShellChromeTheme(JSON.parse(savedThemeStr));
                  loadedTheme = { ...loadedTheme, ...parsed };
                  if (
                      loadedTheme.wallpaper.includes('unsplash') || 
@@ -1515,7 +1518,9 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             console.error("Failed to load assets from DB", e);
         }
 
-        loadedTheme = normalizeStoredThemeAssets(loadedTheme);
+        loadedTheme = normalizeStoredThemeAssets(
+            migrateStoredShellChromeTheme(loadedTheme) as OSTheme,
+        );
         setTheme(loadedTheme);
         // Apply font
         applyCustomFont(loadedTheme.customFont);
@@ -1929,8 +1934,8 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   }, [characters, sendProactiveNativeNotification]);
 
   const updateTheme = async (updates: Partial<OSTheme>) => {
-    const { wallpaper, launcherWidgetImage, launcherWidgets, desktopDecorations, avatarFramePresets, customFont, chatBackgroundImage, ...styleUpdates } = updates;
-    const newTheme = { ...theme, ...updates };
+    const { wallpaper, launcherWidgetImage, launcherWidgets, desktopDecorations, avatarFramePresets, customFont, chatBackgroundImage } = updates;
+    const newTheme = migrateStoredShellChromeTheme({ ...theme, ...updates }) as OSTheme;
     setTheme(newTheme);
 
     // Persist large assets to IndexedDB
@@ -2377,23 +2382,17 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const exportAppearancePreset = async (id: string): Promise<Blob> => {
       const preset = appearancePresets.find(p => p.id === id);
       if (!preset) throw new Error('预设不存在');
-      const data = JSON.stringify({ type: 'aether_appearance_preset', version: 1, ...preset }, null, 2);
+      const data = serializeAppearancePreset(preset);
       return new Blob([data], { type: 'application/json' });
   };
 
   const importAppearancePreset = async (file: File): Promise<void> => {
       const text = await file.text();
-      const raw = JSON.parse(text);
-      if (raw.type !== 'aether_appearance_preset') throw new Error('无效的外观预设文件');
-      const preset: AppearancePreset = {
-          id: `ap_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          name: raw.name || '导入的预设',
-          createdAt: Date.now(),
-          theme: raw.theme,
-          customIcons: raw.customIcons,
-          chatThemes: raw.chatThemes,
-          chatLayout: raw.chatLayout,
-      };
+      const now = Date.now();
+      const preset = parseAppearancePreset(text, {
+          id: `ap_${now}_${Math.random().toString(36).slice(2, 6)}`,
+          createdAt: now,
+      });
       setAppearancePresets(prev => [preset, ...prev]);
       await DB.saveAsset(`appearance_preset_${preset.id}`, JSON.stringify(preset));
       addToast(`已导入预设「${preset.name}」`, 'success');

@@ -8,6 +8,7 @@ import { processImage } from '../utils/file';
 import { NOVEL_THEMES, analyzeWriterPersonaSimple } from '../utils/novelUtils';
 import NovelWorkspace, { type NovelWorkspacePanel } from '../components/novel/NovelWorkspace';
 import { Robot, MaskHappy, PenNib, Books, FolderOpen } from '@phosphor-icons/react';
+import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
 
 const NovelApp: React.FC = () => {
     const { closeApp, novels, addNovel, updateNovel, deleteNovel, characters, updateCharacter, apiConfig, addToast, userProfile, worldbooks, registerBackHandler } = useOS();
@@ -215,7 +216,7 @@ const NovelApp: React.FC = () => {
     if (view === 'library') {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans">
-                <div className="h-20 bg-white/80 backdrop-blur-md flex items-end pb-3 px-6 border-b border-slate-200 shrink-0 sticky top-0 z-20">
+                <div className="bg-white/80 backdrop-blur-md flex items-center px-6 border-b border-slate-200 shrink-0 sticky top-0 z-20" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                     <div className="flex justify-between items-center w-full">
                         <button onClick={() => setView('shelf')} className="p-2 -ml-2 rounded-full hover:bg-slate-100 active:scale-90 transition-transform">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
@@ -257,7 +258,7 @@ const NovelApp: React.FC = () => {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans relative">
                 <ConfirmDialog isOpen={!!confirmDialog} title={confirmDialog?.title || ''} message={confirmDialog?.message || ''} variant={confirmDialog?.variant} confirmText={confirmDialog?.confirmText || (confirmDialog?.onConfirm ? '确认' : 'OK')} onConfirm={confirmDialog?.onConfirm || (() => setConfirmDialog(null))} onCancel={() => setConfirmDialog(null)} />
-                <div className="h-24 flex items-end justify-between px-6 pb-6 bg-white/80 backdrop-blur-md z-20 shrink-0 border-b border-slate-100">
+                <div className="flex items-center justify-between px-6 bg-white/80 backdrop-blur-md z-20 shrink-0 border-b border-slate-100" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                     <button onClick={closeApp} className="p-3 -ml-3 rounded-full hover:bg-slate-100 active:scale-95 transition-all"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg></button>
                     <span className="font-black text-2xl text-slate-800 tracking-tight">我的手稿</span>
                     <div className="flex gap-2">
@@ -295,7 +296,7 @@ const NovelApp: React.FC = () => {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans relative">
                 <ConfirmDialog isOpen={!!confirmDialog} title={confirmDialog?.title || ''} message={confirmDialog?.message || ''} variant={confirmDialog?.variant} confirmText={confirmDialog?.confirmText || (confirmDialog?.onConfirm ? '确认' : 'OK')} onConfirm={confirmDialog?.onConfirm || (() => setConfirmDialog(null))} onCancel={() => setConfirmDialog(null)} />
-                <div className="h-16 flex items-center justify-between px-4 bg-white border-b border-slate-200 shrink-0 sticky top-0 z-20">
+                <div className="flex items-center justify-between px-4 bg-white border-b border-slate-200 shrink-0 sticky top-0 z-20" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                     <button onClick={() => setView(view === 'create' ? 'shelf' : 'write')} className="text-slate-500 text-sm">取消</button>
                     <span className="font-bold text-slate-800">{view === 'create' ? '新建书稿' : '小说设定'}</span>
                     <button onClick={view === 'create' ? handleCreateBook : handleSaveSettings} className="bg-slate-800 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-md active:scale-95 transition-transform">保存</button>

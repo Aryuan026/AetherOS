@@ -14,40 +14,69 @@ import {
   loadCharacterWidgetConfig,
   loadCustomWidgetStore,
 } from '../utils/characterWidgets';
+import { resolveShellChromeMode } from '../utils/shellChrome';
+import { useVirtualWorldClock } from '../hooks/useVirtualWorldClock';
+
+const DESKTOP_SIGNAL_LABEL = 'SIGNAL RECEIVED';
+const DESKTOP_SLOGAN = 'I am a part of all that I have met.';
 
 // --- Isolated Components to prevent full re-renders ---
 
-// 1. Clock Component (Consumes virtualTime)
+// 1. Desktop identity/world card. Reality time appears only in the explicitly
+// selected classic simulated-phone mode; software and virtual-city stay distinct.
 const DesktopClock = React.memo(() => {
-    const { virtualTime, theme } = useOS();
+    const { theme, userProfile, virtualTime } = useOS();
+    const virtualWorld = useVirtualWorldClock(userProfile);
     const contentColor = (theme.contentColor || '#334155').toLowerCase() === '#ffffff' ? '#334155' : (theme.contentColor || '#334155');
-    
-    const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const requestedShellChromeMode = resolveShellChromeMode(theme);
+    const shellChromeMode = requestedShellChromeMode === 'virtual_city'
+      ? (virtualWorld.context ? 'virtual_city' : 'software')
+      : requestedShellChromeMode;
     const now = new Date();
-    const dayName = days[now.getDay()];
-    const monthName = months[now.getMonth()];
+    const dayName = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][now.getDay()];
+    const monthName = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][now.getMonth()];
     const dateNum = now.getDate().toString().padStart(2, '0');
 
     return (
         <div className="flex flex-col mb-5 mt-4 relative animate-fade-in" style={{ color: contentColor }}>
              <div className="absolute -top-6 left-1 flex items-center gap-2">
                  <div className="bg-white/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase border border-white/70 shadow-sm">
-                     AetherOS LINK READY
+                     {DESKTOP_SIGNAL_LABEL}
                  </div>
                  <div className="h-[1px] w-20 bg-gradient-to-r from-current to-transparent opacity-40"></div>
              </div>
 
              <div className="flex items-end gap-4">
-                 <div className="text-[5.25rem] leading-[0.9] font-bold tracking-normal drop-shadow-[0_8px_24px_rgba(255,255,255,0.65)] font-sans">
-                    {virtualTime.hours.toString().padStart(2, '0')}
-                    <span className="opacity-40 font-light mx-1">:</span>
-                    {virtualTime.minutes.toString().padStart(2, '0')}
-                 </div>
-                 <div className="flex flex-col justify-end pb-3 opacity-90">
-                     <div className="text-3xl font-bold tracking-tight">{dayName}</div>
-                     <div className="text-sm font-medium opacity-80 tracking-widest">{monthName} . {dateNum}</div>
-                 </div>
+                 {shellChromeMode === 'virtual_city' ? (
+                    <>
+                      <div className="text-[5.25rem] leading-[0.9] font-bold tracking-normal drop-shadow-[0_8px_24px_rgba(255,255,255,0.65)] font-sans">
+                          {virtualWorld.context!.clock.timeLabel}
+                      </div>
+                      <div className="flex flex-col justify-end pb-3 opacity-90">
+                          <div className="text-2xl font-bold tracking-tight">{virtualWorld.context!.locationLabel}</div>
+                          <div className="text-sm font-medium opacity-80 tracking-wider">
+                            {virtualWorld.context!.eraLabel || virtualWorld.context!.clock.dateLabel}
+                          </div>
+                      </div>
+                    </>
+                 ) : shellChromeMode === 'simulated_phone' ? (
+                    <>
+                      <div className="text-[5.25rem] leading-[0.9] font-bold tracking-normal drop-shadow-[0_8px_24px_rgba(255,255,255,0.65)] font-sans">
+                        {virtualTime.hours.toString().padStart(2, '0')}
+                        <span className="mx-1 font-light opacity-40">:</span>
+                        {virtualTime.minutes.toString().padStart(2, '0')}
+                      </div>
+                      <div className="flex flex-col justify-end pb-3 opacity-90">
+                        <div className="text-3xl font-bold tracking-tight">{dayName}</div>
+                        <div className="text-sm font-medium tracking-widest opacity-80">{monthName} . {dateNum}</div>
+                      </div>
+                    </>
+                 ) : (
+                    <div className="py-3">
+                      <div className="text-4xl font-black tracking-[0.08em]">AetherOS</div>
+                      <div data-desktop-slogan className="mt-2 text-[11px] font-bold tracking-[0.14em] opacity-55">{DESKTOP_SLOGAN}</div>
+                    </div>
+                 )}
              </div>
         </div>
     );
@@ -97,7 +126,7 @@ const WidgetsPage = React.memo(({ contentColor, openApp, anniversaries, characte
     const paddingDays = Array.from({ length: startOffset }, () => null);
 
     return (
-        <div className="w-full flex-shrink-0 snap-center snap-always flex flex-col px-6 pt-24 pb-8 space-y-6 h-full overflow-y-auto no-scrollbar">
+        <div className="h-full w-full flex-shrink-0 snap-center snap-always flex flex-col space-y-4 overflow-y-auto px-6 pb-[9.25rem] pt-14 no-scrollbar">
               <div className="bg-white/10 backdrop-blur-2xl rounded-3xl p-6 border border-white/20 shadow-2xl">
                   <div className="flex justify-between items-center mb-4" style={{ color: contentColor }}>
                       <h3 className="text-xl font-bold tracking-widest">{monthName} {currentYear}</h3>

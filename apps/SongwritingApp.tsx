@@ -9,6 +9,7 @@ import { DB } from '../utils/db';
 import Modal from '../components/os/Modal';
 import ConfirmDialog from '../components/os/ConfirmDialog';
 import { Check, PencilSimple } from '@phosphor-icons/react';
+import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
 
 // --- Helper Components ---
 
@@ -623,7 +624,7 @@ const SongwritingApp: React.FC = () => {
         return (
             <div className="h-full w-full bg-[#F5F0E8] flex flex-col font-sans relative overflow-hidden">
                 {/* Header */}
-                <div className="h-24 flex items-end pb-4 px-6 border-b border-stone-200/80 shrink-0 z-10 bg-[#F5F0E8]">
+                <div className="flex items-center px-6 border-b border-stone-200/80 shrink-0 z-10 bg-[#F5F0E8]" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
                     <div className="flex justify-between items-center w-full">
                         <button onClick={closeApp} className="p-2 -ml-2 rounded-full hover:bg-stone-200/50 active:scale-95 transition-transform text-stone-500">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>

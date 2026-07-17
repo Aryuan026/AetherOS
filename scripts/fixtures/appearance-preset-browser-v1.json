@@ -1,0 +1,52 @@
+{
+  "type": "aether_appearance_preset",
+  "version": 1,
+  "id": "shared-browser-fixture",
+  "name": "浏览器分享预设验收",
+  "createdAt": 1,
+  "theme": {
+    "hue": 312,
+    "saturation": 54,
+    "lightness": 72,
+    "wallpaper": "linear-gradient(135deg, #fce7f3 0%, #dbeafe 100%)",
+    "darkMode": false,
+    "contentColor": "#334155",
+    "shellChromeMode": "software",
+    "chatAppearancePreset": "custom",
+    "chatBubbleThemeId": "browser-shared-bubble",
+    "chatAvatarShape": "rounded",
+    "chatAvatarSize": "small",
+    "chatAvatarMode": "every_message",
+    "chatBubbleStyle": "outline",
+    "chatMessageSpacing": "compact",
+    "chatShowTimestamp": "always",
+    "chatHeaderStyle": "minimal",
+    "chatInputStyle": "flat",
+    "chatChromeStyle": "floating",
+    "chatBackgroundStyle": "mesh",
+    "chatHeaderAlign": "center",
+    "chatHeaderDensity": "compact",
+    "chatStatusStyle": "pill",
+    "chatSendButtonStyle": "minimal"
+  },
+  "chatThemes": [
+    {
+      "id": "browser-shared-bubble",
+      "name": "浏览器共享气泡",
+      "type": "custom",
+      "user": {
+        "textColor": "#ffffff",
+        "backgroundColor": "#8b5cf6",
+        "borderRadius": 18,
+        "opacity": 1
+      },
+      "ai": {
+        "textColor": "#334155",
+        "backgroundColor": "#ffffff",
+        "borderRadius": 16,
+        "opacity": 0.96
+      },
+      "customCss": ".aether-bubble-user, .aether-bubble-ai { letter-spacing: 0.01em; }"
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import {
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
+const SOCIAL_DETAIL_HEADER_VERTICAL_OFFSET_PX = 3;
 
 const STICKER_OPTIONS = [
     { code: '2728', label: 'sparkles' },
@@ -1813,7 +1814,14 @@ ${identityMap}
                 */}
                 <div className="flex-1 w-full h-full flex flex-col animate-slide-up relative overflow-hidden">
                     {/* Header - Shrink 0 to stay at top, with safe-area for notch devices */}
-                    <div className="flex items-center justify-between px-4 bg-white/80 backdrop-blur-xl border-b border-white/40 shrink-0 relative z-20" style={{ paddingTop: SHELL_APP_HEADER_CONTENT_TOP, paddingBottom: '10px' }}>
+                    <div
+                        data-social-detail-header
+                        className="flex items-center justify-between px-4 bg-white/80 backdrop-blur-xl border-b border-white/40 shrink-0 relative z-20"
+                        style={{
+                            paddingTop: `calc(${SHELL_APP_HEADER_CONTENT_TOP} + ${SOCIAL_DETAIL_HEADER_VERTICAL_OFFSET_PX}px)`,
+                            paddingBottom: '10px',
+                        }}
+                    >
                         <button onClick={() => setSelectedPost(null)} className="p-2 -m-2 active:opacity-60"><Icons.Back onClick={() => setSelectedPost(null)} /></button>
                         <div className="flex items-center gap-2">
                             <img src={selectedPost.authorAvatar} className="w-8 h-8 rounded-full object-cover border border-white/50" />

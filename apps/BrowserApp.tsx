@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { safeResponseJson } from '../utils/safeApi';
 import { Camera, ImageSquare, GlobeSimple, MagnifyingGlass } from '@phosphor-icons/react';
+import { SHELL_TOP_INSET } from '../components/shell/shellLayout';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -335,7 +336,7 @@ Generate realistic results linking to hypothetical URLs.`;
     return (
         <div className="h-full w-full bg-white flex flex-col font-sans relative">
             {/* Top Bar (Address) */}
-            <div className="h-28 bg-slate-50 border-b border-slate-200 flex flex-col justify-end px-4 pb-3 shrink-0 z-20 sticky top-0 shadow-sm">
+            <div className="bg-slate-50 border-b border-slate-200 flex flex-col justify-end px-4 pb-3 shrink-0 z-20 sticky top-0 shadow-sm" style={{ height: `calc(${SHELL_TOP_INSET} + 7rem)`, paddingTop: SHELL_TOP_INSET }}>
                 {/* Controls Row */}
                 <div className="flex justify-between items-center mb-2">
                     <button onClick={closeApp} className="text-slate-400 hover:text-slate-600 text-xs font-bold px-2">Close</button>

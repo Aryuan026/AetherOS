@@ -6,6 +6,33 @@ Make AetherOS usable as a small public static web app while keeping personal dat
 
 ## Active Block
 
+Global software shell and virtual-city time:
+
+- Keep three explicit top appearances in `Appearance`: classic simulated phone,
+  pure software, and scoped virtual city. Pure software remains the new-config
+  default; classic restores the product's original phone-simulation posture when
+  the user chooses it.
+- Keep Appearance organized by user intent: `界面外观 / 应用图标 / 预设管理`,
+  with screen appearance before desktop assets. Use the local type scale
+  `16 / 12 / 13 / 11 / 10 / 9` for page title, tabs, section title, controls,
+  helpers, and metadata.
+- Keep shared appearance JSON on the versioned `aether_appearance_preset` v1
+  contract: import into the preset list without auto-applying, preserve current
+  chat/shell/desktop fields and custom chat themes, map bounded legacy fields,
+  and discard unknown injected theme keys.
+- In classic mode, show the familiar real clock, Wi-Fi and battery row and reserve
+  its old geometry. In software mode, remove the row and reclaim the space fully.
+- Route shared headers, immersive controls, readers, and global overlays through
+  one shell coordinate contract.
+- Offer an optional compact virtual-city world strip keyed by active
+  `progressBundleId + personaMaskId`.
+- Keep location, era, IANA/fixed-offset time, year offset, and manual/local
+  seasonal weather browser-local and relationship-scoped.
+- Expose world context as read-only data with explicit `source` and `scope`.
+- HOLD prompt/current-state integration until each consumer proves scope
+  consistency and keeps environment separate from plot, tasks, and memories.
+- Never redirect message/import/daily-archive/backup timestamps into world time.
+
 Timebook and companion structure:
 
 - Rename `时光契约` to `时光簿`.

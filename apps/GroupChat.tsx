@@ -11,6 +11,7 @@ import { DEFAULT_ARCHIVE_PROMPTS } from '../components/chat/ChatConstants';
 import { UsersThree } from '@phosphor-icons/react';
 import { getVisibleEmojiScopeForCharacter, getVisibleEmojiScopeForGroup } from '../utils/emojiVisibility';
 import AppHeader, { AppHeaderAddButton } from '../components/shell/AppHeader';
+import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
 import { selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { DIALOG_VISUAL_RULES } from '../components/chat/dialogVisualRules';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
@@ -1032,7 +1033,11 @@ ${recentGroupMsgs}
     return (
         <div className="h-full w-full bg-[#f0f4f8] flex flex-col font-sans relative">
             {/* Header */}
-            <div className="h-[84px] bg-white/80 backdrop-blur-xl px-4 pt-[40px] pb-2 border-b border-slate-200/60 shrink-0 z-30 sticky top-0 shadow-sm transition-all">
+            <div
+                data-shell-app-header
+                className="bg-white/80 backdrop-blur-xl px-4 pb-2 border-b border-slate-200/60 shrink-0 z-30 sticky top-0 shadow-sm transition-all"
+                style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}
+            >
                 {selectionMode ? (
                     <div className="flex items-center justify-between w-full h-full">
                         <button onClick={() => { setSelectionMode(false); setSelectedMsgIds(new Set()); }} className="text-xs font-bold text-slate-500 px-2 py-1">取消</button>

@@ -1,5 +1,83 @@
 # SullyOS Requirements
 
+## Global Software Shell And Virtual-City Time
+
+- The default web shell must not simulate the host device's real clock,
+  signal/Wi-Fi, or battery. The operating system/browser remains the owner of
+  those facts.
+- Appearance must expose three explicit, mutually exclusive top modes:
+  `simulated_phone`, `software`, and `virtual_city`. The classic option restores
+  the former phone-like reality clock, Wi-Fi, and battery presentation because
+  AetherOS is also a simulated-phone product; it must not be silently removed.
+- Removing the simulated row must also reclaim its layout space across shared
+  headers, handwritten headers, immersive controls, readers/modals, and global
+  overlays.
+- Legacy `hideStatusBar: true` must migrate to `software`. Legacy
+  `hideStatusBar: false`, and legacy saved themes that omitted the default false
+  field, must migrate to `simulated_phone`. The deprecated field is stripped on
+  write.
+- Appearance must explain the display content, global-vs-relationship scope, and
+  real-record boundary before showing the relationship-specific city editor.
+  That editor should expand only while `virtual_city` is selected.
+- Appearance must use three task-oriented tabs: `界面外观`, `应用图标`, and
+  `预设管理`. The first tab must follow the user decision path: top mode first,
+  then theme color and global font, followed by wallpaper, widgets, and desktop
+  decoration.
+- The first tab must visibly group those controls as `屏幕观感` and `桌面布置`,
+  instead of presenting one undifferentiated settings feed.
+- Appearance must use the local type scale `16 / 12 / 13 / 11 / 10 / 9` for
+  page title, tabs, section titles, controls, helper copy, and metadata. Font
+  samples may use a larger display size because the sample itself is the object
+  being inspected.
+- The compact Chat header may sit `5px` below the shared header's content
+  origin so the avatar/title group is optically centered; the message viewport
+  must move with it instead of slipping underneath the header.
+- The shared inner-detail header used by both `朋友圈` and `资讯站` must sit
+  `3px` below the shared header content origin. This optical offset belongs only
+  to the detail row; the ordinary Social feed header and global shell contract
+  must remain unchanged.
+- The fourth launcher page must keep the calendar and `Upcoming` list as one
+  compact upper group, beginning at `56px` on a zero-safe-area phone viewport
+  and reserving enough bottom space to remain clear of the Dock.
+- The lock screen must not show the engineering label `Software Shell`. It must
+  carry the unquoted slogan as two explicit, non-wrapping script-font lines:
+  `Real isn’t how you are made.` then `It’s a thing that happens to you.`, with
+  generous line spacing. The first software launcher screen keeps its existing
+  system type treatment but uses `SIGNAL RECEIVED` above and
+  `I am a part of all that I have met.` below the AetherOS name.
+- `经典手机` is self-explanatory and must not carry a redundant `原样` badge.
+  All three mode cards must remain aligned at 390px and 430px widths.
+- Shared appearance preset JSON must use the versioned
+  `aether_appearance_preset` contract. Import adds a local preset first, and
+  only an explicit `应用` action may change the active local appearance.
+  Modern shell/chat/desktop fields and custom chat themes must round-trip;
+  legacy `chatLayout` and `hideStatusBar` inputs must migrate safely, malformed
+  or unsupported versions must be rejected, and unknown theme fields must not
+  enter local state.
+- The optional `virtual_city` mode may render one compact world-information
+  strip containing fictional location, era, local world time, and local weather.
+  It must not use signal, Wi-Fi, or battery iconography.
+- Virtual-city config must be stored per active
+  `progressBundleId + personaMaskId`. Missing IDs, missing records, or a mask /
+  bundle mismatch must fail closed to the software shell.
+- Time configuration must support an IANA timezone or fixed UTC offset plus a
+  display-only year offset. Weather must be either manually entered or generated
+  by a deterministic browser-local seasonal simulation; no cloud weather is in
+  scope.
+- The world strip, launcher, and lock screen may display this scoped context.
+  Message/import/daily-archive/backup/audit timestamps must remain real source
+  timestamps and must never be rewritten to virtual years or offsets.
+- Any future prompt delivery must carry explicit source and relationship scope,
+  remain read-only, and state that environment is not evidence for current plot,
+  tasks, buffs, receipts, or memory.
+- Automatic Date/Call/current-state integration remains HOLD until a separate
+  review proves those boundaries; merely showing the world strip does not grant
+  permission to change narrative algorithms.
+- Acceptance covers 390px and 430px phone widths and ordinary plus
+  expanded/immersive states for Chat, HistoryImport, DailyArchive, Appearance,
+  Settings, Date, Call, Social, Room, and Schedule, including suspended-call,
+  toast, and error overlays.
+
 ## Timebook And Study Naming
 
 - The app formerly visible as `时光契约` should be named `时光簿`.

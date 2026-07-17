@@ -21,6 +21,7 @@ import {
 } from '../utils/lifeSimPrompts';
 import { materializeStoryAttachments } from '../utils/lifeSimStoryAttachments';
 import { createLifeSimResetCardData } from '../utils/lifeSimChatCard';
+import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 import { buildFallbackLifeSimSessionSummary, buildLifeSimSessionSummaryPrompt } from '../utils/lifeSimSessionSummary';
 import { getLifeSimToneEmoji } from '../utils/lifeSimTone';
 // Offline simulation removed — random events didn't match the theme
@@ -870,7 +871,7 @@ const LifeSimApp: React.FC = () => {
         winter: { bg: '#d0d4e0', accent: '#7878a0', titlebar: '#9898b8', windowBg: '#eaebf2' },
     };
     const pal = seasonPalette[season] || seasonPalette.spring;
-    const topSafePadding = 'max(12px, env(safe-area-inset-top, 12px))';
+    const topSafePadding = SHELL_APP_HEADER_CONTENT_TOP;
 
     const TAB_LABELS: Record<string, string> = { npcs: '住户.exe', drama: '动态.log', relations: '关系.dat' };
 
