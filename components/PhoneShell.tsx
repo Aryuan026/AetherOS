@@ -410,11 +410,6 @@ const PhoneShell: React.FC = () => {
              {virtualTime.hours.toString().padStart(2,'0')}<span className="animate-pulse">:</span>{virtualTime.minutes.toString().padStart(2,'0')}
            </div>
            <div className="text-lg tracking-widest opacity-90 mt-2 uppercase text-xs font-bold">AetherOS Simulation</div>
-           <img
-             src={AETHEROS_BRAND_ICON}
-             alt="AetherOS 星核徽记"
-             className="mx-auto mt-5 h-14 w-14 rounded-[1.1rem] opacity-95 shadow-[0_0_28px_rgba(167,139,250,0.42)]"
-           />
         </div>
 
         {unreadCount > 0 && (
