@@ -1,4 +1,5 @@
 import { CharacterProfile } from '../types';
+import { publicAsset } from './publicAssets';
 
 export const DATE_EXPERIENCE_BOUNDARY = `### 见面边界：日常陪伴 / 轻剧情
 “见面”默认是一段低烈度的面对面日常：吃饭、散步、探望、陪伴、短场景角色扮演，重点是关系温度和此刻的生活质感。
@@ -59,25 +60,25 @@ export const BUILT_IN_DATE_BACKGROUNDS: Array<{
         id: 'cafe-dawn',
         label: '晨光咖啡厅',
         phase: 'dawn',
-        src: '/assets/aetheros/date-backgrounds/cafe-dawn.png',
+        src: publicAsset('assets/aetheros/date-backgrounds/cafe-dawn.png'),
     },
     {
         id: 'cafe-day',
         label: '晴日咖啡厅',
         phase: 'day',
-        src: '/assets/aetheros/date-backgrounds/cafe-day.png',
+        src: publicAsset('assets/aetheros/date-backgrounds/cafe-day.png'),
     },
     {
         id: 'cafe-dusk',
         label: '黄昏咖啡厅',
         phase: 'dusk',
-        src: '/assets/aetheros/date-backgrounds/cafe-dusk.png',
+        src: publicAsset('assets/aetheros/date-backgrounds/cafe-dusk.png'),
     },
     {
         id: 'lounge-night',
         label: '夜间休息室',
         phase: 'night',
-        src: '/assets/aetheros/date-backgrounds/lounge-night.png',
+        src: publicAsset('assets/aetheros/date-backgrounds/lounge-night.png'),
     },
 ];
 
