@@ -73,38 +73,10 @@ export const HISTORY_INDEXEDDB_LAB_SCHEMA: Record<
             },
         ],
     },
-    [HISTORY_IMPORT_STORE_NAMES.events]: {
-        keyPath: 'id',
-        indexes: [
-            { name: 'scope', keyPath: [...SCOPE_KEY_PATH], unique: false },
-            { name: 'evidence_family', keyPath: 'evidenceFamilyId', unique: false },
-        ],
-    },
-    [HISTORY_IMPORT_STORE_NAMES.companionProjections]: {
-        keyPath: 'id',
-        indexes: [
-            { name: 'scope', keyPath: [...SCOPE_KEY_PATH], unique: false },
-            { name: 'event_id', keyPath: 'eventId', unique: true },
-        ],
-    },
-    [HISTORY_IMPORT_STORE_NAMES.plotProjections]: {
-        keyPath: 'id',
-        indexes: [
-            { name: 'scope', keyPath: [...SCOPE_KEY_PATH], unique: false },
-            { name: 'event_id', keyPath: 'eventId', unique: false },
-        ],
-    },
     [HISTORY_IMPORT_STORE_NAMES.jobs]: {
         keyPath: 'id',
         indexes: [
             { name: 'batch_id', keyPath: 'batchId', unique: false },
-            { name: 'status', keyPath: 'status', unique: false },
-        ],
-    },
-    [HISTORY_IMPORT_STORE_NAMES.tagRegistry]: {
-        keyPath: 'id',
-        indexes: [
-            { name: 'namespace', keyPath: 'namespace', unique: false },
             { name: 'status', keyPath: 'status', unique: false },
         ],
     },

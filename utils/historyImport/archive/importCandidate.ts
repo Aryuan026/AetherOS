@@ -1,6 +1,6 @@
 import {
     buildHistoryArchiveImportPlan,
-    streamHistorySourceMessagesFromReview,
+    streamHistorySourceMessagesFromIntake,
 } from '../../../domain/historyImport/archiveImport.ts';
 import {
     HISTORY_IMPORT_STORE_NAMES,
@@ -16,8 +16,8 @@ import type {
     HistoryImportBatch,
 } from '../../../domain/historyImport/types.ts';
 import type {
-    HistoryReviewWorkspaceManifest,
-} from '../../../domain/historyImport/reviewWorkspace.ts';
+    HistoryIntakeWorkspaceManifest,
+} from '../../../domain/historyImport/intakeWorkspace.ts';
 import {
     commitHistoryArchiveChunk,
     completeHistoryArchiveImport,
@@ -36,8 +36,8 @@ import type {
     HistoryArchiveActivationRecord,
 } from '../storage/indexedDbArchive.ts';
 import {
-    iterateHistoryReviewWorkspaceRows,
-} from '../storage/reviewWorkspace.ts';
+    iterateHistoryIntakeWorkspaceRows,
+} from '../storage/intakeWorkspace.ts';
 
 export type HistoryArchiveCandidateProgressPhase =
     | 'reading_current_archive'
@@ -80,8 +80,7 @@ export const activatePreparedHistoryArchiveCandidate = async (input: {
     candidateDatabaseId: input.candidate.candidateDatabaseId,
     expectedActiveDatabaseId: input.candidate.expectedActiveDatabaseId,
     archiveId: `history-import-${input.candidate.batch.id}`,
-    manifestChecksum: input.candidate.batch.reviewDecisionFingerprint
-        || input.candidate.batch.sourceFile.sha256,
+    manifestChecksum: input.candidate.batch.intakeFingerprint,
     recordCounts: input.candidate.recordCounts,
     activatedAt: input.activatedAt ?? Date.now(),
     factory: input.factory,
@@ -118,7 +117,7 @@ const countHistoryArchiveStores = async (
 const inspectExistingBatch = async (input: {
     activeDatabaseId: string;
     batchId: string;
-    decisionFingerprint: string;
+    intakeFingerprint: string;
     factory?: IDBFactory;
 }): Promise<HistoryArchiveAlreadyImported | null> => {
     const existing = await getHistoryArchiveRecord<HistoryImportBatch>({
@@ -130,7 +129,7 @@ const inspectExistingBatch = async (input: {
     if (!existing) return null;
     if (
         existing.status === 'imported'
-        && existing.reviewDecisionFingerprint === input.decisionFingerprint
+        && existing.intakeFingerprint === input.intakeFingerprint
     ) {
         return {
             status: 'already_imported',
@@ -140,12 +139,12 @@ const inspectExistingBatch = async (input: {
         };
     }
     throw new Error(
-        '这份源文件已经用另一套校对决定导入过。为防止悄悄改写旧记录，请先走“重建此批次”的显式流程。',
+        '这份源文件已经存在，但本机档案指纹不同。请删除对应批次后重新导入。',
     );
 };
 
 export const readHistoryArchiveWorkspaceImportStatus = async (input: {
-    manifest: HistoryReviewWorkspaceManifest;
+    manifest: HistoryIntakeWorkspaceManifest;
     factory?: IDBFactory;
 }): Promise<HistoryArchiveAlreadyImported | null> => {
     const plan = await buildHistoryArchiveImportPlan({
@@ -157,13 +156,13 @@ export const readHistoryArchiveWorkspaceImportStatus = async (input: {
     return inspectExistingBatch({
         activeDatabaseId: active.activeDatabaseId,
         batchId: plan.batch.id,
-        decisionFingerprint: plan.decisionFingerprint,
+        intakeFingerprint: plan.intakeFingerprint,
         factory: input.factory,
     });
 };
 
 export const prepareHistoryArchiveCandidateFromWorkspace = async (input: {
-    manifest: HistoryReviewWorkspaceManifest;
+    manifest: HistoryIntakeWorkspaceManifest;
     now?: number;
     factory?: IDBFactory;
     onProgress?: (progress: HistoryArchiveCandidateProgress) => void | Promise<void>;
@@ -175,7 +174,7 @@ export const prepareHistoryArchiveCandidateFromWorkspace = async (input: {
         const existing = await inspectExistingBatch({
             activeDatabaseId: active.activeDatabaseId,
             batchId: plan.batch.id,
-            decisionFingerprint: plan.decisionFingerprint,
+            intakeFingerprint: plan.intakeFingerprint,
             factory: input.factory,
         });
         if (existing) return existing;
@@ -196,7 +195,7 @@ export const prepareHistoryArchiveCandidateFromWorkspace = async (input: {
         }
     }
 
-    const candidateDatabaseId = createHistoryArchiveCandidateDatabaseId(plan.decisionFingerprint);
+    const candidateDatabaseId = createHistoryArchiveCandidateDatabaseId(plan.intakeFingerprint);
     await reportProgress(input.onProgress, {
         phase: 'preparing_candidate',
         processed: 0,
@@ -218,7 +217,7 @@ export const prepareHistoryArchiveCandidateFromWorkspace = async (input: {
         });
         let processed = 0;
         let chunk = [] as Awaited<ReturnType<
-            typeof streamHistorySourceMessagesFromReview
+            typeof streamHistorySourceMessagesFromIntake
         >> extends AsyncGenerator<infer Message> ? Message[] : never;
         const flush = async (): Promise<void> => {
             if (chunk.length === 0) return;
@@ -242,10 +241,10 @@ export const prepareHistoryArchiveCandidateFromWorkspace = async (input: {
                 total: plan.expectedSourceMessageCount,
             });
         };
-        for await (const message of streamHistorySourceMessagesFromReview({
+        for await (const message of streamHistorySourceMessagesFromIntake({
             plan,
             manifest: input.manifest,
-            records: iterateHistoryReviewWorkspaceRows(input.manifest.id),
+            records: iterateHistoryIntakeWorkspaceRows(input.manifest.id),
             importedAt: now,
         })) {
             chunk.push(message);
@@ -253,7 +252,7 @@ export const prepareHistoryArchiveCandidateFromWorkspace = async (input: {
         }
         await flush();
         if (processed !== plan.expectedSourceMessageCount) {
-            throw new Error('候选档案写入数量与全量校对决定不一致。');
+            throw new Error('候选档案写入数量与导入来源不一致。');
         }
         const completed = await completeHistoryArchiveImport({
             database: candidate,

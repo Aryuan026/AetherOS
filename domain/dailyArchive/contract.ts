@@ -55,8 +55,8 @@ export const dateKeyForHistoryMessage = (message: HistorySourceMessage): string 
 };
 
 const historyKind = (message: HistorySourceMessage): DailyArchiveMessage['kind'] => {
-    if (message.kind === 'system_note') return 'system_note';
     if (message.kind === 'attachment_placeholder') return 'attachment';
+    if (message.kind === 'source_fragment') return 'other';
     return 'text';
 };
 
@@ -72,7 +72,9 @@ export const dailyArchiveMessageFromHistory = (
         sourceRecordId: message.id,
         sourceBatchId: message.batchId,
         sourceOrder: message.sourceOrder,
-        role: message.speakerRole,
+        role: message.authorChannel === 'user'
+            ? 'user'
+            : message.authorChannel === 'char' ? 'character' : 'unknown',
         kind: historyKind(message),
         content: message.content,
         time: {

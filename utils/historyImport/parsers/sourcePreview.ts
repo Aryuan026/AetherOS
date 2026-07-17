@@ -11,6 +11,7 @@ import {
 } from '../../../domain/historyImport/preview.ts';
 import type {
     HistoryAttachmentKind,
+    HistoryAuthorChannel,
     HistorySourceFormat,
     HistorySourceMessageKind,
     HistorySourceTime,
@@ -38,23 +39,22 @@ const CLOCK_TOKEN = String.raw`\d{1,2}:\d{2}(?::\d{2})?`;
 const ZONE_TOKEN = String.raw`(?:Z|[+-]\d{2}:?\d{2})`;
 const TIMESTAMP_TOKEN = `${DATE_TOKEN}(?:[ T]${CLOCK_TOKEN}(?:\s*${ZONE_TOKEN})?)?`;
 
+const ROLE_TOKEN = String.raw`(?:user|assistant|char)`;
 const BRACKETED_TURN = new RegExp(
-    `^\\s*[\\[【(（]\\s*(${TIMESTAMP_TOKEN})\\s*[\\]】)）]\\s*(.{1,40}?)[：:]\\s*([\\s\\S]*)$`,
+    `^\\s*[\\[【(（]\\s*(${TIMESTAMP_TOKEN})\\s*[\\]】)）]\\s*(${ROLE_TOKEN})[：:]\\s*([\\s\\S]*)$`,
     'u',
 );
 const PREFIXED_TURN = new RegExp(
-    `^\\s*(${TIMESTAMP_TOKEN})\\s+(.{1,40}?)[：:]\\s*([\\s\\S]*)$`,
+    `^\\s*(${TIMESTAMP_TOKEN})\\s+(${ROLE_TOKEN})[：:]\\s*([\\s\\S]*)$`,
     'u',
 );
 const PAID_EXPORT_TIMESTAMP = new RegExp(
     `^\\s*timestamp\\s*[：:]\\s*(${TIMESTAMP_TOKEN})\\s*$`,
     'iu',
 );
-const STRONG_ROLE_LINE = /^\s*(user|assistant)\s*[：:]\s*([\s\S]*)$/iu;
-const STRONG_ROLE_BOUNDARY = /(^|\n)[\t ]*(?:user|assistant)\s*[：:]/giu;
-const SPEAKER_TURN = /^\s*(.{1,40}?)[：:]\s*([\s\S]*)$/u;
+const STRONG_ROLE_LINE = /^\s*(user|assistant|char)\s*[：:]\s*([\s\S]*)$/iu;
+const STRONG_ROLE_BOUNDARY = /(^|\n)[\t ]*(?:user|assistant|char)\s*[：:]/giu;
 const SEPARATOR_ONLY = /^\s*(?:[-—_=*~·•]{3,}|[.。]{4,})\s*$/u;
-const SYSTEM_OR_OOC = /^\s*(?:[\[【(（]?\s*(?:系统|system|ooc|旁白)\s*[\]】)）]?|ooc\s*[：:])/iu;
 
 const ATTACHMENT_MARKERS: Array<{
     pattern: RegExp;
@@ -95,14 +95,6 @@ const inferSourceFormat = (name: string, mimeType = ''): HistorySourceFormat => 
         || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ) return 'docx';
     throw new Error('目前只接受 .txt 和 .docx；文件不会被上传。');
-};
-
-const isValidSpeakerLabel = (value: string): boolean => {
-    const label = value.trim();
-    if (!label || label.length > 40) return false;
-    if (/[/\\\n\r]/u.test(label) || /^(?:https?|file)$/iu.test(label)) return false;
-    if (/^\d+(?::\d+)?$/u.test(label)) return false;
-    return /[\p{L}\p{N}]/u.test(label);
 };
 
 const parseSourceTime = (originalText?: string): HistorySourceTime => {
@@ -146,10 +138,17 @@ const detectAttachment = (content: string): HistoryPreviewAttachment | undefined
 };
 
 interface ParsedTurn {
-    speakerLabel?: string;
+    authorChannel?: HistoryAuthorChannel;
     timestampText?: string;
     content: string;
 }
+
+const authorChannelFor = (label?: string): HistoryAuthorChannel | undefined => {
+    const normalized = label?.trim().toLocaleLowerCase();
+    if (normalized === 'user') return 'user';
+    if (normalized === 'assistant' || normalized === 'char') return 'char';
+    return undefined;
+};
 
 const splitStrongRoleSourceUnits = (units: HistorySourceUnit[]): HistorySourceUnit[] => {
     const expanded: HistorySourceUnit[] = [];
@@ -196,10 +195,6 @@ const parsePaidExportTimestamp = (originalText: string): string | undefined => (
     originalText.match(PAID_EXPORT_TIMESTAMP)?.[1]?.trim()
 );
 
-const isPaidExportSpeaker = (speakerLabel?: string): boolean => (
-    /^(?:assistant|user)$/iu.test(speakerLabel?.trim() || '')
-);
-
 const parseStrongRoleBlock = (originalText: string): ParsedTurn | undefined => {
     const lines = originalText.replace(/\r\n?/g, '\n').split('\n');
     const firstLine = lines[0]?.match(STRONG_ROLE_LINE);
@@ -215,7 +210,7 @@ const parseStrongRoleBlock = (originalText: string): ParsedTurn | undefined => {
     }
     const content = [firstLine[2], ...lines.slice(1, contentEnd)].join('\n').trim();
     return {
-        speakerLabel: firstLine[1].toLowerCase(),
+        authorChannel: authorChannelFor(firstLine[1]),
         timestampText,
         content,
     };
@@ -255,18 +250,13 @@ const parseTurn = (originalText: string): ParsedTurn => {
 
     for (const pattern of [BRACKETED_TURN, PREFIXED_TURN]) {
         const match = originalText.match(pattern);
-        if (match && isValidSpeakerLabel(match[2])) {
+        if (match) {
             return {
                 timestampText: match[1].trim(),
-                speakerLabel: match[2].trim(),
+                authorChannel: authorChannelFor(match[2]),
                 content: match[3],
             };
         }
-    }
-
-    const speakerMatch = originalText.match(SPEAKER_TURN);
-    if (speakerMatch && isValidSpeakerLabel(speakerMatch[1])) {
-        return { speakerLabel: speakerMatch[1].trim(), content: speakerMatch[2] };
     }
     return { content: originalText };
 };
@@ -275,13 +265,12 @@ const normalizeUnit = (
     unit: HistorySourceUnit,
     fileHashPrefix: string,
     bindingDraft: HistoryIdentityBindingDraft,
-    previousMeaningfulRowId?: string,
 ): HistoryPreviewRow => {
     const originalText = unit.text;
     const trimmed = originalText.trim();
     const issues: HistoryPreviewIssueCode[] = [];
     let status: HistoryPreviewRowStatus = 'ready';
-    let kind: HistorySourceMessageKind = 'text';
+    let kind: HistorySourceMessageKind = 'source_fragment';
     const parsed = parseTurn(originalText);
     const content = parsed.content.trim();
     const attachment = detectAttachment(content);
@@ -293,11 +282,8 @@ const normalizeUnit = (
         issues.push('separator_only');
         status = 'skipped';
     } else {
-        if (!parsed.speakerLabel) {
-            issues.push('missing_speaker');
-            if (previousMeaningfulRowId) issues.push('possible_continuation');
-            status = 'uncertain';
-        }
+        if (parsed.authorChannel) kind = 'text';
+        else issues.push('unattributed_source_fragment');
         if (!content) {
             issues.push('empty_content');
             status = 'skipped';
@@ -305,12 +291,6 @@ const normalizeUnit = (
         if (attachment) {
             kind = 'attachment_placeholder';
             issues.push('attachment_missing');
-            status = 'uncertain';
-        }
-        if (SYSTEM_OR_OOC.test(parsed.speakerLabel || content)) {
-            kind = 'system_note';
-            issues.push('system_or_ooc_candidate');
-            status = 'uncertain';
         }
     }
 
@@ -324,34 +304,11 @@ const normalizeUnit = (
         content,
         kind,
         status,
-        speakerLabel: parsed.speakerLabel,
+        authorChannel: parsed.authorChannel,
         sourceTime: parseSourceTime(parsed.timestampText),
         attachment,
         issues,
-        previousMeaningfulRowId: previousMeaningfulRowId && !parsed.speakerLabel
-            ? previousMeaningfulRowId
-            : undefined,
     };
-};
-
-const markDuplicates = (rows: HistoryPreviewRow[]): void => {
-    const firstByKey = new Map<string, string>();
-    rows.forEach(row => {
-        if (row.status === 'skipped' || !row.content) return;
-        const key = [
-            row.speakerLabel?.trim().toLocaleLowerCase() || '',
-            row.sourceTime.originalText || '',
-            row.content.replace(/\s+/gu, ' ').trim().toLocaleLowerCase(),
-        ].join('\n');
-        const firstId = firstByKey.get(key);
-        if (firstId) {
-            row.status = 'duplicate';
-            row.issues = [...row.issues.filter(issue => issue !== 'exact_duplicate'), 'exact_duplicate'];
-            row.duplicateOfRowId = firstId;
-        } else {
-            firstByKey.set(key, row.id);
-        }
-    });
 };
 
 export const buildHistoryImportPreview = async (
@@ -381,7 +338,6 @@ export const buildHistoryImportPreview = async (
         : await parseDocxSourceUnits(input.bytes);
     const logicalUnits = splitStrongRoleSourceUnits(parsed.units);
     const allRows: HistoryPreviewRow[] = [];
-    let previousMeaningfulRowId: string | undefined;
     let pendingPaidExportRow: HistoryPreviewRow | undefined;
 
     logicalUnits.forEach(unit => {
@@ -394,7 +350,7 @@ export const buildHistoryImportPreview = async (
             return;
         }
 
-        const row = normalizeUnit(unit, fileSha256.slice(0, 16), input.bindingDraft, previousMeaningfulRowId);
+        const row = normalizeUnit(unit, fileSha256.slice(0, 16), input.bindingDraft);
         allRows.push(row);
         if (paidExportTimestamp) {
             pendingPaidExportRow = undefined;
@@ -405,35 +361,24 @@ export const buildHistoryImportPreview = async (
             return;
         }
         if (row.status !== 'skipped') {
-            previousMeaningfulRowId = row.id;
-            pendingPaidExportRow = isPaidExportSpeaker(row.speakerLabel) && Boolean(row.content)
+            pendingPaidExportRow = row.authorChannel && Boolean(row.content)
                 ? row
                 : undefined;
         }
-    });
-    markDuplicates(allRows);
-
-    const speakerMap = new Map<string, { occurrences: number; exampleRowIds: string[] }>();
-    allRows.forEach(row => {
-        if (!row.speakerLabel || row.status === 'skipped') return;
-        const current = speakerMap.get(row.speakerLabel) || { occurrences: 0, exampleRowIds: [] };
-        current.occurrences += 1;
-        if (current.exampleRowIds.length < 3) current.exampleRowIds.push(row.id);
-        speakerMap.set(row.speakerLabel, current);
     });
 
     const counts = {
         parsed: allRows.filter(row => row.status !== 'skipped').length,
         accepted: allRows.filter(row => row.status === 'ready').length,
         skipped: allRows.filter(row => row.status === 'skipped').length,
-        uncertain: allRows.filter(row => row.status === 'uncertain').length,
-        duplicates: allRows.filter(row => row.status === 'duplicate').length,
+        uncertain: 0,
+        duplicates: 0,
         committed: 0,
     };
     const truncated = allRows.length > materializedRowLimit;
     const warnings = [...parsed.warnings];
     if (truncated) {
-        warnings.push(`页面只物化前 ${materializedRowLimit} 行；总数与说话人统计仍覆盖整个文件。`);
+        warnings.push(`页面只物化前 ${materializedRowLimit} 行；总数仍覆盖整个文件。`);
     }
 
     const fingerprint = await sha256Hex(JSON.stringify({
@@ -463,11 +408,6 @@ export const buildHistoryImportPreview = async (
         totalPreviewRowCount: allRows.length,
         materializedRowCount: Math.min(allRows.length, materializedRowLimit),
         truncated,
-        speakerCandidates: [...speakerMap.entries()]
-            .map(([label, detail]) => ({ label, ...detail }))
-            .sort((left, right) => (
-                right.occurrences - left.occurrences || left.label.localeCompare(right.label, 'zh-CN')
-            )),
         rows: allRows.slice(0, materializedRowLimit),
         warnings,
         rawRetained: false,

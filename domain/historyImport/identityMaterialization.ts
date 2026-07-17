@@ -4,7 +4,7 @@ import type {
     UserProfile,
     UserProgressBundle,
 } from '../../types';
-import type { HistoryReviewWorkspaceIdentity } from './reviewWorkspace';
+import type { HistoryIntakeIdentity } from './intakeWorkspace';
 import type { HistoryScope } from './types';
 import {
     createProgressBundleForMask,
@@ -31,7 +31,7 @@ const generateHistoryAvatar = (seed: string): string => {
 
 export interface HistoryIdentityMaterializationSource {
     scope: HistoryScope;
-    identity: HistoryReviewWorkspaceIdentity;
+    identity: HistoryIntakeIdentity;
 }
 
 export interface HistoryIdentityMaterializationPlan {

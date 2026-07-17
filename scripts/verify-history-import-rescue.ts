@@ -52,7 +52,7 @@ assert.match(generatedSecretA, /^[A-Za-z0-9_-]{43}$/);
 assert.match(generatedSecretB, /^[A-Za-z0-9_-]{43}$/);
 assert.notEqual(generatedSecretA, generatedSecretB);
 
-assert.equal(HISTORY_RESCUE_STORE_ORDER.length, 8);
+assert.equal(HISTORY_RESCUE_STORE_ORDER.length, 4);
 assert.deepEqual(
     Object.keys(HISTORY_RESCUE_ALL_STORES_FIXTURE).sort(),
     [...HISTORY_RESCUE_STORE_ORDER].sort(),
@@ -65,7 +65,7 @@ assert.equal(
 
 const sanitized = sanitizeHistoryRescueSections(HISTORY_RESCUE_ALL_STORES_FIXTURE);
 assert.equal(sanitized.removedCredentialFieldCount, 3);
-assert.equal(sanitized.removedRebuildableFieldCount, 2);
+assert.equal(sanitized.removedRebuildableFieldCount, 0);
 const sanitizedJson = stableHistoryRescueJson(sanitized.sections);
 HISTORY_RESCUE_FORBIDDEN_SECRET_VALUES.forEach(secret => {
     assert.equal(sanitizedJson.includes(secret), false, `credential value leaked after sanitization: ${secret}`);
@@ -73,17 +73,9 @@ HISTORY_RESCUE_FORBIDDEN_SECRET_VALUES.forEach(secret => {
 assert.equal(sanitizedJson.includes('"apiKey"'), false);
 assert.equal(sanitizedJson.includes('"accessToken"'), false);
 assert.equal(sanitizedJson.includes('"databaseUrl"'), false);
-const sanitizedEvent = sanitized.sections.history_events[0] as {
-    factualEmbedding?: { values?: number[] };
-};
-const sanitizedCompanion = sanitized.sections.history_companion_projections[0] as {
-    innerViewEmbedding?: { values?: number[] };
-};
-assert.equal(sanitizedEvent.factualEmbedding?.values, undefined);
-assert.equal(sanitizedCompanion.innerViewEmbedding?.values, undefined);
 assert.deepEqual(
-    (HISTORY_RESCUE_ALL_STORES_FIXTURE.history_events[0].factualEmbedding?.values),
-    [0.1, 0.2, 0.3],
+    HISTORY_RESCUE_ALL_STORES_FIXTURE.history_source_messages[0],
+    HISTORY_SOURCE_MESSAGE_FIXTURE,
     'sanitization must not mutate the live source object',
 );
 
@@ -93,9 +85,9 @@ const payload = await buildHistoryRescuePayload({
     createdAt: HISTORY_RESCUE_FIXTURE_CREATED_AT,
     sections: HISTORY_RESCUE_ALL_STORES_FIXTURE,
 });
-assert.equal(payload.manifest.sections.length, 8);
+assert.equal(payload.manifest.sections.length, 4);
 assert.equal(payload.manifest.removedCredentialFieldCount, 3);
-assert.equal(payload.manifest.removedRebuildableFieldCount, 2);
+assert.equal(payload.manifest.removedRebuildableFieldCount, 0);
 assert.equal(payload.manifest.sections.every(section => section.recordCount === 1), true);
 assert.equal(payload.manifest.sections.every(section => section.stableIdCount === 1), true);
 assert.deepEqual(await validateHistoryRescuePayload(payload), payload);
@@ -130,8 +122,8 @@ assert.deepEqual(sourceSectionManifest.chunks.map(chunk => chunk.recordStart), [
 assert.deepEqual(await validateHistoryRescuePayload(chunkBoundaryPayload), chunkBoundaryPayload);
 
 const brokenReferences = cloneJson<HistoryRescueSanitizedSections>(payload.sections);
-(brokenReferences.history_companion_projections[0] as { eventId: string }).eventId = 'missing-event';
-assert.match(validateHistoryRescueReferences(brokenReferences).join('\n'), /missing event/);
+(brokenReferences.history_jobs[0] as { batchId: string }).batchId = 'missing-batch';
+assert.match(validateHistoryRescueReferences(brokenReferences).join('\n'), /missing batch/);
 
 const corruptPlainPayload = cloneJson<HistoryRescuePayload>(payload);
 corruptPlainPayload.manifest.sections[0].sha256 = `sha256:${'0'.repeat(64)}`;
@@ -164,14 +156,14 @@ assert.equal(envelope.encryption.keyDerivation, 'PBKDF2');
 assert.equal(envelope.encryption.hash, 'SHA-256');
 assert.equal(envelope.encryption.iterations, HISTORY_RESCUE_CRYPTO_PROFILE.iterations);
 assert.equal(envelope.encryption.chunkRecordLimit, HISTORY_RESCUE_CRYPTO_PROFILE.chunkRecordLimit);
-assert.equal(envelope.encryptedChunkCount, 8);
-assert.equal(envelope.encryptedChunks.length, 8);
+assert.equal(envelope.encryptedChunkCount, 4);
+assert.equal(envelope.encryptedChunks.length, 4);
 assert.equal(
     new Set([
         envelope.encryptedManifest.ivBase64,
         ...envelope.encryptedChunks.map(chunk => chunk.ivBase64),
     ]).size,
-    9,
+    5,
     'every encrypted part needs a unique AES-GCM IV',
 );
 

@@ -1,15 +1,6 @@
-import type {
-    ContinuityScope,
-    KnowledgeScope,
-    MemoryStatus,
-    WorldlinePromptMode,
-} from '../../utils/memoryCore/types';
-
-export type HistoryContractVersion = 1;
+export type HistoryContractVersion = 2;
 export type HistoryBatchId = string;
 export type HistorySourceMessageId = string;
-export type HistoryEventId = string;
-export type HistoryProjectionId = string;
 export type HistoryJobId = string;
 
 export interface HistoryScope {
@@ -19,13 +10,6 @@ export interface HistoryScope {
 }
 
 export type HistorySourceFormat = 'txt' | 'docx';
-export type HistorySourceMode =
-    | 'relationship_chat'
-    | 'roleplay'
-    | 'ooc'
-    | 'mixed'
-    | 'unknown';
-
 export type HistoryTimePrecision =
     | 'exact'
     | 'minute'
@@ -57,15 +41,11 @@ export interface HistorySourceLocator {
     label?: string;
 }
 
-export type HistorySpeakerRole = 'user' | 'character' | 'system' | 'unknown';
-
-export interface HistorySpeakerMapping {
-    sourceLabel: string;
-    role: HistorySpeakerRole;
-    targetId?: string;
-    confidence: number;
-    confirmedByUser: boolean;
-}
+/**
+ * The two transport channels exposed by common chat exports.
+ * They describe who authored the exported turn, not which in-world actor spoke.
+ */
+export type HistoryAuthorChannel = 'user' | 'char';
 
 export type HistoryAttachmentKind =
     | 'image'
@@ -80,22 +60,6 @@ export interface HistoryAttachmentPlaceholder {
     kind: HistoryAttachmentKind;
     sourceLabel?: string;
     available: false;
-}
-
-export type HistorySensitivity = 'normal' | 'private' | 'highly_sensitive';
-export type HistoryRecallPolicy = 'never' | 'explicit_only' | 'situational' | 'resident';
-export type HistoryInitiativePolicy = 'never' | 'user_prompted' | 'allowed';
-export type HistoryDeliverySurface =
-    | WorldlinePromptMode
-    | 'group_chat'
-    | 'social_feed';
-
-export interface HistoryDeliveryPolicy {
-    sensitivity: HistorySensitivity;
-    allowedSurfaces: HistoryDeliverySurface[];
-    recallPolicy: HistoryRecallPolicy;
-    initiativePolicy: HistoryInitiativePolicy;
-    archiveSearchable: boolean;
 }
 
 export interface HistorySourceFileDescriptor {
@@ -131,15 +95,10 @@ export interface HistoryImportBatch {
     id: HistoryBatchId;
     scope: HistoryScope;
     sourceFile: HistorySourceFileDescriptor;
-    sourceMode: HistorySourceMode;
-    branchId?: string;
-    timezonePolicy: 'source' | 'user_selected' | 'unknown';
-    speakerMappings: HistorySpeakerMapping[];
     counts: HistoryImportCounts;
     status: HistoryImportBatchStatus;
     dedupeNamespace: string;
-    reviewDecisionId?: string;
-    reviewDecisionFingerprint?: string;
+    intakeFingerprint: string;
     cursor?: HistoryJobCursor;
     createdAt: number;
     updatedAt: number;
@@ -147,17 +106,10 @@ export interface HistoryImportBatch {
     revision: number;
 }
 
-export interface HistorySourceFragment {
-    rowId: string;
-    sourceOrder: number;
-    sourceLocator: HistorySourceLocator;
-    originalTextHash: string;
-}
-
 export type HistorySourceMessageKind =
     | 'text'
     | 'attachment_placeholder'
-    | 'system_note';
+    | 'source_fragment';
 
 export type HistorySourceMessageStatus = 'active' | 'excluded' | 'tombstoned';
 
@@ -167,154 +119,16 @@ export interface HistorySourceMessage {
     batchId: HistoryBatchId;
     scope: HistoryScope;
     kind: HistorySourceMessageKind;
-    speakerRole: HistorySpeakerRole;
-    speakerId?: string;
-    speakerLabel?: string;
+    authorChannel?: HistoryAuthorChannel;
     content: string;
+    rawText: string;
     attachments: HistoryAttachmentPlaceholder[];
     sourceOrder: number;
     sourceTime: HistorySourceTime;
     importedAt: number;
     sourceLocator: HistorySourceLocator;
-    sourceFragments?: HistorySourceFragment[];
     sourceFingerprint: string;
-    normalizedFingerprint: string;
-    sourceMode: HistorySourceMode;
-    continuity: ContinuityScope;
-    branchId?: string;
-    knowledge: KnowledgeScope | 'unclassified';
-    deliveryPolicy: HistoryDeliveryPolicy;
     status: HistorySourceMessageStatus;
-    createdAt: number;
-    updatedAt: number;
-    revision: number;
-}
-
-export interface HistorySourceSpan {
-    sourceMessageId: HistorySourceMessageId;
-    sourceLocator?: HistorySourceLocator;
-    quoteHash: string;
-    quotePreview?: string;
-}
-
-export interface HistoryEntity {
-    id?: string;
-    type: 'person' | 'place' | 'object' | 'organization' | 'topic' | 'other';
-    label: string;
-    aliases: string[];
-}
-
-export type HistoryReviewState = 'pending' | 'accepted' | 'edited' | 'rejected';
-export type HistoryDerivedStatus = MemoryStatus | 'stale';
-
-export type HistoryEmbeddingStatus = 'pending' | 'ready' | 'stale' | 'failed';
-
-export interface HistoryEmbeddingSlot {
-    model: string;
-    dimension: number;
-    checksum: string;
-    generatedAt?: number;
-    status: HistoryEmbeddingStatus;
-    values?: number[];
-    errorCode?: string;
-}
-
-export interface HistoryEvent {
-    schemaVersion: HistoryContractVersion;
-    id: HistoryEventId;
-    evidenceFamilyId: string;
-    scope: HistoryScope;
-    sourceBatchIds: HistoryBatchId[];
-    sourceSpans: HistorySourceSpan[];
-    origin: 'system_import';
-    continuity: ContinuityScope;
-    branchId?: string;
-    knowledge: KnowledgeScope;
-    status: HistoryDerivedStatus;
-    title: string;
-    factualSummary: string;
-    happenedAt: HistorySourceTime;
-    validFrom?: HistorySourceTime;
-    validTo?: HistorySourceTime;
-    entities: HistoryEntity[];
-    tagIds: string[];
-    keywords: string[];
-    aliases: string[];
-    importance: number;
-    deliveryPolicy: HistoryDeliveryPolicy;
-    reviewState: HistoryReviewState;
-    conflictsWithEventIds: HistoryEventId[];
-    supersedesEventIds: HistoryEventId[];
-    factualEmbedding?: HistoryEmbeddingSlot;
-    extractorVersion: string;
-    createdAt: number;
-    updatedAt: number;
-    revision: number;
-}
-
-export type HistoryProjectionAuthority =
-    | 'source_explicit'
-    | 'source_inferred'
-    | 'model_reconstructed';
-
-export interface HistoryCompanionProjection {
-    schemaVersion: HistoryContractVersion;
-    id: HistoryProjectionId;
-    eventId: HistoryEventId;
-    scope: HistoryScope;
-    sourceSpans: HistorySourceSpan[];
-    innerView: string;
-    relationshipDelta?: string;
-    behavioralResidue?: string;
-    personaPatternProposal?: string;
-    authority: HistoryProjectionAuthority;
-    confidence: number;
-    reviewState: HistoryReviewState;
-    status: HistoryDerivedStatus;
-    innerViewEmbedding?: HistoryEmbeddingSlot;
-    extractorVersion: string;
-    createdAt: number;
-    updatedAt: number;
-    revision: number;
-}
-
-export type HistoryPlotDisposition =
-    | 'no_plot'
-    | 'atmosphere_only'
-    | 'relationship_maintenance'
-    | 'milestone_candidate'
-    | 'plot_event'
-    | 'open_thread';
-
-export type HistoryPlotDeltaKind =
-    | 'goal'
-    | 'obstacle'
-    | 'choice'
-    | 'consequence'
-    | 'open_thread'
-    | 'world_state'
-    | 'relationship_state';
-
-export interface HistoryPlotDelta {
-    kind: HistoryPlotDeltaKind;
-    beforeState: string;
-    afterState: string;
-    sourceSpans: HistorySourceSpan[];
-}
-
-export interface HistoryPlotProjection {
-    schemaVersion: HistoryContractVersion;
-    id: HistoryProjectionId;
-    eventId?: HistoryEventId;
-    scope: HistoryScope;
-    disposition: HistoryPlotDisposition;
-    title?: string;
-    summary?: string;
-    deltas: HistoryPlotDelta[];
-    sourceSpans: HistorySourceSpan[];
-    reviewState: HistoryReviewState;
-    status: HistoryDerivedStatus;
-    extractorVersion: string;
     createdAt: number;
     updatedAt: number;
     revision: number;
@@ -371,21 +185,6 @@ export interface HistoryJob {
     createdAt: number;
     updatedAt: number;
     completedAt?: number;
-    revision: number;
-}
-
-export type HistoryTagStatus = 'active' | 'deprecated' | 'merged';
-
-export interface HistoryTagDefinition {
-    schemaVersion: HistoryContractVersion;
-    id: string;
-    namespace: string;
-    label: string;
-    aliases: string[];
-    status: HistoryTagStatus;
-    mergedIntoTagId?: string;
-    createdAt: number;
-    updatedAt: number;
     revision: number;
 }
 
@@ -484,13 +283,6 @@ export interface HistorySourceMessagePageQuery extends HistoryScopedQuery, Histo
     includeExcluded?: boolean;
 }
 
-export interface HistoryEventSearchQuery extends HistoryScopedQuery, HistoryPageRequest {
-    query: string;
-    tagIds?: string[];
-    entityLabels?: string[];
-    includeRejected?: boolean;
-}
-
 export interface HistoryWriteChunkResult {
     attempted: number;
     inserted: number;
@@ -511,9 +303,6 @@ export interface HistoryImportReadRepository {
     listBatches(scope: HistoryScope): Promise<HistoryImportBatch[]>;
     pageSourceMessages(query: HistorySourceMessagePageQuery): Promise<HistoryPage<HistorySourceMessage>>;
     getSourceMessagesByIds(scope: HistoryScope, ids: HistorySourceMessageId[]): Promise<HistorySourceMessage[]>;
-    searchEvents(query: HistoryEventSearchQuery): Promise<HistoryPage<HistoryEvent>>;
-    getCompanionProjection(scope: HistoryScope, eventId: HistoryEventId): Promise<HistoryCompanionProjection | null>;
-    getPlotProjection(scope: HistoryScope, eventId: HistoryEventId): Promise<HistoryPlotProjection | null>;
     getJob(scope: HistoryScope, id: HistoryJobId): Promise<HistoryJob | null>;
 }
 
@@ -521,17 +310,8 @@ export interface HistoryImportWriteRepository {
     createBatch(batch: HistoryImportBatch): Promise<void>;
     updateBatch(batch: HistoryImportBatch, expectedRevision: number): Promise<void>;
     putSourceMessageChunk(messages: HistorySourceMessage[]): Promise<HistoryWriteChunkResult>;
-    putEvent(event: HistoryEvent, expectedRevision?: number): Promise<void>;
-    putCompanionProjection(projection: HistoryCompanionProjection, expectedRevision?: number): Promise<void>;
-    putPlotProjection(projection: HistoryPlotProjection, expectedRevision?: number): Promise<void>;
     putJob(job: HistoryJob, expectedRevision?: number): Promise<void>;
-    putTagDefinition(tag: HistoryTagDefinition, expectedRevision?: number): Promise<void>;
     putBackupReceipt(receipt: HistoryBackupReceipt): Promise<void>;
-    markBatchDerivedStateStale(
-        scope: HistoryScope,
-        batchId: HistoryBatchId,
-        reason: string,
-    ): Promise<Record<string, number>>;
     deleteBatchCascade(scope: HistoryScope, batchId: HistoryBatchId): Promise<HistoryCascadeResult>;
 }
 

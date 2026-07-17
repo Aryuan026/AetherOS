@@ -157,17 +157,17 @@ assert.equal(clearedB?.messages.find(message => message.sourceRecordId === Strin
 assert.equal(clearedA?.messageCount, 0);
 assert.equal(clearedB?.messageCount, 0);
 
-const legacyChar = `${runId}-legacy-char`;
-const legacyScopeB = scopeFor('B', legacyChar);
-await activate(legacyScopeB);
-const legacyId = await new Promise<number>((resolve, reject) => {
+const unscopedChar = `${runId}-unscoped-char`;
+const unscopedScopeB = scopeFor('B', unscopedChar);
+await activate(unscopedScopeB);
+const unscopedId = await new Promise<number>((resolve, reject) => {
     const request = indexedDB.open('AetherOS_Data', 40);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
         const database = request.result;
         const transaction = database.transaction('messages', 'readwrite');
         const add = transaction.objectStore('messages').add({
-            charId: legacyChar,
+            charId: unscopedChar,
             role: 'user',
             type: 'text',
             content: '没有关系归属的旧消息',
@@ -178,8 +178,8 @@ const legacyId = await new Promise<number>((resolve, reject) => {
         transaction.oncomplete = () => database.close();
     };
 });
-await DB.updateMessage(legacyId, '旧消息被编辑，但仍没有归属');
-await DB.deleteMessage(legacyId);
-assert.equal(await documentFor(legacyScopeB), null, 'legacy messages without scope must fail closed');
+await DB.updateMessage(unscopedId, '没有关系归属的消息被编辑');
+await DB.deleteMessage(unscopedId);
+assert.equal(await documentFor(unscopedScopeB), null, 'messages without scope must fail closed');
 
-console.log('daily archive DB integration OK: immutable scopes, delayed replies, batch/clear tombstones and legacy fail-closed');
+console.log('daily archive DB integration OK: immutable scopes, delayed replies, batch/clear tombstones and unscoped fail-closed');

@@ -29,7 +29,7 @@ const scope = {
     charId: 'char-daily-fixture',
 };
 const historyBase = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     batchId: 'batch-daily-fixture',
     scope,
     kind: 'text',
@@ -37,27 +37,17 @@ const historyBase = {
     importedAt: 1_752_646_000_000,
     sourceLocator: { kind: 'paragraph', start: 1 },
     sourceFingerprint: 'source-daily',
-    normalizedFingerprint: 'normalized-daily',
-    sourceMode: 'relationship_chat',
-    continuity: 'relationship',
-    knowledge: 'unclassified',
-    deliveryPolicy: {
-        sensitivity: 'normal',
-        allowedSurfaces: [],
-        recallPolicy: 'never',
-        initiativePolicy: 'never',
-        archiveSearchable: true,
-    },
+    rawText: 'synthetic raw history fixture',
     status: 'active',
     createdAt: 1_752_646_000_000,
     updatedAt: 1_752_646_000_000,
     revision: 1,
-} satisfies Omit<HistorySourceMessage, 'id' | 'speakerRole' | 'content' | 'sourceOrder' | 'sourceTime'>;
+} satisfies Omit<HistorySourceMessage, 'id' | 'authorChannel' | 'content' | 'sourceOrder' | 'sourceTime'>;
 
 const importedUser: HistorySourceMessage = {
     ...historyBase,
     id: 'history-daily-user',
-    speakerRole: 'user',
+    authorChannel: 'user',
     content: '今天下雨了。',
     sourceOrder: 1,
     sourceTime: {
@@ -70,7 +60,7 @@ const importedUser: HistorySourceMessage = {
 const importedCharacter: HistorySourceMessage = {
     ...historyBase,
     id: 'history-daily-character',
-    speakerRole: 'character',
+    authorChannel: 'char',
     content: '那就慢一点回家。',
     sourceOrder: 2,
     sourceTime: {
@@ -83,7 +73,7 @@ const importedCharacter: HistorySourceMessage = {
 const undated: HistorySourceMessage = {
     ...historyBase,
     id: 'history-daily-undated',
-    speakerRole: 'user',
+    authorChannel: 'user',
     content: '这段原文没有日期。',
     sourceOrder: 3,
     sourceTime: { precision: 'unknown', confidence: 0 },
@@ -300,13 +290,14 @@ for (const required of [
     '当天对话',
     'MAX_CACHED_PAGES',
     'data-focus-message',
+    "message.role === 'system' ? '来源说明' : '原文片段'",
 ]) {
     assert.ok(readerSource.includes(required));
 }
 const clippingLibrarySource = readFileSync(new URL('../components/daily-archive/ConversationClippingLibrary.tsx', import.meta.url), 'utf8');
 assert.ok(clippingLibrarySource.includes('搜索全部聊天记录'));
 assert.ok(clippingLibrarySource.includes('daily-archive-search-results'));
-assert.ok(clippingLibrarySource.includes('待整理片段'));
+assert.ok(clippingLibrarySource.includes('原文片段'));
 assert.ok(!clippingLibrarySource.includes('这里只收你亲手夹出的原句'));
 assert.ok(!clippingLibrarySource.includes('暂时不会变成人设、记忆或聊天提示词'));
 assert.ok(!clippingLibrarySource.includes('仅素材'));
@@ -333,7 +324,8 @@ for (const required of [
 }
 const dailyStorageSource = readFileSync(new URL('../utils/dailyArchive/storage.ts', import.meta.url), 'utf8');
 for (const required of [
-    'DAILY_ARCHIVE_DB_VERSION = 3',
+    "DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive:v2'",
+    'DAILY_ARCHIVE_DB_VERSION = 1',
     'daily_archive_manifests',
     'daily_archive_chunks',
     'daily_archive_message_index',

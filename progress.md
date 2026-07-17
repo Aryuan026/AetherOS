@@ -206,40 +206,84 @@
     memory merely because it is visible.
   - No deployment or GitHub push was performed from this worktree.
 
-## 2026-07-17 History Import Fast Reconnect
+## 2026-07-17 Repeatable Multi-Batch History Intake
 
 - done:
-  - Replaced the import-time speaker/type/time review wall with a high-tolerance
-    reconnect path: choose the relationship, choose the file, then import and
-    open Chat. Existing persisted review workspaces are settled by the same
-    rule, so old pending rows no longer strand the completion button.
-  - Added parser v3 logical splitting for line-start `user:` / `assistant:`
-    boundaries inside one TXT/DOCX source unit. Wrapped message lines remain in
-    their turn, while empty paragraphs and orphan timestamp rows are skipped.
-  - Preserved every non-empty unresolved fragment as local source evidence.
-    Unknown/system evidence is visible and keyword-searchable in Dialogue
-    Calendar as `待整理片段`, but does not impersonate the user and is not yet
-    eligible for voice clipping.
-  - Kept source timestamps unchanged during transport. Import no longer asks
-    for mutually exclusive companion/roleplay semantics or virtual-time
-    interpretation; those belong to later multi-label analysis.
-  - Collapsed the 24-message/token explanation behind an optional disclosure so
-    the main path stays focused on reconnecting the companion.
-- boundary:
-  - This slice moves semantic cleanup out of transport and establishes the safe
-    Calendar/search handoff. The Calendar role/tag editor and companion + plot
-    multi-label analyzer remain a later explicit slice.
-  - Imported source evidence still cannot independently change current emotion,
-    care state, open threads, Character Life state, NarrativeRun, receipt, or
-    memory writes.
+  - Separated disposable per-file intake workspaces from the cumulative formal
+    history archive. Successful activation now removes the finished workspace,
+    so reopening `旧日迁入` returns to relationship and file selection.
+  - Preserved automatic Chat opening for a newly activated batch only. A stale
+    completed workspace or an exact duplicate is cleaned without hijacking the
+    app back to Chat, and the duplicate is not written twice.
+  - Added visible guidance that one relationship can receive multiple files.
+    Existing mask and character selectors remain available on every new round,
+    so different relationships can each receive repeated imports.
+  - Made the history-import verification aggregator serial because its
+    IndexedDB integration cases share named local databases and must not run
+    destructive setup concurrently.
 - verified:
-  - A 430 x 932 real-browser flow imported a synthetic DOCX containing one
-    paragraph with three marked turns plus one unowned fragment, opened Chat in
-    one action, and found the unowned fragment through Calendar search with the
-    `待整理片段` label and zero console errors.
+  - Formal archive integration passed with three batches across two relationship
+    scopes. Two source files under the same scope accumulated instead of
+    replacing each other; the same file/scope returned `already_imported` and
+    left the active archive unchanged.
+  - Real Chromium on 5175 imported two synthetic two-message TXT files into the
+    same relationship. The second open returned to the fresh identity selector,
+    and Chat displayed all four historical records in order. Selecting the first
+    file again stayed on the import entry with `没有重复写入`; console errors
+    remained zero.
   - `npm run verify:history-import`, `npm run verify:daily-archive`,
-    `npm run verify:narrative`, `npm run verify:health`, and `git diff --check`
-    pass. The only build note is the existing Vite large-chunk warning.
+    `npm run verify:health`, and `git diff --check` pass. The only build note is
+    the existing Vite large-chunk warning.
+- boundary:
+  - Intake remains one file per round; this change enables repeated rounds and
+    does not add a multi-file picker or server upload.
+  - Calendar semantic extraction and every history-to-memory interpretation stay
+    HOLD pending the consuming-module audit.
+
+## 2026-07-17 History Import V2 Clean Transport
+
+- done:
+  - Deleted the import-time paged review UI, review decisions, speaker mapping,
+    conversation-type/time questions, and their persistence layer. The route is
+    now relationship -> file -> local archive -> Chat.
+  - Added `history-intake-v4`: explicit `user` and `assistant/char` markers are
+    treated only as export-author channels. Wrapped content and multiple turns
+    in one DOCX paragraph remain supported; empty/separator/timestamp-only rows
+    are skipped and every other non-empty unit is preserved as `原文片段`.
+  - Preserved duplicates, raw text, source order, locator, and timestamp without
+    import-time dedupe, virtual-time conversion, or companion/plot inference.
+  - Replaced the old eight-store speculative sidecar with four raw/operational
+    stores: batches, source messages, jobs, and backup receipts. Event,
+    companion, plot, tag, and embedding contracts were removed rather than kept
+    as dormant compatibility fields.
+  - Moved intake, formal archive, and daily archive onto clean v2 IndexedDB
+    namespaces. No pre-product review database reader or migration remains.
+  - Kept raw history medium-neutral. Chat receives at most one historical tail
+    under a remote-text boundary; Date does not read it or resume old physical
+    staging.
+  - Added a Calendar AI source handoff base with immutable scope/document
+    revisions, but every run is `hold/module_fit_unverified` with `output: null`.
+- boundary:
+  - Calendar AI does not call a model and does not define personality, plot,
+    relationship, language-fingerprint, tag, vector, or memory outputs. Those
+    remain HOLD until the historical-evidence fit of each consuming module is
+    audited.
+  - Imported evidence cannot independently change current emotion, care state,
+    open threads, Character Life, NarrativeRun, ExperienceReceipt, or memory.
+- verified:
+  - `npm run verify:history-import`, `npm run verify:daily-archive`,
+    `npm run verify:narrative`, and `npm run verify:health` pass. History import
+    covers 50,000 generated rows, a 1,201-row intake workspace, WPS/DOCX shapes,
+    four-store encrypted rescue, Chat/Date medium boundaries, and Calendar HOLD.
+  - A 430 x 932 real Chromium flow on temporary port 5175 imported a synthetic
+    DOCX as four records without a review/type/time question, opened Chat in one
+    action, rendered the archive apart from live messages, and showed the same
+    evidence in Dialogue Calendar as three dated plus one undated record.
+  - Browser acceptance exposed one missing neutral label in the single-day
+    reader. Non-speaker rows now visibly render as `原文片段` (system notes as
+    `来源说明`); the hot-reloaded page passed with zero console errors. The
+    temporary browser and server were closed after verification.
+  - The only build note is the existing Vite large-chunk warning.
 
 ## 2026-07-17 WPS/Mobile Word Self-Closing Paragraph Compatibility
 

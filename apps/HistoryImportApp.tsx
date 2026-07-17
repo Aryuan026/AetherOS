@@ -3,11 +3,11 @@ import { ArrowsClockwise, CheckCircle, FileText, Info, TrayArrowDown } from '@ph
 import { useOS } from '../context/OSContext';
 import type { HistoryStorageHealthSnapshot } from '../domain/historyImport/storageHealth';
 import type { HistoryIdentityBindingDraft } from '../domain/historyImport/identityBinding';
-import type { HistoryReviewWorkspaceManifest } from '../domain/historyImport/reviewWorkspace';
+import type { HistoryIntakeWorkspaceManifest } from '../domain/historyImport/intakeWorkspace';
 import AppHeader from '../components/shell/AppHeader';
 import HistoryIdentityBinding from '../components/history-import/HistoryIdentityBinding';
 import HistorySourceIntake from '../components/history-import/HistorySourceIntake';
-import HistoryPagedReview from '../components/history-import/HistoryPagedReview';
+import HistoryArchiveCommit from '../components/history-import/HistoryArchiveCommit';
 import HistoryLocalSaveNote from '../components/history-import/HistoryLocalSaveNote';
 import {
   readHistoryStorageHealth,
@@ -15,9 +15,9 @@ import {
   type HistoryPersistenceRequestResult,
 } from '../utils/historyImport/storage/storageHealth';
 import {
-  deleteHistoryReviewWorkspace,
-  getLatestHistoryReviewWorkspace,
-} from '../utils/historyImport/storage/reviewWorkspace';
+  deleteHistoryIntakeWorkspace,
+  getLatestHistoryIntakeWorkspace,
+} from '../utils/historyImport/storage/intakeWorkspace';
 
 const HistoryImportApp: React.FC = () => {
   const { closeApp, userProfile, characters, activeCharacterId } = useOS();
@@ -29,7 +29,8 @@ const HistoryImportApp: React.FC = () => {
   const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const [identityBindingLocked, setIdentityBindingLocked] = useState(false);
   const [identityBindingDraft, setIdentityBindingDraft] = useState<HistoryIdentityBindingDraft>();
-  const [activeWorkspace, setActiveWorkspace] = useState<HistoryReviewWorkspaceManifest>();
+  const [activeWorkspace, setActiveWorkspace] = useState<HistoryIntakeWorkspaceManifest>();
+  const [archiveCommitted, setArchiveCommitted] = useState<boolean>();
 
   const refreshStorageHealth = useCallback(async () => {
     setLoading(true);
@@ -50,7 +51,7 @@ const HistoryImportApp: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     setWorkspaceLoading(true);
-    void getLatestHistoryReviewWorkspace()
+    void getLatestHistoryIntakeWorkspace()
       .then(workspace => {
         if (!cancelled && workspace) setActiveWorkspace(workspace);
       })
@@ -87,8 +88,17 @@ const HistoryImportApp: React.FC = () => {
     setIdentityBindingDraft(locked ? draft : undefined);
   }, []);
 
-  const handleWorkspaceChange = useCallback((workspace?: HistoryReviewWorkspaceManifest) => {
+  const handleWorkspaceChange = useCallback((workspace?: HistoryIntakeWorkspaceManifest) => {
     setActiveWorkspace(workspace);
+    setArchiveCommitted(undefined);
+  }, []);
+
+  const settleWorkspace = useCallback(async (workspaceId: string) => {
+    await deleteHistoryIntakeWorkspace(workspaceId);
+    setActiveWorkspace(current => current?.id === workspaceId ? undefined : current);
+    setArchiveCommitted(undefined);
+    setIdentityBindingLocked(false);
+    setIdentityBindingDraft(undefined);
   }, []);
 
   const discardWorkspace = async () => {
@@ -97,12 +107,12 @@ const HistoryImportApp: React.FC = () => {
     if (!confirmed) return;
     setErrorMessage(undefined);
     try {
-      await deleteHistoryReviewWorkspace(activeWorkspace.id);
+      await deleteHistoryIntakeWorkspace(activeWorkspace.id);
       setActiveWorkspace(undefined);
       setIdentityBindingLocked(false);
       setIdentityBindingDraft(undefined);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '暂时无法删除这份校对草稿。');
+      setErrorMessage(error instanceof Error ? error.message : '暂时无法删除这份解析草稿。');
     }
   };
 
@@ -127,7 +137,7 @@ const HistoryImportApp: React.FC = () => {
             <div className="min-w-0">
               <h1 className="text-xl font-black tracking-tight text-slate-800">导入聊天记录</h1>
               <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                选好身份和 TXT / Word 文件，本机会粗分后直接接回聊天。
+                选好身份和 TXT / Word 文件，本机解析后直接接回聊天；同一段关系可以分多次追加。
               </p>
             </div>
           </div>
@@ -200,10 +210,16 @@ const HistoryImportApp: React.FC = () => {
               </div>
             </section>
 
-            <HistoryPagedReview
+            <HistoryArchiveCommit
               workspace={activeWorkspace}
-              onWorkspaceChange={setActiveWorkspace}
+              onCommittedChange={setArchiveCommitted}
+              onWorkspaceSettled={settleWorkspace}
+              openChatAfterCommit
             />
+
+            {archiveCommitted === false && (
+              <p className="mt-2 text-center text-[9px] text-slate-400">点一下“导入并继续聊天”，后面的整理都可以以后再做。</p>
+            )}
 
             <HistoryLocalSaveNote
               snapshot={snapshot}

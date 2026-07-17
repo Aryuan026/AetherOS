@@ -583,23 +583,30 @@
 - History import is a transport path, not a mandatory memory-analysis wizard.
   After relationship and file selection, a user must be able to archive the
   source and continue chatting without classifying every fragment.
-- Line-start `user:` and `assistant:` markers are strong turn boundaries even
+- Explicit `user:`, `assistant:`, and `char:` markers are strong turn boundaries even
   when multiple turns share one Word paragraph. A literal marker inside an
   already-started message line remains message content.
-- Empty paragraphs and orphan timestamp metadata must not become review cards
+- Empty paragraphs and orphan timestamp metadata must not become records
   or block completion. Every other non-empty unresolved fragment must be kept
   as source evidence for later organization.
-- `user` and `assistant` labels may be mapped automatically to the selected mask
-  and character. Unknown labels must remain unknown; they must never be silently
-  assigned to the active user or character.
+- `user` and `assistant/char` labels are export-author channels mapped to the
+  selected mask and character for transport. They are not claims about which
+  in-world actor spoke inside a co-authored roleplay turn. Unknown labels remain
+  neutral source fragments and must never be silently assigned.
 - Import must preserve source timestamps as evidence. Virtual-world date/time
   conversion is a later interpretation node and must not rewrite transport-time
   source data.
-- Companion, roleplay, OOC, and plot are not mutually exclusive import choices.
-  Later analysis may attach multiple evidence-backed labels; none is required
-  to complete the import.
+- Companion, roleplay, OOC, and plot are not import choices. The transport layer
+  must not define, infer, or persist those categories.
 - Unresolved non-empty evidence must remain visible and keyword-searchable in
-  Dialogue Calendar with an explicit neutral label such as `待整理片段`.
-- Detailed speaker correction, memory classification, companion/plot tagging,
-  and virtual-time interpretation belong to a later Calendar workflow and must
-  not be simulated as completed before that editor exists.
+  Dialogue Calendar with the neutral label `原文片段`.
+- Calendar AI may persist only a held source request containing scope, source
+  document ids, source revision fingerprint, and the requested question. It
+  must not call a model or define output categories until module-fit auditing is
+  complete.
+- Raw history is medium-neutral. Chat may use a bounded historical tail while
+  staying remote text; Date must not auto-read that tail or resume historical
+  actions, positions, environments, or stage direction.
+- The v2 intake, archive, and daily-archive databases are clean breaks. No
+  pre-product review-workspace reader, compatibility field, or migration is
+  permitted.

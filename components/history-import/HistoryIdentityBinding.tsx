@@ -192,7 +192,7 @@ const HistoryIdentityBinding: React.FC<HistoryIdentityBindingProps> = ({
         <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/55 p-3">
           <div className="text-[9px] font-black text-indigo-600">导入完成时再正式创建</div>
           <p className="mt-1 text-[9px] leading-relaxed text-slate-500">
-            读文件和校对时只用占位；没有点最终导入，就不会留下空角色。
+            读文件和解析时只用占位；没有点最终导入，就不会留下空角色。
           </p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             {selectedMaskId === HISTORY_IDENTITY_PLACEHOLDER_CHOICE && (

@@ -30,10 +30,8 @@ import {
 } from '../../domain/dailyArchive/index.ts';
 import type { HistoryScope } from '../../domain/historyImport/types.ts';
 
-export const DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive';
-export const DAILY_ARCHIVE_DB_VERSION = 3;
-/** Kept for one-way lazy migration from the former whole-day records. */
-export const DAILY_ARCHIVE_DOCUMENT_STORE = 'daily_archive_documents';
+export const DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive:v2';
+export const DAILY_ARCHIVE_DB_VERSION = 1;
 export const DAILY_ARCHIVE_SUMMARY_STORE = 'daily_archive_summaries';
 export const DAILY_ARCHIVE_META_STORE = 'daily_archive_meta';
 export const CONVERSATION_CLIPPING_STORE = 'conversation_clippings';
@@ -74,24 +72,6 @@ export const openDailyArchiveDatabase = async (factory?: IDBFactory): Promise<ID
     const request = getFactory(factory).open(DAILY_ARCHIVE_DB_NAME, DAILY_ARCHIVE_DB_VERSION);
     request.onupgradeneeded = () => {
         const database = request.result;
-        const store = database.objectStoreNames.contains(DAILY_ARCHIVE_DOCUMENT_STORE)
-            ? request.transaction!.objectStore(DAILY_ARCHIVE_DOCUMENT_STORE)
-            : database.createObjectStore(DAILY_ARCHIVE_DOCUMENT_STORE, { keyPath: 'id' });
-        if (!store.indexNames.contains('scope')) {
-            store.createIndex('scope', [
-                'scope.progressBundleId',
-                'scope.personaMaskId',
-                'scope.charId',
-            ], { unique: false });
-        }
-        if (!store.indexNames.contains('scope_month')) {
-            store.createIndex('scope_month', [
-                'scope.progressBundleId',
-                'scope.personaMaskId',
-                'scope.charId',
-                'monthKey',
-            ], { unique: false });
-        }
         if (!database.objectStoreNames.contains(DAILY_ARCHIVE_META_STORE)) {
             database.createObjectStore(DAILY_ARCHIVE_META_STORE, { keyPath: 'id' });
         }
@@ -265,22 +245,14 @@ const groupMessages = (messages: DailyArchiveMessage[]): Array<{
     return Array.from(groups.values());
 };
 
-const readStoredManifestOrLegacy = async (database: IDBDatabase, documentId: string): Promise<{
-    manifest?: DailyArchiveManifest;
-    legacy?: DailyArchiveDocument;
-}> => {
-    const transaction = database.transaction([
-        DAILY_ARCHIVE_MANIFEST_STORE,
-        DAILY_ARCHIVE_DOCUMENT_STORE,
-    ], 'readonly');
-    const [manifest, legacy] = await Promise.all([
-        requestAsPromise(transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE).get(documentId)),
-        requestAsPromise(transaction.objectStore(DAILY_ARCHIVE_DOCUMENT_STORE).get(documentId)),
-    ]);
-    return {
-        manifest: manifest as DailyArchiveManifest | undefined,
-        legacy: legacy as DailyArchiveDocument | undefined,
-    };
+const readStoredManifest = async (
+    database: IDBDatabase,
+    documentId: string,
+): Promise<DailyArchiveManifest | undefined> => {
+    const transaction = database.transaction(DAILY_ARCHIVE_MANIFEST_STORE, 'readonly');
+    return await requestAsPromise(
+        transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE).get(documentId),
+    ) as DailyArchiveManifest | undefined;
 };
 
 const loadManifestChunks = async (
@@ -317,14 +289,12 @@ const persistChunkedDocument = async (input: {
         ),
     ]);
     const transaction = input.database.transaction([
-        DAILY_ARCHIVE_DOCUMENT_STORE,
         DAILY_ARCHIVE_MANIFEST_STORE,
         DAILY_ARCHIVE_CHUNK_STORE,
         DAILY_ARCHIVE_MESSAGE_INDEX_STORE,
         DAILY_ARCHIVE_SUMMARY_STORE,
     ], 'readwrite');
     const settled = transactionAsPromise(transaction);
-    const legacyStore = transaction.objectStore(DAILY_ARCHIVE_DOCUMENT_STORE);
     const manifestStore = transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE);
     const chunkStore = transaction.objectStore(DAILY_ARCHIVE_CHUNK_STORE);
     const messageIndexStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_INDEX_STORE);
@@ -343,7 +313,6 @@ const persistChunkedDocument = async (input: {
     });
     manifestStore.put(manifest);
     summaryStore.put(summaryForManifest(manifest));
-    legacyStore.delete(input.document.id);
     await settled;
     return manifest;
 };
@@ -352,10 +321,7 @@ const ensureChunkedManifest = async (
     database: IDBDatabase,
     documentId: string,
 ): Promise<DailyArchiveManifest | null> => {
-    const stored = await readStoredManifestOrLegacy(database, documentId);
-    if (stored.manifest) return stored.manifest;
-    if (!stored.legacy) return null;
-    return persistChunkedDocument({ database, document: stored.legacy });
+    return (await readStoredManifest(database, documentId)) || null;
 };
 
 const hydrateStoredManifest = async (
@@ -917,20 +883,12 @@ export const listUndatedDailyArchiveDocuments = async (input: {
 export const listAllDailyArchiveDocuments = async (factory?: IDBFactory): Promise<DailyArchiveDocument[]> => {
     const database = await openDailyArchiveDatabase(factory);
     try {
-        const transaction = database.transaction([
-            DAILY_ARCHIVE_MANIFEST_STORE,
-            DAILY_ARCHIVE_DOCUMENT_STORE,
-        ], 'readonly');
-        const [manifests, legacyDocuments] = await Promise.all([
-            requestAsPromise(transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE).getAll()) as Promise<DailyArchiveManifest[]>,
-            requestAsPromise(transaction.objectStore(DAILY_ARCHIVE_DOCUMENT_STORE).getAll()) as Promise<DailyArchiveDocument[]>,
-        ]);
-        const chunkedDocuments = await Promise.all(manifests.map(manifest => hydrateStoredManifest(database, manifest)));
-        const chunkedIds = new Set(manifests.map(manifest => manifest.id));
-        return [
-            ...chunkedDocuments,
-            ...legacyDocuments.filter(document => !chunkedIds.has(document.id)),
-        ].sort((left, right) => left.id.localeCompare(right.id));
+        const transaction = database.transaction(DAILY_ARCHIVE_MANIFEST_STORE, 'readonly');
+        const manifests = await requestAsPromise(
+            transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE).getAll(),
+        ) as DailyArchiveManifest[];
+        const documents = await Promise.all(manifests.map(manifest => hydrateStoredManifest(database, manifest)));
+        return documents.sort((left, right) => left.id.localeCompare(right.id));
     } finally {
         database.close();
     }
@@ -1031,19 +989,16 @@ export const replaceDailyArchiveDocuments = async (input: {
     const database = await openDailyArchiveDatabase(input.factory);
     try {
         const transaction = database.transaction([
-            DAILY_ARCHIVE_DOCUMENT_STORE,
             DAILY_ARCHIVE_MANIFEST_STORE,
             DAILY_ARCHIVE_CHUNK_STORE,
             DAILY_ARCHIVE_MESSAGE_INDEX_STORE,
             DAILY_ARCHIVE_SUMMARY_STORE,
         ], 'readwrite');
         const settled = transactionAsPromise(transaction);
-        const legacyStore = transaction.objectStore(DAILY_ARCHIVE_DOCUMENT_STORE);
         const manifestStore = transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE);
         const chunkStore = transaction.objectStore(DAILY_ARCHIVE_CHUNK_STORE);
         const messageIndexStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_INDEX_STORE);
         const summaryStore = transaction.objectStore(DAILY_ARCHIVE_SUMMARY_STORE);
-        legacyStore.clear();
         manifestStore.clear();
         chunkStore.clear();
         messageIndexStore.clear();

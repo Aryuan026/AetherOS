@@ -1,21 +1,15 @@
 import type {
-    HistoryDeliveryPolicy,
-    HistoryPlotProjection,
     HistoryScope,
     HistorySourceMessage,
     HistorySourceTime,
 } from './types';
 
-export const HISTORY_IMPORT_SCHEMA_VERSION = 1 as const;
+export const HISTORY_IMPORT_SCHEMA_VERSION = 2 as const;
 
 export const HISTORY_IMPORT_STORE_NAMES = {
     batches: 'history_import_batches',
     sourceMessages: 'history_source_messages',
-    events: 'history_events',
-    companionProjections: 'history_companion_projections',
-    plotProjections: 'history_plot_projections',
     jobs: 'history_jobs',
-    tagRegistry: 'memory_tag_registry',
     backupReceipts: 'history_backup_receipts',
 } as const;
 
@@ -51,43 +45,11 @@ export const HISTORY_RECORD_FAMILY_POLICIES: HistoryRecordFamilyPolicy[] = [
         promptReadable: false,
     },
     {
-        family: 'neutral_event',
-        store: HISTORY_IMPORT_STORE_NAMES.events,
-        scope: 'progress_bundle_and_character',
-        durability: 'irreplaceable',
-        backup: 'required',
-        promptReadable: true,
-    },
-    {
-        family: 'companion_projection',
-        store: HISTORY_IMPORT_STORE_NAMES.companionProjections,
-        scope: 'progress_bundle_and_character',
-        durability: 'irreplaceable',
-        backup: 'required',
-        promptReadable: true,
-    },
-    {
-        family: 'plot_projection',
-        store: HISTORY_IMPORT_STORE_NAMES.plotProjections,
-        scope: 'progress_bundle_and_character',
-        durability: 'irreplaceable',
-        backup: 'required',
-        promptReadable: true,
-    },
-    {
         family: 'job',
         store: HISTORY_IMPORT_STORE_NAMES.jobs,
         scope: 'progress_bundle_and_character',
         durability: 'operational',
         backup: 'optional',
-        promptReadable: false,
-    },
-    {
-        family: 'tag_definition',
-        store: HISTORY_IMPORT_STORE_NAMES.tagRegistry,
-        scope: 'global_registry',
-        durability: 'irreplaceable',
-        backup: 'required',
         promptReadable: false,
     },
     {
@@ -99,14 +61,6 @@ export const HISTORY_RECORD_FAMILY_POLICIES: HistoryRecordFamilyPolicy[] = [
         promptReadable: false,
     },
 ];
-
-export const HISTORY_RAW_SOURCE_DELIVERY_POLICY: HistoryDeliveryPolicy = {
-    sensitivity: 'private',
-    allowedSurfaces: [],
-    recallPolicy: 'never',
-    initiativePolicy: 'never',
-    archiveSearchable: true,
-};
 
 export const HISTORY_RESCUE_CONTRACT = {
     encryptedPrivatePayloadRequired: true,
@@ -123,25 +77,17 @@ export const HISTORY_RESCUE_CONTRACT = {
         'cronToken',
         'initSecret',
     ],
-    rebuildableFields: [
-        'history_events[*].factualEmbedding.values',
-        'history_companion_projections[*].innerViewEmbedding.values',
-    ],
+    rebuildableFields: [],
 } as const;
 
 export const HISTORY_IDENTITY_CONTRACT = {
     scopeKeyComponents: ['progressBundleId', 'charId'],
-    batchIdComponents: ['scopeKey', 'sourceFileSha256', 'speakerMappingFingerprint'],
+    batchIdComponents: ['scopeKey', 'sourceFileSha256', 'parserVersion'],
     sourceMessageIdComponents: ['batchId', 'sourceOrder', 'sourceFingerprint'],
-    evidenceFamilyIdComponents: ['scopeKey', 'sortedSourceMessageIds'],
-    projectionIdComponents: ['eventId', 'projectionKind'],
     forbiddenStableIdComponents: [
         'autoIncrementPrimaryKey',
         'importedAt',
         'generatedSummaryText',
-        'tagLabel',
-        'embeddingModel',
-        'embeddingValues',
     ],
 } as const;
 
@@ -187,68 +133,8 @@ export const validateHistorySourceMessage = (message: HistorySourceMessage): str
     if (!message.content.trim() && message.attachments.length === 0) {
         errors.push('source message requires content or an attachment placeholder');
     }
-    if (!isNonEmpty(message.sourceFingerprint) || !isNonEmpty(message.normalizedFingerprint)) {
-        errors.push('source and normalized fingerprints are required');
-    }
-    if (message.sourceFragments) {
-        if (message.sourceFragments.length === 0) {
-            errors.push('sourceFragments must not be empty when present');
-        }
-        message.sourceFragments.forEach((fragment, index) => {
-            if (!isNonEmpty(fragment.rowId) || !isNonEmpty(fragment.originalTextHash)) {
-                errors.push(`source fragment ${index} requires rowId and originalTextHash`);
-            }
-            if (!Number.isInteger(fragment.sourceOrder) || fragment.sourceOrder < 0) {
-                errors.push(`source fragment ${index} sourceOrder must be a non-negative integer`);
-            }
-        });
-        if (
-            message.sourceFragments[0]
-            && message.sourceFragments[0].sourceOrder !== message.sourceOrder
-        ) {
-            errors.push('the first source fragment must match message sourceOrder');
-        }
-    }
-    if (message.deliveryPolicy.allowedSurfaces.length > 0) {
-        errors.push('raw source messages must not be directly prompt-readable');
-    }
-    if (message.deliveryPolicy.recallPolicy !== 'never') {
-        errors.push('raw source message recallPolicy must be never');
-    }
-    if (message.deliveryPolicy.initiativePolicy !== 'never') {
-        errors.push('raw source message initiativePolicy must be never');
-    }
-    return errors;
-};
-
-const plotBearingDispositions = new Set([
-    'milestone_candidate',
-    'plot_event',
-    'open_thread',
-]);
-
-export const validateHistoryPlotProjection = (projection: HistoryPlotProjection): string[] => {
-    const errors = validateHistoryScope(projection.scope);
-    if (projection.schemaVersion !== HISTORY_IMPORT_SCHEMA_VERSION) errors.push('unsupported plot projection schemaVersion');
-    if (!isNonEmpty(projection.id)) errors.push('plot projection id is required');
-    if (plotBearingDispositions.has(projection.disposition)) {
-        if (projection.deltas.length === 0) errors.push('plot-bearing disposition requires an evidenced delta');
-        if (projection.sourceSpans.length === 0) errors.push('plot-bearing disposition requires source spans');
-    }
-    if (projection.disposition === 'no_plot' && projection.deltas.length > 0) {
-        errors.push('no_plot must not contain plot deltas');
-    }
-    projection.deltas.forEach((delta, index) => {
-        if (!delta.beforeState.trim() || !delta.afterState.trim()) {
-            errors.push(`plot delta ${index} requires before and after state`);
-        }
-        if (delta.beforeState.trim() === delta.afterState.trim()) {
-            errors.push(`plot delta ${index} must change state`);
-        }
-        if (delta.sourceSpans.length === 0) {
-            errors.push(`plot delta ${index} requires source spans`);
-        }
-    });
+    if (!isNonEmpty(message.rawText)) errors.push('raw source text is required');
+    if (!isNonEmpty(message.sourceFingerprint)) errors.push('source fingerprint is required');
     return errors;
 };
 

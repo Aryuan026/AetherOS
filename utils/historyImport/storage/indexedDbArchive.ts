@@ -28,11 +28,11 @@ import {
     verifyHistoryTemporaryRestore,
 } from '../backup/rescueArchive.ts';
 
-export const HISTORY_ARCHIVE_DB_PREFIX = 'AetherOS_HistoryArchive:v1:' as const;
-export const HISTORY_ARCHIVE_DB_VERSION = 2 as const;
+export const HISTORY_ARCHIVE_DB_PREFIX = 'AetherOS_HistoryArchive:v2:' as const;
+export const HISTORY_ARCHIVE_DB_VERSION = 1 as const;
 export const HISTORY_ARCHIVE_MAX_CHUNK_RECORDS = 500 as const;
 export const HISTORY_ARCHIVE_MAX_PAGE_RECORDS = 500 as const;
-export const HISTORY_ARCHIVE_CONTROL_DB_NAME = 'AetherOS_HistoryArchive_Control';
+export const HISTORY_ARCHIVE_CONTROL_DB_NAME = 'AetherOS_HistoryArchive_Control:v2';
 export const HISTORY_ARCHIVE_CONTROL_DB_VERSION = 1 as const;
 export const HISTORY_ARCHIVE_CONTROL_STORE = 'history_archive_control';
 export const HISTORY_ARCHIVE_ACTIVE_RECORD_ID = 'active';
@@ -71,38 +71,10 @@ export const HISTORY_ARCHIVE_SCHEMA: Record<HistoryRescueStoreName, HistoryArchi
             },
         ],
     },
-    [HISTORY_IMPORT_STORE_NAMES.events]: {
-        keyPath: 'id',
-        indexes: [
-            { name: 'scope', keyPath: [...SCOPE_KEY_PATH], unique: false },
-            { name: 'evidence_family', keyPath: 'evidenceFamilyId', unique: false },
-        ],
-    },
-    [HISTORY_IMPORT_STORE_NAMES.companionProjections]: {
-        keyPath: 'id',
-        indexes: [
-            { name: 'scope', keyPath: [...SCOPE_KEY_PATH], unique: false },
-            { name: 'event_id', keyPath: 'eventId', unique: true },
-        ],
-    },
-    [HISTORY_IMPORT_STORE_NAMES.plotProjections]: {
-        keyPath: 'id',
-        indexes: [
-            { name: 'scope', keyPath: [...SCOPE_KEY_PATH], unique: false },
-            { name: 'event_id', keyPath: 'eventId', unique: false },
-        ],
-    },
     [HISTORY_IMPORT_STORE_NAMES.jobs]: {
         keyPath: 'id',
         indexes: [
             { name: 'batch_id', keyPath: 'batchId', unique: false },
-            { name: 'status', keyPath: 'status', unique: false },
-        ],
-    },
-    [HISTORY_IMPORT_STORE_NAMES.tagRegistry]: {
-        keyPath: 'id',
-        indexes: [
-            { name: 'namespace', keyPath: 'namespace', unique: false },
             { name: 'status', keyPath: 'status', unique: false },
         ],
     },
@@ -217,9 +189,9 @@ const sha256 = async (value: string): Promise<string> => {
     return `sha256:${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')}`;
 };
 
-export const createHistoryArchiveCandidateDatabaseId = (decisionFingerprint: string): string => {
-    const normalized = decisionFingerprint.trim().toLowerCase();
-    if (!/^[a-f0-9]{32,}$/u.test(normalized)) throw new Error('review decision fingerprint is invalid');
+export const createHistoryArchiveCandidateDatabaseId = (intakeFingerprint: string): string => {
+    const normalized = intakeFingerprint.trim().toLowerCase();
+    if (!/^[a-f0-9]{32,}$/u.test(normalized)) throw new Error('history intake fingerprint is invalid');
     return `${HISTORY_ARCHIVE_DB_PREFIX}candidate-${normalized.slice(0, 32)}`;
 };
 
@@ -290,7 +262,7 @@ export const openHistoryArchiveDatabase = async (
         || observedStores.some((store, index) => store !== expectedStores[index])
     ) {
         database.close();
-        throw new Error('history archive database must contain exactly the declared eight stores');
+        throw new Error('history archive database must contain exactly the declared stores');
     }
     return database;
 };

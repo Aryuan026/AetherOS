@@ -3,19 +3,15 @@ import {
     HISTORY_IMPORT_SCHEMA_VERSION,
     HISTORY_IMPORT_STORE_NAMES,
     HISTORY_IDENTITY_CONTRACT,
-    HISTORY_RAW_SOURCE_DELIVERY_POLICY,
     HISTORY_RECORD_FAMILY_POLICIES,
     HISTORY_RESCUE_CONTRACT,
     createHistoryScopeKey,
     validateHistoryImportContract,
-    validateHistoryPlotProjection,
     validateHistoryScope,
     validateHistorySourceMessage,
 } from '../domain/historyImport/contract.ts';
 import {
     HISTORY_BACKUP_RECEIPT_FIXTURE,
-    HISTORY_NO_PLOT_FIXTURE,
-    HISTORY_PLOT_POSITIVE_FIXTURE,
     HISTORY_SCOPE_ALPHA,
     HISTORY_SCOPE_BETA,
     HISTORY_SOURCE_MESSAGE_FIXTURE,
@@ -25,7 +21,7 @@ import {
     HISTORY_IMPORT_FIXTURE_MANIFEST_VERSION,
 } from '../fixtures/history-import/manifest.ts';
 
-assert.equal(HISTORY_IMPORT_SCHEMA_VERSION, 1);
+assert.equal(HISTORY_IMPORT_SCHEMA_VERSION, 2);
 assert.equal(HISTORY_IMPORT_FIXTURE_MANIFEST_VERSION, 1);
 assert.deepEqual(validateHistoryImportContract(), []);
 
@@ -45,8 +41,8 @@ assert.equal(
 );
 assert.deepEqual(
     HISTORY_RECORD_FAMILY_POLICIES.filter(policy => policy.promptReadable).map(policy => policy.family),
-    ['neutral_event', 'companion_projection', 'plot_projection'],
-    'raw source messages and operational stores must not be prompt-readable',
+    [],
+    'the raw-only archive must not expose a prompt-readable derived store',
 );
 
 assert.equal(HISTORY_RESCUE_CONTRACT.encryptedPrivatePayloadRequired, true);
@@ -56,7 +52,6 @@ assert.equal(HISTORY_RESCUE_CONTRACT.restoreStrategy, 'verify_temporary_database
 assert.equal(HISTORY_RESCUE_CONTRACT.excludedCredentialFields.includes('apiConfig.apiKey'), true);
 assert.deepEqual(HISTORY_IDENTITY_CONTRACT.scopeKeyComponents, ['progressBundleId', 'charId']);
 assert.equal(HISTORY_IDENTITY_CONTRACT.forbiddenStableIdComponents.includes('importedAt'), true);
-assert.equal(HISTORY_IDENTITY_CONTRACT.forbiddenStableIdComponents.includes('embeddingValues'), true);
 
 assert.deepEqual(validateHistoryScope(HISTORY_SCOPE_ALPHA), []);
 assert.deepEqual(validateHistoryScope(HISTORY_SCOPE_BETA), []);
@@ -76,34 +71,12 @@ assert.equal(
     true,
     'fixture must prove import time is independent from source event time',
 );
-assert.deepEqual(HISTORY_SOURCE_MESSAGE_FIXTURE.deliveryPolicy, HISTORY_RAW_SOURCE_DELIVERY_POLICY);
 assert.match(
     validateHistorySourceMessage({
         ...HISTORY_SOURCE_MESSAGE_FIXTURE,
-        deliveryPolicy: {
-            ...HISTORY_SOURCE_MESSAGE_FIXTURE.deliveryPolicy,
-            allowedSurfaces: ['group_chat'],
-            recallPolicy: 'situational',
-        },
+        rawText: '',
     }).join('\n'),
-    /must not be directly prompt-readable/,
-);
-
-assert.deepEqual(validateHistoryPlotProjection(HISTORY_NO_PLOT_FIXTURE), []);
-assert.deepEqual(validateHistoryPlotProjection(HISTORY_PLOT_POSITIVE_FIXTURE), []);
-assert.match(
-    validateHistoryPlotProjection({
-        ...HISTORY_PLOT_POSITIVE_FIXTURE,
-        deltas: [],
-    }).join('\n'),
-    /requires an evidenced delta/,
-);
-assert.match(
-    validateHistoryPlotProjection({
-        ...HISTORY_NO_PLOT_FIXTURE,
-        deltas: HISTORY_PLOT_POSITIVE_FIXTURE.deltas,
-    }).join('\n'),
-    /no_plot must not contain plot deltas/,
+    /raw source text is required/,
 );
 
 assert.equal(HISTORY_BACKUP_RECEIPT_FIXTURE.encrypted, true);

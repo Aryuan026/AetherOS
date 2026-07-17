@@ -127,9 +127,9 @@ export const runHistoryIndexedDbBrowserVerification = async (): Promise<
         liveDatabase = await openHistoryIndexedDbLab(liveDatabaseId);
         assert(
             HISTORY_RESCUE_STORE_ORDER.every(store => liveDatabase!.objectStoreNames.contains(store)),
-            'the isolated lab must create all eight explicit history stores',
+            'the isolated lab must create every explicit history store',
         );
-        assert(liveDatabase.objectStoreNames.length === 8, 'the lab must not hide an extra metadata store');
+        assert(liveDatabase.objectStoreNames.length === 4, 'the lab must not hide an extra metadata store');
 
         const generatorConfig = {
             seed: 2026071605,

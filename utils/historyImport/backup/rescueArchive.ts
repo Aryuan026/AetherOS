@@ -29,15 +29,10 @@ import {
     HISTORY_IMPORT_SCHEMA_VERSION,
 } from '../../../domain/historyImport/contract.ts';
 import type {
-    HistoryCompanionProjection,
-    HistoryEvent,
     HistoryImportBatch,
     HistoryJob,
-    HistoryPlotProjection,
     HistoryScope,
     HistorySourceMessage,
-    HistorySourceSpan,
-    HistoryTagDefinition,
 } from '../../../domain/historyImport/types.ts';
 
 const textEncoder = new TextEncoder();
@@ -65,11 +60,6 @@ const FORBIDDEN_CREDENTIAL_KEYS = new Set(
         ...EXTRA_FORBIDDEN_CREDENTIAL_KEYS,
     ].map(key => key.toLocaleLowerCase('en-US')),
 );
-
-const REBUILDABLE_EMBEDDING_KEYS = new Set([
-    'factualembedding',
-    'innerviewembedding',
-]);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -177,7 +167,7 @@ const assertExactSectionKeys: (
     const expected = [...HISTORY_RESCUE_STORE_ORDER].sort();
     const actual = Object.keys(sections).sort();
     if (stableHistoryRescueJson(actual) !== stableHistoryRescueJson(expected)) {
-        throw new HistoryRescueError('invalid_input', 'rescue sections must contain exactly the eight declared stores');
+        throw new HistoryRescueError('invalid_input', 'rescue sections must contain exactly the declared stores');
     }
     HISTORY_RESCUE_STORE_ORDER.forEach(store => {
         if (!Array.isArray(sections[store])) {
@@ -193,7 +183,6 @@ interface SanitizationStats {
 
 const sanitizeValue = (
     value: unknown,
-    parentKey: string | undefined,
     stats: SanitizationStats,
     seen: WeakSet<object>,
 ): unknown | typeof OMIT => {
@@ -209,7 +198,7 @@ const sanitizeValue = (
         if (seen.has(value)) throw new HistoryRescueError('invalid_input', 'rescue data must not be circular');
         seen.add(value);
         const result = value.map(item => {
-            const sanitized = sanitizeValue(item, parentKey, stats, seen);
+            const sanitized = sanitizeValue(item, stats, seen);
             return sanitized === OMIT ? null : sanitized;
         });
         seen.delete(value);
@@ -227,15 +216,7 @@ const sanitizeValue = (
             stats.credentialFields += 1;
             return;
         }
-        if (
-            normalizedKey === 'values'
-            && parentKey
-            && REBUILDABLE_EMBEDDING_KEYS.has(parentKey.toLocaleLowerCase('en-US'))
-        ) {
-            stats.rebuildableFields += 1;
-            return;
-        }
-        const sanitized = sanitizeValue(child, key, stats, seen);
+        const sanitized = sanitizeValue(child, stats, seen);
         if (sanitized !== OMIT) result[key] = sanitized;
     });
     seen.delete(value);
@@ -268,7 +249,7 @@ export const sanitizeHistoryRescueSections = (
 ): HistoryRescueSanitizationResult => {
     assertExactSectionKeys(sections);
     const stats: SanitizationStats = { credentialFields: 0, rebuildableFields: 0 };
-    const sanitized = sanitizeValue(sections, undefined, stats, new WeakSet());
+    const sanitized = sanitizeValue(sections, stats, new WeakSet());
     if (!isPlainObject(sanitized)) {
         throw new HistoryRescueError('invalid_input', 'sanitized rescue sections are invalid');
     }
@@ -318,23 +299,6 @@ const scopesMatch = (left: HistoryScope, right: HistoryScope): boolean => (
     && left.personaMaskId === right.personaMaskId
 );
 
-const validateSourceSpans = (
-    ownerLabel: string,
-    ownerScope: HistoryScope,
-    spans: HistorySourceSpan[],
-    sourceMessages: Map<string, HistorySourceMessage>,
-    errors: string[],
-): void => {
-    spans.forEach((span, index) => {
-        const sourceMessage = sourceMessages.get(span.sourceMessageId);
-        if (!sourceMessage) {
-            errors.push(`${ownerLabel}.sourceSpans[${index}] points to missing source message ${span.sourceMessageId}`);
-        } else if (!scopesMatch(ownerScope, sourceMessage.scope)) {
-            errors.push(`${ownerLabel}.sourceSpans[${index}] crosses history scope`);
-        }
-    });
-};
-
 export const validateHistoryRescueReferences = (
     sections: HistoryRescueSanitizedSections,
 ): string[] => {
@@ -350,29 +314,9 @@ export const validateHistoryRescueReferences = (
         'history_source_messages',
         errors,
     );
-    const events = indexRecordsById(
-        sections.history_events as HistoryEvent[],
-        'history_events',
-        errors,
-    );
-    const companionProjections = indexRecordsById(
-        sections.history_companion_projections as HistoryCompanionProjection[],
-        'history_companion_projections',
-        errors,
-    );
-    const plotProjections = indexRecordsById(
-        sections.history_plot_projections as HistoryPlotProjection[],
-        'history_plot_projections',
-        errors,
-    );
     const jobs = indexRecordsById(
         sections.history_jobs as HistoryJob[],
         'history_jobs',
-        errors,
-    );
-    const tags = indexRecordsById(
-        sections.memory_tag_registry as HistoryTagDefinition[],
-        'memory_tag_registry',
         errors,
     );
     indexRecordsById(
@@ -388,59 +332,6 @@ export const validateHistoryRescueReferences = (
         } else if (!scopesMatch(message.scope, batch.scope)) {
             errors.push(`source message ${message.id} crosses its batch scope`);
         }
-    });
-    events.forEach(event => {
-        event.sourceBatchIds.forEach(batchId => {
-            const batch = batches.get(batchId);
-            if (!batch) {
-                errors.push(`event ${event.id} points to missing batch ${batchId}`);
-            } else if (!scopesMatch(event.scope, batch.scope)) {
-                errors.push(`event ${event.id} crosses batch scope ${batchId}`);
-            }
-        });
-        validateSourceSpans(`event ${event.id}`, event.scope, event.sourceSpans, sourceMessages, errors);
-        event.tagIds.forEach(tagId => {
-            if (!tags.has(tagId)) errors.push(`event ${event.id} points to missing tag ${tagId}`);
-        });
-    });
-    companionProjections.forEach(projection => {
-        const event = events.get(projection.eventId);
-        if (!event) {
-            errors.push(`companion projection ${projection.id} points to missing event ${projection.eventId}`);
-        } else if (!scopesMatch(projection.scope, event.scope)) {
-            errors.push(`companion projection ${projection.id} crosses event scope`);
-        }
-        validateSourceSpans(
-            `companion projection ${projection.id}`,
-            projection.scope,
-            projection.sourceSpans,
-            sourceMessages,
-            errors,
-        );
-    });
-    plotProjections.forEach(projection => {
-        if (projection.eventId) {
-            const event = events.get(projection.eventId);
-            if (!event) {
-                errors.push(`plot projection ${projection.id} points to missing event ${projection.eventId}`);
-            } else if (!scopesMatch(projection.scope, event.scope)) {
-                errors.push(`plot projection ${projection.id} crosses event scope`);
-            }
-        }
-        validateSourceSpans(
-            `plot projection ${projection.id}`,
-            projection.scope,
-            projection.sourceSpans,
-            sourceMessages,
-            errors,
-        );
-        projection.deltas.forEach((delta, index) => validateSourceSpans(
-            `plot projection ${projection.id}.deltas[${index}]`,
-            projection.scope,
-            delta.sourceSpans,
-            sourceMessages,
-            errors,
-        ));
     });
     jobs.forEach(job => {
         if (!job.batchId) return;

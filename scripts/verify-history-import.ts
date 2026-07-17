@@ -1,16 +1,23 @@
-import './verify-history-import-contract.ts';
-import './verify-history-import-jobs.ts';
-import './verify-history-import-storage-health.ts';
-import './verify-history-import-rescue.ts';
-import './verify-history-import-indexeddb-contract.ts';
-import './verify-history-import-delivery.ts';
-import './verify-history-import-rehearsal.ts';
-import './verify-history-import-identity.ts';
-import './verify-history-import-preview.ts';
-import './verify-history-import-review.ts';
-import './verify-history-import-review-workspace.ts';
-import './verify-history-import-archive.ts';
-import './verify-history-import-chat.ts';
-import './verify-daily-archive.ts';
+export {};
 
-console.log('history import Stage 1.4 verified direct local activation contract OK');
+const verificationModules = [
+    './verify-history-import-contract.ts',
+    './verify-history-import-jobs.ts',
+    './verify-history-import-storage-health.ts',
+    './verify-history-import-rescue.ts',
+    './verify-history-import-indexeddb-contract.ts',
+    './verify-history-import-delivery.ts',
+    './verify-history-import-rehearsal.ts',
+    './verify-history-import-identity.ts',
+    './verify-history-import-preview.ts',
+    './verify-history-import-intake-workspace.ts',
+    './verify-history-import-archive.ts',
+    './verify-history-import-chat.ts',
+    './verify-daily-archive.ts',
+] as const;
+
+for (const verificationModule of verificationModules) {
+    await import(verificationModule);
+}
+
+console.log('history import v2 clean intake and local activation contract OK');

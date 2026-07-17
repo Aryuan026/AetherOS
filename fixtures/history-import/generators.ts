@@ -1,6 +1,5 @@
 import {
     HISTORY_IMPORT_SCHEMA_VERSION,
-    HISTORY_RAW_SOURCE_DELIVERY_POLICY,
     createHistoryScopeKey,
     validateHistoryScope,
 } from '../../domain/historyImport/contract.ts';
@@ -104,24 +103,6 @@ export const createSyntheticImportBatch = (
             sha256: sourceFileHash,
             rawRetained: false,
         },
-        sourceMode: 'relationship_chat',
-        timezonePolicy: 'source',
-        speakerMappings: [
-            {
-                sourceLabel: '合成人类',
-                role: 'user',
-                targetId: config.scope.personaMaskId,
-                confidence: 1,
-                confirmedByUser: true,
-            },
-            {
-                sourceLabel: '合成角色',
-                role: 'character',
-                targetId: config.scope.charId,
-                confidence: 1,
-                confirmedByUser: true,
-            },
-        ],
         counts: {
             parsed: config.count,
             accepted: config.count,
@@ -132,6 +113,7 @@ export const createSyntheticImportBatch = (
         },
         status: 'ready',
         dedupeNamespace: `fixture:${sourceFileHash}`,
+        intakeFingerprint: sourceFileHash.replace(/^sha256:fixture-/u, ''),
         createdAt: now,
         updatedAt: now,
         revision: 1,
@@ -150,17 +132,10 @@ export const createSyntheticHistoryMessage = (
 
     const sourceEpochMs = config.baseSourceEpochMs + sourceOrder * intervalMs;
     const sourceIso = new Date(sourceEpochMs).toISOString();
-    const speakerRole = sourceOrder % 2 === 0 ? 'user' : 'character';
-    const speakerLabel = speakerRole === 'user' ? '合成人类' : '合成角色';
-    const speakerId = speakerRole === 'user'
-        ? config.scope.personaMaskId
-        : config.scope.charId;
+    const authorChannel = sourceOrder % 2 === 0 ? 'user' : 'char';
     const content = getSyntheticContent(config.seed, sourceOrder);
     const sourceFingerprint = fixtureSha256Shape(
-        `${config.seed}|${sourceOrder}|${sourceEpochMs}|${speakerLabel}|${content}`,
-    );
-    const normalizedFingerprint = fixtureSha256Shape(
-        content.normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('zh-CN'),
+        `${config.seed}|${sourceOrder}|${sourceEpochMs}|${authorChannel}|${content}`,
     );
     const scopeKey = createHistoryScopeKey(config.scope);
 
@@ -170,10 +145,9 @@ export const createSyntheticHistoryMessage = (
         batchId: config.batchId,
         scope: { ...config.scope },
         kind: 'text',
-        speakerRole,
-        speakerId,
-        speakerLabel,
+        authorChannel,
         content,
+        rawText: `${authorChannel === 'user' ? 'user' : 'assistant'}:${content}\ntimestamp:${sourceIso}`,
         attachments: [],
         sourceOrder,
         sourceTime: {
@@ -192,14 +166,6 @@ export const createSyntheticHistoryMessage = (
             label: `synthetic-line-${sourceOrder + 1}`,
         },
         sourceFingerprint,
-        normalizedFingerprint,
-        sourceMode: 'relationship_chat',
-        continuity: 'relationship',
-        knowledge: 'shared',
-        deliveryPolicy: {
-            ...HISTORY_RAW_SOURCE_DELIVERY_POLICY,
-            allowedSurfaces: [],
-        },
         status: 'active',
         createdAt: config.importedAt,
         updatedAt: config.importedAt,

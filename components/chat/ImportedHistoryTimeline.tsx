@@ -126,7 +126,7 @@ const ImportedHistoryTimeline: React.FC<ImportedHistoryTimelineProps> = ({
           </span>
         </div>
         <p className="mt-1 text-[9px] leading-relaxed text-slate-500">
-          这里按需分页显示；回复时只携带最近一小段，不会把整份文件都塞进对话。
+          这是过去的共同创作原文，不代表此刻仍在发生；完整记录请到对话日历翻阅。
         </p>
       </div>
 
@@ -144,14 +144,15 @@ const ImportedHistoryTimeline: React.FC<ImportedHistoryTimelineProps> = ({
         </div>
       )}
 
-      <div className="space-y-3 px-3">
+      <div className="mx-3 space-y-2 rounded-[22px] border border-violet-100/80 bg-white/58 p-3 backdrop-blur-sm">
         {items.map(message => {
-          const isUser = message.speakerRole === 'user';
-          const isCharacter = message.speakerRole === 'character';
+          const isUser = message.authorChannel === 'user';
+          const isCharacter = message.authorChannel === 'char';
           if (!isUser && !isCharacter) {
             return (
               <div key={message.id} className="flex justify-center">
-                <div className="max-w-[86%] rounded-xl bg-slate-500/10 px-3 py-2 text-center text-[10px] leading-relaxed text-slate-500 backdrop-blur-sm">
+                <div className="max-w-[92%] rounded-xl bg-slate-500/10 px-3 py-2 text-left text-[10px] leading-relaxed text-slate-500 backdrop-blur-sm">
+                  <span className="mr-1 font-black text-slate-400">原文片段</span>
                   {message.content}
                 </div>
               </div>
@@ -163,10 +164,10 @@ const ImportedHistoryTimeline: React.FC<ImportedHistoryTimelineProps> = ({
                 <div className="mb-1 px-1 text-[8px] font-medium text-slate-500/80">
                   {isUser ? userName : characterName} · {messageTime(message)}
                 </div>
-                <div className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm ${
+                <div className={`whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-[11px] leading-relaxed ${
                   isUser
-                    ? 'rounded-br-md bg-violet-500 text-white'
-                    : 'rounded-bl-md border border-white/80 bg-white/90 text-slate-700 backdrop-blur-sm'
+                    ? 'bg-violet-100/75 text-violet-900'
+                    : 'border border-white/80 bg-white/90 text-slate-700'
                 }`}>
                   {message.content}
                 </div>

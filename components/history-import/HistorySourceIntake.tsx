@@ -7,19 +7,19 @@ import {
   WarningCircle,
 } from '@phosphor-icons/react';
 import type { HistoryIdentityBindingDraft } from '../../domain/historyImport/identityBinding';
-import type { HistoryReviewWorkspaceManifest } from '../../domain/historyImport/reviewWorkspace';
+import type { HistoryIntakeWorkspaceManifest } from '../../domain/historyImport/intakeWorkspace';
 import {
   MAX_HISTORY_IMPORT_FILE_BYTES,
 } from '../../utils/historyImport/parsers/sourcePreview';
 import {
-  createHistoryReviewWorkspaceFromSource,
-  type HistoryReviewWorkspaceCreateProgress,
-} from '../../utils/historyImport/storage/reviewWorkspace';
+  createHistoryIntakeWorkspaceFromSource,
+  type HistoryIntakeWorkspaceCreateProgress,
+} from '../../utils/historyImport/storage/intakeWorkspace';
 
 interface HistorySourceIntakeProps {
   enabled: boolean;
   bindingDraft?: HistoryIdentityBindingDraft;
-  onWorkspaceChange?: (workspace?: HistoryReviewWorkspaceManifest) => void;
+  onWorkspaceChange?: (workspace?: HistoryIntakeWorkspaceManifest) => void;
 }
 
 const formatBytes = (value: number): string => {
@@ -34,10 +34,10 @@ const HistorySourceIntake: React.FC<HistorySourceIntakeProps> = ({
   onWorkspaceChange,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [workspace, setWorkspace] = useState<HistoryReviewWorkspaceManifest>();
+  const [workspace, setWorkspace] = useState<HistoryIntakeWorkspaceManifest>();
   const [reading, setReading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
-  const [progress, setProgress] = useState<HistoryReviewWorkspaceCreateProgress>();
+  const [progress, setProgress] = useState<HistoryIntakeWorkspaceCreateProgress>();
 
   const bindingKey = useMemo(() => (
     enabled && bindingDraft
@@ -78,7 +78,7 @@ const HistorySourceIntake: React.FC<HistorySourceIntakeProps> = ({
       if (file.size > MAX_HISTORY_IMPORT_FILE_BYTES) {
         throw new Error('文件超过 64 MiB。为避免手机卡住，请先把文件拆小后再试。');
       }
-      const next = await createHistoryReviewWorkspaceFromSource({
+      const next = await createHistoryIntakeWorkspaceFromSource({
         bindingDraft,
         source: {
           name: file.name,
@@ -167,11 +167,10 @@ const HistorySourceIntake: React.FC<HistorySourceIntakeProps> = ({
             </button>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div className="mt-3 grid grid-cols-2 gap-2 text-center">
             {[
-              ['可直接保留', workspace.counts.accepted, 'text-emerald-600'],
-              ['稍后整理', workspace.counts.uncertain, 'text-amber-600'],
-              ['重复或空行', workspace.counts.duplicates + workspace.counts.skipped, 'text-slate-500'],
+              ['保存原文', workspace.recordableRowCount, 'text-emerald-600'],
+              ['空行 / 分隔', workspace.counts.skipped, 'text-slate-500'],
             ].map(([label, count, color]) => (
               <div key={String(label)} className="rounded-xl bg-slate-50 px-1 py-2">
                 <div className={`text-base font-black ${color}`}>{count}</div>
@@ -191,7 +190,7 @@ const HistorySourceIntake: React.FC<HistorySourceIntakeProps> = ({
             </div>
           )}
 
-          <p className="mt-3 text-center text-[9px] font-bold text-violet-600">下一步：确认分析结果，导入后直接继续聊天</p>
+          <p className="mt-3 text-center text-[9px] font-bold text-violet-600">下一步：存入本机，然后直接继续聊天</p>
         </div>
       )}
 

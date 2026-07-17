@@ -33,6 +33,22 @@ Global software shell and virtual-city time:
   consistency and keeps environment separate from plot, tasks, and memories.
 - Never redirect message/import/daily-archive/backup timestamps into world time.
 
+Historical conversation clean transport:
+
+- Keep import as a zero-question path: relationship, file, archive, Chat.
+- Preserve only explicit export channels (`user`, `assistant` / `char`), raw text,
+  source order, source locator, and source timestamp. Export channels are not
+  in-world speaker labels.
+- Keep unresolved non-empty text as neutral source fragments. Do not dedupe,
+  classify companion/plot semantics, interpret virtual time, or ask for per-row
+  correction during intake.
+- Keep raw history medium-neutral. Chat may read one historical tail under a
+  remote-text boundary; Date must not auto-resume physical staging.
+- Keep Calendar AI at a source-only HOLD base until each potential consumer
+  module and its safe evidence contract have been audited. Do not pre-create
+  event, persona, plot, relationship, tag, vector, or memory-output stores.
+- Use clean v2 local namespaces with no legacy review reader or migration.
+
 Timebook and companion structure:
 
 - Rename `时光契约` to `时光簿`.

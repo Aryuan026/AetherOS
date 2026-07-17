@@ -184,8 +184,8 @@ const smallRunA = generateSyntheticHistoryMessages(smallGeneratorConfig);
 const smallRunB = generateSyntheticHistoryMessages(smallGeneratorConfig);
 assert.deepEqual(smallRunA, smallRunB, 'same seed/config must generate byte-equivalent records');
 assert.equal(smallRunA.every(message => validateHistorySourceMessage(message).length === 0), true);
-assert.equal(smallRunA[0].speakerRole, 'user');
-assert.equal(smallRunA[1].speakerRole, 'character');
+assert.equal(smallRunA[0].authorChannel, 'user');
+assert.equal(smallRunA[1].authorChannel, 'char');
 assert.equal(smallRunA[0].sourceTime.epochMs, smallGeneratorConfig.baseSourceEpochMs);
 assert.equal(
     smallRunA[5].sourceTime.epochMs,

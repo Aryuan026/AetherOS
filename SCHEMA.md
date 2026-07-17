@@ -1059,24 +1059,38 @@ Synced public packs are stored in IndexedDB:
 
 Chat history and per-character enablement remain local to each browser.
 
-## History Import Parser V3 And Deferred Semantics
+## History Import V2 Raw Contract
 
-`history-preview-v3` adds a logical segmentation layer after TXT/DOCX source
-unit extraction:
+`history-intake-v4` is a transport parser shared by TXT and DOCX:
 
-- a line-start `user:` or `assistant:` marker starts a new logical message;
-- following wrapped lines stay attached until the next strong marker;
-- a trailing `timestamp:` line becomes source-time metadata for that message;
-- empty content and orphan timestamp units normalize to `skipped`;
-- non-empty content without a trustworthy label remains `unknown` evidence.
+- an explicit `user:` marker creates author channel `user`;
+- an explicit `assistant:` or `char:` marker creates author channel `char`;
+- those channels describe the export envelope, not the in-world speaker of each
+  roleplay sentence;
+- following wrapped lines stay attached until the next explicit channel marker;
+- a trailing `timestamp:` line is preserved as source-time evidence;
+- empty content, separators, and orphan timestamp units are skipped;
+- every other non-empty unit becomes a `source_fragment` with no author channel.
 
-The review workspace may store automatic source-label mappings for `user` and
-`assistant`. These mappings are transport hints, not user-confirmed semantic
-claims. Import settlement accepts non-empty evidence, excludes skipped/empty
-rows, defaults conversation semantics to `unknown`, and preserves source time.
+The intake manifest owns only scope, placeholder/existing identity, parser and
+source-file descriptors, row counts, row records, and a fingerprint. It has no
+speaker mapping, review decision, source mode, continuity, branch, timezone
+policy, companion/plot classification, or dedupe field.
 
-Daily archive search accepts the full `DailyArchiveMessage.role` union. UI
-consumers must render `unknown` and `system` explicitly; they must not collapse
-every non-character hit into the user label. Voice clipping remains restricted
-to positively identified user/character messages until a later Calendar editor
-can persist explicit corrections.
+The formal history archive has exactly four store families:
+
+- `history_import_batches`;
+- `history_source_messages`;
+- `history_jobs`;
+- `history_backup_receipts`.
+
+There are no event, companion projection, plot projection, tag-registry, or
+embedding stores in v2. The archive database uses the
+`AetherOS_HistoryArchive:v2:` namespace; the intake workspace and daily archive
+likewise use v2 namespaces and do not read pre-product review databases.
+
+Daily archive search renders source fragments as `原文片段`. Voice clipping is
+limited to explicit user/char export channels. `DailyArchiveAnalysisRequest`
+contains only scope, source document ids, a source revision fingerprint, a
+requested question, and creation time. `HeldDailyArchiveAnalysisRun` always has
+`status: "hold"`, `holdReason: "module_fit_unverified"`, and `output: null`.

@@ -4,13 +4,9 @@ import {
 } from './contract.ts';
 import type {
     HistoryBackupReceipt,
-    HistoryCompanionProjection,
-    HistoryEvent,
     HistoryImportBatch,
     HistoryJob,
-    HistoryPlotProjection,
     HistorySourceMessage,
-    HistoryTagDefinition,
 } from './types.ts';
 
 export const HISTORY_RESCUE_FORMAT = 'aetheros-history-rescue' as const;
@@ -19,11 +15,7 @@ export const HISTORY_RESCUE_ARCHIVE_VERSION = 1 as const;
 export const HISTORY_RESCUE_STORE_ORDER = [
     HISTORY_IMPORT_STORE_NAMES.batches,
     HISTORY_IMPORT_STORE_NAMES.sourceMessages,
-    HISTORY_IMPORT_STORE_NAMES.events,
-    HISTORY_IMPORT_STORE_NAMES.companionProjections,
-    HISTORY_IMPORT_STORE_NAMES.plotProjections,
     HISTORY_IMPORT_STORE_NAMES.jobs,
-    HISTORY_IMPORT_STORE_NAMES.tagRegistry,
     HISTORY_IMPORT_STORE_NAMES.backupReceipts,
 ] as const;
 
@@ -32,11 +24,7 @@ export type HistoryRescueStoreName = typeof HISTORY_RESCUE_STORE_ORDER[number];
 export interface HistoryRescueSections {
     history_import_batches: HistoryImportBatch[];
     history_source_messages: HistorySourceMessage[];
-    history_events: HistoryEvent[];
-    history_companion_projections: HistoryCompanionProjection[];
-    history_plot_projections: HistoryPlotProjection[];
     history_jobs: HistoryJob[];
-    memory_tag_registry: HistoryTagDefinition[];
     history_backup_receipts: HistoryBackupReceipt[];
 }
 

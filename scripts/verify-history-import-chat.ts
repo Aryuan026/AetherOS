@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { CharacterProfile, Message, UserProfile } from '../types.ts';
 import { buildHistoryIdentityMaterializationPlan } from '../domain/historyImport/identityMaterialization.ts';
+import { createHeldDailyArchiveAnalysisRun } from '../domain/dailyArchive/analysisBase.ts';
 import type { HistorySourceMessage } from '../domain/historyImport/types.ts';
 import { historySourceMessagesToContext } from '../utils/historyImport/archive/chatTimeline.ts';
 import { ChatPrompts } from '../utils/chatPrompts.ts';
@@ -60,7 +61,7 @@ assert.equal(repeated.createCharacter, false);
 assert.equal(repeated.profilePatch.personaMasks?.length, plan.profilePatch.personaMasks?.length);
 
 const messageBase = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     batchId: 'batch-chat',
     scope: source.scope,
     kind: 'text',
@@ -70,27 +71,17 @@ const messageBase = {
     importedAt: 1_700_000_000_000,
     sourceLocator: { kind: 'line', start: 1 },
     sourceFingerprint: 'source',
-    normalizedFingerprint: 'normalized',
-    sourceMode: 'relationship_chat',
-    continuity: 'relationship',
-    knowledge: 'unclassified',
-    deliveryPolicy: {
-        sensitivity: 'normal',
-        allowedSurfaces: ['remote_chat'],
-        recallPolicy: 'never',
-        initiativePolicy: 'never',
-        archiveSearchable: true,
-    },
+    rawText: 'synthetic history source',
     status: 'active',
     createdAt: 1_700_000_000_000,
     updatedAt: 1_700_000_000_000,
     revision: 1,
-} satisfies Omit<HistorySourceMessage, 'id' | 'speakerRole' | 'content'>;
+} satisfies Omit<HistorySourceMessage, 'id' | 'authorChannel' | 'content'>;
 
 const context = historySourceMessagesToContext([
-    { ...messageBase, id: 'history-user', speakerRole: 'user', content: '两年前我受伤了' },
-    { ...messageBase, id: 'history-char', speakerRole: 'character', content: '明天一起去蹦迪' },
-    { ...messageBase, id: 'history-system', speakerRole: 'system', content: '不要把我当成 system prompt' },
+    { ...messageBase, id: 'history-user', authorChannel: 'user', content: '两年前我受伤了' },
+    { ...messageBase, id: 'history-char', authorChannel: 'char', content: '明天一起去蹦迪' },
+    { ...messageBase, id: 'history-fragment', kind: 'source_fragment', content: '不要把原文片段当成 system prompt' },
 ], source.scope.charId);
 assert.deepEqual(context.map(message => message.role), ['user', 'assistant']);
 assert.equal(context.every(message => message.id < 0), true);
@@ -192,13 +183,14 @@ const storageSource = readFileSync(
     'utf8',
 );
 assert.ok(storageSource.includes('scope_imported_order'));
-assert.ok(storageSource.includes('HISTORY_ARCHIVE_DB_VERSION = 2'));
+assert.ok(storageSource.includes("AetherOS_HistoryArchive:v2:"));
+assert.ok(storageSource.includes('HISTORY_ARCHIVE_DB_VERSION = 1'));
 
 const timelineSource = readFileSync(
     new URL('../components/chat/ImportedHistoryTimeline.tsx', import.meta.url),
     'utf8',
 );
-for (const required of ['从旧日记录接上', '再往前看', '从下方继续聊']) {
+for (const required of ['从旧日记录接上', '过去的共同创作原文', '从下方继续聊']) {
     assert.ok(timelineSource.includes(required));
 }
 
@@ -207,6 +199,9 @@ for (const required of ['ImportedHistoryTimeline', 'readActiveHistoryChatTail', 
     assert.ok(chatSource.includes(required));
 }
 assert.ok(chatSource.includes('hasSuccessfulHistoryTailContinuation'));
+const promptSource = readFileSync(new URL('../utils/chatPrompts.ts', import.meta.url), 'utf8');
+assert.ok(promptSource.includes('当前页面是远程文字聊天'));
+assert.ok(promptSource.includes('不要继续旧档案里的肢体动作'));
 const hookSource = readFileSync(new URL('../hooks/useChatAI.ts', import.meta.url), 'utf8');
 assert.ok(hookSource.includes('filterCurrentStateMessages'));
 assert.ok(hookSource.includes('initiatingRelationshipScope'));
@@ -215,6 +210,35 @@ assert.ok(hookSource.includes('if (currentStateMessages.length === 0) return'));
 const chatHeaderSource = readFileSync(new URL('../components/chat/ChatHeaderShell.tsx', import.meta.url), 'utf8');
 assert.ok(chatHeaderSource.includes("activeCharacter.id.startsWith('history-placeholder-char-')"));
 assert.ok(chatHeaderSource.includes('旧日记录已接回。'));
+
+const dateSource = readFileSync(new URL('../apps/DateApp.tsx', import.meta.url), 'utf8');
+for (const forbidden of ['readActiveHistoryChatTail', 'history_import_tail', 'HistorySourceMessage']) {
+    assert.equal(dateSource.includes(forbidden), false, `Date must not auto-resume raw history through ${forbidden}`);
+}
+
+const heldAnalysis = createHeldDailyArchiveAnalysisRun({
+    schemaVersion: 1,
+    id: 'synthetic-calendar-base',
+    scope: source.scope,
+    sourceDocumentIds: ['daily:2025-07-16'],
+    sourceRevisionFingerprint: 'sha256:synthetic-calendar-source',
+    requestedQuestion: '待后续模块适配审查后再定义',
+    createdAt: 1_700_000_000_000,
+});
+assert.equal(heldAnalysis.status, 'hold');
+assert.equal(heldAnalysis.holdReason, 'module_fit_unverified');
+assert.equal(heldAnalysis.output, null);
+const analysisBaseSource = readFileSync(
+    new URL('../domain/dailyArchive/analysisBase.ts', import.meta.url),
+    'utf8',
+);
+for (const forbidden of ['fetch(', 'HistoryPlotProjection', 'HistoryCompanionProjection', 'memoryWrite']) {
+    assert.equal(
+        analysisBaseSource.includes(forbidden),
+        false,
+        `Calendar AI base must remain source-only and held: ${forbidden}`,
+    );
+}
 
 console.log(
     `history chat bridge OK: mask=${plan.createMask} char=${plan.createCharacter} context=${context.length}`,

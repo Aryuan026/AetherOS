@@ -180,11 +180,11 @@ export const historySourceMessagesToContext = (
     charId: string,
 ): Message[] => messages.flatMap(message => {
     if (message.status !== 'active' || message.kind !== 'text') return [];
-    if (message.speakerRole !== 'user' && message.speakerRole !== 'character') return [];
+    if (message.authorChannel !== 'user' && message.authorChannel !== 'char') return [];
     return [{
         id: historyContextMessageId(message.id),
         charId,
-        role: message.speakerRole === 'user' ? 'user' as const : 'assistant' as const,
+        role: message.authorChannel === 'user' ? 'user' as const : 'assistant' as const,
         type: 'text' as const,
         content: message.content,
         timestamp: historySourceMessageTimestamp(message),

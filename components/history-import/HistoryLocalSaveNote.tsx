@@ -81,7 +81,7 @@ const HistoryLocalSaveNote: React.FC<HistoryLocalSaveNoteProps> = ({
         )}
 
         {errorMessage && (
-          <p className="mt-2 text-[9px] leading-relaxed text-amber-700">暂时无法确认保存状态；不影响选择和校对文件。</p>
+          <p className="mt-2 text-[9px] leading-relaxed text-amber-700">暂时无法确认保存状态；不影响选择和解析文件。</p>
         )}
       </div>
     </details>

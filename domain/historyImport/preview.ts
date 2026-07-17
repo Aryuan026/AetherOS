@@ -1,5 +1,6 @@
 import type {
     HistoryAttachmentKind,
+    HistoryAuthorChannel,
     HistoryImportCounts,
     HistoryScope,
     HistorySourceFileDescriptor,
@@ -10,7 +11,7 @@ import type {
 } from './types';
 
 export const HISTORY_IMPORT_PREVIEW_VERSION = 1 as const;
-export const HISTORY_IMPORT_PARSER_VERSION = 'history-preview-v3';
+export const HISTORY_IMPORT_PARSER_VERSION = 'history-intake-v4';
 
 export type HistoryPreviewEncoding =
     | 'utf-8'
@@ -20,17 +21,14 @@ export type HistoryPreviewEncoding =
     | 'gb18030'
     | 'docx-xml';
 
-export type HistoryPreviewRowStatus = 'ready' | 'uncertain' | 'duplicate' | 'skipped';
+export type HistoryPreviewRowStatus = 'ready' | 'skipped';
 
 export type HistoryPreviewIssueCode =
     | 'empty_source_unit'
     | 'separator_only'
-    | 'missing_speaker'
     | 'empty_content'
-    | 'possible_continuation'
     | 'attachment_missing'
-    | 'system_or_ooc_candidate'
-    | 'exact_duplicate';
+    | 'unattributed_source_fragment';
 
 export interface HistoryPreviewAttachment {
     kind: HistoryAttachmentKind;
@@ -48,18 +46,10 @@ export interface HistoryPreviewRow {
     content: string;
     kind: HistorySourceMessageKind;
     status: HistoryPreviewRowStatus;
-    speakerLabel?: string;
+    authorChannel?: HistoryAuthorChannel;
     sourceTime: HistorySourceTime;
     attachment?: HistoryPreviewAttachment;
     issues: HistoryPreviewIssueCode[];
-    duplicateOfRowId?: string;
-    previousMeaningfulRowId?: string;
-}
-
-export interface HistoryPreviewSpeakerCandidate {
-    label: string;
-    occurrences: number;
-    exampleRowIds: string[];
 }
 
 export interface HistoryImportPreview {
@@ -76,7 +66,6 @@ export interface HistoryImportPreview {
     totalPreviewRowCount: number;
     materializedRowCount: number;
     truncated: boolean;
-    speakerCandidates: HistoryPreviewSpeakerCandidate[];
     rows: HistoryPreviewRow[];
     warnings: string[];
     rawRetained: false;

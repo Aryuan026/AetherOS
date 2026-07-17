@@ -130,10 +130,14 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
                 const selected = selectedMessageIds.has(message.id);
                 const focused = focusMessageId === message.id;
                 if (!selectable) {
+                    const sourceLabel = message.role === 'system' ? '来源说明' : '原文片段';
                     return (
                         <div key={message.id} className="flex justify-center">
                             <div className="max-w-[88%] rounded-2xl bg-slate-100 px-3 py-2 text-[10px] leading-relaxed text-slate-500">
-                                {message.content}
+                                <div className="mb-1 text-[8px] font-black tracking-wide text-slate-400">
+                                    {sourceLabel}
+                                </div>
+                                <div className="whitespace-pre-wrap break-words">{message.content}</div>
                             </div>
                         </div>
                     );

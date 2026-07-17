@@ -51,7 +51,7 @@ const searchHitSpeaker = (hit: DailyArchiveSearchHit, characterName: string): st
     if (hit.role === 'character') return characterName;
     if (hit.role === 'user') return '我';
     if (hit.role === 'system') return '来源说明';
-    return '待整理片段';
+    return '原文片段';
 };
 
 const ConversationClippingLibrary: React.FC<ConversationClippingLibraryProps> = ({

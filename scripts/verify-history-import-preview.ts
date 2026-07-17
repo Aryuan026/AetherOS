@@ -15,13 +15,13 @@ const bindingDraft = buildHistoryIdentityBindingDraft({
 });
 
 const lines = [
-    '[2024-05-01T08:30:00+08:00] 阿鸢：早上好',
-    '[2024-05-01 08:31] 糯米: 我在这里',
-    '这是一行可能的续行',
+    '[2024-05-01T08:30:00+08:00] user：早上好',
+    '[2024-05-01 08:31] assistant: 我在这里',
+    '这是一行没有作者通道的原文片段',
     '---',
-    '阿鸢：[图片]',
+    'user:[图片]',
     '[OOC]：先暂停角色扮演',
-    '[2024-05-01T08:30:00+08:00] 阿鸢：早上好',
+    '[2024-05-01T08:30:00+08:00] user：早上好',
 ];
 
 const escapeXml = (value: string): string => value
@@ -102,7 +102,7 @@ const normalizedSignature = (preview: typeof txtPreview) => preview.rows.map(row
     sourceOrder: row.sourceOrder,
     originalText: row.originalText,
     content: row.content,
-    speakerLabel: row.speakerLabel,
+    authorChannel: row.authorChannel,
     time: row.sourceTime.originalText,
     precision: row.sourceTime.precision,
     kind: row.kind,
@@ -120,13 +120,15 @@ assert.match(docxPreview.rows[2].sourceLocator.label || '', /表格 1/);
 assert.equal(txtPreview.rows[0].sourceLocator.kind, 'line');
 assert.equal(txtPreview.rows[0].sourceTime.iso, '2024-05-01T08:30:00+08:00');
 assert.equal(txtPreview.rows[0].sourceTime.timezone, '+08:00');
-assert.equal(txtPreview.rows[2].status, 'uncertain');
-assert.ok(txtPreview.rows[2].issues.includes('possible_continuation'));
+assert.equal(txtPreview.rows[2].status, 'ready');
+assert.equal(txtPreview.rows[2].kind, 'source_fragment');
+assert.ok(txtPreview.rows[2].issues.includes('unattributed_source_fragment'));
 assert.equal(txtPreview.rows[3].status, 'skipped');
 assert.equal(txtPreview.rows[4].kind, 'attachment_placeholder');
 assert.equal(txtPreview.rows[4].attachment?.available, false);
-assert.equal(txtPreview.rows[5].kind, 'system_note');
-assert.equal(txtPreview.rows[6].status, 'duplicate');
+assert.equal(txtPreview.rows[5].kind, 'source_fragment');
+assert.equal(txtPreview.rows[6].status, 'ready');
+assert.equal(txtPreview.counts.duplicates, 0);
 assert.equal(txtPreview.counts.committed, 0);
 assert.equal(txtPreview.rawRetained, false);
 assert.equal(txtPreview.persistence, 'memory_only');
@@ -157,22 +159,18 @@ const paidDocxPreview = await buildHistoryImportPreview({
 const paidMeaningfulRows = paidDocxPreview.rows.filter(row => row.status !== 'skipped');
 
 assert.deepEqual(normalizedSignature(paidDocxPreview), normalizedSignature(paidTxtPreview));
-assert.equal(paidDocxPreview.parserVersion, 'history-preview-v3');
+assert.equal(paidDocxPreview.parserVersion, 'history-intake-v4');
 assert.equal(paidDocxPreview.sourceUnitCount, 8);
 assert.equal(paidDocxPreview.totalPreviewRowCount, 5);
 assert.equal(paidDocxPreview.counts.accepted, 3);
 assert.equal(paidDocxPreview.counts.uncertain, 0);
 assert.equal(paidDocxPreview.counts.skipped, 2);
 assert.deepEqual(
-    paidDocxPreview.speakerCandidates.map(candidate => [candidate.label, candidate.occurrences]),
-    [['assistant', 2], ['user', 1]],
-);
-assert.deepEqual(
-    paidMeaningfulRows.map(row => [row.speakerLabel, row.sourceTime.originalText, row.sourceTime.precision]),
+    paidMeaningfulRows.map(row => [row.authorChannel, row.sourceTime.originalText, row.sourceTime.precision]),
     [
-        ['assistant', '2025-07-16 12:04:35', 'exact'],
+        ['char', '2025-07-16 12:04:35', 'exact'],
         ['user', '2025-07-16 12:07:24', 'exact'],
-        ['assistant', '2025-07-16 12:07:25', 'exact'],
+        ['char', '2025-07-16 12:07:25', 'exact'],
     ],
 );
 assert.equal(paidMeaningfulRows[0].sourceTime.iso, '2025-07-16T12:04:35');
@@ -181,7 +179,6 @@ assert.match(paidMeaningfulRows[0].originalText, /timestamp:2025-07-16 12:04:35/
 assert.equal(paidMeaningfulRows[0].sourceLocator.start, 1);
 assert.equal(paidMeaningfulRows[0].sourceLocator.end, 2);
 assert.equal(paidMeaningfulRows[0].sourceLocator.label, '第 1-2 段');
-assert.equal(paidDocxPreview.speakerCandidates.some(candidate => candidate.label === 'timestamp'), false);
 
 const oneParagraphExport = [
     'assistant:第一句仍在同一个 Word 段落里',
@@ -204,11 +201,11 @@ assert.equal(oneParagraphPreview.totalPreviewRowCount, 3);
 assert.equal(oneParagraphPreview.counts.accepted, 3);
 assert.equal(oneParagraphPreview.counts.uncertain, 0);
 assert.deepEqual(
-    oneParagraphPreview.rows.map(row => [row.speakerLabel, row.sourceTime.originalText]),
+    oneParagraphPreview.rows.map(row => [row.authorChannel, row.sourceTime.originalText]),
     [
-        ['assistant', '2025-07-16 12:04:35'],
+        ['char', '2025-07-16 12:04:35'],
         ['user', '2025-07-16 12:07:24'],
-        ['assistant', '2025-07-16 12:07:25'],
+        ['char', '2025-07-16 12:07:25'],
     ],
 );
 assert.match(oneParagraphPreview.rows[0].content, /只是角色正文的换行/u);
@@ -223,8 +220,8 @@ const wpsSelfClosingPreview = await buildHistoryImportPreview({
 });
 const wpsMeaningfulRows = wpsSelfClosingPreview.rows.filter(row => row.status !== 'skipped');
 assert.deepEqual(
-    wpsMeaningfulRows.map(row => [row.speakerLabel, row.content, row.sourceTime.originalText]),
-    paidMeaningfulRows.map(row => [row.speakerLabel, row.content, row.sourceTime.originalText]),
+    wpsMeaningfulRows.map(row => [row.authorChannel, row.content, row.sourceTime.originalText]),
+    paidMeaningfulRows.map(row => [row.authorChannel, row.content, row.sourceTime.originalText]),
 );
 assert.equal(wpsSelfClosingPreview.sourceUnitCount, 9);
 assert.equal(wpsSelfClosingPreview.totalPreviewRowCount, 6);
@@ -241,8 +238,7 @@ const orphanTimestampPreview = await buildHistoryImportPreview({
 });
 assert.equal(orphanTimestampPreview.rows[0].status, 'skipped');
 assert.ok(orphanTimestampPreview.rows[0].issues.includes('empty_content'));
-assert.equal(orphanTimestampPreview.rows[0].speakerLabel, undefined);
-assert.equal(orphanTimestampPreview.speakerCandidates.some(candidate => candidate.label === 'timestamp'), false);
+assert.equal(orphanTimestampPreview.rows[0].authorChannel, undefined);
 
 const separatedTimestampPreview = await buildHistoryImportPreview({
     name: 'synthetic-separated-timestamp.txt',
@@ -277,8 +273,9 @@ const utf16Preview = await buildHistoryImportPreview({
     bindingDraft,
 });
 assert.equal(utf16Preview.encoding, 'utf-16le');
-assert.equal(utf16Preview.rows[0].speakerLabel, '阿鸢');
-assert.equal(utf16Preview.rows[0].content, 'UTF16 也能回家');
+assert.equal(utf16Preview.rows[0].authorChannel, undefined);
+assert.equal(utf16Preview.rows[0].kind, 'source_fragment');
+assert.equal(utf16Preview.rows[0].content, '阿鸢：UTF16 也能回家');
 
 await assert.rejects(
     buildHistoryImportPreview({

@@ -12,7 +12,7 @@ import {
   buildHistoryIdentityMaterializationPlan,
   type HistoryIdentityMaterializationPlan,
 } from '../../domain/historyImport/identityMaterialization';
-import type { HistoryReviewWorkspaceManifest } from '../../domain/historyImport/reviewWorkspace';
+import type { HistoryIntakeWorkspaceManifest } from '../../domain/historyImport/intakeWorkspace';
 import {
   activatePreparedHistoryArchiveCandidate,
   prepareHistoryArchiveCandidateFromWorkspace,
@@ -22,8 +22,9 @@ import {
 import { syncActiveHistoryToDailyArchive } from '../../utils/dailyArchive/historySync';
 
 interface HistoryArchiveCommitProps {
-  workspace: HistoryReviewWorkspaceManifest;
+  workspace: HistoryIntakeWorkspaceManifest;
   onCommittedChange: (committed: boolean | undefined) => void;
+  onWorkspaceSettled?: (workspaceId: string) => void | Promise<void>;
   startImmediately?: boolean;
   openChatAfterCommit?: boolean;
 }
@@ -47,6 +48,7 @@ const progressText = (progress?: HistoryArchiveCandidateProgress): string => {
 const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
   workspace,
   onCommittedChange,
+  onWorkspaceSettled,
   startImmediately = false,
   openChatAfterCommit = false,
 }) => {
@@ -84,6 +86,7 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
   const finishCommitted = async (
     nextStage: Extract<CommitStage, 'active' | 'already_imported'>,
     sourceMessageCount: number,
+    options: { openChat: boolean; settleWorkspace: boolean; syncDailyArchive: boolean },
   ) => {
     setCompletedCount(sourceMessageCount);
     setStage(nextStage);
@@ -94,21 +97,36 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
     } catch (error) {
       setIdentityError(error instanceof Error ? error.message : '身份入口暂时没有建好。');
     }
-    if (workspace.decision?.scope) {
+    const syncDailyArchive = async () => {
+      try {
+        await syncActiveHistoryToDailyArchive({ scope: workspace.scope });
+        setDailyArchiveStatus('ready');
+      } catch (error) {
+        console.warn('Daily archive sync after import failed', error);
+        setDailyArchiveStatus('failed');
+      }
+    };
+    const shouldOpenChat = openChatAfterCommit && options.openChat;
+    if (options.syncDailyArchive) {
       setDailyArchiveStatus('syncing');
-      const syncDailyArchive = async () => {
-        try {
-          await syncActiveHistoryToDailyArchive({ scope: workspace.decision!.scope });
-          setDailyArchiveStatus('ready');
-        } catch (error) {
-          console.warn('Daily archive sync after import failed', error);
-          setDailyArchiveStatus('failed');
-        }
-      };
-      if (openChatAfterCommit) void syncDailyArchive();
+      if (shouldOpenChat) void syncDailyArchive();
       else await syncDailyArchive();
     }
-    if (openChatAfterCommit && nextIdentityPlan && !openedChatRef.current) {
+
+    if (options.settleWorkspace && onWorkspaceSettled) {
+      try {
+        await onWorkspaceSettled(workspace.id);
+      } catch (error) {
+        console.warn('History intake workspace cleanup failed', error);
+        addToast('聊天已经导入，但本次解析草稿暂时没有清掉', 'info');
+      }
+    }
+
+    if (nextStage === 'already_imported' && options.settleWorkspace) {
+      addToast('这份文件已经导入过，没有重复写入', 'info');
+    }
+
+    if (shouldOpenChat && nextIdentityPlan && !openedChatRef.current) {
       openedChatRef.current = true;
       updateUserProfile(nextIdentityPlan.activationPatch);
       setActiveCharacterId(nextIdentityPlan.character.id);
@@ -127,11 +145,19 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
         onProgress: setProgress,
       });
       if (candidate.status === 'already_imported') {
-        await finishCommitted('already_imported', candidate.sourceMessageCount);
+        await finishCommitted('already_imported', candidate.sourceMessageCount, {
+          openChat: false,
+          settleWorkspace: true,
+          syncDailyArchive: false,
+        });
         return;
       }
       await activatePreparedHistoryArchiveCandidate({ candidate });
-      await finishCommitted('active', candidate.sourceMessageCount);
+      await finishCommitted('active', candidate.sourceMessageCount, {
+        openChat: true,
+        settleWorkspace: true,
+        syncDailyArchive: true,
+      });
     } catch (error) {
       setStage('idle');
       setErrorMessage(error instanceof Error ? error.message : '暂时无法导入这份历史档案。');
@@ -148,7 +174,11 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
       .then(async status => {
         if (cancelled) return;
         if (status) {
-          await finishCommitted('already_imported', status.sourceMessageCount);
+          await finishCommitted('already_imported', status.sourceMessageCount, {
+            openChat: false,
+            settleWorkspace: true,
+            syncDailyArchive: false,
+          });
         } else if (startImmediately) {
           await performImport();
         } else {
@@ -280,7 +310,7 @@ const HistoryArchiveCommit: React.FC<HistoryArchiveCommitProps> = ({
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-xs font-black text-white shadow-[0_10px_24px_rgba(124,58,237,0.24)]"
         >
           <TrayArrowDown size={16} weight="bold" />
-          {openChatAfterCommit ? '导入并继续聊天' : `导入 ${workspace.decision?.counts.included ?? 0} 条聊天`}
+          {openChatAfterCommit ? '导入并继续聊天' : `导入 ${workspace.recordableRowCount} 条聊天`}
         </button>
       )}
 
