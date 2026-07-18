@@ -92,12 +92,26 @@ export type HistoricalMemoryPolicy =
     | 'dream_material'
     | 'source_only';
 
+/**
+ * Who may receive a historical interpretation. This is deliberately stored on
+ * every derived entity instead of inferred from the App that happens to read
+ * it: one relationship archive must never become public merely because it is
+ * opened from a shared surface.
+ */
+export type HistoricalKnowledgeScope =
+    | 'relationship_private'
+    | 'char_private'
+    | 'user_private'
+    | 'shared'
+    | 'public_safe';
+
 export interface HistoricalDerivedBase {
     id: string;
     scope: HistoryScope;
     temporalClass: 'historical';
     sourceRefs: HistorySourceSpan[];
     authority: HistoricalAuthority;
+    knowledge: HistoricalKnowledgeScope;
     confidence: number;
     status: HistoricalResultStatus;
     analysisRunId: string;

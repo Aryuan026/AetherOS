@@ -1,5 +1,39 @@
 # AetherOS Progress
 
+## 2026-07-18 Whole-Phone Historical Delivery Boundary
+
+- done:
+  - Added one full `progressBundleId + personaMaskId + charId` historical
+    selector over the resolved multi-pass workspace. Historical candidates keep
+    temporal class, authority, knowledge/privacy, source refs, and correction
+    status; they never become live open threads or hot state.
+  - Classified every audited AI-facing surface as required, filtered, shared,
+    HOLD, or no-history. Shared/HOLD/no-history surfaces do not open the history
+    database. Group Chat and Social accept only confirmed shared/public-safe
+    evidence.
+  - Wired the scoped selector into Chat, both proactive-message paths, Call,
+    Date/Meeting, and per-member Group Chat. Remaining reflective/creative App
+    adapters are named explicitly in the surface audit instead of inheriting
+    access by accident.
+  - Added explicit historical knowledge scope to every derived analysis entity.
+    Exact duplicate resolution merges toward the more private boundary, so a
+    public duplicate cannot downgrade private evidence.
+  - Rebuilt Settings `记忆回声` receipts as v2 metadata-only rows: human-readable
+    mask × character identity, actual consumer surface, candidate titles,
+    source class, and authority. Prompt/raw-text preview and route membership
+    counts are not stored.
+- verified:
+  - New fixtures cover exhaustive surface classification, private/public Group
+    filtering, query-gated consumers, zero DB reads for shared/HOLD surfaces,
+    cross-mask and cross-reader-scope rejection, historical open-thread
+    non-activation, and receipt privacy.
+  - `npm run verify:history-import` passes with the new selector gate.
+- boundary:
+  - Calendar model execution and UI remain HOLD. Contact impression, Exchange
+    Diary, StoryDesk UI, Guidebook, Social, Special Moments, Check Phone,
+    Songwriting, and Companion Plan runtime adapters remain separate follow-up
+    boxes; their access policy already exists and fails closed until wired.
+
 ## 2026-07-18 Multi-pass History Interpretation Foundation
 
 - done:
@@ -25,9 +59,10 @@
     `npm run verify:narrative`, and `npm run verify:health` pass. The build keeps
     only the known Vite large-chunk warning.
 - boundary:
-  - This is the reusable data/read foundation only. Calendar model calls,
-    analysis UI, destination editing UI, full-phone selector delivery,
-    contradiction notices, vector retrieval, and backup inclusion remain HOLD.
+  - This is the reusable data/read foundation only. Full-phone selector delivery
+    is implemented in the later section above; Calendar model calls, analysis
+    UI, destination editing UI, contradiction notices, vector retrieval, and
+    backup inclusion remain HOLD.
 
 ## 2026-07-18 Whole-Phone History Reuse Audit
 
@@ -44,15 +79,15 @@
   - Persona policy is mask-scoped for several relationship surfaces, shared for
     Study/Worldbook, and HOLD for TRPG/LifeSim; several Apps still lack an
     explicit progress-surface policy.
-- planned:
-  - Add one full-scope historical selector under `memoryCore`, keep
-    `ContextBuilder` DB-free, classify every AI-facing App, and deliver sparse
+- implemented:
+  - Added the full-scope selector under `memoryCore`, kept `ContextBuilder`
+    DB-free, classified every audited AI-facing App, and delivered sparse
     surface-appropriate projections without per-App history copies.
-  - Use Settings `记忆回声` to prove actual surface delivery, without exposing raw
-    private text or route-membership counts.
+  - Settings `记忆回声` now proves the actual surface delivery without raw private
+    text or route-membership counts.
 - boundary:
-  - Calendar model execution and full-phone wiring remain HOLD until multi-pass
-    storage and fail-closed scope/policy tests exist.
+  - Calendar model execution remains HOLD. Reflective and creative runtime
+    adapters continue as explicit, testable follow-up boxes.
   - See `docs/HISTORY_REUSE_SURFACE_AUDIT.md` for the complete surface map.
 
 ## 2026-07-18 Multi-pass History Reuse Planning Contract

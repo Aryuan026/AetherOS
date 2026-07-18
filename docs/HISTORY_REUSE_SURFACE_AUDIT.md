@@ -1,6 +1,6 @@
 # Historical Reuse Surface Audit
 
-Status: code-grounded planning contract; runtime wiring HOLD
+Status: shared selector and first runtime consumers implemented; remaining App adapters staged
 
 Last audited: 2026-07-18
 
@@ -25,20 +25,23 @@ changing the source or any sibling association.
 
 ## Current Code Facts
 
-### Existing history projection is narrow
+### Historical projection now has one scoped runtime boundary
 
-- `utils/historyImport/analysis/readAdapters.ts` currently projects one active
-  snapshot into Contact-memory rows, Timebook rows, and one narrative profile.
+- `utils/historyImport/analysis/readAdapters.ts` projects the resolved workspace
+  into Contact-memory rows, Timebook rows, and one narrative profile, and also
+  exposes the same resolved interpretation to the shared selector.
 - `domain/narrative/directorContext.ts` already consumes the narrative profile
   behind a full `progressBundleId + personaMaskId + charId` read-only boundary.
-- No other runtime selector currently reads this projection.
+- `utils/memoryCore/historicalSelector.ts` is the sole full-scope runtime read
+  boundary. Its surface policy is exhaustive and fail-closed.
 
-### The common dynamic selector is still character-only
+### The common dynamic selector now carries relationship scope
 
 - `utils/memoryCore/selector.ts` selects from `char.memories`, anniversaries,
   first-contact assets, recent live messages, hot state, and voice core.
-- Its input currently carries `char + user + mode`; it does not require a full
-  relationship scope and does not read historical-analysis results.
+- Its input requires `progressBundleId + personaMaskId + charId` and a consumer
+  surface. Historical reads must match the currently active mask and bundle;
+  a mismatched reader result is rejected.
 - Its current modes cover remote Chat, meeting, date, proactive letter,
   Timebook, and Call only.
 
@@ -47,7 +50,7 @@ contract must be upgraded before imported history is attached.
 
 ### Current prompt consumers are split
 
-Already using `selectWorldlineMemoryContext()`:
+Using the scoped `selectWorldlineMemoryContext()` runtime path now:
 
 - Chat through `hooks/useChatAI.ts`;
 - proactive letters through `hooks/useCompanionWakeupRuntime.ts` and
@@ -56,8 +59,9 @@ Already using `selectWorldlineMemoryContext()`:
 - meeting/date through `apps/DateApp.tsx`;
 - per-member Group Chat through `apps/GroupChat.tsx`.
 
-Using `ContextBuilder` or locally assembled recent messages without the shared
-dynamic selector:
+Still using `ContextBuilder` or locally assembled recent messages without the
+shared dynamic selector (their policy is declared, but runtime wiring remains
+an explicit later patch rather than an implied permission):
 
 - Contact relationship impression and memory tools;
 - Exchange Diary;
@@ -80,10 +84,9 @@ cannot be treated as an implied permission to inject history.
 
 ### Persona-scope coverage is also incomplete
 
-`utils/userPersonaMasks.ts` currently declares mask-scoped policy for Chat,
-Group Chat, Call, Date, Social, Novel, Guidebook, Special Moments, and Timebook.
-It declares Study and Worldbook shared, and TRPG/LifeSim HOLD. Several other
-Apps are not yet represented in `UserProgressSurface`.
+`utils/userPersonaMasks.ts` now declares all audited relationship surfaces.
+Study and Worldbook remain shared; Room, TRPG, LifeSim, Bank, and the generic
+game surface remain HOLD.
 
 `utils/personaRouteScope.ts` is actively used by Date, Call, Group Chat, Social,
 Special Moments, Character, and Novel workspace selection. This is useful, but
@@ -112,8 +115,7 @@ through behavior in the Apps where they interact.
 
 ## Required Shared Read Boundary
 
-Before Calendar model execution is enabled, introduce one full-scope read
-contract under `memoryCore` (name provisional):
+The implemented boundary lives under `memoryCore`:
 
 ```ts
 interface HistoricalRelationshipDeliveryInput {
@@ -207,15 +209,18 @@ data-model topology.
 
 ## Implementation Gate
 
-The multi-pass workspace/binding/overlay foundation has now replaced the
-single-snapshot runtime cleanly. Calendar model execution remains HOLD until:
+The multi-pass workspace/binding/overlay foundation and shared historical
+selector are now implemented. Calendar model execution remains HOLD. Gate
+status:
 
-1. the shared historical selector requires full relationship scope and fails
-   closed when scope is missing or mismatched;
-2. every AI-facing App is classified as `required`, `filtered`, `shared`,
-   `hold`, or `no-history`;
-3. required consumers use the shared pipeline rather than direct store reads;
-4. tests prove no history delivery to shared/HOLD surfaces and no cross-mask or
-   cross-character leakage;
-5. delivery receipts identify the actual consumer surface and imported-history
+1. DONE — the shared historical selector requires full relationship scope and
+   fails closed when scope is missing or mismatched;
+2. DONE — every audited AI-facing App is classified as `required`, `filtered`,
+   `shared`, `hold`, or `no-history`;
+3. PARTIAL — Chat, proactive letters, Group Chat, Call, and Date/Meeting use the
+   shared pipeline. Reflective/creative App adapters listed above remain
+   explicit follow-up work;
+4. DONE — tests prove no history database read for shared/HOLD surfaces and no
+   cross-mask/cross-character delivery;
+5. DONE — delivery receipts identify the actual consumer surface and imported-history
    source without exposing route counts.

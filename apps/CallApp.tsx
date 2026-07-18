@@ -21,6 +21,7 @@ import {
   summarizeCallKeepsakeLine,
 } from '../utils/callTranscript';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import { relationshipScopeForProfile } from '../utils/messageContext';
 type CallState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'ended' | 'error';
 type ViewMode = 'role-select' | 'in-call' | 'history' | 'record-detail';
 type CallBubble = { id: string; dbId?: number; role: 'user' | 'assistant'; text: string; time: string; audioUrl?: string; timestamp: number };
@@ -838,6 +839,8 @@ const CallApp: React.FC = () => {
           char: selectedChar,
           user: userProfile,
           mode: 'call',
+          surface: 'call',
+          relationshipScope: relationshipScopeForProfile(selectedChar.id, userProfile)!,
           currentMessages: recentForMemory,
           query: input,
           budgetChars: 1000,

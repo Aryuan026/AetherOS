@@ -112,6 +112,7 @@ const derivedBase = (input: {
     temporalClass: 'historical',
     sourceRefs: [{ ...sourceRef, messageIds: [...(sourceRef.messageIds || [])] }],
     authority: 'source_inferred',
+    knowledge: 'relationship_private',
     confidence: 0.82,
     status: 'soft_canon',
     analysisRunId: input.analysisRunId,

@@ -1,4 +1,6 @@
 import type {
+    HistoricalAuthority,
+    HistoricalKnowledgeScope,
     HistoricalNarrativeProfile,
     HistorySourceSpan,
     ResolvedHistoricalInterpretation,
@@ -21,6 +23,8 @@ export interface HistoricalContactMemoryRow {
     sourceRefs: HistorySourceSpan[];
     interpretationWorkspaceId: string;
     provenanceRef: string;
+    authority: HistoricalAuthority;
+    knowledge: HistoricalKnowledgeScope;
 }
 
 export interface HistoricalTimebookRow {
@@ -37,6 +41,8 @@ export interface HistoricalTimebookRow {
     sourceRefs: HistorySourceSpan[];
     interpretationWorkspaceId: string;
     provenanceRef: string;
+    authority: HistoricalAuthority;
+    knowledge: HistoricalKnowledgeScope;
 }
 
 export interface HistoricalRelationshipViews {
@@ -85,6 +91,8 @@ export const projectHistoricalRelationshipViews = (
                 sourceRefs: clone(memory.sourceRefs),
                 interpretationWorkspaceId: resolved.workspaceId,
                 provenanceRef: memory.id,
+                authority: memory.authority,
+                knowledge: memory.knowledge,
             };
         }),
         timebookNodes: resolved.timebookNodes.map(node => {
@@ -104,6 +112,8 @@ export const projectHistoricalRelationshipViews = (
                 sourceRefs: clone(node.sourceRefs),
                 interpretationWorkspaceId: resolved.workspaceId,
                 provenanceRef: node.id,
+                authority: node.authority,
+                knowledge: node.knowledge,
             };
         }),
         narrativeProfile: resolved.narrativeProfile ? clone(resolved.narrativeProfile) : null,
@@ -116,4 +126,12 @@ export const readHistoricalRelationshipViews = async (input: {
 }): Promise<HistoricalRelationshipViews> => {
     const bundle = await getHistoricalInterpretationBundle(input);
     return projectHistoricalRelationshipViews(bundle ? resolveHistoricalInterpretation(bundle) : null);
+};
+
+export const readResolvedHistoricalInterpretation = async (input: {
+    scope: HistoryScope;
+    factory?: IDBFactory;
+}): Promise<ResolvedHistoricalInterpretation | null> => {
+    const bundle = await getHistoricalInterpretationBundle(input);
+    return bundle ? resolveHistoricalInterpretation(bundle) : null;
 };

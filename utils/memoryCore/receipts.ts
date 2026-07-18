@@ -7,7 +7,7 @@ import type {
   WorldlineSelectorInput,
 } from './types';
 
-const RECEIPTS_STORAGE_KEY = 'aetheros_worldline_memory_receipts_v1';
+const RECEIPTS_STORAGE_KEY = 'aetheros_worldline_memory_receipts_v2';
 const RECEIPT_SETTINGS_STORAGE_KEY = 'aetheros_worldline_memory_receipt_settings_v1';
 const MAX_RECEIPTS = 80;
 
@@ -56,30 +56,6 @@ const emitReceiptUpdate = (): void => {
   window.dispatchEvent(new CustomEvent(WORLDLINE_MEMORY_RECEIPTS_UPDATED_EVENT));
 };
 
-const stripMarkdown = (markdown: string): string => {
-  const blocked = [
-    '不要逐条汇报',
-    '只在对话需要时',
-    '以下是',
-    '当前入口',
-    '递送',
-    '预算',
-    '线索',
-    '回响',
-    '语言指纹',
-    '近况热层',
-  ];
-  const text = markdown
-    .split('\n')
-    .map(line => line.replace(/[#>*`-]/g, '').trim())
-    .filter(line => line.length > 0)
-    .filter(line => !blocked.some(keyword => line.includes(keyword)))
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return (text || markdown.replace(/[#>*`-]/g, '').replace(/\s+/g, ' ').trim()).slice(0, 180);
-};
-
 export const loadWorldlineMemoryReceiptSettings = (): WorldlineMemoryReceiptSettings => ({
   ...defaultSettings,
   ...readJson<Partial<WorldlineMemoryReceiptSettings>>(RECEIPT_SETTINGS_STORAGE_KEY, {}),
@@ -106,31 +82,49 @@ export const clearWorldlineMemoryReceipts = (): void => {
   emitReceiptUpdate();
 };
 
-export const recordWorldlineMemoryReceipt = (
+export const buildWorldlineMemoryReceipt = (
   input: WorldlineSelectorInput,
   context: WorldlinePromptContext,
-): void => {
-  if (!loadWorldlineMemoryReceiptSettings().enabled) return;
-
-  const receipt: WorldlineMemoryReceipt = {
-    id: `${input.char.id}-${input.mode}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    at: Date.now(),
+  at = Date.now(),
+): WorldlineMemoryReceipt => {
+  const personaMask = input.user.personaMasks?.find(item => item.id === input.relationshipScope.personaMaskId);
+  const progressBundle = input.user.progressBundles?.find(item => item.id === input.relationshipScope.progressBundleId);
+  return {
+    id: `${input.char.id}-${input.mode}-${at}-${Math.random().toString(36).slice(2, 8)}`,
+    at,
     charId: input.char.id,
     charName: input.char.name,
     mode: input.mode,
+    surface: input.surface,
+    relationshipScope: { ...input.relationshipScope },
+    personaMaskLabel: personaMask?.label || '当前面具',
+    progressBundleLabel: progressBundle?.label || '当前关系进度',
     origin: input.origin || modeOrigin[input.mode],
     delivered: context.markdown.trim().length > 0,
     candidateCount: context.candidates.length,
     openThreadCount: context.openThreads.length,
     candidateTitles: context.candidates.map(item => item.title).slice(0, 4),
     openThreadTitles: context.openThreads.map(item => item.title).slice(0, 3),
-    markdownPreview: stripMarkdown(context.markdown),
     budgetChars: context.budgetChars,
     warnings: context.warnings,
     deliveryTier: context.deliveryProfile?.tier,
     hotStateDelivered: Boolean(context.hotState),
     voiceFingerprintCount: context.voiceLineTitles?.length || 0,
+    historicalCandidateCount: context.historicalDelivery.candidateCount,
+    historicalCandidateTitles: context.historicalDelivery.candidateTitles,
+    historicalSourceKinds: context.historicalDelivery.sourceKinds,
+    historicalAuthorities: context.historicalDelivery.authorities,
+    historicalDisposition: context.historicalDelivery.disposition,
   };
+};
+
+export const recordWorldlineMemoryReceipt = (
+  input: WorldlineSelectorInput,
+  context: WorldlinePromptContext,
+): void => {
+  if (!loadWorldlineMemoryReceiptSettings().enabled) return;
+
+  const receipt = buildWorldlineMemoryReceipt(input, context);
 
   const next = [receipt, ...loadWorldlineMemoryReceipts()].slice(0, MAX_RECEIPTS);
   writeJson(RECEIPTS_STORAGE_KEY, next);

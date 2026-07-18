@@ -13,7 +13,8 @@ const clip = (value: string, max: number): string => {
 const formatCandidate = (candidate: WorldlineMemoryCandidate): string => {
   const date = candidate.happenedAt ? `${candidate.happenedAt} · ` : '';
   const scope = candidate.continuity === 'branch' ? '分支' : candidate.continuity === 'canon' ? '原作' : '关系';
-  return `- [${scope}] ${date}${candidate.title}: ${clip(candidate.summary, 120)}`;
+  const temporal = candidate.temporalClass === 'historical' ? '旧日·' : '';
+  return `- [${temporal}${scope}] ${date}${candidate.title}: ${clip(candidate.summary, 120)}`;
 };
 
 const formatThread = (thread: WorldlineOpenThread): string => (
@@ -41,11 +42,21 @@ export const formatWorldlinePromptBlock = (
     lines.push(options.hotStateMarkdown.trim());
   }
 
-  if (candidates.length > 0) {
+  const liveCandidates = candidates.filter(candidate => candidate.temporalClass !== 'historical');
+  const historicalCandidates = candidates.filter(candidate => candidate.temporalClass === 'historical');
+
+  if (liveCandidates.length > 0) {
     if (lines.length > 0) lines.push('');
     lines.push('### 世界线交汇记忆');
     lines.push('以下是当前入口可自然参考的少量关系/剧情交汇点。不要逐条复述，只在对话需要时化成你的反应。');
-    candidates.forEach(candidate => lines.push(formatCandidate(candidate)));
+    liveCandidates.forEach(candidate => lines.push(formatCandidate(candidate)));
+  }
+
+  if (historicalCandidates.length > 0) {
+    if (lines.length > 0) lines.push('');
+    lines.push('### 旧日关系证据（不是当前状态）');
+    lines.push('这些内容只帮助你接住已经形成的关系与旧剧情。旧伤、旧情绪、旧地点、当时说的“明天”和未完成约定都不代表现在仍成立；不得据此生成当前关怀、待办、生活状态或自动续演旧场景。');
+    historicalCandidates.forEach(candidate => lines.push(formatCandidate(candidate)));
   }
 
   if (openThreads.length > 0) {

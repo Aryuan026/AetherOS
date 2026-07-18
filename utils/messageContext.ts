@@ -42,6 +42,26 @@ export const relationshipScopeForProfile = (
     };
 };
 
+/**
+ * Historical memory is stricter than legacy live-message storage. It only
+ * opens when the active mask and progress bundle point to each other exactly;
+ * no fallback mask or current-character guess is allowed.
+ */
+export const strictRelationshipScopeForProfile = (
+    charId: string,
+    userProfile: UserProfile | null | undefined,
+): MessageRelationshipScope | undefined => {
+    if (!userProfile || !nonEmptyString(charId)) return undefined;
+    const personaMaskId = userProfile.activePersonaMaskId;
+    const progressBundleId = userProfile.activeProgressBundleId;
+    if (!nonEmptyString(personaMaskId) || !nonEmptyString(progressBundleId)) return undefined;
+    const mask = userProfile.personaMasks?.find(item => item.id === personaMaskId);
+    const bundle = userProfile.progressBundles?.find(item => item.id === progressBundleId);
+    if (!mask || !bundle) return undefined;
+    if (mask.progressBundleId !== progressBundleId || bundle.maskId !== personaMaskId) return undefined;
+    return { progressBundleId, personaMaskId, charId };
+};
+
 export const relationshipScopeFromMessage = (
     message: Pick<Message, 'charId' | 'metadata'>,
 ): MessageRelationshipScope | undefined => {

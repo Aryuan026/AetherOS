@@ -14,6 +14,7 @@ const verificationModules = [
     './verify-history-import-archive.ts',
     './verify-history-import-chat.ts',
     './verify-history-analysis-foundation.ts',
+    './verify-historical-reuse-selector.ts',
     './verify-daily-archive.ts',
 ] as const;
 

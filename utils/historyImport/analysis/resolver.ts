@@ -70,6 +70,23 @@ const strongerAuthority = (
         : right
 );
 
+const HISTORICAL_KNOWLEDGE_PRIVACY_ORDER: HistoricalDerivedBase['knowledge'][] = [
+    'public_safe',
+    'shared',
+    'relationship_private',
+    'char_private',
+    'user_private',
+];
+
+const morePrivateKnowledge = (
+    left: HistoricalDerivedBase['knowledge'],
+    right: HistoricalDerivedBase['knowledge'],
+): HistoricalDerivedBase['knowledge'] => (
+    HISTORICAL_KNOWLEDGE_PRIVACY_ORDER.indexOf(left) >= HISTORICAL_KNOWLEDGE_PRIVACY_ORDER.indexOf(right)
+        ? left
+        : right
+);
+
 const entityKind = (entity: ResolvableEntity): HistoryEvidenceTargetKind => entity.kind;
 
 const editableFields: Record<HistoryEvidenceTargetKind, readonly string[]> = {
@@ -109,6 +126,7 @@ const userBase = (
     temporalClass: 'historical',
     sourceRefs: clone(overlay.sourceRefs),
     authority: 'user_confirmed',
+    knowledge: 'relationship_private',
     confidence: 1,
     status: 'confirmed',
     analysisRunId: `user-overlay:${overlay.seriesId}`,
@@ -278,6 +296,7 @@ const mergeEntries = <T extends ResolvableEntity>(left: EntityEntry<T>, right: E
     const merged = clone(left.entity);
     merged.sourceRefs = mergeSourceRefs(left.entity.sourceRefs, right.entity.sourceRefs);
     merged.authority = strongerAuthority(left.entity.authority, right.entity.authority);
+    merged.knowledge = morePrivateKnowledge(left.entity.knowledge, right.entity.knowledge);
     merged.confidence = Math.max(left.entity.confidence, right.entity.confidence);
     merged.status = left.entity.status === 'confirmed' || right.entity.status === 'confirmed'
         ? 'confirmed'

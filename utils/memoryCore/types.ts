@@ -1,3 +1,8 @@
+import type {
+  HistoricalAuthority,
+  HistoricalKnowledgeScope,
+} from '../../domain/historyImport/analysis/types';
+import type { HistoryScope } from '../../domain/historyImport/types';
 import type { CharacterProfile, Message, UserProfile } from '../../types';
 
 export type MemoryOrigin =
@@ -20,9 +25,43 @@ export type ContinuityScope =
 export type KnowledgeScope =
   | 'char_private'
   | 'user_private'
+  | 'relationship_private'
   | 'shared'
+  | 'public_safe'
   | 'unknown_to_char'
   | 'unknown_to_user';
+
+/** Every AI-facing surface must be classified before it may read history. */
+export type HistoricalConsumerSurface =
+  | 'chat'
+  | 'proactive_letter'
+  | 'group_chat'
+  | 'call'
+  | 'date'
+  | 'special_moments'
+  | 'contact_impression'
+  | 'exchange_diary'
+  | 'storydesk'
+  | 'guidebook'
+  | 'social'
+  | 'check_phone'
+  | 'songwriting'
+  | 'companion_plan'
+  | 'study'
+  | 'worldbook'
+  | 'room'
+  | 'trpg'
+  | 'lifesim'
+  | 'bank'
+  | 'timebook'
+  | 'settings';
+
+export type HistoricalSurfaceDisposition =
+  | 'required'
+  | 'filtered'
+  | 'shared'
+  | 'hold'
+  | 'no_history';
 
 export type MemoryStatus =
   | 'draft'
@@ -116,6 +155,10 @@ export interface WorldlineMemoryCandidate {
   sourceRefs?: SourceRef[];
   tags?: string[];
   weight: number;
+  temporalClass?: 'live' | 'historical';
+  sourceKind?: 'live_memory' | 'history_analysis';
+  historicalAuthority?: HistoricalAuthority;
+  historicalKnowledge?: HistoricalKnowledgeScope;
 }
 
 export interface WorldlineOpenThread {
@@ -132,6 +175,8 @@ export interface WorldlineSelectorInput {
   char: CharacterProfile;
   user: UserProfile;
   mode: WorldlinePromptMode;
+  surface: HistoricalConsumerSurface;
+  relationshipScope: HistoryScope;
   origin?: MemoryOrigin;
   currentMessages?: Message[];
   query?: string;
@@ -148,6 +193,16 @@ export interface WorldlinePromptContext {
   deliveryProfile?: WorldlineDeliveryProfile;
   hotState?: WorldlineHotState | null;
   voiceLineTitles?: string[];
+  historicalDelivery: HistoricalDeliveryMetadata;
+}
+
+export interface HistoricalDeliveryMetadata {
+  surface: HistoricalConsumerSurface;
+  disposition: HistoricalSurfaceDisposition;
+  candidateCount: number;
+  candidateTitles: string[];
+  sourceKinds: string[];
+  authorities: HistoricalAuthority[];
 }
 
 export interface WorldlineMemoryReceipt {
@@ -156,18 +211,26 @@ export interface WorldlineMemoryReceipt {
   charId: string;
   charName: string;
   mode: WorldlinePromptMode;
+  surface: HistoricalConsumerSurface;
+  relationshipScope: HistoryScope;
+  personaMaskLabel: string;
+  progressBundleLabel: string;
   origin: MemoryOrigin;
   delivered: boolean;
   candidateCount: number;
   openThreadCount: number;
   candidateTitles: string[];
   openThreadTitles: string[];
-  markdownPreview: string;
   budgetChars: number;
   warnings: string[];
   deliveryTier?: WorldlineDeliveryTier;
   hotStateDelivered?: boolean;
   voiceFingerprintCount?: number;
+  historicalCandidateCount: number;
+  historicalCandidateTitles: string[];
+  historicalSourceKinds: string[];
+  historicalAuthorities: HistoricalAuthority[];
+  historicalDisposition: HistoricalSurfaceDisposition;
 }
 
 export interface WorldlineMemoryReceiptSettings {

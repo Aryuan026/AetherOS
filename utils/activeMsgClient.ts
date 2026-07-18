@@ -15,6 +15,7 @@ import { ActiveMsgStore } from './activeMsgStore';
 import { KeepAlive } from './keepAlive';
 import { getVisibleEmojiScopeForCharacter } from './emojiVisibility';
 import { selectWorldlineMemoryContext } from './memoryCore';
+import { relationshipScopeForProfile } from './messageContext';
 
 const ACTIVE_MSG_VAPID_PUBLIC_KEY = import.meta.env.VITE_AMSG_VAPID_PUBLIC_KEY || '';
 const ACTIVE_MSG_API_BASE_OVERRIDE = (import.meta.env.VITE_AMSG_API_BASE_URL || '').trim();
@@ -260,6 +261,8 @@ const buildCompletePrompt = async (
     char,
     user: userProfile,
     mode: 'proactive_letter',
+    surface: 'proactive_letter',
+    relationshipScope: relationshipScopeForProfile(char.id, userProfile)!,
     currentMessages: recentMessages,
     query: config.promptHint || timeSinceUser,
     budgetChars: 1000,
@@ -593,7 +596,6 @@ export const ActiveMsgClient = {
     return response.data as { uuid: string; status: string; nextSendAt?: string };
   },
 };
-
 
 
 

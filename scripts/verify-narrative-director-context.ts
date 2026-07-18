@@ -139,6 +139,7 @@ const historicalBase = (
     temporalClass: 'historical',
     sourceRefs: [{ ...sourceRef, messageIds: [...(sourceRef.messageIds || [])] }],
     authority,
+    knowledge: 'relationship_private',
     confidence: 0.8,
     status: 'soft_canon',
     analysisRunId: 'analysis-run-director',

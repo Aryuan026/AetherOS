@@ -18,6 +18,7 @@ import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../
 import { DATE_EXPERIENCE_BOUNDARY, getBuiltInDateBackgroundForHour, getDateFallbackMood, resolveDateDefaultPortrait } from '../utils/dateExperience';
 import { DateCharacterSelectCard } from '../components/date/DateCharacterSelectCard';
 import { DatePersonaScopeNotice, DateSelectIntro } from '../components/date/DateSelectIntro';
+import { relationshipScopeForProfile } from '../utils/messageContext';
 
 type DateHistorySession = {
     id: string;
@@ -297,6 +298,8 @@ const DateApp: React.FC = () => {
                 char: c,
                 user: userProfile,
                 mode: 'meet_scene',
+                surface: 'date',
+                relationshipScope: relationshipScopeForProfile(c.id, userProfile)!,
                 currentMessages: msgs,
                 query: '用户正在进入见面场景，生成角色此刻状态。',
                 budgetChars: 900,
@@ -383,6 +386,8 @@ ${DATE_EXPERIENCE_BOUNDARY}
             char,
             user: userProfile,
             mode: 'date_scene',
+            surface: 'date',
+            relationshipScope: relationshipScopeForProfile(char.id, userProfile)!,
             currentMessages: allMsgs,
             query: text,
             budgetChars: 1200,
@@ -483,6 +488,8 @@ ${DATE_EXPERIENCE_BOUNDARY}
             char,
             user: userProfile,
             mode: 'date_scene',
+            surface: 'date',
+            relationshipScope: relationshipScopeForProfile(char.id, userProfile)!,
             currentMessages: validMsgs,
             query: String(lastUserMsg.content || ''),
             budgetChars: 1200,

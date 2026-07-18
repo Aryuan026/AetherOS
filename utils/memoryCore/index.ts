@@ -7,3 +7,4 @@ export * from './memoryDm';
 export * from './deliveryProfile';
 export * from './hotState';
 export * from './voiceCore';
+export * from './historicalSelector';

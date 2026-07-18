@@ -156,6 +156,8 @@ const worldlineContext = await selectWorldlineMemoryContext({
     char: fixtureCharacter,
     user: fixtureUser,
     mode: 'remote_chat',
+    surface: 'chat',
+    relationshipScope: source.scope,
     currentMessages: [...context, liveMessage],
     query: liveMessage.content,
     budgetChars: 1_200,

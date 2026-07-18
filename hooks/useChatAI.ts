@@ -13,6 +13,7 @@ import {
     filterCurrentStateMessages,
     isHistoricalContextMessage,
     relationshipScopeFromMessage,
+    relationshipScopeForProfile,
     selectEmotionEvaluationMessages,
 } from '../utils/messageContext';
 
@@ -346,6 +347,9 @@ export const useChatAI = ({
                 char,
                 user: userProfile,
                 mode: 'remote_chat',
+                surface: 'chat',
+                relationshipScope: initiatingRelationshipScope
+                    || relationshipScopeForProfile(char.id, userProfile)!,
                 currentMessages: currentMsgs,
                 query: typeof lastUserMessage?.content === 'string' ? lastUserMessage.content : '',
                 budgetChars: 1200,

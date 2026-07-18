@@ -45,6 +45,24 @@ const memoryReceiptModeLabel = (mode: WorldlineMemoryReceipt['mode']): string =>
   return '时光簿';
 };
 
+const memoryReceiptSurfaceLabel = (surface: WorldlineMemoryReceipt['surface']): string => {
+  if (surface === 'chat') return '聊天';
+  if (surface === 'proactive_letter') return '主动来信';
+  if (surface === 'group_chat') return '群聊';
+  if (surface === 'call') return '通话';
+  if (surface === 'date') return '见面';
+  if (surface === 'storydesk') return '剧情主持';
+  if (surface === 'contact_impression') return '通讯录印象';
+  return surface;
+};
+
+const memoryReceiptAuthorityLabel = (authority: WorldlineMemoryReceipt['historicalAuthorities'][number]): string => {
+  if (authority === 'user_confirmed') return '你确认过';
+  if (authority === 'source_explicit') return '原文明示';
+  if (authority === 'source_inferred') return '从原文推得';
+  return '模型重建';
+};
+
 const memoryReceiptTierLabel = (tier?: WorldlineMemoryReceipt['deliveryTier']): string => {
   if (tier === 'heartbeat_lite') return '轻触';
   if (tier === 'affective_warm') return '陪伴';
@@ -821,7 +839,10 @@ const Settings: React.FC = () => {
                                         {memoryReceiptModeLabel(latestMemoryReceipt.mode)}
                                     </span>
                                     <span className="text-xs font-bold text-slate-700 truncate">
-                                        {latestMemoryReceipt.charName}
+                                        {latestMemoryReceipt.personaMaskLabel} × {latestMemoryReceipt.charName}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 shrink-0">
+                                        {memoryReceiptSurfaceLabel(latestMemoryReceipt.surface)}
                                     </span>
                                 </div>
                                 <span className="text-[10px] text-slate-400 shrink-0">
@@ -850,6 +871,21 @@ const Settings: React.FC = () => {
                                             语气 {latestMemoryReceipt.voiceFingerprintCount}
                                         </span>
                                     )}
+                                    {latestMemoryReceipt.historicalCandidateCount > 0 && (
+                                        <span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] text-violet-600 border border-violet-100">
+                                            历史回声 {latestMemoryReceipt.historicalCandidateCount}
+                                        </span>
+                                    )}
+                                    {latestMemoryReceipt.historicalSourceKinds.map(sourceKind => (
+                                        <span key={`${latestMemoryReceipt.id}-${sourceKind}`} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] text-violet-600 border border-violet-100">
+                                            {sourceKind === 'history_analysis' ? '旧日分析' : sourceKind}
+                                        </span>
+                                    ))}
+                                    {latestMemoryReceipt.historicalAuthorities.map(authority => (
+                                        <span key={`${latestMemoryReceipt.id}-${authority}`} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] text-violet-600 border border-violet-100">
+                                            {memoryReceiptAuthorityLabel(authority)}
+                                        </span>
+                                    ))}
                                 </div>
                             )}
 
@@ -861,13 +897,6 @@ const Settings: React.FC = () => {
                                         </span>
                                     ))}
                                 </div>
-                            )}
-
-                            {latestMemoryReceipt.markdownPreview && (
-                                <details className="mt-2 text-[11px] text-slate-400">
-                                    <summary className="cursor-pointer font-bold text-slate-400">递送摘记</summary>
-                                    <p className="mt-1 max-h-16 overflow-y-auto leading-relaxed">{latestMemoryReceipt.markdownPreview}</p>
-                                </details>
                             )}
 
                             {latestMemoryReceipt.warnings.length > 0 && (

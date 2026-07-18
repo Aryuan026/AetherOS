@@ -68,6 +68,13 @@ const historicalStatuses = new Set([
     'discarded',
 ]);
 const historicalAuthorities = new Set(HISTORY_ANALYSIS_AUTHORITY_ORDER);
+const historicalKnowledgeScopes = new Set([
+    'relationship_private',
+    'char_private',
+    'user_private',
+    'shared',
+    'public_safe',
+]);
 const historicalContinuities = new Set(['mainline', 'if_line', 'scene_only', 'unknown']);
 const historicalSurfaces = new Set([
     'remote_chat',
@@ -151,6 +158,7 @@ const validateDerivedBase = (
     if (!scopesMatch(value.scope, pass.scope)) errors.push(`${label} crosses analysis pass scope`);
     if (value.temporalClass !== 'historical') errors.push(`${label} must remain historical`);
     if (!historicalAuthorities.has(value.authority)) errors.push(`${label} authority is invalid`);
+    if (!historicalKnowledgeScopes.has(value.knowledge)) errors.push(`${label} knowledge is invalid`);
     if (!historicalStatuses.has(value.status)) errors.push(`${label} status is invalid`);
     if (value.analysisRunId !== pass.analysisRunId) errors.push(`${label} crosses analysisRunId`);
     if (!isNonEmpty(value.extractorVersion)) errors.push(`${label} extractorVersion is required`);

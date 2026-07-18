@@ -15,6 +15,7 @@ import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../compon
 import { selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { DIALOG_VISUAL_RULES } from '../components/chat/dialogVisualRules';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import { relationshipScopeForProfile } from '../utils/messageContext';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -712,6 +713,8 @@ ${logText.substring(0, 10000)}
                     char: member,
                     user: userProfile,
                     mode: 'remote_chat',
+                    surface: 'group_chat',
+                    relationshipScope: relationshipScopeForProfile(member.id, userProfile)!,
                     currentMessages: recentPrivateMsgs,
                     query: groupMemoryQuery,
                     budgetChars: 1000,

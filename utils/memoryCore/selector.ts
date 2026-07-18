@@ -3,6 +3,7 @@ import { DB } from '../db';
 import { filterCurrentStateMessages } from '../messageContext';
 import { classifyWorldlineDelivery, extractMemorySearchTerms } from './deliveryProfile';
 import { formatHotStatePrompt, resolveWorldlineHotState } from './hotState';
+import { HISTORICAL_SURFACE_POLICIES, selectHistoricalRelationshipCandidates } from './historicalSelector';
 import { formatWorldlinePromptBlock } from './promptFormatter';
 import { recordWorldlineMemoryReceipt } from './receipts';
 import { formatVoiceCorePrompt, loadCharacterVoiceCore } from './voiceCore';
@@ -293,6 +294,14 @@ export const selectWorldlineMemoryContext = async (
   });
   const budgetChars = deliveryProfile.budgetChars;
   const warnings: string[] = [];
+  let historicalDelivery = {
+    surface: input.surface,
+    disposition: HISTORICAL_SURFACE_POLICIES[input.surface].disposition,
+    candidateCount: 0,
+    candidateTitles: [],
+    sourceKinds: [],
+    authorities: [],
+  } as WorldlinePromptContext['historicalDelivery'];
   let messages = input.currentMessages || [];
 
   try {
@@ -305,6 +314,21 @@ export const selectWorldlineMemoryContext = async (
   const currentStateMessages = filterCurrentStateMessages(messages);
 
   const candidates: WorldlineMemoryCandidate[] = [];
+
+  try {
+    const historical = await selectHistoricalRelationshipCandidates({
+      scope: input.relationshipScope,
+      user: input.user,
+      charId: input.char.id,
+      surface: input.surface,
+      query: input.query,
+    });
+    candidates.push(...historical.candidates);
+    historicalDelivery = historical.metadata;
+    warnings.push(...historical.warnings);
+  } catch (error) {
+    warnings.push(`historical_memory_unavailable:${error instanceof Error ? error.message : 'unknown'}`);
+  }
 
   try {
     const firstContact = await DB.getAssetRaw(`${FIRST_CONTACT_PREFIX}${input.char.id}`);
@@ -377,6 +401,7 @@ export const selectWorldlineMemoryContext = async (
     deliveryProfile,
     hotState,
     voiceLineTitles: voiceCorePrompt.usedLines.map(line => line.tags?.[0] || line.kind).slice(0, 8),
+    historicalDelivery,
   };
 
   recordWorldlineMemoryReceipt(input, context);

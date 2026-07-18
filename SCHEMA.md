@@ -318,7 +318,9 @@ type ContinuityScope = 'canon' | 'relationship' | 'branch' | 'scene_only';
 type KnowledgeScope =
   | 'char_private'
   | 'user_private'
+  | 'relationship_private'
   | 'shared'
+  | 'public_safe'
   | 'unknown_to_char'
   | 'unknown_to_user';
 
@@ -332,6 +334,8 @@ selectWorldlineMemoryContext({
   char,
   user,
   mode: 'remote_chat' | 'meet_scene' | 'date_scene' | 'proactive_letter' | 'timebook',
+  surface,
+  relationshipScope: { progressBundleId, personaMaskId, charId },
   currentMessages,
   query,
   budgetChars,
@@ -343,8 +347,9 @@ group memory blob. The AI director should build each member's base context with
 `ContextBuilder.buildCoreContext(member, userProfile, true)`, then append a
 budgeted `selectWorldlineMemoryContext()` result for that same member. The
 selector receives the member's recent private messages as `currentMessages` and
-the recent group topic as `query`, so private relationship memory can shape how
-the character acts in public without being exposed as a literal transcript.
+the recent group topic as `query`. Imported-history delivery is stricter:
+Group Chat may receive only `shared` or `public_safe` confirmed candidates;
+private relationship evidence is not opened for a public group prompt.
 
 The selector currently reuses:
 
@@ -352,6 +357,8 @@ The selector currently reuses:
 - `anniversaries` for confirmed shared dates.
 - `assets/timebook_first_contact_${charId}` for the first-contact anchor.
 - a tiny recent slice of `char.memories` for role-private remembered moments.
+- resolved `AetherOS_HistoryAnalysis:v2` interpretations through a full-scope,
+  exhaustively classified surface adapter.
 
 It returns a tiny markdown block plus structured candidates. Future durable
 stores can be added later after UI and prompt behavior are stable:
@@ -417,22 +424,32 @@ interface WorldlineMemoryReceipt {
   charId: string;
   charName: string;
   mode: 'remote_chat' | 'meet_scene' | 'date_scene' | 'proactive_letter' | 'timebook';
+  surface: HistoricalConsumerSurface;
+  relationshipScope: HistoryScope;
+  personaMaskLabel: string;
+  progressBundleLabel: string;
   origin: MemoryOrigin;
   delivered: boolean;
   candidateCount: number;
   openThreadCount: number;
   candidateTitles: string[];
   openThreadTitles: string[];
-  markdownPreview: string;
   budgetChars: number;
   warnings: string[];
+  historicalCandidateCount: number;
+  historicalCandidateTitles: string[];
+  historicalSourceKinds: string[];
+  historicalAuthorities: HistoricalAuthority[];
+  historicalDisposition: 'required' | 'filtered' | 'shared' | 'hold' | 'no_history';
 }
 ```
 
 Receipts are stored under
-`aetheros_worldline_memory_receipts_v1` and are capped locally. They prove that
+`aetheros_worldline_memory_receipts_v2` and are capped locally. They prove that
 context was selected and delivered to prompt assembly; they are not durable
-relationship facts.
+relationship facts. Receipts keep titles, source class, authority, scope, and
+surface only. They do not persist prompt/raw-text previews or route-membership
+counts.
 
 The first automatic sediment layer also uses localStorage bookkeeping and
 existing stores, so it does not bump IndexedDB yet:
@@ -1103,6 +1120,20 @@ Every index and record uses the full
 `progressBundleId + personaMaskId + charId` scope. The pre-product v1 analysis
 database is not read or migrated. Derived analysis is rebuildable; raw Daily
 Archive documents remain the durable evidence source.
+
+Every historical derived entity also owns an explicit knowledge boundary:
+
+```ts
+type HistoricalKnowledgeScope =
+  | 'relationship_private'
+  | 'char_private'
+  | 'user_private'
+  | 'shared'
+  | 'public_safe';
+```
+
+Duplicate interpretations merge toward the more private boundary. A public
+duplicate can never downgrade a private candidate into public delivery.
 
 ### Multi-pass interpretation contract
 

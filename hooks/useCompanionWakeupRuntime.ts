@@ -19,6 +19,7 @@ import {
 } from '../utils/companionWakeups';
 import { pickVoiceDirectWakeupLine, selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule } from '../utils/companionWakeupRules';
+import { relationshipScopeForProfile } from '../utils/messageContext';
 
 const TICK_INTERVAL_MS = 60 * 1000;
 const SENT_WAKEUP_HISTORY_LIMIT = 500;
@@ -172,6 +173,8 @@ const renderWakeupWithAI = async (
         char,
         user: userProfile,
         mode: 'proactive_letter',
+        surface: 'proactive_letter',
+        relationshipScope: relationshipScopeForProfile(char.id, userProfile)!,
         currentMessages: recent,
         query: `${rule.title} ${rule.value || ''}`,
         budgetChars: 1000,
