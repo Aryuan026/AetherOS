@@ -121,8 +121,49 @@ is not an active run, scene, experience receipt, or current Character Life
 state.
 
 Model execution, prompts, Calendar UI, Contact/Timebook surface wiring, narrative
-director consumption, vectorization, and whole-device backup inclusion remain
-HOLD as separate implementation boxes.
+director route continuation, vectorization, and whole-device backup inclusion
+remain HOLD as separate implementation boxes. The read-only Director context is
+now connected; it still has no mutation authority.
+
+## Re-analysis And Human Correction Flow — Planned Next Box
+
+The human-facing flow should stay short:
+
+1. From Calendar, choose a day range or the currently selected source passage
+   and tap `整理这段历史`.
+   A passage selection uses two contiguous endpoints (`从这里` / `到这里`), not
+   dozens of message checkboxes, and is independent of clipping-size limits.
+2. Show approximate token/call cost and the existing quick/deep plans. If this
+   source was analyzed before, say `可以再次整理，上次结果会保留`; do not block
+   or introduce another analysis-mode questionnaire.
+3. When complete, show one small delivery receipt with direct destinations:
+   `去看记忆 / 去看时光簿 / 去看剧情线 / 去聊天`. Do not create a permanent
+   fourth result app.
+4. Edit results in place. Every destination card exposes a compact edit action
+   and a source jump. List headers and empty states expose `手动补一条`.
+5. StoryDesk historical evidence uses route chips. `放进另一条线` adds another
+   chip/binding and preserves all existing ones; removing a chip removes only
+   that binding. The copy should say `同时属于 N 条线` when applicable.
+
+Implementation must separate immutable `HistoryAnalysisPass` output from the
+editable `HistoricalInterpretationWorkspace`. Manual changes are versioned
+overlays with `user_confirmed` historical authority. Exact duplicates may merge
+in the resolved view, while pass history remains available behind a collapsed
+`整理记录`. Multiple route bindings are normal; only mutually exclusive facts
+receive one entity-level `有两种整理` notice.
+
+Destination responsibilities:
+
+- Contact memory: edit/add/hide relationship memories and return to source;
+- Timebook: edit/add/hide title, date certainty, and page summary;
+- StoryDesk: rename historical routes, add NPC/stage/open-thread notes, and bind
+  one source passage to several routes;
+- Calendar: preserve and render source only; never accept edits to transcript
+  text from the analysis result flow.
+
+Editing historical material is not route activation. `继续这条线` remains a
+separate explicit narrative action and still cannot skip scene play and receipt
+confirmation.
 
 ## Verification Gates
 
@@ -147,11 +188,22 @@ The deterministic history suite covers:
 - Date non-consumption of the history tail;
 - relationship-isolated analysis preflight and atomic snapshot publication.
 
+The next G6 implementation box must add deterministic fixtures for:
+
+- repeated analysis of the same source preserving both pass records;
+- one source span bound to two routes simultaneously, with one binding removable
+  without touching the other;
+- user overlays surviving re-analysis without mutating pass output or source;
+- source-free manual additions rendering as user-attested, never extracted;
+- exact duplicate coalescing and entity-level contradiction handling without
+  per-message review.
+
 ## Explicit Holds
 
 - model extraction prompts and runtime calls;
 - Contact-memory and Timebook surface wiring;
-- narrative-director consumption and explicit route continuation;
+- Calendar multi-pass runtime and destination correction overlays;
+- explicit historical route continuation;
 - time-conversion analysis;
 - language fingerprints and tag governance;
 - vectorization and semantic retrieval;

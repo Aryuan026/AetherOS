@@ -606,9 +606,32 @@
 - Every analysis request and result must use the full
   `progressBundleId + personaMaskId + charId` relationship scope. Stable keys,
   indexes, cursors, and derived ids must include all three components.
-- A completed analysis is published atomically as one source-linked snapshot.
-  Its relationship memories, timebook nodes, and historical narrative profile
-  are soft/correctable historical material, not current state.
+- The current atomic snapshot is a validated read foundation, not the final
+  multi-pass authoring model. Before Calendar model execution ships, every
+  completed analysis pass must be stored immutably and the user-visible merged
+  interpretation must live in a separate relationship-scoped workspace.
+- Re-running the same source revision, date range, clipping, or message span is
+  allowed even with the same strategy. The UI must show approximate cost again,
+  say that previous results are retained, and never treat a matching source
+  fingerprint as a reason to silently skip the new pass.
+- A source span may have zero, one, or many simultaneous storyline bindings.
+  Mainline, IF, meeting/date, co-authored scene, and unknown continuity are
+  independent interpretations; assigning one must not remove another.
+- Result correction happens at the destination, not during import and not as a
+  per-message questionnaire. Contact memory, Timebook, and StoryDesk historical
+  cards must allow add, edit, hide, restore, and source jump where applicable.
+- Manual changes are versioned overlays. They must not mutate the raw Calendar
+  document or immutable model pass. Source-linked edits retain their source
+  refs; a source-free manual addition is visibly `我补充的` and carries explicit
+  user attestation rather than pretending to be transcript evidence.
+- A manual overlay has `user_confirmed` historical authority but remains below
+  active/confirmed lived truth. Editing or adding historical material must not
+  activate a route, create a scene/receipt, or update current emotion, care,
+  location, availability, Character Life, or reminders.
+- Exact duplicate visible candidates may be coalesced automatically while their
+  pass provenance remains queryable. Multi-line membership is not a conflict.
+  Only mutually exclusive factual claims may surface one entity-level
+  `有两种整理` notice; the user must never adjudicate every source turn.
 - Historical analysis must not create or mutate current emotion, care, location,
   condition, reminder, Character Life, active NarrativeRun, scene, or played
   receipt. A historical route becomes a future draft only after the player

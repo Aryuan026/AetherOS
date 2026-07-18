@@ -235,6 +235,53 @@ calls, active-run switching, receipt creation, memory/life/current-state writes,
 and Character Virtual Life. A historical profile remains background material;
 it is never evidence that a run or scene has been played in this App.
 
+## Confirmed Non-Exclusive Historical Evidence Contract — 2026-07-18
+
+Historical evidence is reusable material, not a card that can belong to only
+one route. Future history and scene-planning work must preserve these rules:
+
+- the same Calendar source span may be analyzed repeatedly. Each pass keeps an
+  independent request/run identity, source revision, extractor version, output,
+  and provenance. Selecting a newer interpretation as the current view may
+  supersede an older view, but must not overwrite the source or silently erase
+  the older interpretation;
+- source spans and historical results/routes form a many-to-many relationship.
+  One span may support a mainline, an IF line, a date/meeting line, and another
+  historical route at the same time. “放进另一条线” adds a binding; it never
+  moves evidence out of an existing line. Removing an association removes only
+  that binding;
+- `sourceRefs[]` remains evidence provenance, but it is not sufficient as the
+  future editable association record. The history-owned schema should later
+  introduce stable, scoped, versioned evidence-binding identities so additions,
+  removals, restoration, origin, and analysis-run provenance are auditable
+  without duplicating or mutating the Calendar source;
+- people correct interpretations where the result is used: Contact memories,
+  Timebook nodes, and StoryDesk historical-route cards. Those surfaces may add,
+  edit, hide, and restore derived records while retaining a jump back to the
+  source span. Import and per-message Calendar reading must not become a review
+  worksheet;
+- a human edit is a versioned overlay with user-confirmed historical authority.
+  It does not rewrite the model pass or chat source and does not become
+  active/confirmed current truth. “继续此线” remains a separate explicit
+  Directive -> draft-run action;
+- exact duplicate candidates may merge automatically into one visible entity,
+  while keeping all source, pass, and binding provenance. Multi-route membership
+  is not a conflict. Only mutually exclusive facts should expose an entity-level
+  “有两种整理” state; there is no per-message adjudication queue.
+
+Scene planning must therefore query a selected run/route through non-exclusive
+bindings. It may rank relevant evidence for the selected scene, but it must not
+claim that the evidence belongs exclusively to that route, delete another
+route's binding, or promote a historical overlay into played truth. The
+`continuity`, interaction `surface`, memory policy, authority, temporal class,
+route, and branch axes remain independent.
+
+Planning HOLD: do not change the history store/schema, Calendar/result UI,
+Director provider, or scene types in this documentation-only slice. The history
+lane owns the future analysis-pass, overlay, and evidence-binding persistence;
+the narrative lane consumes a scoped read projection and keeps “continue this
+line” and scene play behind later explicit transitions.
+
 ## Code-Grounded Starting Point
 
 AetherOS already has useful pieces:

@@ -106,11 +106,37 @@ Last updated: 2026-07-18
       memory/timebook rows and historical narrative profile.
 - [ ] Calendar model prompts and execution are implemented.
 - [ ] Contact-memory and Timebook surfaces merge the new read projections.
-- [ ] Narrative Director consumes a historical profile.
-- [ ] Analysis snapshots are included in whole-device backup/restore.
+- [x] Narrative Director consumes a full-scope historical profile through a
+      read-only provider and rejects cross-scope/stale input.
+- [ ] Analysis passes, interpretation workspaces, bindings, and user overlays are
+      included in whole-device backup/restore.
 
 The unchecked items are explicit next boxes, not claims hidden behind the new
 schema.
+
+## G6 — Re-analysis, Multi-line Membership, And Human Correction
+
+- [ ] The same source span and strategy may be analyzed twice; both immutable
+      pass records remain available.
+- [ ] Re-analysis shows a fresh approximate cost and clearly states that earlier
+      results will be retained.
+- [ ] One source span may bind to two or more historical routes simultaneously.
+- [ ] `放进另一条线` adds a binding; removing it leaves every sibling binding and
+      the Calendar source untouched.
+- [ ] Contact memory, Timebook, and StoryDesk allow in-place add/edit/hide/restore
+      without reopening import or per-message review.
+- [ ] Manual edits are versioned user-confirmed historical overlays and survive
+      later model passes.
+- [ ] A source-free manual addition is labelled `我补充的` and cannot be presented
+      as transcript-derived evidence.
+- [ ] Exact duplicate candidates coalesce in the resolved view without deleting
+      pass provenance.
+- [ ] Multiple route memberships are not flagged as conflicts; only mutually
+      exclusive facts may show one entity-level `有两种整理` notice.
+- [ ] Historical editing cannot activate a run, create a scene/receipt, or write
+      current emotion, care, location, Character Life, or reminders.
+- [ ] Full triple-scope isolation holds for passes, workspaces, bindings, and
+      overlays.
 
 ## Verification Commands
 

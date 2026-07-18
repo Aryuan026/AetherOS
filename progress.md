@@ -1,5 +1,30 @@
 # AetherOS Progress
 
+## 2026-07-18 Multi-pass History Reuse Planning Contract
+
+- confirmed:
+  - The same Calendar passage may be analyzed more than once; each pass and its
+    provenance remains intact.
+  - One source span may belong to several historical routes simultaneously.
+    Adding another route is additive, and removing one binding cannot affect the
+    source or sibling routes.
+  - Human correction belongs in Contact memory, Timebook, and StoryDesk result
+    cards, not import or per-message review. Corrections are versioned
+    user-confirmed historical overlays over immutable source/model output.
+- planned:
+  - Replace the single-active-snapshot runtime cleanly with immutable analysis
+    passes, one editable relationship interpretation workspace, many-to-many
+    evidence bindings, and user overlays before model execution ships.
+  - Calendar uses short day-range or contiguous passage selection, repeats the
+    quick/deep cost preflight, and returns a compact destination receipt rather
+    than creating another permanent analysis app.
+- boundary:
+  - Multi-line membership is not a conflict. Only mutually exclusive facts may
+    show an entity-level `有两种整理` notice.
+  - Historical edits remain below active/confirmed lived truth. `继续这条线`
+    stays a separate explicit action; no current state, scene, receipt, memory,
+    or Character Life write is authorized by this planning box.
+
 ## 2026-07-18 History Reuse Foundation
 
 - done:
@@ -26,10 +51,10 @@
   - `npm run typecheck` passes.
 - boundary:
   - No model call, Calendar analysis UI, Contact/Timebook surface wiring,
-    narrative director consumption, vector retrieval, or whole-device backup
-    inclusion exists in this box.
-  - Historical profiles remain soft read-only maps. They do not create played
-    runs, scenes, receipts, Character Life events, or current-state changes.
+    vector retrieval, or whole-device backup inclusion exists in this box.
+  - A later narrative-owned read-only provider now supplies historical profiles
+    to `NarrativeDirectorContext`; it still cannot create played runs, scenes,
+    receipts, Character Life events, or current-state changes.
 
 ## 2026-07-17 Social Detail Header Optical Alignment
 

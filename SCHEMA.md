@@ -1092,7 +1092,7 @@ likewise use v2 namespaces and do not read pre-product review databases.
 Daily archive search renders source fragments as `原文片段`. Voice clipping is
 limited to explicit user/char export channels.
 
-The independent `AetherOS_HistoryAnalysis:v1` database stores atomic
+The current independent `AetherOS_HistoryAnalysis:v1` foundation stores atomic
 `HistoryAnalysisSnapshot` records. Its active-snapshot index key is:
 
 ```text
@@ -1109,6 +1109,79 @@ threads. `continuity`, interaction `surface`, memory policy, authority, and
 Snapshots are soft/correctable historical interpretations. They cannot contain
 current-condition/location/buff/reminder fields and cannot represent an active
 NarrativeRun, scene, Character Life state, or experience receipt. The analysis
-database exposes pure relationship view projections, but is not yet connected
-to model execution, Contact/Timebook surfaces, the narrative director, or
-whole-device backup.
+database exposes pure relationship view projections. A narrative-owned read-only
+provider may now supply the historical profile to `NarrativeDirectorContext`,
+but model execution, Contact/Timebook surfaces, and whole-device backup remain
+unconnected.
+
+### Planned multi-pass interpretation contract
+
+The single-active-snapshot shape is not sufficient for repeated analysis and
+human correction. Before model execution ships, replace it cleanly rather than
+adding compatibility fields or dual readers. Derived analysis is rebuildable;
+raw Daily Archive documents remain the durable evidence source.
+
+```ts
+interface HistoryAnalysisPass {
+  id: string;
+  scope: HistoryScope;
+  requestId: string;
+  strategy: 'quick_merge' | 'deep_daily';
+  sourceRevisionFingerprint: string;
+  sourceRefs: HistorySourceSpan[];
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  candidates: HistoricalDerivedCandidate[];
+  createdAt: number;
+  completedAt?: number;
+}
+
+interface HistoricalInterpretationWorkspace {
+  id: string;
+  scope: HistoryScope;
+  contributingPassIds: string[];
+  entityIds: string[];
+  bindingIds: string[];
+  overlayIds: string[];
+  revision: number;
+  updatedAt: number;
+}
+
+interface HistoryEvidenceBinding {
+  id: string;
+  scope: HistoryScope;
+  sourceRef: HistorySourceSpan;
+  targetKind: 'relationship_memory' | 'timebook_node' | 'route' | 'npc' |
+    'relationship_stage' | 'open_thread';
+  targetId: string;
+  purpose: 'evidence' | 'scene' | 'turning_point' | 'relationship_change';
+  origin: 'analysis' | 'user';
+  status: 'active' | 'hidden';
+  revision: number;
+}
+
+interface HistoricalUserOverlay {
+  id: string;
+  scope: HistoryScope;
+  targetKind: HistoryEvidenceBinding['targetKind'];
+  targetId?: string;
+  operation: 'create' | 'update' | 'hide' | 'restore';
+  patch: Record<string, unknown>;
+  provenance: 'source_linked' | 'user_attested';
+  sourceRefs: HistorySourceSpan[];
+  authority: 'user_confirmed';
+  revision: number;
+  createdAt: number;
+}
+```
+
+`HistoryAnalysisPass` is append-only. The same source and strategy may appear in
+multiple passes. `HistoricalInterpretationWorkspace` is the current editable
+map, not another source archive. A source span has no uniqueness constraint
+across bindings, so the same dialogue may belong to several routes at once.
+Removing one binding cannot remove the source, candidate, or sibling bindings.
+
+User overlays never mutate pass candidates. A source-free manual addition must
+use `provenance: "user_attested"` and render as `我补充的`; it cannot masquerade
+as extracted evidence. The resolved read projection applies authority order and
+overlays, coalesces exact duplicate visible cards, retains all pass provenance,
+and continues to forbid current-state and lived-experience fields.

@@ -47,12 +47,28 @@ Historical conversation clean transport:
 - Keep real timestamp days as the only visible Calendar segmentation. Historical
   analysis may offer token-visible `quick_merge` and `deep_daily` plans; the
   latter may split long days internally without creating another review UI.
-- Use one atomic, relationship-scoped `HistoryAnalysisSnapshot` to hold soft,
-  source-linked relationship memories, timebook nodes, and a
-  `HistoricalNarrativeProfile`. It is not current state and must never create a
-  NarrativeRun, scene, receipt, Character Life state, or reminder.
-- Keep model execution, prompts, visible Contact/Timebook wiring, and vector
-  retrieval HOLD until their own boxes are implemented and verified.
+- Keep raw Calendar evidence immutable. Before model execution ships, split the
+  current single-snapshot foundation into immutable analysis passes and one
+  editable relationship interpretation workspace. Re-running the same source
+  span must create another pass; it must not erase an earlier interpretation.
+- Treat storyline membership as many-to-many evidence binding. One source span
+  may support mainline, IF, meeting/date, or another historical route at the
+  same time. `放进另一条线` adds a binding; it never moves or deletes the first.
+- Publish results where people expect to use them: Contact memory, Timebook, and
+  StoryDesk historical route cards. Add/edit/hide/restore actions create a
+  versioned user overlay with `user_confirmed` historical authority, preserve a
+  source jump when present, and never rewrite transcript text or model-pass
+  output.
+- Automatically coalesce exact duplicate visible candidates, but preserve every
+  analysis pass for provenance and rollback. Multiple route memberships are not
+  conflicts; only mutually exclusive factual interpretations receive a compact
+  entity-level `有两种整理` notice. Never reopen per-message review.
+- Historical results remain historical. Editing a route or memory does not
+  create a NarrativeRun, scene, receipt, Character Life state, reminder, or
+  current condition. `继续这条线` stays a separate explicit narrative action.
+- Keep model execution, prompts, destination-surface wiring, correction-overlay
+  storage, and vector retrieval HOLD until their own boxes are implemented and
+  verified.
 - Use clean v2 local namespaces with no legacy review reader or migration.
 
 Timebook and companion structure:
