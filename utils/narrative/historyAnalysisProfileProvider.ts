@@ -1,7 +1,7 @@
 import type { HistoricalNarrativeProfile } from '../../domain/historyImport/analysis/types.ts';
 import type { NarrativeDirectorHistoricalProfileProvider } from '../../domain/narrative/directorContext.ts';
 import type { HistoryScope } from '../../domain/historyImport/types.ts';
-import { readActiveHistoricalRelationshipViews } from '../historyImport/analysis/readAdapters.ts';
+import { readHistoricalRelationshipViews } from '../historyImport/analysis/readAdapters.ts';
 
 export type HistoricalRelationshipViewsReader = (input: {
     scope: HistoryScope;
@@ -20,7 +20,7 @@ export interface HistoryAnalysisProfileProviderOptions {
 export const createHistoryAnalysisProfileProvider = (
     options: HistoryAnalysisProfileProviderOptions = {},
 ): NarrativeDirectorHistoricalProfileProvider => {
-    const readViews = options.readViews ?? readActiveHistoricalRelationshipViews;
+    const readViews = options.readViews ?? readHistoricalRelationshipViews;
     return {
         readHistoricalNarrativeProfile: async ({ scope }) => {
             const views = await readViews({

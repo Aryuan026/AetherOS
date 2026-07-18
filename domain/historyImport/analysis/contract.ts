@@ -5,16 +5,20 @@ import {
 } from '../contract.ts';
 import type {
     HistoricalDerivedBase,
+    HistoricalInterpretationWorkspace,
     HistoricalNarrativeProfile,
     HistoricalRouteProfile,
+    HistoricalUserOverlay,
+    HistoryAnalysisPass,
     HistoryAnalysisRequest,
-    HistoryAnalysisSnapshot,
+    HistoryEvidenceBinding,
     HistorySourceSpan,
 } from './types.ts';
 import { HISTORY_ANALYSIS_SCHEMA_VERSION } from './types.ts';
 
 export const HISTORY_ANALYSIS_IDENTITY_CONTRACT = {
-    snapshotIdComponents: ['scopeKey', 'sourceRevisionFingerprint', 'strategy', 'analysisRunId'],
+    passIdComponents: ['scopeKey', 'sourceRevisionFingerprint', 'strategy', 'analysisRunId'],
+    workspaceIdComponents: ['scopeKey'],
     derivedIdComponents: ['scopeKey', 'kind', 'sourceFamilyKey', 'stableClassifierKey'],
     forbiddenStableIdComponents: ['generatedSummaryText', 'createdAt', 'confidence'],
 } as const;
@@ -80,6 +84,34 @@ const historicalMemoryPolicies = new Set([
     'source_only',
 ]);
 const historyAnalysisStrategies = new Set(['quick_merge', 'deep_daily']);
+const evidenceTargetKinds = new Set([
+    'relationship_memory',
+    'timebook_node',
+    'route',
+    'npc',
+    'relationship_stage',
+    'open_thread',
+]);
+const evidencePurposes = new Set(['evidence', 'scene', 'turning_point', 'relationship_change']);
+const editableOverlayFields = {
+    relationship_memory: new Set(['title', 'summary', 'occurredAt', 'memoryPolicy']),
+    timebook_node: new Set(['title', 'summary', 'occurredAt', 'continuity', 'surface']),
+    route: new Set([
+        'title', 'summary', 'continuity', 'routeId', 'branchId', 'startedAt', 'endedAt',
+        'relationshipStageId', 'npcProfileIds', 'openThreadIds', 'surfaces',
+    ]),
+    npc: new Set([
+        'npcId', 'routeId', 'branchId', 'name', 'aliases', 'relationshipRole',
+        'knownHistoricalFacts', 'lastHistoricalState', 'asOf',
+    ]),
+    relationship_stage: new Set([
+        'stageId', 'label', 'summary', 'effectiveFrom', 'effectiveTo', 'evidenceMarkers',
+    ]),
+    open_thread: new Set([
+        'threadId', 'routeId', 'branchId', 'title', 'summary', 'state',
+        'continuationHint', 'lastEvidenceAt',
+    ]),
+} as const;
 
 const isNonEmpty = (value: string | undefined): boolean => Boolean(value && value.trim());
 
@@ -88,7 +120,7 @@ const scopesMatch = (
     right: HistoricalDerivedBase['scope'],
 ): boolean => createHistoryScopeKey(left) === createHistoryScopeKey(right);
 
-const validateSourceRef = (sourceRef: HistorySourceSpan, label: string): string[] => {
+export const validateHistorySourceSpan = (sourceRef: HistorySourceSpan, label: string): string[] => {
     const errors: string[] = [];
     if (!isNonEmpty(sourceRef.documentId)) errors.push(`${label} documentId is required`);
     if (!Number.isInteger(sourceRef.documentRevision) || sourceRef.documentRevision < 1) {
@@ -111,16 +143,16 @@ const validateSourceRef = (sourceRef: HistorySourceSpan, label: string): string[
 
 const validateDerivedBase = (
     value: HistoricalDerivedBase,
-    snapshot: HistoryAnalysisSnapshot,
+    pass: HistoryAnalysisPass,
     label: string,
 ): string[] => {
     const errors = validateHistoryScope(value.scope);
     if (!isNonEmpty(value.id)) errors.push(`${label} id is required`);
-    if (!scopesMatch(value.scope, snapshot.scope)) errors.push(`${label} crosses snapshot scope`);
+    if (!scopesMatch(value.scope, pass.scope)) errors.push(`${label} crosses analysis pass scope`);
     if (value.temporalClass !== 'historical') errors.push(`${label} must remain historical`);
     if (!historicalAuthorities.has(value.authority)) errors.push(`${label} authority is invalid`);
     if (!historicalStatuses.has(value.status)) errors.push(`${label} status is invalid`);
-    if (value.analysisRunId !== snapshot.analysisRunId) errors.push(`${label} crosses analysisRunId`);
+    if (value.analysisRunId !== pass.analysisRunId) errors.push(`${label} crosses analysisRunId`);
     if (!isNonEmpty(value.extractorVersion)) errors.push(`${label} extractorVersion is required`);
     if (!Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1) {
         errors.push(`${label} confidence must be between 0 and 1`);
@@ -133,17 +165,17 @@ const validateDerivedBase = (
     }
     if (value.sourceRefs.length < 1) errors.push(`${label} needs at least one sourceRef`);
     value.sourceRefs.forEach((sourceRef, index) => {
-        errors.push(...validateSourceRef(sourceRef, `${label}.sourceRefs[${index}]`));
+        errors.push(...validateHistorySourceSpan(sourceRef, `${label}.sourceRefs[${index}]`));
     });
     return errors;
 };
 
 const validateRoute = (
     route: HistoricalRouteProfile,
-    snapshot: HistoryAnalysisSnapshot,
+    pass: HistoryAnalysisPass,
     label: string,
 ): string[] => {
-    const errors = validateDerivedBase(route, snapshot, label);
+    const errors = validateDerivedBase(route, pass, label);
     if (!isNonEmpty(route.title)) errors.push(`${label} title is required`);
     if (!isNonEmpty(route.summary)) errors.push(`${label} summary is required`);
     if (!historicalContinuities.has(route.continuity)) errors.push(`${label} continuity is invalid`);
@@ -163,24 +195,24 @@ const validateRoute = (
 
 const validateNarrativeProfile = (
     profile: HistoricalNarrativeProfile,
-    snapshot: HistoryAnalysisSnapshot,
+    pass: HistoryAnalysisPass,
 ): string[] => {
-    const errors = validateDerivedBase(profile, snapshot, 'narrativeProfile');
+    const errors = validateDerivedBase(profile, pass, 'narrativeProfile');
     if (!isNonEmpty(profile.title)) errors.push('narrativeProfile title is required');
     if (!isNonEmpty(profile.summary)) errors.push('narrativeProfile summary is required');
     profile.routes.forEach((route, index) => {
-        errors.push(...validateRoute(route, snapshot, `narrativeProfile.routes[${index}]`));
+        errors.push(...validateRoute(route, pass, `narrativeProfile.routes[${index}]`));
     });
     profile.npcs.forEach((npc, index) => {
         const label = `narrativeProfile.npcs[${index}]`;
-        errors.push(...validateDerivedBase(npc, snapshot, label));
+        errors.push(...validateDerivedBase(npc, pass, label));
         if (!isNonEmpty(npc.npcId)) errors.push(`${label} npcId is required`);
         if (!isNonEmpty(npc.name)) errors.push(`${label} name is required`);
         if (npc.asOf) errors.push(...validateHistorySourceTime(npc.asOf));
     });
     profile.relationshipStages.forEach((stage, index) => {
         const label = `narrativeProfile.relationshipStages[${index}]`;
-        errors.push(...validateDerivedBase(stage, snapshot, label));
+        errors.push(...validateDerivedBase(stage, pass, label));
         if (!isNonEmpty(stage.stageId)) errors.push(`${label} stageId is required`);
         if (!isNonEmpty(stage.label)) errors.push(`${label} label is required`);
         if (!isNonEmpty(stage.summary)) errors.push(`${label} summary is required`);
@@ -189,7 +221,7 @@ const validateNarrativeProfile = (
     });
     profile.openThreads.forEach((thread, index) => {
         const label = `narrativeProfile.openThreads[${index}]`;
-        errors.push(...validateDerivedBase(thread, snapshot, label));
+        errors.push(...validateDerivedBase(thread, pass, label));
         if (!isNonEmpty(thread.threadId)) errors.push(`${label} threadId is required`);
         if (!isNonEmpty(thread.title)) errors.push(`${label} title is required`);
         if (!isNonEmpty(thread.summary)) errors.push(`${label} summary is required`);
@@ -228,15 +260,22 @@ const validateNarrativeProfile = (
     return errors;
 };
 
-const findForbiddenFields = (value: unknown, path = 'snapshot'): string[] => {
+export const findForbiddenHistoricalFields = (value: unknown, path = 'historyAnalysis'): string[] => {
     if (!value || typeof value !== 'object') return [];
     if (Array.isArray(value)) {
-        return value.flatMap((item, index) => findForbiddenFields(item, `${path}[${index}]`));
+        return value.flatMap((item, index) => findForbiddenHistoricalFields(item, `${path}[${index}]`));
     }
     return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => [
         ...(forbiddenCurrentStateFields.has(key) ? [`${path}.${key} is a forbidden current-state field`] : []),
-        ...findForbiddenFields(child, `${path}.${key}`),
+        ...findForbiddenHistoricalFields(child, `${path}.${key}`),
     ]);
+};
+
+const validateUniqueIds = (ids: string[], label: string): string[] => {
+    const errors: string[] = [];
+    if (ids.some(id => !isNonEmpty(id))) errors.push(`${label} must contain only non-empty ids`);
+    if (new Set(ids).size !== ids.length) errors.push(`${label} must be unique`);
+    return errors;
 };
 
 export const validateHistoryAnalysisRequest = (request: HistoryAnalysisRequest): string[] => {
@@ -284,61 +323,166 @@ export const validateHistoryAnalysisRequest = (request: HistoryAnalysisRequest):
     return errors;
 };
 
-export const validateHistoryAnalysisSnapshot = (snapshot: HistoryAnalysisSnapshot): string[] => {
+export const validateHistoryAnalysisPass = (pass: HistoryAnalysisPass): string[] => {
     const errors = [
-        ...validateHistoryScope(snapshot.scope),
-        ...findForbiddenFields(snapshot),
+        ...validateHistoryScope(pass.scope),
+        ...findForbiddenHistoricalFields(pass, 'analysisPass'),
     ];
-    if (snapshot.schemaVersion !== HISTORY_ANALYSIS_SCHEMA_VERSION) errors.push('unsupported analysis snapshot schemaVersion');
-    if (!isNonEmpty(snapshot.id)) errors.push('analysis snapshot id is required');
-    if (!isNonEmpty(snapshot.requestId)) errors.push('analysis snapshot requestId is required');
-    if (!isNonEmpty(snapshot.analysisRunId)) errors.push('analysis snapshot analysisRunId is required');
-    if (!isNonEmpty(snapshot.sourceRevisionFingerprint)) errors.push('sourceRevisionFingerprint is required');
-    if (!historyAnalysisStrategies.has(snapshot.strategy)) errors.push('analysis snapshot strategy is invalid');
-    if (snapshot.temporalClass !== 'historical') errors.push('analysis snapshot must remain historical');
-    if (!new Set(['active', 'superseded', 'archived']).has(snapshot.status)) {
-        errors.push('analysis snapshot status is invalid');
+    if (pass.schemaVersion !== HISTORY_ANALYSIS_SCHEMA_VERSION) errors.push('unsupported analysis pass schemaVersion');
+    if (!isNonEmpty(pass.id)) errors.push('analysis pass id is required');
+    if (!isNonEmpty(pass.requestId)) errors.push('analysis pass requestId is required');
+    if (!isNonEmpty(pass.analysisRunId)) errors.push('analysis pass analysisRunId is required');
+    if (!isNonEmpty(pass.sourceRevisionFingerprint)) errors.push('sourceRevisionFingerprint is required');
+    if (!historyAnalysisStrategies.has(pass.strategy)) errors.push('analysis pass strategy is invalid');
+    if (pass.temporalClass !== 'historical') errors.push('analysis pass must remain historical');
+    if (pass.status !== 'completed') errors.push('analysis pass must be immutable and completed');
+    if (!Number.isFinite(pass.createdAt) || !Number.isFinite(pass.completedAt) || pass.completedAt < pass.createdAt) {
+        errors.push('analysis pass timestamps are invalid');
     }
-    if (!Number.isInteger(snapshot.revision) || snapshot.revision < 1) {
-        errors.push('analysis snapshot revision must be a positive integer');
-    }
-    if (
-        !Number.isFinite(snapshot.createdAt)
-        || !Number.isFinite(snapshot.updatedAt)
-        || snapshot.updatedAt < snapshot.createdAt
-    ) {
-        errors.push('analysis snapshot timestamps are invalid');
-    }
-    snapshot.relationshipMemories.forEach((memory, index) => {
+    if (pass.sourceRefs.length < 1) errors.push('analysis pass needs at least one sourceRef');
+    pass.sourceRefs.forEach((sourceRef, index) => {
+        errors.push(...validateHistorySourceSpan(sourceRef, `analysisPass.sourceRefs[${index}]`));
+    });
+    pass.relationshipMemories.forEach((memory, index) => {
         const label = `relationshipMemories[${index}]`;
-        errors.push(...validateDerivedBase(memory, snapshot, label));
+        errors.push(...validateDerivedBase(memory, pass, label));
         if (!isNonEmpty(memory.title)) errors.push(`${label} title is required`);
         if (!isNonEmpty(memory.summary)) errors.push(`${label} summary is required`);
         if (!historicalMemoryPolicies.has(memory.memoryPolicy)) errors.push(`${label} memoryPolicy is invalid`);
         if (memory.occurredAt) errors.push(...validateHistorySourceTime(memory.occurredAt));
     });
-    snapshot.timebookNodes.forEach((node, index) => {
+    pass.timebookNodes.forEach((node, index) => {
         const label = `timebookNodes[${index}]`;
-        errors.push(...validateDerivedBase(node, snapshot, label));
+        errors.push(...validateDerivedBase(node, pass, label));
         if (!isNonEmpty(node.title)) errors.push(`${label} title is required`);
         if (!isNonEmpty(node.summary)) errors.push(`${label} summary is required`);
         if (!historicalContinuities.has(node.continuity)) errors.push(`${label} continuity is invalid`);
         if (!historicalSurfaces.has(node.surface)) errors.push(`${label} surface is invalid`);
         if (node.occurredAt) errors.push(...validateHistorySourceTime(node.occurredAt));
     });
-    errors.push(...validateNarrativeProfile(snapshot.narrativeProfile, snapshot));
+    errors.push(...validateNarrativeProfile(pass.narrativeProfile, pass));
 
     const allDerivedIds = [
-        ...snapshot.relationshipMemories.map(item => item.id),
-        ...snapshot.timebookNodes.map(item => item.id),
-        snapshot.narrativeProfile.id,
-        ...snapshot.narrativeProfile.routes.map(item => item.id),
-        ...snapshot.narrativeProfile.npcs.map(item => item.id),
-        ...snapshot.narrativeProfile.relationshipStages.map(item => item.id),
-        ...snapshot.narrativeProfile.openThreads.map(item => item.id),
+        ...pass.relationshipMemories.map(item => item.id),
+        ...pass.timebookNodes.map(item => item.id),
+        pass.narrativeProfile.id,
+        ...pass.narrativeProfile.routes.map(item => item.id),
+        ...pass.narrativeProfile.npcs.map(item => item.id),
+        ...pass.narrativeProfile.relationshipStages.map(item => item.id),
+        ...pass.narrativeProfile.openThreads.map(item => item.id),
     ];
     if (new Set(allDerivedIds).size !== allDerivedIds.length) {
-        errors.push('all derived ids inside one snapshot must be unique');
+        errors.push('all derived ids inside one analysis pass must be unique');
+    }
+    return errors;
+};
+
+export const validateHistoricalInterpretationWorkspace = (
+    workspace: HistoricalInterpretationWorkspace,
+): string[] => {
+    const errors = [
+        ...validateHistoryScope(workspace.scope),
+        ...findForbiddenHistoricalFields(workspace, 'interpretationWorkspace'),
+    ];
+    if (workspace.schemaVersion !== HISTORY_ANALYSIS_SCHEMA_VERSION) errors.push('unsupported workspace schemaVersion');
+    if (!isNonEmpty(workspace.id)) errors.push('workspace id is required');
+    errors.push(...validateUniqueIds(workspace.contributingPassIds, 'workspace contributingPassIds'));
+    errors.push(...validateUniqueIds(workspace.entityIds, 'workspace entityIds'));
+    errors.push(...validateUniqueIds(workspace.bindingIds, 'workspace bindingIds'));
+    errors.push(...validateUniqueIds(workspace.overlayIds, 'workspace overlayIds'));
+    if (!Number.isInteger(workspace.revision) || workspace.revision < 1) {
+        errors.push('workspace revision must be a positive integer');
+    }
+    if (!Number.isFinite(workspace.createdAt) || !Number.isFinite(workspace.updatedAt) || workspace.updatedAt < workspace.createdAt) {
+        errors.push('workspace timestamps are invalid');
+    }
+    return errors;
+};
+
+export const validateHistoryEvidenceBinding = (binding: HistoryEvidenceBinding): string[] => {
+    const errors = [
+        ...validateHistoryScope(binding.scope),
+        ...findForbiddenHistoricalFields(binding, 'evidenceBinding'),
+        ...validateHistorySourceSpan(binding.sourceRef, 'evidenceBinding.sourceRef'),
+    ];
+    if (binding.schemaVersion !== HISTORY_ANALYSIS_SCHEMA_VERSION) errors.push('unsupported evidence binding schemaVersion');
+    if (!isNonEmpty(binding.id)) errors.push('evidence binding id is required');
+    if (!evidenceTargetKinds.has(binding.targetKind)) errors.push('evidence binding targetKind is invalid');
+    if (!isNonEmpty(binding.targetId)) errors.push('evidence binding targetId is required');
+    if (!evidencePurposes.has(binding.purpose)) errors.push('evidence binding purpose is invalid');
+    if (binding.origin === 'analysis' && !isNonEmpty(binding.analysisPassId)) {
+        errors.push('analysis evidence binding requires analysisPassId');
+    }
+    if (binding.origin === 'user' && binding.analysisPassId) {
+        errors.push('user evidence binding must not claim analysisPassId');
+    }
+    if (binding.status !== 'active' && binding.status !== 'hidden') {
+        errors.push('evidence binding status is invalid');
+    }
+    if (!Number.isFinite(binding.createdAt) || !Number.isFinite(binding.updatedAt) || binding.updatedAt < binding.createdAt) {
+        errors.push('evidence binding timestamps are invalid');
+    }
+    if (!Number.isInteger(binding.revision) || binding.revision < 1) {
+        errors.push('evidence binding revision must be a positive integer');
+    }
+    return errors;
+};
+
+export const validateHistoricalUserOverlay = (overlay: HistoricalUserOverlay): string[] => {
+    const errors = [
+        ...validateHistoryScope(overlay.scope),
+        ...findForbiddenHistoricalFields(overlay, 'userOverlay'),
+    ];
+    if (overlay.schemaVersion !== HISTORY_ANALYSIS_SCHEMA_VERSION) errors.push('unsupported user overlay schemaVersion');
+    if (!isNonEmpty(overlay.id)) errors.push('user overlay id is required');
+    if (!isNonEmpty(overlay.seriesId)) errors.push('user overlay seriesId is required');
+    if (!evidenceTargetKinds.has(overlay.targetKind)) errors.push('user overlay targetKind is invalid');
+    const editableFields = editableOverlayFields[overlay.targetKind] as ReadonlySet<string> | undefined;
+    const nonEditableFields = Object.keys(overlay.patch).filter(field => !editableFields?.has(field));
+    if (nonEditableFields.length > 0) {
+        errors.push(`user overlay contains non-editable fields: ${nonEditableFields.join(', ')}`);
+    }
+    if (overlay.operation === 'create') {
+        if (overlay.targetId) errors.push('create overlay must not claim an existing targetId');
+        const requiredFields = overlay.targetKind === 'npc'
+            ? ['name']
+            : overlay.targetKind === 'relationship_stage'
+                ? ['label', 'summary']
+                : ['title', 'summary'];
+        requiredFields.forEach(field => {
+            const value = overlay.patch[field];
+            if (typeof value !== 'string' || !value.trim()) {
+                errors.push(`create overlay requires ${field}`);
+            }
+        });
+    } else if (!isNonEmpty(overlay.targetId)) {
+        errors.push(`${overlay.operation} overlay requires targetId`);
+    }
+    if (overlay.operation === 'update' && Object.keys(overlay.patch).length < 1) {
+        errors.push('update overlay patch must not be empty');
+    }
+    if (overlay.operation === 'hide' || overlay.operation === 'restore') {
+        if (Object.keys(overlay.patch).length > 0) errors.push(`${overlay.operation} overlay patch must be empty`);
+    }
+    if (overlay.provenance === 'source_linked' && overlay.sourceRefs.length < 1) {
+        errors.push('source-linked overlay needs at least one sourceRef');
+    }
+    if (overlay.provenance === 'user_attested' && overlay.sourceRefs.length > 0) {
+        errors.push('user-attested overlay must not masquerade as source-linked');
+    }
+    overlay.sourceRefs.forEach((sourceRef, index) => {
+        errors.push(...validateHistorySourceSpan(sourceRef, `userOverlay.sourceRefs[${index}]`));
+    });
+    if (overlay.authority !== 'user_confirmed') errors.push('user overlay authority must be user_confirmed');
+    if (!Number.isFinite(overlay.createdAt)) errors.push('user overlay createdAt is invalid');
+    if (!Number.isInteger(overlay.revision) || overlay.revision < 1) {
+        errors.push('user overlay revision must be a positive integer');
+    }
+    if (overlay.revision === 1 && overlay.previousOverlayId) {
+        errors.push('first user overlay revision must not have previousOverlayId');
+    }
+    if (overlay.revision > 1 && !isNonEmpty(overlay.previousOverlayId)) {
+        errors.push('later user overlay revision requires previousOverlayId');
     }
     return errors;
 };

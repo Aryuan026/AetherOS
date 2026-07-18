@@ -1,11 +1,11 @@
 import type {
     HistoricalNarrativeProfile,
-    HistoricalResultStatus,
-    HistoryAnalysisSnapshot,
     HistorySourceSpan,
+    ResolvedHistoricalInterpretation,
 } from '../../../domain/historyImport/analysis/types.ts';
 import type { HistoryScope, HistorySourceTime } from '../../../domain/historyImport/types.ts';
-import { getActiveHistoryAnalysisSnapshot } from './indexedDbAnalysis.ts';
+import { getHistoricalInterpretationBundle } from './indexedDbAnalysis.ts';
+import { resolveHistoricalInterpretation } from './resolver.ts';
 
 export interface HistoricalContactMemoryRow {
     id: string;
@@ -16,8 +16,11 @@ export interface HistoricalContactMemoryRow {
     summary: string;
     date: string;
     status: 'soft_canon' | 'confirmed';
+    provenance: 'source_linked' | 'user_attested';
+    provenanceLabel?: '我补充的';
     sourceRefs: HistorySourceSpan[];
-    analysisSnapshotId: string;
+    interpretationWorkspaceId: string;
+    provenanceRef: string;
 }
 
 export interface HistoricalTimebookRow {
@@ -29,20 +32,20 @@ export interface HistoricalTimebookRow {
     summary: string;
     date: string;
     status: 'soft_canon' | 'confirmed';
+    provenance: 'source_linked' | 'user_attested';
+    provenanceLabel?: '我补充的';
     sourceRefs: HistorySourceSpan[];
-    analysisSnapshotId: string;
+    interpretationWorkspaceId: string;
+    provenanceRef: string;
 }
 
 export interface HistoricalRelationshipViews {
-    snapshotId?: string;
+    workspaceId?: string;
+    workspaceRevision?: number;
     contactMemories: HistoricalContactMemoryRow[];
     timebookNodes: HistoricalTimebookRow[];
     narrativeProfile: HistoricalNarrativeProfile | null;
 }
-
-const isVisibleResult = (
-    status: HistoricalResultStatus,
-): status is 'soft_canon' | 'confirmed' => status === 'soft_canon' || status === 'confirmed';
 
 const sourceTimeLabel = (time?: HistorySourceTime): string => {
     if (!time) return 'unknown';
@@ -52,65 +55,65 @@ const sourceTimeLabel = (time?: HistorySourceTime): string => {
     return 'unknown';
 };
 
-const copySourceRefs = (sourceRefs: HistorySourceSpan[]): HistorySourceSpan[] => (
-    sourceRefs.map(sourceRef => ({
-        ...sourceRef,
-        messageIds: sourceRef.messageIds ? [...sourceRef.messageIds] : undefined,
-    }))
-);
-
-const cloneJsonValue = <T>(value: T): T => {
+const clone = <T>(value: T): T => {
     if (typeof globalThis.structuredClone === 'function') return globalThis.structuredClone(value);
     return JSON.parse(JSON.stringify(value)) as T;
 };
 
 export const projectHistoricalRelationshipViews = (
-    snapshot: HistoryAnalysisSnapshot | null,
+    resolved: ResolvedHistoricalInterpretation | null,
 ): HistoricalRelationshipViews => {
-    if (!snapshot || snapshot.status !== 'active') {
-        return { contactMemories: [], timebookNodes: [], narrativeProfile: null };
-    }
-    const contactMemories = snapshot.relationshipMemories
-        .filter(memory => isVisibleResult(memory.status))
-        .map(memory => ({
-            id: memory.id,
-            scope: { ...snapshot.scope },
-            source: 'history_analysis' as const,
-            temporalClass: 'historical' as const,
-            title: memory.title,
-            summary: memory.summary,
-            date: sourceTimeLabel(memory.occurredAt),
-            status: memory.status as 'soft_canon' | 'confirmed',
-            sourceRefs: copySourceRefs(memory.sourceRefs),
-            analysisSnapshotId: snapshot.id,
-        }));
-    const timebookNodes = snapshot.timebookNodes
-        .filter(node => isVisibleResult(node.status))
-        .map(node => ({
-            id: node.id,
-            scope: { ...snapshot.scope },
-            source: 'history_analysis' as const,
-            temporalClass: 'historical' as const,
-            title: node.title,
-            summary: node.summary,
-            date: sourceTimeLabel(node.occurredAt),
-            status: node.status as 'soft_canon' | 'confirmed',
-            sourceRefs: copySourceRefs(node.sourceRefs),
-            analysisSnapshotId: snapshot.id,
-        }));
+    if (!resolved) return { contactMemories: [], timebookNodes: [], narrativeProfile: null };
+    const provenanceById = new Map(resolved.provenance.map(item => [item.entityId, item]));
     return {
-        snapshotId: snapshot.id,
-        contactMemories,
-        timebookNodes,
-        narrativeProfile: isVisibleResult(snapshot.narrativeProfile.status)
-            ? cloneJsonValue(snapshot.narrativeProfile)
-            : null,
+        workspaceId: resolved.workspaceId,
+        workspaceRevision: resolved.workspaceRevision,
+        contactMemories: resolved.relationshipMemories.map(memory => {
+            const provenance = provenanceById.get(memory.id);
+            const provenanceKind = provenance?.provenance ?? 'source_linked';
+            return {
+                id: memory.id,
+                scope: { ...resolved.scope },
+                source: 'history_analysis',
+                temporalClass: 'historical',
+                title: memory.title,
+                summary: memory.summary,
+                date: sourceTimeLabel(memory.occurredAt),
+                status: memory.status as 'soft_canon' | 'confirmed',
+                provenance: provenanceKind,
+                provenanceLabel: provenanceKind === 'user_attested' ? '我补充的' : undefined,
+                sourceRefs: clone(memory.sourceRefs),
+                interpretationWorkspaceId: resolved.workspaceId,
+                provenanceRef: memory.id,
+            };
+        }),
+        timebookNodes: resolved.timebookNodes.map(node => {
+            const provenance = provenanceById.get(node.id);
+            const provenanceKind = provenance?.provenance ?? 'source_linked';
+            return {
+                id: node.id,
+                scope: { ...resolved.scope },
+                source: 'history_analysis',
+                temporalClass: 'historical',
+                title: node.title,
+                summary: node.summary,
+                date: sourceTimeLabel(node.occurredAt),
+                status: node.status as 'soft_canon' | 'confirmed',
+                provenance: provenanceKind,
+                provenanceLabel: provenanceKind === 'user_attested' ? '我补充的' : undefined,
+                sourceRefs: clone(node.sourceRefs),
+                interpretationWorkspaceId: resolved.workspaceId,
+                provenanceRef: node.id,
+            };
+        }),
+        narrativeProfile: resolved.narrativeProfile ? clone(resolved.narrativeProfile) : null,
     };
 };
 
-export const readActiveHistoricalRelationshipViews = async (input: {
+export const readHistoricalRelationshipViews = async (input: {
     scope: HistoryScope;
     factory?: IDBFactory;
-}): Promise<HistoricalRelationshipViews> => projectHistoricalRelationshipViews(
-    await getActiveHistoryAnalysisSnapshot(input),
-);
+}): Promise<HistoricalRelationshipViews> => {
+    const bundle = await getHistoricalInterpretationBundle(input);
+    return projectHistoricalRelationshipViews(bundle ? resolveHistoricalInterpretation(bundle) : null);
+};

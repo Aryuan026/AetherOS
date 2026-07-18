@@ -1,5 +1,34 @@
 # AetherOS Progress
 
+## 2026-07-18 Multi-pass History Interpretation Foundation
+
+- done:
+  - Replaced the pre-product single-active snapshot cleanly with the independent
+    `AetherOS_HistoryAnalysis:v2` database. No v1 analysis reader or migration
+    path remains.
+  - Added four relationship-scoped stores: immutable completed analysis passes,
+    one editable interpretation workspace, many-to-many evidence bindings, and
+    append-only user overlay revisions.
+  - Added a resolved read layer that applies user edits without mutating source
+    or model output, coalesces exact duplicate visible cards while retaining all
+    pass provenance, and labels source-free additions `我补充的`.
+  - Kept route membership additive but absent from ordinary read rows: the same
+    span can support multiple routes, while hiding one binding leaves its source,
+    sibling bindings, passes, and target entities intact.
+- verified:
+  - Deterministic fixtures cover three repeated passes over the same source and
+    strategy, duplicate coalescing with provenance, two simultaneous route
+    bindings, isolated binding removal, edit/create/hide/restore overlays,
+    re-analysis survival, cross-mask isolation, and forbidden current-state
+    fields.
+  - `npm run verify:history-import`, `npm run verify:daily-archive`,
+    `npm run verify:narrative`, and `npm run verify:health` pass. The build keeps
+    only the known Vite large-chunk warning.
+- boundary:
+  - This is the reusable data/read foundation only. Calendar model calls,
+    analysis UI, destination editing UI, full-phone selector delivery,
+    contradiction notices, vector retrieval, and backup inclusion remain HOLD.
+
 ## 2026-07-18 Whole-Phone History Reuse Audit
 
 - confirmed:

@@ -47,10 +47,10 @@ Historical conversation clean transport:
 - Keep real timestamp days as the only visible Calendar segmentation. Historical
   analysis may offer token-visible `quick_merge` and `deep_daily` plans; the
   latter may split long days internally without creating another review UI.
-- Keep raw Calendar evidence immutable. Before model execution ships, split the
-  current single-snapshot foundation into immutable analysis passes and one
-  editable relationship interpretation workspace. Re-running the same source
-  span must create another pass; it must not erase an earlier interpretation.
+- Keep raw Calendar evidence immutable. The v2 analysis foundation stores
+  immutable completed passes beside one editable relationship interpretation
+  workspace. Re-running the same source span creates another pass and never
+  erases an earlier interpretation.
 - Treat storyline membership as many-to-many evidence binding. One source span
   may support mainline, IF, meeting/date, or another historical route at the
   same time. `放进另一条线` adds a binding; it never moves or deletes the first.
@@ -73,9 +73,10 @@ Historical conversation clean transport:
 - Historical results remain historical. Editing a route or memory does not
   create a NarrativeRun, scene, receipt, Character Life state, reminder, or
   current condition. `继续这条线` stays a separate explicit narrative action.
-- Keep model execution, prompts, destination-surface wiring, correction-overlay
-  storage, and vector retrieval HOLD until their own boxes are implemented and
-  verified.
+- Keep model execution, prompts, destination-surface UI/wiring, contradiction
+  review, full-phone selector delivery, and vector retrieval HOLD until their
+  own boxes are implemented and verified. Correction-overlay storage itself is
+  now implemented in the v2 foundation.
 - Treat `docs/HISTORY_REUSE_SURFACE_AUDIT.md` as the coverage map for historical
   input. Shared tools and isolated sandboxes must fail closed instead of
   inheriting one mask's relationship history.

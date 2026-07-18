@@ -606,10 +606,9 @@
 - Every analysis request and result must use the full
   `progressBundleId + personaMaskId + charId` relationship scope. Stable keys,
   indexes, cursors, and derived ids must include all three components.
-- The current atomic snapshot is a validated read foundation, not the final
-  multi-pass authoring model. Before Calendar model execution ships, every
-  completed analysis pass must be stored immutably and the user-visible merged
-  interpretation must live in a separate relationship-scoped workspace.
+- Every completed analysis pass is stored immutably. The merged interpretation
+  lives in a separate relationship-scoped workspace with bindings and user
+  overlays; there is no active-snapshot replacement or legacy analysis reader.
 - Re-running the same source revision, date range, clipping, or message span is
   allowed even with the same strategy. The UI must show approximate cost again,
   say that previous results are retained, and never treat a matching source

@@ -92,17 +92,17 @@ Last updated: 2026-07-18
 - [x] Quick merge and day-by-day deep analysis remain separate processing plans,
       not companion/roleplay labels.
 - [x] Real timestamp days remain the only human-visible segmentation.
-- [x] One atomic snapshot holds source-linked relationship memories, timebook
-      nodes, routes, NPCs, relationship stages, and unresolved threads.
+- [x] Every completed pass atomically holds source-linked relationship memories,
+      timebook nodes, routes, NPCs, relationship stages, and unresolved threads.
 - [x] Continuity, interaction surface, memory policy, temporal class, and
       authority are independent fields.
 - [x] Automatic results default to soft/correctable historical material.
 - [x] Same-character analysis under two persona masks remains isolated.
-- [x] Rerun publication uses optimistic concurrency and exposes no partial
-      memory/timebook/profile state.
+- [x] Pass/binding publication is atomic; workspace changes use optimistic
+      concurrency and expose no partial memory/timebook/profile state.
 - [x] Runtime validation rejects current-state, active-run, scene, and receipt
-      fields in historical snapshots.
-- [x] Pure read projections return only the active relationship's visible
+      fields in passes, bindings, workspaces, and overlays.
+- [x] Pure read projections return only the requested relationship's visible
       memory/timebook rows and historical narrative profile.
 - [ ] Calendar model prompts and execution are implemented.
 - [ ] Contact-memory and Timebook surfaces merge the new read projections.
@@ -116,29 +116,29 @@ schema.
 
 ## G6 — Re-analysis, Multi-line Membership, And Human Correction
 
-- [ ] The same source span and strategy may be analyzed twice; both immutable
+- [x] The same source span and strategy may be analyzed twice; both immutable
       pass records remain available.
 - [ ] Re-analysis shows a fresh approximate cost and clearly states that earlier
       results will be retained.
-- [ ] One source span may bind to two or more historical routes simultaneously.
-- [ ] `放进另一条线` adds a binding; removing it leaves every sibling binding and
+- [x] One source span may bind to two or more historical routes simultaneously.
+- [x] `放进另一条线` adds a binding; removing it leaves every sibling binding and
       the Calendar source untouched.
-- [ ] Ordinary source/result cards show no `同时属于 N 条线`, membership count,
+- [x] Ordinary read rows expose no `同时属于 N 条线`, membership count,
       or multi-route badge; the same source still renders normally in every
       relevant route.
 - [ ] Contact memory, Timebook, and StoryDesk allow in-place add/edit/hide/restore
       without reopening import or per-message review.
-- [ ] Manual edits are versioned user-confirmed historical overlays and survive
+- [x] Manual edits are versioned user-confirmed historical overlays and survive
       later model passes.
-- [ ] A source-free manual addition is labelled `我补充的` and cannot be presented
+- [x] A source-free manual addition is labelled `我补充的` and cannot be presented
       as transcript-derived evidence.
-- [ ] Exact duplicate candidates coalesce in the resolved view without deleting
+- [x] Exact duplicate candidates coalesce in the resolved view without deleting
       pass provenance.
 - [ ] Multiple route memberships are not flagged as conflicts; only mutually
       exclusive facts may show one entity-level `有两种整理` notice.
-- [ ] Historical editing cannot activate a run, create a scene/receipt, or write
+- [x] Historical editing cannot activate a run, create a scene/receipt, or write
       current emotion, care, location, Character Life, or reminders.
-- [ ] Full triple-scope isolation holds for passes, workspaces, bindings, and
+- [x] Full triple-scope isolation holds for passes, workspaces, bindings, and
       overlays.
 
 ## G7 — Whole-Phone Historical Reuse

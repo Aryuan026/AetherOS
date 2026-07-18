@@ -104,15 +104,19 @@ profile. These are not the only runtime consumers. The foundation therefore
 provides:
 
 - full `progressBundleId + personaMaskId + charId` scope in every stable key,
-  archive index, cursor, analysis snapshot, and derived result;
+  archive index, cursor, analysis pass, workspace, binding, overlay, and derived
+  result;
 - token/call preflight for `quick_merge` and `deep_daily` plans;
 - real timestamp days as the only visible source boundary;
 - hidden, bounded deep-analysis packets that do not become another review UI;
-- one atomically replaceable `HistoryAnalysisSnapshot` containing source-linked
+- immutable completed `HistoryAnalysisPass` records containing source-linked
   relationship memories, timebook nodes, and `HistoricalNarrativeProfile`;
+- one relationship interpretation workspace plus additive evidence bindings and
+  append-only human correction overlays;
 - explicit continuity, interaction surface, memory policy, temporal class, and
   authority axes rather than one companion/roleplay enum;
-- optimistic-concurrency publication in a relationship-scoped analysis DB;
+- atomic pass/binding publication and optimistic workspace revision checks in a
+  clean relationship-scoped v2 analysis DB;
 - pure relationship-scoped read projections for future Contact, Timebook, and
   narrative-director consumers, with a shared `memoryCore` delivery adapter
   still required before the rest of the phone may safely use them.
@@ -127,7 +131,7 @@ director route continuation, vectorization, and whole-device backup inclusion
 remain HOLD as separate implementation boxes. The read-only Director context is
 now connected; it still has no mutation authority.
 
-## Re-analysis And Human Correction Flow — Planned Next Box
+## Re-analysis And Human Correction UI — Planned Next Box
 
 The human-facing flow should stay short:
 
@@ -148,12 +152,13 @@ The human-facing flow should stay short:
    compact edit sheet may add an association to another route or remove one
    association; every other binding and the Calendar source remain intact.
 
-Implementation must separate immutable `HistoryAnalysisPass` output from the
+The data layer already separates immutable `HistoryAnalysisPass` output from the
 editable `HistoricalInterpretationWorkspace`. Manual changes are versioned
-overlays with `user_confirmed` historical authority. Exact duplicates may merge
-in the resolved view, while pass history remains available behind a collapsed
-`整理记录`. Multiple route bindings are normal; only mutually exclusive facts
-receive one entity-level `有两种整理` notice.
+overlays with `user_confirmed` historical authority. Exact duplicates merge in
+the resolved view while pass history remains available for a future collapsed
+`整理记录`. Multiple route bindings are normal. The destination UI and the
+entity-level `有两种整理` notice for genuinely contradictory facts remain to be
+implemented.
 
 Destination responsibilities:
 
@@ -195,24 +200,29 @@ The deterministic history suite covers:
 - immutable relationship scopes and delayed AI replies;
 - Chat historical-state isolation;
 - Date non-consumption of the history tail;
-- relationship-isolated analysis preflight and atomic snapshot publication.
+- relationship-isolated analysis preflight and atomic multi-pass publication;
+- repeated same-source passes, exact-card coalescing with provenance,
+  many-to-many route bindings, isolated binding removal, user overlay
+  edit/create/hide/restore, re-analysis survival, and cross-mask rejection.
 
-The next G6 implementation box must add deterministic fixtures for:
+The deterministic G6 foundation fixtures now cover:
 
 - repeated analysis of the same source preserving both pass records;
 - one source span bound to two routes simultaneously, with one binding removable
   without touching the other;
 - user overlays surviving re-analysis without mutating pass output or source;
 - source-free manual additions rendering as user-attested, never extracted;
-- exact duplicate coalescing and entity-level contradiction handling without
-  per-message review.
+- exact duplicate coalescing without deleting pass provenance.
+
+Entity-level contradiction detection and every visible correction control remain
+in the next UI/model box; they are not claimed by the storage fixtures.
 
 ## Explicit Holds
 
 - model extraction prompts and runtime calls;
 - Contact-memory and Timebook surface wiring;
 - full-phone historical selector and consumer coverage;
-- Calendar multi-pass runtime and destination correction overlays;
+- Calendar multi-pass runtime and destination correction UI;
 - explicit historical route continuation;
 - time-conversion analysis;
 - language fingerprints and tag governance;

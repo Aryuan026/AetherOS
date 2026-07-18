@@ -207,16 +207,15 @@ data-model topology.
 
 ## Implementation Gate
 
-Calendar model execution must remain HOLD until:
+The multi-pass workspace/binding/overlay foundation has now replaced the
+single-snapshot runtime cleanly. Calendar model execution remains HOLD until:
 
-1. multi-pass workspace/binding/overlay storage replaces the single-snapshot
-   runtime cleanly;
-2. the shared historical selector requires full relationship scope and fails
+1. the shared historical selector requires full relationship scope and fails
    closed when scope is missing or mismatched;
-3. every AI-facing App is classified as `required`, `filtered`, `shared`,
+2. every AI-facing App is classified as `required`, `filtered`, `shared`,
    `hold`, or `no-history`;
-4. required consumers use the shared pipeline rather than direct store reads;
-5. tests prove no history delivery to shared/HOLD surfaces and no cross-mask or
+3. required consumers use the shared pipeline rather than direct store reads;
+4. tests prove no history delivery to shared/HOLD surfaces and no cross-mask or
    cross-character leakage;
-6. delivery receipts identify the actual consumer surface and imported-history
+5. delivery receipts identify the actual consumer surface and imported-history
    source without exposing route counts.

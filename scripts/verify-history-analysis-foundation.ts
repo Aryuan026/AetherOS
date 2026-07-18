@@ -6,28 +6,38 @@ import {
     HISTORY_ANALYSIS_HOLD,
     HISTORY_ANALYSIS_IDENTITY_CONTRACT,
     createHistoryAnalysisPreflight,
+    validateHistoricalUserOverlay,
+    validateHistoryAnalysisPass,
     validateHistoryAnalysisRequest,
-    validateHistoryAnalysisSnapshot,
 } from '../domain/historyImport/analysis/index.ts';
 import type {
     HistoricalDerivedBase,
+    HistoricalUserOverlay,
+    HistoryAnalysisPass,
     HistoryAnalysisRequest,
-    HistoryAnalysisSnapshot,
+    HistoryEvidenceBinding,
     HistorySourceSpan,
 } from '../domain/historyImport/analysis/index.ts';
 import type { HistoryScope } from '../domain/historyImport/types.ts';
 import {
-    activateHistoryAnalysisSnapshot,
-    getActiveHistoryAnalysisSnapshot,
+    appendHistoricalUserOverlay,
+    createHistoricalUserEntityId,
+    getHistoricalInterpretationBundle,
+    HISTORICAL_USER_OVERLAY_STORE,
     HISTORY_ANALYSIS_DB_NAME,
-    HISTORY_ANALYSIS_SCOPE_STATUS_INDEX,
-    HISTORY_ANALYSIS_SNAPSHOT_STORE,
+    HISTORY_ANALYSIS_PASS_STORE,
+    HISTORY_ANALYSIS_SCOPE_CREATED_INDEX,
+    HISTORY_ANALYSIS_WORKSPACE_STORE,
+    HISTORY_EVIDENCE_BINDING_STORE,
     openHistoryAnalysisDatabase,
+    publishHistoryAnalysisPass,
+    saveHistoryEvidenceBinding,
 } from '../utils/historyImport/analysis/indexedDbAnalysis.ts';
 import {
     projectHistoricalRelationshipViews,
-    readActiveHistoricalRelationshipViews,
+    readHistoricalRelationshipViews,
 } from '../utils/historyImport/analysis/readAdapters.ts';
+import { resolveHistoricalInterpretation } from '../utils/historyImport/analysis/resolver.ts';
 
 const T0 = 1_768_500_000_000;
 const SCOPE_A: HistoryScope = {
@@ -35,10 +45,7 @@ const SCOPE_A: HistoryScope = {
     personaMaskId: 'mask-analysis-a',
     charId: 'char-analysis-shared',
 };
-const SCOPE_B: HistoryScope = {
-    ...SCOPE_A,
-    personaMaskId: 'mask-analysis-b',
-};
+const SCOPE_B: HistoryScope = { ...SCOPE_A, personaMaskId: 'mask-analysis-b' };
 
 const preflight = createHistoryAnalysisPreflight({
     scope: SCOPE_A,
@@ -61,14 +68,14 @@ const preflight = createHistoryAnalysisPreflight({
     ],
     generatedAt: T0,
 });
+assert.equal(preflight.schemaVersion, 2);
 assert.equal(preflight.plans.quick_merge.sourceMessageCount, 5_000);
 assert.equal(preflight.plans.quick_merge.estimatedCalls, 3);
 assert.equal(preflight.plans.deep_daily.estimatedCalls, 6);
 assert.ok(preflight.plans.deep_daily.estimatedInputTokens > preflight.plans.quick_merge.estimatedInputTokens);
-assert.equal(preflight.plans.deep_daily.approximate, true);
 
 const request: HistoryAnalysisRequest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'analysis-request-a-1',
     scope: SCOPE_A,
     sourceRevisionFingerprint: preflight.sourceRevisionFingerprint,
@@ -87,6 +94,12 @@ const sourceRef: HistorySourceSpan = {
     endMessageOffset: 42,
     messageIds: ['daily-message-10', 'daily-message-41'],
 };
+const sharedSceneRef: HistorySourceSpan = {
+    ...sourceRef,
+    startMessageOffset: 100,
+    endMessageOffset: 140,
+    messageIds: ['daily-message-100', 'daily-message-139'],
+};
 
 const derivedBase = (input: {
     id: string;
@@ -102,44 +115,48 @@ const derivedBase = (input: {
     confidence: 0.82,
     status: 'soft_canon',
     analysisRunId: input.analysisRunId,
-    extractorVersion: 'history-analysis-fixture-v1',
+    extractorVersion: 'history-analysis-fixture-v2',
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
     revision: 1,
 });
 
-const createSnapshot = (input: {
+const createPass = (input: {
     id: string;
     requestId: string;
     analysisRunId: string;
     scope: HistoryScope;
     createdAt: number;
-}): HistoryAnalysisSnapshot => {
-    const base = (id: string): HistoricalDerivedBase => derivedBase({
-        id,
+}): HistoryAnalysisPass => {
+    const base = (suffix: string): HistoricalDerivedBase => derivedBase({
+        id: `${input.id}:${suffix}`,
         scope: input.scope,
         analysisRunId: input.analysisRunId,
         createdAt: input.createdAt,
     });
+    const npcId = `${input.id}:npc:keeper`;
+    const stageId = `${input.id}:stage:trust`;
+    const threadId = `${input.id}:thread:letter`;
     return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: input.id,
         requestId: input.requestId,
         analysisRunId: input.analysisRunId,
         scope: { ...input.scope },
         strategy: 'deep_daily',
-        sourceRevisionFingerprint: `sha256:${input.id}`,
+        sourceRevisionFingerprint: 'sha256:same-source-and-strategy-is-allowed',
+        sourceRefs: [{ ...sourceRef, messageIds: [...(sourceRef.messageIds || [])] }],
         temporalClass: 'historical',
-        status: 'active',
+        status: 'completed',
         relationshipMemories: [{
-            ...base(`${input.id}:memory:rain`),
+            ...base('memory:rain'),
             kind: 'relationship_memory',
             title: '第一次一起看雨',
             summary: '两人在旧记录中共同记住了窗外的雨声。',
             memoryPolicy: 'relationship_echo',
         }],
         timebookNodes: [{
-            ...base(`${input.id}:timebook:rain`),
+            ...base('timebook:rain'),
             kind: 'timebook_node',
             title: '雨夜谈心',
             summary: '旧记录中的一次共同场景，不代表今天仍在下雨。',
@@ -147,166 +164,392 @@ const createSnapshot = (input: {
             surface: 'coauthored_scene',
         }],
         narrativeProfile: {
-            ...base(`${input.id}:profile`),
+            ...base('profile'),
             kind: 'narrative_profile',
             title: '旧世界路线图',
             summary: '供剧情主持后台只读参考的历史路线。',
             routes: [{
-                ...base(`${input.id}:route-record:main`),
+                ...base('route-record:main'),
                 kind: 'route',
                 continuity: 'mainline',
-                routeId: `${input.id}:route:main`,
-                branchId: `${input.id}:branch:main`,
+                routeId: 'route:shared-main',
+                branchId: 'branch:shared-main',
                 title: '共同生活主线',
                 summary: '关系在多次共同场景中逐渐稳定。',
-                relationshipStageId: `${input.id}:stage:trust`,
-                npcProfileIds: [`${input.id}:npc:keeper`],
-                openThreadIds: [`${input.id}:thread:letter`],
+                relationshipStageId: stageId,
+                npcProfileIds: [npcId],
+                openThreadIds: [threadId],
                 surfaces: ['remote_chat', 'coauthored_scene'],
+            }, {
+                ...base('route-record:if'),
+                kind: 'route',
+                continuity: 'if_line',
+                routeId: 'route:shared-if',
+                branchId: 'branch:shared-if',
+                title: '如果当时留下来',
+                summary: '同一场景也可以成为一条假设路线的证据。',
+                npcProfileIds: [],
+                openThreadIds: [],
+                surfaces: ['coauthored_scene'],
             }],
             npcs: [{
-                ...base(`${input.id}:npc:keeper`),
+                ...base('npc:keeper'),
                 kind: 'npc',
-                npcId: `${input.id}:npc-id:keeper`,
-                routeId: `${input.id}:route:main`,
-                branchId: `${input.id}:branch:main`,
+                npcId: 'npc-id:keeper',
+                routeId: 'route:shared-main',
+                branchId: 'branch:shared-main',
                 name: '守门人',
                 aliases: ['门卫'],
-                relationshipRole: '旧场景里的协助者',
                 knownHistoricalFacts: ['曾替两人保管一封信'],
-                lastHistoricalState: '最后一次出现在旧城门口',
             }],
             relationshipStages: [{
-                ...base(`${input.id}:stage:trust`),
+                ...base('stage:trust'),
                 kind: 'relationship_stage',
-                stageId: `${input.id}:stage-id:trust`,
+                stageId: 'stage-id:trust',
                 label: '开始信任',
                 summary: '双方开始主动交付重要信息。',
                 evidenceMarkers: ['主动托付', '共同保密'],
             }],
             openThreads: [{
-                ...base(`${input.id}:thread:letter`),
+                ...base('thread:letter'),
                 kind: 'open_thread',
-                threadId: `${input.id}:thread-id:letter`,
-                routeId: `${input.id}:route:main`,
-                branchId: `${input.id}:branch:main`,
+                threadId: 'thread-id:letter',
+                routeId: 'route:shared-main',
+                branchId: 'branch:shared-main',
                 title: '尚未拆开的信',
                 summary: '旧记录只说明信被保存，没有证明后来已经拆开。',
                 state: 'open',
-                continuationHint: '只有玩家主动续写时才转成新的剧情意图。',
             }],
         },
         createdAt: input.createdAt,
-        updatedAt: input.createdAt,
-        revision: 1,
+        completedAt: input.createdAt + 1,
     };
 };
 
-const snapshotA1 = createSnapshot({
-    id: 'analysis-snapshot-a-1',
+const passA1 = createPass({
+    id: 'analysis-pass-a-1',
     requestId: request.id,
     analysisRunId: 'analysis-run-a-1',
     scope: SCOPE_A,
     createdAt: T0 + 10,
 });
-assert.deepEqual(validateHistoryAnalysisSnapshot(snapshotA1), []);
+assert.deepEqual(validateHistoryAnalysisPass(passA1), []);
 assert.match(
-    validateHistoryAnalysisSnapshot({
-        ...snapshotA1,
-        narrativeProfile: {
-            ...snapshotA1.narrativeProfile,
-            scope: SCOPE_B,
-        },
+    validateHistoryAnalysisPass({
+        ...passA1,
+        narrativeProfile: { ...passA1.narrativeProfile, scope: SCOPE_B },
     }).join('\n'),
-    /crosses snapshot scope/,
+    /crosses analysis pass scope/,
 );
 assert.match(
-    validateHistoryAnalysisSnapshot({
-        ...snapshotA1,
-        narrativeProfile: {
-            ...snapshotA1.narrativeProfile,
-            currentLocation: '今天的旧城门口',
-        },
-    } as HistoryAnalysisSnapshot).join('\n'),
+    validateHistoryAnalysisPass({
+        ...passA1,
+        narrativeProfile: { ...passA1.narrativeProfile, currentLocation: '今天的旧城门口' },
+    } as HistoryAnalysisPass).join('\n'),
     /forbidden current-state field/,
 );
-
-assert.deepEqual(
-    HISTORY_ANALYSIS_IDENTITY_CONTRACT.snapshotIdComponents,
-    ['scopeKey', 'sourceRevisionFingerprint', 'strategy', 'analysisRunId'],
-);
+assert.deepEqual(HISTORY_ANALYSIS_IDENTITY_CONTRACT.passIdComponents, [
+    'scopeKey', 'sourceRevisionFingerprint', 'strategy', 'analysisRunId',
+]);
 assert.deepEqual(HISTORY_ANALYSIS_AUTHORITY_ORDER, [
-    'model_reconstructed',
-    'source_inferred',
-    'source_explicit',
-    'user_confirmed',
+    'model_reconstructed', 'source_inferred', 'source_explicit', 'user_confirmed',
 ]);
 assert.equal(Object.values(HISTORY_ANALYSIS_HOLD).every(value => value === 'hold'), true);
 
 const factory = new IDBFactory();
-await activateHistoryAnalysisSnapshot({ snapshot: snapshotA1, factory });
-await activateHistoryAnalysisSnapshot({ snapshot: snapshotA1, factory });
-const projectedA1 = projectHistoricalRelationshipViews(snapshotA1);
-assert.equal(projectedA1.contactMemories.length, 1);
-assert.equal(projectedA1.timebookNodes.length, 1);
-assert.equal(projectedA1.narrativeProfile?.id, snapshotA1.narrativeProfile.id);
-assert.deepEqual(projectedA1.contactMemories[0].scope, SCOPE_A);
-
-const snapshotB1 = createSnapshot({
-    id: 'analysis-snapshot-b-1',
-    requestId: 'analysis-request-b-1',
-    analysisRunId: 'analysis-run-b-1',
-    scope: SCOPE_B,
-    createdAt: T0 + 20,
+const analysisBindingA1: HistoryEvidenceBinding = {
+    schemaVersion: 2,
+    id: 'binding-analysis-a1-main',
+    scope: { ...SCOPE_A },
+    sourceRef: { ...sourceRef },
+    targetKind: 'route',
+    targetId: passA1.narrativeProfile.routes[0].id,
+    purpose: 'evidence',
+    origin: 'analysis',
+    analysisPassId: passA1.id,
+    status: 'active',
+    createdAt: T0 + 11,
+    updatedAt: T0 + 11,
+    revision: 1,
+};
+let workspaceA = await publishHistoryAnalysisPass({
+    pass: passA1,
+    bindings: [analysisBindingA1],
+    factory,
 });
-await activateHistoryAnalysisSnapshot({ snapshot: snapshotB1, factory });
-assert.equal((await getActiveHistoryAnalysisSnapshot({ scope: SCOPE_A, factory }))?.id, snapshotA1.id);
-assert.equal((await getActiveHistoryAnalysisSnapshot({ scope: SCOPE_B, factory }))?.id, snapshotB1.id);
+assert.equal(workspaceA.revision, 1);
+assert.deepEqual((await publishHistoryAnalysisPass({
+    pass: passA1,
+    bindings: [analysisBindingA1],
+    factory,
+})).contributingPassIds, [passA1.id]);
+await assert.rejects(
+    () => publishHistoryAnalysisPass({
+        pass: { ...passA1, completedAt: passA1.completedAt + 50 },
+        factory,
+    }),
+    /another immutable result/,
+);
 
-const snapshotA2 = createSnapshot({
-    id: 'analysis-snapshot-a-2',
+const passA2 = createPass({
+    id: 'analysis-pass-a-2',
     requestId: 'analysis-request-a-2',
     analysisRunId: 'analysis-run-a-2',
     scope: SCOPE_A,
-    createdAt: T0 + 30,
+    createdAt: T0 + 20,
 });
 await assert.rejects(
-    () => activateHistoryAnalysisSnapshot({ snapshot: snapshotA2, factory }),
-    /active snapshot changed/,
-    'reruns must not silently replace a relationship snapshot without optimistic concurrency',
+    () => publishHistoryAnalysisPass({ pass: passA2, factory }),
+    /workspace changed before pass publication/,
 );
-await activateHistoryAnalysisSnapshot({
-    snapshot: snapshotA2,
-    expectedActiveSnapshotId: snapshotA1.id,
+workspaceA = await publishHistoryAnalysisPass({
+    pass: passA2,
+    expectedWorkspaceRevision: workspaceA.revision,
     factory,
 });
-assert.equal((await getActiveHistoryAnalysisSnapshot({ scope: SCOPE_A, factory }))?.id, snapshotA2.id);
-assert.equal((await getActiveHistoryAnalysisSnapshot({ scope: SCOPE_B, factory }))?.id, snapshotB1.id);
-const activeViewsA = await readActiveHistoricalRelationshipViews({ scope: SCOPE_A, factory });
-const activeViewsB = await readActiveHistoricalRelationshipViews({ scope: SCOPE_B, factory });
-assert.equal(activeViewsA.snapshotId, snapshotA2.id);
-assert.equal(activeViewsB.snapshotId, snapshotB1.id);
-assert.equal(activeViewsA.contactMemories.every(row => row.scope.personaMaskId === SCOPE_A.personaMaskId), true);
-assert.equal(activeViewsB.timebookNodes.every(row => row.scope.personaMaskId === SCOPE_B.personaMaskId), true);
+assert.deepEqual(workspaceA.contributingPassIds, [passA1.id, passA2.id]);
+
+let bundleA = await getHistoricalInterpretationBundle({ scope: SCOPE_A, factory });
+assert.ok(bundleA);
+assert.equal(bundleA.passes.length, 2, 'same source and strategy must preserve both passes');
+let resolvedA = resolveHistoricalInterpretation(bundleA);
+assert.equal(resolvedA.relationshipMemories.length, 1, 'exact duplicate cards should coalesce');
+assert.deepEqual(
+    resolvedA.provenance.find(item => item.entityId === resolvedA.relationshipMemories[0].id)?.analysisPassIds,
+    [passA1.id, passA2.id],
+    'coalesced cards must retain pass provenance',
+);
+
+const mainRouteId = passA1.narrativeProfile.routes[0].id;
+const ifRouteId = passA1.narrativeProfile.routes[1].id;
+const bindingMain: HistoryEvidenceBinding = {
+    schemaVersion: 2,
+    id: 'binding-shared-scene-main',
+    scope: { ...SCOPE_A },
+    sourceRef: { ...sharedSceneRef },
+    targetKind: 'route',
+    targetId: mainRouteId,
+    purpose: 'turning_point',
+    origin: 'user',
+    status: 'active',
+    createdAt: T0 + 30,
+    updatedAt: T0 + 30,
+    revision: 1,
+};
+workspaceA = await saveHistoryEvidenceBinding({
+    binding: bindingMain,
+    expectedWorkspaceRevision: workspaceA.revision,
+    factory,
+});
+const bindingIf: HistoryEvidenceBinding = {
+    ...bindingMain,
+    id: 'binding-shared-scene-if',
+    targetId: ifRouteId,
+    createdAt: T0 + 31,
+    updatedAt: T0 + 31,
+};
+workspaceA = await saveHistoryEvidenceBinding({
+    binding: bindingIf,
+    expectedWorkspaceRevision: workspaceA.revision,
+    factory,
+});
+bundleA = await getHistoricalInterpretationBundle({ scope: SCOPE_A, factory });
+assert.ok(bundleA);
+assert.equal(bundleA.bindings.filter(binding => binding.status === 'active').length, 3);
+assert.equal(
+    bundleA.bindings.filter(binding => binding.sourceRef.startMessageOffset === sharedSceneRef.startMessageOffset).length,
+    2,
+    'one source span must be allowed to bind to two routes',
+);
+
+workspaceA = await saveHistoryEvidenceBinding({
+    binding: {
+        ...bindingMain,
+        status: 'hidden',
+        updatedAt: T0 + 32,
+        revision: 2,
+    },
+    expectedWorkspaceRevision: workspaceA.revision,
+    expectedBindingRevision: 1,
+    factory,
+});
+bundleA = await getHistoricalInterpretationBundle({ scope: SCOPE_A, factory });
+assert.ok(bundleA);
+assert.equal(bundleA.bindings.find(binding => binding.id === bindingMain.id)?.status, 'hidden');
+assert.equal(bundleA.bindings.find(binding => binding.id === bindingIf.id)?.status, 'active');
+assert.equal(bundleA.workspace.contributingPassIds.length, 2, 'hiding one binding must not remove source or passes');
+
+const correctionOverlay: HistoricalUserOverlay = {
+    schemaVersion: 2,
+    id: 'overlay-memory-rain-edit-v1',
+    seriesId: 'overlay-memory-rain-edit',
+    scope: { ...SCOPE_A },
+    targetKind: 'relationship_memory',
+    targetId: passA1.relationshipMemories[0].id,
+    operation: 'update',
+    patch: {
+        title: '第一次认真一起听雨',
+        summary: '玩家补充：重点是两个人第一次安静听完一场雨。',
+    },
+    provenance: 'source_linked',
+    sourceRefs: [{ ...sourceRef }],
+    authority: 'user_confirmed',
+    createdAt: T0 + 40,
+    revision: 1,
+};
+workspaceA = await appendHistoricalUserOverlay({
+    overlay: correctionOverlay,
+    expectedWorkspaceRevision: workspaceA.revision,
+    factory,
+});
+
+const passA3 = createPass({
+    id: 'analysis-pass-a-3',
+    requestId: 'analysis-request-a-3',
+    analysisRunId: 'analysis-run-a-3',
+    scope: SCOPE_A,
+    createdAt: T0 + 50,
+});
+workspaceA = await publishHistoryAnalysisPass({
+    pass: passA3,
+    expectedWorkspaceRevision: workspaceA.revision,
+    factory,
+});
+bundleA = await getHistoricalInterpretationBundle({ scope: SCOPE_A, factory });
+assert.ok(bundleA);
+resolvedA = resolveHistoricalInterpretation(bundleA);
+assert.equal(
+    resolvedA.relationshipMemories.some(memory => memory.title === '第一次认真一起听雨'),
+    true,
+    'user correction must survive later analysis passes',
+);
+assert.equal(passA1.relationshipMemories[0].title, '第一次一起看雨', 'overlay must not mutate pass output');
+
+const manualOverlay: HistoricalUserOverlay = {
+    schemaVersion: 2,
+    id: 'overlay-manual-memory-v1',
+    seriesId: 'overlay-manual-memory',
+    scope: { ...SCOPE_A },
+    targetKind: 'relationship_memory',
+    operation: 'create',
+    patch: {
+        title: '我们还约定过一本书',
+        summary: '这是玩家自己补充的旧约定，当前没有对应原文。',
+        memoryPolicy: 'relationship_echo',
+    },
+    provenance: 'user_attested',
+    sourceRefs: [],
+    authority: 'user_confirmed',
+    createdAt: T0 + 60,
+    revision: 1,
+};
+workspaceA = await appendHistoricalUserOverlay({
+    overlay: manualOverlay,
+    expectedWorkspaceRevision: workspaceA.revision,
+    factory,
+});
+const manualTargetId = createHistoricalUserEntityId(manualOverlay.seriesId);
+const hideManualOverlay: HistoricalUserOverlay = {
+    ...manualOverlay,
+    id: 'overlay-manual-memory-v2-hide',
+    previousOverlayId: manualOverlay.id,
+    targetId: manualTargetId,
+    operation: 'hide',
+    patch: {},
+    createdAt: T0 + 61,
+    revision: 2,
+};
+workspaceA = await appendHistoricalUserOverlay({
+    overlay: hideManualOverlay,
+    expectedWorkspaceRevision: workspaceA.revision,
+    factory,
+});
+assert.equal(
+    (await readHistoricalRelationshipViews({ scope: SCOPE_A, factory })).contactMemories
+        .some(row => row.id === manualTargetId),
+    false,
+    'hide overlay must remove only the resolved card',
+);
+const restoreManualOverlay: HistoricalUserOverlay = {
+    ...hideManualOverlay,
+    id: 'overlay-manual-memory-v3-restore',
+    previousOverlayId: hideManualOverlay.id,
+    operation: 'restore',
+    createdAt: T0 + 62,
+    revision: 3,
+};
+workspaceA = await appendHistoricalUserOverlay({
+    overlay: restoreManualOverlay,
+    expectedWorkspaceRevision: workspaceA.revision,
+    factory,
+});
+assert.match(
+    validateHistoricalUserOverlay({
+        ...manualOverlay,
+        patch: { ...manualOverlay.patch, currentMood: '想念' },
+    }).join('\n'),
+    /forbidden current-state field/,
+);
+await assert.rejects(
+    () => appendHistoricalUserOverlay({
+        overlay: { ...manualOverlay, id: 'overlay-cross-mask', scope: SCOPE_B },
+        expectedWorkspaceRevision: workspaceA.revision,
+        factory,
+    }),
+    /workspace does not exist/,
+);
+
+const viewsA = await readHistoricalRelationshipViews({ scope: SCOPE_A, factory });
+assert.equal(viewsA.workspaceId, workspaceA.id);
+const manualRow = viewsA.contactMemories.find(row => row.title === manualOverlay.patch.title);
+assert.equal(manualRow?.provenance, 'user_attested');
+assert.equal(manualRow?.provenanceLabel, '我补充的');
+assert.equal(manualRow?.sourceRefs.length, 0);
+assert.equal('bindingCount' in viewsA, false);
+assert.equal(viewsA.contactMemories.some(row => 'routeCount' in row || 'membershipCount' in row), false);
+assert.equal(viewsA.narrativeProfile?.routes.length, 2, 'duplicate route pairs should coalesce');
+
+const passB1 = createPass({
+    id: 'analysis-pass-b-1',
+    requestId: 'analysis-request-b-1',
+    analysisRunId: 'analysis-run-b-1',
+    scope: SCOPE_B,
+    createdAt: T0 + 70,
+});
+await publishHistoryAnalysisPass({ pass: passB1, factory });
+const viewsB = await readHistoricalRelationshipViews({ scope: SCOPE_B, factory });
+assert.equal(viewsB.contactMemories.every(row => row.scope.personaMaskId === SCOPE_B.personaMaskId), true);
+assert.equal(viewsB.contactMemories.some(row => row.title === manualOverlay.patch.title), false);
+assert.deepEqual(projectHistoricalRelationshipViews(null), {
+    contactMemories: [], timebookNodes: [], narrativeProfile: null,
+});
 
 const database = await openHistoryAnalysisDatabase(factory);
 assert.equal(database.name, HISTORY_ANALYSIS_DB_NAME);
 assert.deepEqual(
+    [...database.objectStoreNames].sort(),
+    [
+        HISTORICAL_USER_OVERLAY_STORE,
+        HISTORY_ANALYSIS_PASS_STORE,
+        HISTORY_ANALYSIS_WORKSPACE_STORE,
+        HISTORY_EVIDENCE_BINDING_STORE,
+    ].sort(),
+);
+assert.deepEqual(
     Array.from(
         database
-            .transaction(HISTORY_ANALYSIS_SNAPSHOT_STORE, 'readonly')
-            .objectStore(HISTORY_ANALYSIS_SNAPSHOT_STORE)
-            .index(HISTORY_ANALYSIS_SCOPE_STATUS_INDEX)
+            .transaction(HISTORY_ANALYSIS_PASS_STORE, 'readonly')
+            .objectStore(HISTORY_ANALYSIS_PASS_STORE)
+            .index(HISTORY_ANALYSIS_SCOPE_CREATED_INDEX)
             .keyPath as string[],
     ),
     [
         'scope.progressBundleId',
         'scope.personaMaskId',
         'scope.charId',
-        'status',
         'createdAt',
     ],
 );
 database.close();
 
-console.log('history analysis foundation OK: preflight=2 plans snapshot=atomic relationshipScope=isolated');
+console.log('history analysis v2 OK: immutable passes + workspace + many-to-many bindings + overlays');

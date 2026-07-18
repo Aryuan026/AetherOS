@@ -3,7 +3,7 @@ import type {
     HistorySourceTime,
 } from '../types.ts';
 
-export const HISTORY_ANALYSIS_SCHEMA_VERSION = 1 as const;
+export const HISTORY_ANALYSIS_SCHEMA_VERSION = 2 as const;
 
 export type HistoryAnalysisStrategy = 'quick_merge' | 'deep_daily';
 
@@ -188,10 +188,11 @@ export interface HistoricalNarrativeProfile extends HistoricalDerivedBase {
     openThreads: HistoricalOpenThread[];
 }
 
-export type HistoryAnalysisSnapshotStatus = 'active' | 'superseded' | 'archived';
-
-/** One complete, atomically replaceable interpretation of a fixed source revision. */
-export interface HistoryAnalysisSnapshot {
+/**
+ * One immutable completed interpretation. Re-running the same source produces
+ * another pass; it never replaces or mutates an earlier pass.
+ */
+export interface HistoryAnalysisPass {
     schemaVersion: typeof HISTORY_ANALYSIS_SCHEMA_VERSION;
     id: string;
     scope: HistoryScope;
@@ -199,12 +200,111 @@ export interface HistoryAnalysisSnapshot {
     analysisRunId: string;
     strategy: HistoryAnalysisStrategy;
     sourceRevisionFingerprint: string;
+    sourceRefs: HistorySourceSpan[];
     temporalClass: 'historical';
-    status: HistoryAnalysisSnapshotStatus;
+    status: 'completed';
     relationshipMemories: HistoricalRelationshipMemory[];
     timebookNodes: HistoricalTimebookNode[];
     narrativeProfile: HistoricalNarrativeProfile;
     createdAt: number;
+    completedAt: number;
+}
+
+export type HistoryEvidenceTargetKind =
+    | 'relationship_memory'
+    | 'timebook_node'
+    | 'route'
+    | 'npc'
+    | 'relationship_stage'
+    | 'open_thread';
+
+export type HistoryEvidenceBindingPurpose =
+    | 'evidence'
+    | 'scene'
+    | 'turning_point'
+    | 'relationship_change';
+
+/**
+ * A source span may have any number of bindings. There is deliberately no
+ * uniqueness rule on sourceRef, so one scene can support several routes.
+ */
+export interface HistoryEvidenceBinding {
+    schemaVersion: typeof HISTORY_ANALYSIS_SCHEMA_VERSION;
+    id: string;
+    scope: HistoryScope;
+    sourceRef: HistorySourceSpan;
+    targetKind: HistoryEvidenceTargetKind;
+    targetId: string;
+    purpose: HistoryEvidenceBindingPurpose;
+    origin: 'analysis' | 'user';
+    analysisPassId?: string;
+    status: 'active' | 'hidden';
+    createdAt: number;
     updatedAt: number;
     revision: number;
+}
+
+/** The editable map over immutable passes. One and only one exists per scope. */
+export interface HistoricalInterpretationWorkspace {
+    schemaVersion: typeof HISTORY_ANALYSIS_SCHEMA_VERSION;
+    id: string;
+    scope: HistoryScope;
+    contributingPassIds: string[];
+    entityIds: string[];
+    bindingIds: string[];
+    overlayIds: string[];
+    createdAt: number;
+    updatedAt: number;
+    revision: number;
+}
+
+/**
+ * An append-only user correction. A new revision is another record linked by
+ * seriesId/previousOverlayId; pass output and Calendar source stay untouched.
+ */
+export interface HistoricalUserOverlay {
+    schemaVersion: typeof HISTORY_ANALYSIS_SCHEMA_VERSION;
+    id: string;
+    seriesId: string;
+    previousOverlayId?: string;
+    scope: HistoryScope;
+    targetKind: HistoryEvidenceTargetKind;
+    targetId?: string;
+    operation: 'create' | 'update' | 'hide' | 'restore';
+    patch: Record<string, unknown>;
+    provenance: 'source_linked' | 'user_attested';
+    sourceRefs: HistorySourceSpan[];
+    authority: 'user_confirmed';
+    createdAt: number;
+    revision: number;
+}
+
+export interface HistoricalEntityProvenance {
+    entityId: string;
+    candidateIds: string[];
+    analysisPassIds: string[];
+    bindingIds: string[];
+    overlayIds: string[];
+    sourceRefs: HistorySourceSpan[];
+    provenance: 'source_linked' | 'user_attested';
+}
+
+/** A read-only resolved relationship view; never persisted as another archive. */
+export interface ResolvedHistoricalInterpretation {
+    schemaVersion: typeof HISTORY_ANALYSIS_SCHEMA_VERSION;
+    workspaceId: string;
+    workspaceRevision: number;
+    scope: HistoryScope;
+    contributingPassIds: string[];
+    relationshipMemories: HistoricalRelationshipMemory[];
+    timebookNodes: HistoricalTimebookNode[];
+    narrativeProfile: HistoricalNarrativeProfile | null;
+    provenance: HistoricalEntityProvenance[];
+}
+
+export interface HistoricalInterpretationBundle {
+    workspace: HistoricalInterpretationWorkspace;
+    passes: HistoryAnalysisPass[];
+    bindings: HistoryEvidenceBinding[];
+    overlays: HistoricalUserOverlay[];
 }
