@@ -255,6 +255,10 @@ one route. Future history and scene-planning work must preserve these rules:
   introduce stable, scoped, versioned evidence-binding identities so additions,
   removals, restoration, origin, and analysis-run provenance are auditable
   without duplicating or mutating the Calendar source;
+- many-to-many membership is not a player-facing statistic. StoryDesk must not
+  show `同时属于 N 条线`, membership counts, or a multi-route badge. The same
+  source may appear naturally in each route that reads it, while an advanced
+  edit action changes only one binding;
 - people correct interpretations where the result is used: Contact memories,
   Timebook nodes, and StoryDesk historical-route cards. Those surfaces may add,
   edit, hide, and restore derived records while retaining a jump back to the

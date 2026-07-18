@@ -98,9 +98,10 @@ explicit projection:
 
 ## Historical Analysis Foundation
 
-The consuming-module audit now authorizes three historical outputs over the
-same evidence: relationship memories, timebook nodes, and a narrative profile.
-The foundation therefore provides:
+The first consuming-module audit authorized three durable projection families
+over the same evidence: relationship memories, timebook nodes, and a narrative
+profile. These are not the only runtime consumers. The foundation therefore
+provides:
 
 - full `progressBundleId + personaMaskId + charId` scope in every stable key,
   archive index, cursor, analysis snapshot, and derived result;
@@ -113,7 +114,8 @@ The foundation therefore provides:
   authority axes rather than one companion/roleplay enum;
 - optimistic-concurrency publication in a relationship-scoped analysis DB;
 - pure relationship-scoped read projections for future Contact, Timebook, and
-  narrative-director consumers.
+  narrative-director consumers, with a shared `memoryCore` delivery adapter
+  still required before the rest of the phone may safely use them.
 
 Every automatic result begins as `soft_canon` and remains correctable. The
 historical profile is read-only background for a future narrative director. It
@@ -141,9 +143,10 @@ The human-facing flow should stay short:
    fourth result app.
 4. Edit results in place. Every destination card exposes a compact edit action
    and a source jump. List headers and empty states expose `手动补一条`.
-5. StoryDesk historical evidence uses route chips. `放进另一条线` adds another
-   chip/binding and preserves all existing ones; removing a chip removes only
-   that binding. The copy should say `同时属于 N 条线` when applicable.
+5. StoryDesk shows source evidence naturally inside each relevant route. It does
+   not show membership counts, `同时属于 N 条线`, or a multi-route badge. A
+   compact edit sheet may add an association to another route or remove one
+   association; every other binding and the Calendar source remain intact.
 
 Implementation must separate immutable `HistoryAnalysisPass` output from the
 editable `HistoricalInterpretationWorkspace`. Manual changes are versioned
@@ -160,6 +163,12 @@ Destination responsibilities:
   one source passage to several routes;
 - Calendar: preserve and render source only; never accept edits to transcript
   text from the analysis result flow.
+
+These destinations are correction homes, not an exhaustive consumer list.
+Chat, Call, proactive letters, Group Chat, Date, Special Moments, Diary,
+Guidebook, Social, and selected creative surfaces must read appropriate slices
+through the same full-scope historical selector. Shared and HOLD surfaces must
+receive none. See `docs/HISTORY_REUSE_SURFACE_AUDIT.md`.
 
 Editing historical material is not route activation. `继续这条线` remains a
 separate explicit narrative action and still cannot skip scene play and receipt
@@ -202,6 +211,7 @@ The next G6 implementation box must add deterministic fixtures for:
 
 - model extraction prompts and runtime calls;
 - Contact-memory and Timebook surface wiring;
+- full-phone historical selector and consumer coverage;
 - Calendar multi-pass runtime and destination correction overlays;
 - explicit historical route continuation;
 - time-conversion analysis;

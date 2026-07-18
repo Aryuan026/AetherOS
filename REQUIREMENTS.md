@@ -617,6 +617,10 @@
 - A source span may have zero, one, or many simultaneous storyline bindings.
   Mainline, IF, meeting/date, co-authored scene, and unknown continuity are
   independent interpretations; assigning one must not remove another.
+- Many-to-many membership is a persistence and correction rule, not a player
+  statistic. Ordinary source/result cards must not show `同时属于 N 条线`, route
+  counts, or multi-membership badges. Association editing may live in a compact
+  edit sheet and must remain additive/non-destructive.
 - Result correction happens at the destination, not during import and not as a
   per-message questionnaire. Contact memory, Timebook, and StoryDesk historical
   cards must allow add, edit, hide, restore, and source jump where applicable.
@@ -639,6 +643,21 @@
 - Model execution, prompts, visible publication adapters, vectorization, and
   semantic retrieval remain separate implementation boxes; defining the result
   contract does not claim those runtime paths exist.
+- Contact memory, Timebook, and StoryDesk are visible correction homes, not the
+  complete reuse boundary. Resolved historical evidence must be available to
+  appropriate Chat, Call, proactive, Group Chat, Date, Special Moments, Diary,
+  Guidebook, Social, and creative/narrative consumers through one shared async
+  selector with full `progressBundleId + personaMaskId + charId` scope.
+- Historical reuse must not be implemented by copying interpreted rows into
+  every App. Surface adapters select from one resolved workspace and record one
+  delivery receipt. `ContextBuilder` remains synchronous and DB-free.
+- Every AI-facing App must declare one history policy before Calendar model
+  execution: `required`, `filtered`, `shared`, `hold`, or `no-history`. Missing
+  scope, shared-tool policy, and HOLD policy fail closed to no historical packet.
+- Study and Worldbook remain shared and receive no automatic mask-private
+  history. TRPG and LifeSim narrative-history delivery remains HOLD. Companion
+  Plan, Room, Bank, and other currently unlisted surfaces require explicit scope
+  ownership before they may consume imported relationship history.
 - Raw history is medium-neutral. Chat may use a bounded historical tail while
   staying remote text; Date must not auto-read that tail or resume historical
   actions, positions, environments, or stage direction.

@@ -14,6 +14,9 @@ The old context path and the new memory path should complement each other.
 - `memoryCore` owns dynamic delivery: current surface, current message, recent
   worldline state, sparse memory retrieval, receipts, and later hybrid
   keyword/vector recall.
+- Imported history enters this same dynamic delivery path through a resolved,
+  full-relationship-scope projection. It must not create a second selector or
+  one private memory copy per App.
 
 AetherOS should not treat the character as a reply generator. The character has
 their own parallel life line; the chat page is a phone channel into that life.
@@ -210,6 +213,33 @@ Vector retrieval should augment the selector, not replace it.
 Low-context messages such as greetings, laughter, and simple affection should
 not trigger expensive deep recall unless the surface mode or hot state requires
 it.
+
+## Historical Evidence Delivery
+
+Contact memory, Timebook, and StoryDesk are the visible places where a person
+can inspect and correct durable historical interpretations. They are not the
+only memory consumers. The same resolved relationship workspace must feed the
+existing delivery pipeline with:
+
+- full `progressBundleId + personaMaskId + charId` scope;
+- `temporalClass: historical` and source authority;
+- continuity and knowledge/privacy policy;
+- user overlay/correction state;
+- source refs for audit and jump-back;
+- a surface-specific character budget.
+
+`ContextBuilder` remains synchronous and DB-free. A future async adapter under
+`memoryCore` merges eligible historical candidates into the dynamic selection
+stage. It does not copy records into Chat, Diary, Social, or other App stores.
+
+Many-to-many route membership is not a prompt or UI fact by default. Selectors
+may use several bindings to rank evidence, but delivery receipts and ordinary
+cards do not show `同时属于 N 条线` or membership counts.
+
+The audited whole-phone coverage and fail-closed policies live in
+`docs/HISTORY_REUSE_SURFACE_AUDIT.md`. In particular, shared Study/Worldbook and
+HOLD TRPG/LifeSim surfaces do not automatically receive one mask's private
+historical packet.
 
 ## Reuse Of Existing Code
 

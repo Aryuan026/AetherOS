@@ -123,6 +123,9 @@ schema.
 - [ ] One source span may bind to two or more historical routes simultaneously.
 - [ ] `放进另一条线` adds a binding; removing it leaves every sibling binding and
       the Calendar source untouched.
+- [ ] Ordinary source/result cards show no `同时属于 N 条线`, membership count,
+      or multi-route badge; the same source still renders normally in every
+      relevant route.
 - [ ] Contact memory, Timebook, and StoryDesk allow in-place add/edit/hide/restore
       without reopening import or per-message review.
 - [ ] Manual edits are versioned user-confirmed historical overlays and survive
@@ -137,6 +140,31 @@ schema.
       current emotion, care, location, Character Life, or reminders.
 - [ ] Full triple-scope isolation holds for passes, workspaces, bindings, and
       overlays.
+
+## G7 — Whole-Phone Historical Reuse
+
+- [ ] The shared historical selector requires
+      `progressBundleId + personaMaskId + charId` and fails closed when any part
+      is missing or mismatched.
+- [ ] Contact memory, Timebook, and StoryDesk remain correction homes; no App
+      receives a private copied historical store.
+- [ ] Chat, Call, proactive letters, Group Chat, Date, and Special Moments read
+      their allowed sparse historical packet through one shared pipeline.
+- [ ] Diary, Guidebook, Social, relationship-impression, and explicit creative
+      flows receive only their surface-appropriate filtered packet.
+- [ ] Study and Worldbook receive no automatic mask-private history while their
+      policy is shared; TRPG and LifeSim receive no historical narrative packet
+      while their policy is HOLD.
+- [ ] Companion Plan, Room, Bank, and any newly added AI-facing surface cannot
+      consume imported history until it declares scope ownership and a history
+      policy.
+- [ ] Historical packets never update current mood, injury, location,
+      availability, promise, reminder, Character Life, active route, scene, or
+      receipt by delivery alone.
+- [ ] `记忆回声` receipts identify the consumer surface and imported-history
+      source without showing raw private text or route-membership counts.
+- [ ] A coverage test enumerates every AI-facing App and fails when a new App has
+      no declared history policy.
 
 ## Verification Commands
 

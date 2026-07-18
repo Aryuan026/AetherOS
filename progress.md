@@ -1,5 +1,31 @@
 # AetherOS Progress
 
+## 2026-07-18 Whole-Phone History Reuse Audit
+
+- confirmed:
+  - Many-to-many route binding remains a backend correction rule. Ordinary UI
+    will not display `同时属于 N 条线`, route counts, or multi-route badges.
+  - Contact memory, Timebook, and StoryDesk are visible correction homes, not
+    the only consumers of imported history.
+- code-grounded finding:
+  - The current `memoryCore` selector is dynamic but character-only and reads no
+    history-analysis projection. It is wired into Chat, proactive letters,
+    Call, Date, Group Chat, and active messages, while many other AI Apps still
+    use only `ContextBuilder` or local recent-message paths.
+  - Persona policy is mask-scoped for several relationship surfaces, shared for
+    Study/Worldbook, and HOLD for TRPG/LifeSim; several Apps still lack an
+    explicit progress-surface policy.
+- planned:
+  - Add one full-scope historical selector under `memoryCore`, keep
+    `ContextBuilder` DB-free, classify every AI-facing App, and deliver sparse
+    surface-appropriate projections without per-App history copies.
+  - Use Settings `记忆回声` to prove actual surface delivery, without exposing raw
+    private text or route-membership counts.
+- boundary:
+  - Calendar model execution and full-phone wiring remain HOLD until multi-pass
+    storage and fail-closed scope/policy tests exist.
+  - See `docs/HISTORY_REUSE_SURFACE_AUDIT.md` for the complete surface map.
+
 ## 2026-07-18 Multi-pass History Reuse Planning Contract
 
 - confirmed:

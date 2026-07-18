@@ -54,11 +54,18 @@ Historical conversation clean transport:
 - Treat storyline membership as many-to-many evidence binding. One source span
   may support mainline, IF, meeting/date, or another historical route at the
   same time. `放进另一条线` adds a binding; it never moves or deletes the first.
-- Publish results where people expect to use them: Contact memory, Timebook, and
-  StoryDesk historical route cards. Add/edit/hide/restore actions create a
-  versioned user overlay with `user_confirmed` historical authority, preserve a
-  source jump when present, and never rewrite transcript text or model-pass
-  output.
+- Use Contact memory, Timebook, and StoryDesk as visible correction homes, not as
+  the only consumers. Add/edit/hide/restore actions create a versioned user
+  overlay with `user_confirmed` historical authority, preserve a source jump
+  when present, and never rewrite transcript text or model-pass output.
+- Deliver the resolved relationship interpretation to every appropriate
+  AI-facing surface through one full-scope async selector under `memoryCore`.
+  Do not copy history into per-App stores. Classify every App as required,
+  filtered, shared, HOLD, or no-history before Calendar model execution ships.
+- Keep many-to-many route membership invisible in ordinary UI. Do not show
+  `同时属于 N 条线`, membership counts, or multi-route badges. An advanced edit
+  action may add/remove one association without affecting the source or sibling
+  bindings.
 - Automatically coalesce exact duplicate visible candidates, but preserve every
   analysis pass for provenance and rollback. Multiple route memberships are not
   conflicts; only mutually exclusive factual interpretations receive a compact
@@ -69,6 +76,9 @@ Historical conversation clean transport:
 - Keep model execution, prompts, destination-surface wiring, correction-overlay
   storage, and vector retrieval HOLD until their own boxes are implemented and
   verified.
+- Treat `docs/HISTORY_REUSE_SURFACE_AUDIT.md` as the coverage map for historical
+  input. Shared tools and isolated sandboxes must fail closed instead of
+  inheriting one mask's relationship history.
 - Use clean v2 local namespaces with no legacy review reader or migration.
 
 Timebook and companion structure:

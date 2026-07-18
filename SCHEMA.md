@@ -1180,8 +1180,20 @@ map, not another source archive. A source span has no uniqueness constraint
 across bindings, so the same dialogue may belong to several routes at once.
 Removing one binding cannot remove the source, candidate, or sibling bindings.
 
+Many-to-many membership is not a required presentation field. Ordinary UI and
+delivery receipts must not render a route count or `同时属于 N 条线`; the same
+source may simply resolve inside each relevant route. Association editing is an
+advanced overlay/binding operation, not a source-card badge.
+
 User overlays never mutate pass candidates. A source-free manual addition must
 use `provenance: "user_attested"` and render as `我补充的`; it cannot masquerade
 as extracted evidence. The resolved read projection applies authority order and
 overlays, coalesces exact duplicate visible cards, retains all pass provenance,
 and continues to forbid current-state and lived-experience fields.
+
+The resolved workspace is also the input to one future full-scope historical
+selector under `memoryCore`. Contact memory, Timebook, and StoryDesk remain
+visible correction projections; Chat, Call, proactive, Group Chat, Date, Diary,
+Social, Guidebook, Special Moments, and other approved consumers receive
+budgeted read projections rather than duplicated durable rows. Shared/HOLD
+surfaces fail closed. See `docs/HISTORY_REUSE_SURFACE_AUDIT.md`.
