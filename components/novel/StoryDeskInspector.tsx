@@ -2,7 +2,9 @@ import React, { useMemo } from 'react';
 import type { CharacterProfile, NovelBook } from '../../types';
 import type { NarrativeDirective, NovelNarrativeState } from '../../domain/narrative/types';
 import type { NarrativeInspectionSnapshot } from '../../domain/narrative/inspection';
+import { startDraftNarrativeRun } from '../../domain/narrative/runLifecycle';
 import { StoryDeskDirectivePanel } from './StoryDeskDirectivePanel';
+import { StoryDeskRunStartAction } from './StoryDeskRunStartAction';
 
 interface StoryDeskInspectorProps {
     activeBook: NovelBook;
@@ -16,6 +18,7 @@ interface StoryDeskInspectorProps {
         directives: NarrativeDirective[],
         narrative: NovelNarrativeState,
     ) => Promise<void>;
+    onRunStartChange: (narrative: NovelNarrativeState) => Promise<void>;
     onExit: () => void;
 }
 
@@ -53,6 +56,7 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
     inspection,
     onDirectivesChange,
     onActivationChange,
+    onRunStartChange,
     onExit,
 }) => {
     const characterNameById = useMemo(() => new Map(
@@ -67,6 +71,19 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
         (left, right) => (right.confirmedAt || right.playedAt) - (left.confirmedAt || left.playedAt),
     ), [inspection.receipts]);
     const pendingDirectiveCount = inspection.directives.filter(directive => directive.status === 'pending').length;
+    const globallyActiveRun = inspection.state.runs.find(run => run.status === 'active');
+
+    const startRun = async (runId: string, expectedUpdatedAt: number) => {
+        if (!inspection.progressBundleId) throw new Error('当前身份还没有进度包，不能启动线路');
+        const result = startDraftNarrativeRun({
+            bookId: activeBook.id,
+            progressBundleId: inspection.progressBundleId,
+            runId,
+            expectedUpdatedAt,
+            narrative: activeBook.narrative,
+        });
+        await onRunStartChange(result.narrative);
+    };
 
     return (
         <div className="h-full w-full bg-[#f4f1eb] flex flex-col font-sans text-slate-800" data-testid="story-desk-inspector">
@@ -179,6 +196,24 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
                                     <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2.5 text-xs leading-relaxed text-indigo-700">
                                         线路整理夹已建立；还没有生成或游玩任何场景。
                                     </div>
+                                )}
+                                {run.status === 'active' && runScenes.length === 0 && (
+                                    <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5 text-xs leading-relaxed text-emerald-700">
+                                        已选为当前线路；第一幕仍是空的，尚未发生任何剧情经历。
+                                    </div>
+                                )}
+                                {run.status === 'draft' && (
+                                    <StoryDeskRunStartAction
+                                        runId={run.id}
+                                        disabledReason={
+                                            globallyActiveRun
+                                                ? '这本书已有一条进行中的线路；本阶段不会自动暂停或切换它。'
+                                                : runScenes.length > 0 || runReceiptCount > 0
+                                                    ? '只有零场景、零回执的线路草稿可以启动。'
+                                                    : undefined
+                                        }
+                                        onStart={() => startRun(run.id, run.updatedAt)}
+                                    />
                                 )}
                                 <div className="mt-3 text-[9px] text-slate-400">最后整理于 {formatUpdatedAt(run.updatedAt)}</div>
                             </article>

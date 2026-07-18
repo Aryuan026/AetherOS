@@ -1,7 +1,7 @@
 # Long Plot And Character Life Simulation Contract
 
-Status: confirmed contract; manual direction review and draft-route activation implemented, playable runtime and character-life pending
-Last updated: 2026-07-17
+Status: confirmed contract; explicit draft-run selection implemented, playable scenes and character-life pending
+Last updated: 2026-07-18
 
 This document defines two connected but non-identical systems:
 
@@ -165,6 +165,38 @@ generation, in-world action input, DM/Character turns, played/confirmed receipt
 review, historical-material adoption, memory promotion, life-event application,
 Character Virtual Life, and launcher renaming. Activation calls no AI API,
 history/archive service, character store, memory service, or clock.
+
+## Implemented Draft Run Start Slice — 2026-07-18
+
+StoryDesk can now explicitly select one reviewed, empty draft as the book's
+current run without pretending that play has begun:
+
+- `domain/narrative/runLifecycle.ts` owns the pure `draft -> active`
+  transaction and revalidates book, progress bundle, run identity, status, and
+  the `updatedAt` review token;
+- the selected draft must have zero scenes, zero receipts, and no active scene;
+  starting it changes only run status, active-run selection, and timestamps;
+- a book still permits only one active run. When another run is active, the
+  transaction fails closed instead of silently pausing or switching it;
+- runs from other progress bundles remain preserved but cannot be selected
+  through the current StoryDesk scope;
+- the phone UI uses a second confirmation step which states that starting does
+  not generate a scene, call AI, record an experience, write memory, or change
+  Character Life;
+- an active zero-scene route remains visibly empty, so "current route" cannot
+  be mistaken for an event that already happened.
+
+The narrative fixture covers immutable start, book/bundle/stale-review gates,
+terminal-status rejection, single-active-run enforcement, zero-scene and
+zero-receipt output, non-empty draft rejection, and preservation of another
+bundle.
+
+HOLD after this slice: scene planning/generation, Narrative Director context
+assembly, historical profile adapters, active-run switching or pause/resume,
+in-world action input, DM/Character turns, played/confirmed receipt review,
+memory promotion, life-event application, Character Virtual Life, and launcher
+renaming. The lifecycle module imports no history schema or store and performs
+no AI, memory, Character, archive, or clock write.
 
 ## Code-Grounded Starting Point
 

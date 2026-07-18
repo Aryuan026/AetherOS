@@ -44,8 +44,12 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
     ) => {
         await writerProps.updateNovel(writerProps.activeBook.id, { directives, narrative });
     }, [writerProps.activeBook.id, writerProps.updateNovel]);
+    const saveRunStart = useCallback(async (narrative: NovelNarrativeState) => {
+        await writerProps.updateNovel(writerProps.activeBook.id, { narrative });
+    }, [writerProps.activeBook.id, writerProps.updateNovel]);
     const pendingDirectiveCount = inspection.directives.filter(directive => directive.status === 'pending').length;
     const draftRunCount = inspection.runs.filter(run => run.status === 'draft').length;
+    const activeRunCount = inspection.runs.filter(run => run.status === 'active').length;
 
     useEffect(() => {
         const testWindow = window as typeof window & { render_game_to_text?: () => string };
@@ -58,6 +62,7 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
             directiveCount: inspection.directives.length,
             pendingDirectiveCount,
             draftRunCount,
+            activeRunCount,
             unscopedDirectiveCount: inspection.unscopedDirectives.length,
             otherBundleDirectiveCount: inspection.otherBundleDirectiveCount,
             runCount: inspection.runs.length,
@@ -70,7 +75,7 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
             if (previousRenderer) testWindow.render_game_to_text = previousRenderer;
             else delete testWindow.render_game_to_text;
         };
-    }, [activePanel, draftRunCount, inspection, pendingDirectiveCount, writerProps.activeBook.id]);
+    }, [activePanel, activeRunCount, draftRunCount, inspection, pendingDirectiveCount, writerProps.activeBook.id]);
 
     return (
         <div className="h-full w-full flex flex-col bg-slate-50">
@@ -105,6 +110,7 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
                         inspection={inspection}
                         onDirectivesChange={saveDirectives}
                         onActivationChange={saveActivation}
+                        onRunStartChange={saveRunStart}
                         onExit={writerProps.onBack}
                     />
                 )}

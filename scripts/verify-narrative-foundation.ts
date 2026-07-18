@@ -20,6 +20,7 @@ import {
     reviseStoryDirection,
 } from '../domain/narrative/directives.ts';
 import { activateStoryDirection } from '../domain/narrative/activation.ts';
+import { startDraftNarrativeRun } from '../domain/narrative/runLifecycle.ts';
 import type { NarrativeExperienceReceipt, NovelBook } from '../types.ts';
 
 const T0 = 1_700_000_000_000;
@@ -556,5 +557,99 @@ assert.throws(() => activateStoryDirection({
     narrative: conflictingNarrative,
 }, T0 + 74), /derived narrative route identity already exists/);
 assert.equal(conflictingNarrative.runs.length, 1, 'failed activation must not mutate narrative state');
+
+const startSource = preservedRunActivation.narrative;
+const startSourceRun = startSource.runs.find(run => run.id === mainlineActivation.run.id);
+assert.ok(startSourceRun);
+const startedRun = startDraftNarrativeRun({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    runId: startSourceRun.id,
+    expectedUpdatedAt: startSourceRun.updatedAt,
+    narrative: startSource,
+}, T0 + 80);
+assert.equal(startSourceRun.status, 'draft', 'run start must not mutate the source narrative');
+assert.equal(startedRun.run.status, 'active');
+assert.equal(startedRun.run.updatedAt, T0 + 80);
+assert.equal(startedRun.narrative.activeRunId, startSourceRun.id);
+assert.equal(startedRun.narrative.scenes.length, 0, 'run start must not create a scene');
+assert.equal(startedRun.narrative.receipts.length, 0, 'run start must not create a receipt');
+assert.equal(
+    startedRun.narrative.runs.find(run => run.id === 'run-preserved-other-bundle')?.status,
+    'draft',
+    'run start must preserve another bundle without selecting it',
+);
+
+assert.throws(() => startDraftNarrativeRun({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    runId: startSourceRun.id,
+    expectedUpdatedAt: startSourceRun.updatedAt - 1,
+    narrative: startSource,
+}, T0 + 81), /changed after this start review/);
+assert.throws(() => startDraftNarrativeRun({
+    bookId: 'book-2',
+    progressBundleId: 'bundle-user-1',
+    runId: startSourceRun.id,
+    expectedUpdatedAt: startSourceRun.updatedAt,
+    narrative: startSource,
+}, T0 + 81), /does not belong to this StoryDesk book/);
+assert.throws(() => startDraftNarrativeRun({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-2',
+    runId: startSourceRun.id,
+    expectedUpdatedAt: startSourceRun.updatedAt,
+    narrative: startSource,
+}, T0 + 81), /active progress bundle/);
+assert.throws(() => startDraftNarrativeRun({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    runId: startSourceRun.id,
+    expectedUpdatedAt: startedRun.run.updatedAt,
+    narrative: startedRun.narrative,
+}, T0 + 81), /Only a draft narrative run/);
+
+const secondDraft = createNarrativeRun({
+    id: 'run-second-draft',
+    progressBundleId: 'bundle-user-1',
+    bookId: 'book-1',
+    routeId: 'route-second-draft',
+    branchId: 'branch-main',
+    lane: 'mainline',
+    participantCharIds: ['char-a'],
+}, T0 + 81);
+const narrativeWithSecondDraft = addNarrativeRun(startedRun.narrative, secondDraft, T0 + 81);
+assert.throws(() => startDraftNarrativeRun({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    runId: secondDraft.id,
+    expectedUpdatedAt: secondDraft.updatedAt,
+    narrative: narrativeWithSecondDraft,
+}, T0 + 82), /Another narrative run is already active/);
+
+const nonEmptyDraft = createNarrativeRun({
+    id: 'run-non-empty-draft',
+    progressBundleId: 'bundle-user-1',
+    bookId: 'book-1',
+    routeId: 'route-non-empty-draft',
+    branchId: 'branch-main',
+    lane: 'mainline',
+    participantCharIds: ['char-a'],
+}, T0 + 83);
+let nonEmptyDraftState = addNarrativeRun(createEmptyNovelNarrativeState(T0 + 83), nonEmptyDraft, T0 + 83);
+nonEmptyDraftState = addNarrativeScene(nonEmptyDraftState, createNarrativeScene({
+    id: 'scene-premature-plan',
+    runId: nonEmptyDraft.id,
+    title: '不应提前存在的场景',
+    participantIds: ['char-a'],
+}, T0 + 84), T0 + 84);
+assert.throws(() => startDraftNarrativeRun({
+    bookId: 'book-1',
+    progressBundleId: 'bundle-user-1',
+    runId: nonEmptyDraft.id,
+    expectedUpdatedAt: nonEmptyDraft.updatedAt,
+    narrative: nonEmptyDraftState,
+}, T0 + 85), /must be empty/);
+assert.equal(nonEmptyDraftState.runs[0].status, 'draft', 'failed run start must leave its source untouched');
 
 console.log('narrative foundation fixtures passed');
