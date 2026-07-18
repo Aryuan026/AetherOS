@@ -169,6 +169,36 @@
   block derived from that member's private chat and the current group topic.
 - Active/proactive letters should receive the same relationship context while
   still obeying remote-message constraints.
+- Chat must expose one discoverable internal-settings entry instead of growing
+  one header button per future feature. The first relationship-scoped setting
+  controls reply format and bubble presentation, not the character's personality
+  or plot posture.
+- `跟随玩家格式` may inspect only the current player's structural form (plain
+  dialogue, parenthesized action, narration/dialogue mixture, and paragraph
+  boundaries). It must not imitate the player's tone, wording, syntax, sentence
+  length, rhythm, or verbal habits. Character voice remains owned by the card and
+  reliable context. One ordinary model response is rendered as one text bubble
+  with natural internal paragraphs. Emoji, voice and other real App actions may
+  remain separate records. `只发消息` preserves strict remote IM output: the
+  prompt marks independently sendable messages with newlines and the renderer
+  splits them into separate bubbles.
+- Switching reply presentation must also re-render already saved Chat replies
+  without rewriting their source rows. New assistant output freezes an immutable
+  response id; unlabeled legacy split rows may be reconstructed only when they
+  are adjacent assistant text in the same relationship and separated by a short,
+  bounded write gap. Imported archive turns remain immutable authored turns.
+- A grouped avatar anchors to the first visible bubble in its message group.
+  When `跟随玩家格式` collapses one response to one bubble, the avatar and bubble
+  top edges must align.
+- Neither mode may rewrite the newest user message, force action narration,
+  classify an entire turn as fictional, or override a character card's native
+  expression. `见面` remains the explicit visual-novel carrier, but Chat accepts
+  whatever response form the character card and reliable context naturally yield.
+- Prompt rules must not assume love, partnership, route stage or shared memories.
+  Relationship distance remains owned by the character card, persona and real
+  interaction evidence.
+- Fresh or field-less installs default to the `简约` chat appearance. Character
+  creation and history import must not overwrite an explicit global appearance.
 - Future UI surfaces must not be built as empty shells; they should call the
   same memory selector or an adapter under it.
 - The user must have a low-friction way to confirm that memory context is
@@ -312,9 +342,9 @@
 - The mobile chat header should be centered, with no header avatar and name/status sizing close to the screenshot reference.
 - The centered mobile chat header should stay compact; the name/status block must not create excessive top or bottom whitespace.
 - In deep-space chat, the round in-message avatar diameter should match the default one-line bubble height.
-- The appearance editor should expose exactly four visible chat theme cards: `深空`, `极简`, `微信`, and `自定义`.
+- The appearance editor should expose exactly four visible chat theme cards: `深空`, `简约`, `微信`, and `自定义`.
 - Built-in theme cards should not show explanatory helper text under the names.
-- `极简` replaces the earlier `月白` direction and should use soft rectangular iMessage-like bubbles, not pill-like bubbles.
+- `简约` replaces the earlier `月白` direction and should use soft rectangular iMessage-like bubbles, not pill-like bubbles.
 - `微信` replaces the removed Telegram / Discord / QQ-style directions and should use low-radius square bubbles, green user bubbles, and plain white character bubbles.
 - `自定义` is the only chat theme that exposes granular bubble adjustment.
 - `自定义` bubble adjustment should open as a child editor from the `自定义` card, not as a peer tab beside chat themes.

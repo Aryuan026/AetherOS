@@ -1,7 +1,7 @@
 
 import React, { useRef, useState } from 'react';
 import Modal from '../os/Modal';
-import { CharacterProfile, Message, EmojiCategory } from '../../types';
+import { ChatReplyMode, CharacterProfile, Message, EmojiCategory } from '../../types';
 
 const PUBLIC_EMOJI_PACK_ORDER = new Map<string, number>([
     ['theme-starry-baby', 0],
@@ -23,6 +23,8 @@ interface ChatModalsProps {
     setSettingsContextLimit: (v: number) => void;
     settingsHideSysLogs: boolean;
     setSettingsHideSysLogs: (v: boolean) => void;
+    settingsReplyMode: ChatReplyMode;
+    setSettingsReplyMode: (v: ChatReplyMode) => void;
     preserveContext: boolean;
     setPreserveContext: (v: boolean) => void;
     editContent: string;
@@ -98,6 +100,7 @@ const ChatModals: React.FC<ChatModalsProps> = ({
     emojiImportText, setEmojiImportText,
     settingsContextLimit, setSettingsContextLimit,
     settingsHideSysLogs, setSettingsHideSysLogs,
+    settingsReplyMode, setSettingsReplyMode,
     preserveContext, setPreserveContext,
     editContent, setEditContent,
     newCategoryName, setNewCategoryName, onAddCategory,
@@ -191,6 +194,43 @@ const ChatModals: React.FC<ChatModalsProps> = ({
                 footer={<button onClick={onSaveSettings} className="w-full py-3 bg-primary text-white font-bold rounded-2xl">保存设置</button>}
             >
                 <div className="space-y-6">
+                    <section>
+                        <div className="mb-2 flex items-end justify-between gap-3">
+                            <div>
+                                <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">回复格式</div>
+                                <p className="mt-1 text-[11px] leading-relaxed text-slate-400">只调整文本结构与气泡呈现，不改变角色怎么说话。</p>
+                            </div>
+                            <span className="shrink-0 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-500">关系内设置</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setSettingsReplyMode('preserve')}
+                                aria-pressed={settingsReplyMode === 'preserve'}
+                                className={`rounded-2xl border p-3 text-left transition-all ${settingsReplyMode === 'preserve' ? 'border-violet-300 bg-violet-50 shadow-sm shadow-violet-100' : 'border-slate-200 bg-white'}`}
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className={`text-sm font-bold ${settingsReplyMode === 'preserve' ? 'text-violet-700' : 'text-slate-700'}`}>跟随玩家格式</span>
+                                    <span aria-hidden="true" className={`flex h-5 w-5 items-center justify-center rounded-full border text-[11px] ${settingsReplyMode === 'preserve' ? 'border-violet-500 bg-violet-500 text-white' : 'border-slate-300 text-transparent'}`}>{settingsReplyMode === 'preserve' ? '✓' : ''}</span>
+                                </div>
+                                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">只对齐纯对白、括号动作、叙述等文本结构；自然分段，整次回复保留在一个气泡里。</p>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSettingsReplyMode('texting')}
+                                aria-pressed={settingsReplyMode === 'texting'}
+                                className={`rounded-2xl border p-3 text-left transition-all ${settingsReplyMode === 'texting' ? 'border-sky-300 bg-sky-50 shadow-sm shadow-sky-100' : 'border-slate-200 bg-white'}`}
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className={`text-sm font-bold ${settingsReplyMode === 'texting' ? 'text-sky-700' : 'text-slate-700'}`}>只发消息</span>
+                                    <span aria-hidden="true" className={`flex h-5 w-5 items-center justify-center rounded-full border text-[11px] ${settingsReplyMode === 'texting' ? 'border-sky-500 bg-sky-500 text-white' : 'border-slate-300 text-transparent'}`}>{settingsReplyMode === 'texting' ? '✓' : ''}</span>
+                                </div>
+                                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">保持微信式远程聊天；独立消息用换行分开，页面再拆成多个气泡。</p>
+                            </button>
+                        </div>
+                        <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-[10px] leading-relaxed text-slate-400">只跟随格式，不学习你的语气、措辞或口癖；角色仍按自己的设定说话。</p>
+                    </section>
+
                      <div>
                          <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">聊天背景</label>
                          <div onClick={() => bgInputRef.current?.click()} className="h-24 bg-slate-100 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer hover:border-primary/50 overflow-hidden relative">

@@ -270,7 +270,7 @@ const MessageItem = React.memo(({
         : isWechatBubble
           ? 42
           : avatarSize === 'small' ? 28 : avatarSize === 'large' ? 48 : 36;
-    const shouldShowAvatar = avatarMode === 'every_message' || isLastInGroup;
+    const shouldShowAvatar = avatarMode === 'every_message' || isFirstInGroup;
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const startPos = useRef({ x: 0, y: 0 }); // Track touch start position
 
@@ -351,7 +351,11 @@ const MessageItem = React.memo(({
     // Render Avatar with potential bubble decoration
     // Removed mb-5 from here, handled via absolute positioning in parent
     const renderAvatar = (src: string, framePreset?: AvatarFramePreset) => (
-        <div className={`relative ${avatarSizeClass} z-0`}>
+        <div
+            className={`relative ${avatarSizeClass} z-0`}
+            data-message-avatar-slot
+            data-avatar-visible={shouldShowAvatar ? 'true' : 'false'}
+        >
             {shouldShowAvatar && (
                 <>
                     <AvatarWithFrame
@@ -560,7 +564,12 @@ const MessageItem = React.memo(({
         : isCompactBubble ? 'gap-2.5' : 'gap-2';
 
     const commonLayout = (content: React.ReactNode) => (
-            <div className={`flex items-start ${isUser ? 'justify-end' : 'justify-start'} ${avatarBubbleGapClass} ${marginBottom} ${DIALOG_VISUAL_RULES.rowGutterClass} group select-none relative transition-[padding] duration-300 ${selectionMode ? 'pl-12' : ''}`}>
+            <div
+                className={`flex items-start ${isUser ? 'justify-end' : 'justify-start'} ${avatarBubbleGapClass} ${marginBottom} ${DIALOG_VISUAL_RULES.rowGutterClass} group select-none relative transition-[padding] duration-300 ${selectionMode ? 'pl-12' : ''}`}
+                data-chat-message-id={m.id}
+                data-chat-message-role={m.role}
+                data-presentation-source-count={m.metadata?.presentationSourceMessageIds?.length || 1}
+            >
                 {selectionMode && (
                     <div className="absolute left-3 top-1/2 -translate-y-1/2 cursor-pointer z-20" onClick={() => onToggleSelect(m.id)}>
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-slate-300 bg-white/80'}`}>

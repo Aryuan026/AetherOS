@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProfile, RealtimeConfig, CharacterBuff } from '../types';
+import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProfile, RealtimeConfig, CharacterBuff, ChatReplyMode } from '../types';
 import { DB } from '../utils/db';
 import { ChatPrompts } from '../utils/chatPrompts';
 import { ChatParser } from '../utils/chatParser';
@@ -16,6 +16,7 @@ import {
     relationshipScopeForProfile,
     selectEmotionEvaluationMessages,
 } from '../utils/messageContext';
+import { createAssistantResponseId, splitChatReplyText } from '../utils/chatReplyMode';
 
 // ─── 情绪评估（副API，fire & forget）───
 
@@ -252,7 +253,6 @@ const normalizeAiContent = (raw: string): string => {
     return cleaned;
 };
 
-
 interface UseChatAIProps {
     char: CharacterProfile | undefined;
     userProfile: UserProfile;
@@ -265,6 +265,7 @@ interface UseChatAIProps {
     realtimeConfig?: RealtimeConfig; // 新增：实时配置
     translationConfig?: { enabled: boolean; sourceLang: string; targetLang: string };
     updateCharacter?: (id: string, updates: Partial<CharacterProfile>) => void;
+    chatReplyMode: ChatReplyMode;
 }
 
 export const useChatAI = ({
@@ -278,7 +279,8 @@ export const useChatAI = ({
     setMessages,
     realtimeConfig,  // 新增
     translationConfig,
-    updateCharacter
+    updateCharacter,
+    chatReplyMode,
 }: UseChatAIProps) => {
     
     const [isTyping, setIsTyping] = useState(false);
@@ -317,6 +319,7 @@ export const useChatAI = ({
         const initiatingRelationshipScope = initiatingUserMessage
             ? relationshipScopeFromMessage(initiatingUserMessage)
             : undefined;
+        const assistantResponseId = createAssistantResponseId();
         const historyTailBatchIds = [...new Set(importedHistoryMessages
             .map(message => message.metadata?.historyBatchId)
             .filter((batchId): batchId is string => typeof batchId === 'string' && batchId.length > 0))];
@@ -330,6 +333,7 @@ export const useChatAI = ({
                 relationshipScope: initiatingRelationshipScope || null,
                 historyTailContinuation: importedHistoryMessages.length > 0 || undefined,
                 historyTailBatchIds: historyTailBatchIds.length > 0 ? historyTailBatchIds : undefined,
+                assistantResponseId,
             },
         });
 
@@ -363,6 +367,10 @@ export const useChatAI = ({
                 currentMsgs,
                 realtimeConfig,
                 worldlineMemory.markdown,
+                {
+                    replyMode: chatReplyMode,
+                    delivery: 'interactive',
+                },
             );
 
             // 1.5 Inject bilingual output instruction when translation is enabled
@@ -586,7 +594,34 @@ export const useChatAI = ({
                     let lastIndex = 0;
                     let tagMatch;
 
-                    while ((tagMatch = tagPattern.exec(aiContent)) !== null) {
+                    if (chatReplyMode === 'preserve') {
+                        const originals: string[] = [];
+                        const translations: string[] = [];
+                        while ((tagMatch = tagPattern.exec(aiContent)) !== null) {
+                            const textBefore = ChatParser.sanitize(aiContent.slice(lastIndex, tagMatch.index).trim());
+                            if (textBefore && ChatParser.hasDisplayContent(textBefore)) originals.push(textBefore);
+                            const originalText = ChatParser.sanitize(tagMatch[1].trim());
+                            const translatedText = ChatParser.sanitize(tagMatch[2].trim());
+                            if (originalText) originals.push(originalText);
+                            if (translatedText) translations.push(translatedText);
+                            lastIndex = tagMatch.index + tagMatch[0].length;
+                        }
+                        const textAfter = ChatParser.sanitize(
+                            aiContent.slice(lastIndex).replace(/<\/?翻译>|<\/?原文>|<\/?译文>/g, '').trim(),
+                        );
+                        if (textAfter && ChatParser.hasDisplayContent(textAfter)) originals.push(textAfter);
+                        const originalBlock = originals.join('\n').trim();
+                        const translationBlock = translations.join('\n').trim();
+                        const preservedContent = originalBlock && translationBlock
+                            ? `${originalBlock}\n%%BILINGUAL%%\n${translationBlock}`
+                            : (originalBlock || translationBlock);
+                        if (preservedContent) {
+                            await new Promise(r => setTimeout(r, Math.min(Math.max(preservedContent.length * 30, 400), 2000)));
+                            await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: preservedContent, replyTo: aiReplyTarget });
+                            setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                            globalMsgIndex++;
+                        }
+                    } else while ((tagMatch = tagPattern.exec(aiContent)) !== null) {
                         // Save any plain text BEFORE this <翻译> block
                         const textBefore = aiContent.slice(lastIndex, tagMatch.index).trim();
                         if (textBefore) {
@@ -621,20 +656,22 @@ export const useChatAI = ({
                         lastIndex = tagMatch.index + tagMatch[0].length;
                     }
 
-                    // Save any remaining text AFTER last <翻译> block
-                    const textAfter = aiContent.slice(lastIndex).trim();
-                    if (textAfter) {
-                        // Strip any stray translation tags
-                        const cleaned = ChatParser.sanitize(textAfter.replace(/<\/?翻译>|<\/?原文>|<\/?译文>/g, '').trim());
-                        if (cleaned && ChatParser.hasDisplayContent(cleaned)) {
-                            const chunks = ChatParser.chunkText(cleaned);
-                            for (const chunk of chunks) {
-                                if (!chunk) continue;
-                                const replyData = globalMsgIndex === 0 ? aiReplyTarget : undefined;
-                                await new Promise(r => setTimeout(r, Math.min(Math.max(chunk.length * 50, 500), 2000)));
-                                await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: chunk, replyTo: replyData });
-                                setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
-                                globalMsgIndex++;
+                    if (chatReplyMode === 'texting') {
+                        // Save any remaining text AFTER last <翻译> block
+                        const textAfter = aiContent.slice(lastIndex).trim();
+                        if (textAfter) {
+                            // Strip any stray translation tags
+                            const cleaned = ChatParser.sanitize(textAfter.replace(/<\/?翻译>|<\/?原文>|<\/?译文>/g, '').trim());
+                            if (cleaned && ChatParser.hasDisplayContent(cleaned)) {
+                                const chunks = ChatParser.chunkText(cleaned);
+                                for (const chunk of chunks) {
+                                    if (!chunk) continue;
+                                    const replyData = globalMsgIndex === 0 ? aiReplyTarget : undefined;
+                                    await new Promise(r => setTimeout(r, Math.min(Math.max(chunk.length * 50, 500), 2000)));
+                                    await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: chunk, replyTo: replyData });
+                                    setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                                    globalMsgIndex++;
+                                }
                             }
                         }
                     }
@@ -663,13 +700,7 @@ export const useChatAI = ({
                                 setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
                             }
                         } else {
-                            // Split on --- separators first, then chunkText for fine-grained splitting
-                            const rawBlocks = part.content.split(/^\s*---\s*$/m).filter(b => b.trim());
-                            const allChunks: string[] = [];
-                            for (const block of rawBlocks) {
-                                allChunks.push(...ChatParser.chunkText(block.trim()));
-                            }
-                            if (allChunks.length === 0 && part.content.trim()) allChunks.push(part.content.trim());
+                            const allChunks = splitChatReplyText(part.content, chatReplyMode);
 
                             for (let i = 0; i < allChunks.length; i++) {
                                 let chunk = allChunks[i];

@@ -1213,6 +1213,8 @@ export type MessageType = 'text' | 'image' | 'emoji' | 'interaction' | 'transfer
 
 export type MessageTemporalClass = 'live' | 'historical';
 
+export type ChatReplyMode = 'preserve' | 'texting';
+
 export interface MessageRelationshipScope {
     progressBundleId: string;
     personaMaskId: string;
@@ -1224,6 +1226,8 @@ export interface MessageMetadata extends Record<string, any> {
     relationshipScope?: MessageRelationshipScope | null;
     historyTailContinuation?: boolean;
     historyTailBatchIds?: string[];
+    assistantResponseId?: string;
+    presentationSourceMessageIds?: number[];
 }
 
 export interface Message {

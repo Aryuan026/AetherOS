@@ -6,7 +6,7 @@ import { normalizeCharacterImpression } from '../utils/impression';
 import { loadAutoMemorySettings, loadMemoryDMSettings, runAutoMemoryPass, runMemoryDMPass } from '../utils/memoryCore';
 import { mergeAvatarFramePresets } from '../utils/avatarFrames';
 import {
-    DEEP_SPACE_CHAT_APPEARANCE,
+    MINIMAL_CHAT_APPEARANCE,
     DEFAULT_CALEB_AVATAR,
     DEFAULT_QIYU_AVATAR,
     DEFAULT_SYLUS_AVATAR,
@@ -255,7 +255,7 @@ const defaultTheme: OSTheme = {
   contentColor: '#334155', // Default slate text for the light pastel wallpaper
   shellChromeMode: 'software',
   avatarFramePresets: mergeAvatarFramePresets(),
-  ...DEEP_SPACE_CHAT_APPEARANCE,
+  ...MINIMAL_CHAT_APPEARANCE,
 };
 
 const defaultApiConfig: APIConfig = {
@@ -1421,7 +1421,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                      loadedTheme.customFont = undefined;
                  }
                  if (!loadedTheme.chatAppearancePreset) {
-                     loadedTheme = { ...loadedTheme, ...DEEP_SPACE_CHAT_APPEARANCE };
+                     loadedTheme = { ...loadedTheme, ...MINIMAL_CHAT_APPEARANCE };
                  }
              } catch(e) { console.error('Theme load error', e); }
         }

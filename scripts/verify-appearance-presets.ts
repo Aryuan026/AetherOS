@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { AppearancePreset, OSTheme } from '../types';
 import {
     APPEARANCE_PRESET_FILE_TYPE,
@@ -132,6 +133,12 @@ assert.equal(parsedLegacy.theme.chatShowTimestamp, 'never');
 assert.equal(parsedLegacy.theme.chatBubbleThemeId, 'legacy-bubble');
 assert.equal((parsedLegacy.theme as unknown as Record<string, unknown>).injectedField, undefined);
 assert.equal(migrateStoredShellChromeTheme(parsedLegacy.theme).shellChromeMode, 'simulated_phone');
+const chatConstantsSource = readFileSync(new URL('../components/chat/ChatConstants.ts', import.meta.url), 'utf8');
+const osContextSource = readFileSync(new URL('../context/OSContext.tsx', import.meta.url), 'utf8');
+assert.match(chatConstantsSource, /MINIMAL_CHAT_APPEARANCE/);
+assert.match(chatConstantsSource, /id:\s*'minimal',[\s\S]*?name:\s*'简约'/);
+assert.match(chatConstantsSource, /return presetId \|\| 'minimal'/);
+assert.match(osContextSource, /\.\.\.MINIMAL_CHAT_APPEARANCE/);
 
 assert.throws(
     () => parseAppearancePreset('{broken', { id: 'x', createdAt: 1 }),

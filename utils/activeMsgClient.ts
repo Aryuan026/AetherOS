@@ -276,6 +276,7 @@ const buildCompletePrompt = async (
     recentMessages,
     realtimeConfig,
     worldlineMemory.markdown,
+    { replyMode: 'texting', delivery: 'proactive' },
   );
   const { apiMessages } = ChatPrompts.buildMessageHistory(
     recentMessages,
@@ -596,8 +597,6 @@ export const ActiveMsgClient = {
     return response.data as { uuid: string; status: string; nextSendAt?: string };
   },
 };
-
-
 
 
 

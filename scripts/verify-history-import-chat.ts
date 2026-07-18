@@ -201,8 +201,9 @@ for (const required of ['ImportedHistoryTimeline', 'readActiveHistoryChatTail', 
 }
 assert.ok(chatSource.includes('hasSuccessfulHistoryTailContinuation'));
 const promptSource = readFileSync(new URL('../utils/chatPrompts.ts', import.meta.url), 'utf8');
-assert.ok(promptSource.includes('当前页面是远程文字聊天'));
-assert.ok(promptSource.includes('不要继续旧档案里的肢体动作'));
+assert.ok(promptSource.includes('可以谈起或在用户本轮明确接回时继续创作'));
+assert.ok(promptSource.includes('不得只凭这些旧消息推导当前受伤'));
+assert.ok(promptSource.includes('只有本轮未标为旧日档案的实时消息'));
 const hookSource = readFileSync(new URL('../hooks/useChatAI.ts', import.meta.url), 'utf8');
 assert.ok(hookSource.includes('filterCurrentStateMessages'));
 assert.ok(hookSource.includes('initiatingRelationshipScope'));

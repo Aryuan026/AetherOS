@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CaretLeft, Lightning } from '@phosphor-icons/react';
+import { CaretLeft, Lightning, SlidersHorizontal } from '@phosphor-icons/react';
 import { AvatarFramePreset, CharacterBuff, CharacterProfile } from '../../types';
 import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_TOP_INSET } from '../shell/shellLayout';
 import AvatarWithFrame from '../common/AvatarWithFrame';
@@ -26,6 +26,7 @@ interface ChatHeaderShellProps {
     onClose: () => void;
     onTriggerAI: () => void;
     onOpenReplyControls: () => void;
+    onOpenChatSettings: () => void;
     onShowCharsPanel: () => void;
     onDeleteBuff?: (buffId: string) => void;
     isAutoReplyEnabled?: boolean;
@@ -69,6 +70,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     onClose,
     onTriggerAI,
     onOpenReplyControls,
+    onOpenChatSettings,
     onShowCharsPanel,
     onDeleteBuff,
     isAutoReplyEnabled = true,
@@ -312,7 +314,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     };
 
     const floatingStatusNodes = (lastTokenUsage || isEmotionEvaluating) ? (
-        <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+        <div className="absolute right-24 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
             {lastTokenUsage && (
                 <div className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono border ${isPixelHeader ? 'bg-[#fff7ed] text-[#8f674a] border-[#8f674a]/20' : 'bg-slate-100/95 text-slate-400 border-slate-200'}`}>
                     {lastTokenUsage}
@@ -405,6 +407,14 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
             >
                 <span className={`block h-2.5 w-2.5 rounded-full ${replyStatusDotClass}`} />
             </button>
+            <button
+                onClick={onOpenChatSettings}
+                className={`p-2 ${iconButtonClass}`}
+                title="聊天内部设置"
+                aria-label="聊天内部设置"
+            >
+                <SlidersHorizontal className="h-5 w-5" weight="bold" />
+            </button>
         </div>
     );
 
@@ -426,7 +436,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
 
                     <div
                         onClick={onShowCharsPanel}
-                        className="absolute left-1/2 top-1/2 flex w-[calc(100%-7rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
+                        className="absolute left-1/2 top-1/2 flex w-[calc(100%-9rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
                     >
                         {renderCenteredInfo()}
                     </div>

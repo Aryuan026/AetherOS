@@ -451,6 +451,53 @@ relationship facts. Receipts keep titles, source class, authority, scope, and
 surface only. They do not persist prompt/raw-text previews or route-membership
 counts.
 
+## Relationship-scoped Chat reply presentation
+
+Chat keeps one expandable settings surface. Its first durable row is stored in
+the existing IndexedDB asset store, so it follows full-device backup without
+adding fields to the global character card:
+
+```ts
+type ChatReplyMode = 'preserve' | 'texting';
+
+interface ChatRelationshipSettingsV1 {
+  version: 1;
+  scope: {
+    progressBundleId: string;
+    personaMaskId: string;
+    charId: string;
+  };
+  replyMode: ChatReplyMode;
+  updatedAt: number;
+}
+```
+
+Asset ids use
+`aetheros_chat_relationship_settings_v1:<bundle>:<mask>:<char>`. `preserve` is the
+internal value for the visible `跟随玩家格式` mode. Its generation contract may
+follow only the player's current structural form (plain dialogue, parenthesized
+action, narration/dialogue mixture, and paragraph boundaries); it must not copy
+tone, wording, syntax, sentence length, rhythm, or verbal habits. Its presentation
+contract keeps one ordinary assistant response as one text message with natural
+internal paragraphs. It does not classify scene content or change the character
+card. Real emoji/voice/App actions remain separate records. `texting` applies
+remote-message prompting, asks the model to separate independently sendable
+messages with newlines, and invokes the existing newline/chunk bubble splitter.
+Proactive delivery always forces `texting`.
+
+Every new interactive assistant run freezes one `metadata.assistantResponseId`
+across all records emitted by that provider response. Presentation may use a
+runtime-only `metadata.presentationSourceMessageIds` list when several stored text
+rows are shown as one preserve-mode bubble. Switching modes never rewrites those
+source rows. Legacy rows without a response id merge only when they are adjacent
+live assistant text, share relationship scope, have no external source/proactive
+marker, and are at most eight seconds apart. Explicit edit/delete of a merged
+bubble intentionally applies to all listed source rows.
+
+Chat appearance remains global in `OSTheme`. The default theme now spreads
+`MINIMAL_CHAT_APPEARANCE`; field-less stored themes receive the same default,
+while explicit stored presets remain untouched.
+
 The first automatic sediment layer also uses localStorage bookkeeping and
 existing stores, so it does not bump IndexedDB yet:
 
@@ -676,7 +723,7 @@ custom
 bubbles, light-yellow user bubbles, and a sharp upper bubble corner facing the
 avatar. It must not render a side tail or side arrow.
 
-Visible theme cards should stay limited to `深空`, `极简`, `微信`, and `自定义`.
+Visible theme cards should stay limited to `深空`, `简约`, `微信`, and `自定义`.
 Only `custom` should enable granular free-form bubble geometry controls.
 
 `minimal` replaces the earlier `月白` direction and uses soft rectangular

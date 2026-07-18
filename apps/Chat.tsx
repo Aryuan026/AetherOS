@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { CompanionWakeupRule, Message, MessageType, MemoryFragment, Emoji, EmojiCategory } from '../types';
+import { ChatReplyMode, CompanionWakeupRule, Message, MessageType, MemoryFragment, Emoji, EmojiCategory } from '../types';
 import { processImage } from '../utils/file';
 import { safeResponseJson } from '../utils/safeApi';
 import { formatLifeSimResetCardForContext } from '../utils/lifeSimChatCard';
@@ -37,6 +37,15 @@ import {
     hasSuccessfulHistoryTailContinuation,
     withRelationshipScope,
 } from '../utils/messageContext';
+import { DEFAULT_CHAT_REPLY_MODE } from '../utils/chatReplyMode';
+import {
+    loadChatRelationshipSettings,
+    saveChatRelationshipSettings,
+} from '../utils/chatReplySettings';
+import {
+    getPresentationSourceMessageIds,
+    mergeAssistantRepliesForPresentation,
+} from '../utils/chatPresentation';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
 
@@ -165,6 +174,8 @@ const Chat: React.FC = () => {
     const [emojiImportText, setEmojiImportText] = useState('');
     const [settingsContextLimit, setSettingsContextLimit] = useState(500);
     const [settingsHideSysLogs, setSettingsHideSysLogs] = useState(false);
+    const [chatReplyMode, setChatReplyMode] = useState<ChatReplyMode>(DEFAULT_CHAT_REPLY_MODE);
+    const [settingsReplyMode, setSettingsReplyMode] = useState<ChatReplyMode>(DEFAULT_CHAT_REPLY_MODE);
     const [preserveContext, setPreserveContext] = useState(true); 
     const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
     const [selectedEmoji, setSelectedEmoji] = useState<Emoji | null>(null);
@@ -239,8 +250,31 @@ const Chat: React.FC = () => {
     const aiVisibleEmojis = emojiScope.emojis;
     const hiddenCategoryIds = emojiScope.hiddenCategoryIds;
 
-
-
+    useEffect(() => {
+        let cancelled = false;
+        if (!importedHistoryScope) {
+            setChatReplyMode(DEFAULT_CHAT_REPLY_MODE);
+            setSettingsReplyMode(DEFAULT_CHAT_REPLY_MODE);
+            return () => { cancelled = true; };
+        }
+        void loadChatRelationshipSettings(importedHistoryScope)
+            .then(settings => {
+                if (cancelled) return;
+                setChatReplyMode(settings.replyMode);
+                setSettingsReplyMode(settings.replyMode);
+            })
+            .catch(error => {
+                console.warn('[ChatSettings] Failed to load relationship settings:', error);
+                if (cancelled) return;
+                setChatReplyMode(DEFAULT_CHAT_REPLY_MODE);
+                setSettingsReplyMode(DEFAULT_CHAT_REPLY_MODE);
+            });
+        return () => { cancelled = true; };
+    }, [
+        importedHistoryScope?.progressBundleId,
+        importedHistoryScope?.personaMaskId,
+        importedHistoryScope?.charId,
+    ]);
 
     // --- Initialize Hook ---
     const { isTyping, recallStatus, emotionStatus, lastTokenUsage, tokenBreakdown, setLastTokenUsage, triggerAI } = useChatAI({
@@ -257,6 +291,7 @@ const Chat: React.FC = () => {
             ? { enabled: true, sourceLang: translateSourceLang, targetLang: translateTargetLang }
             : undefined,
         updateCharacter,
+        chatReplyMode,
     });
     const replySignalActive = companionWakeupActive;
 
@@ -891,12 +926,17 @@ const Chat: React.FC = () => {
         }
     };
 
+    const openChatSettings = () => {
+        setSettingsReplyMode(chatReplyMode);
+        setModalType('chat-settings');
+    };
+
     const handlePanelAction = (type: string, payload?: any) => {
         switch (type) {
             case 'transfer': setModalType('transfer'); break;
             case 'poke': handleSendText('[戳一戳]', 'interaction'); break;
             case 'archive': setModalType('archive-settings'); break;
-            case 'settings': setModalType('chat-settings'); break;
+            case 'settings': openChatSettings(); break;
             case 'emoji-import': setModalType('emoji-import'); break;
             case 'send-emoji': if (payload) handleSendText(payload.url, 'emoji'); break;
             case 'delete-emoji-req': {
@@ -1071,13 +1111,27 @@ const Chat: React.FC = () => {
         }
     };
 
-    const saveSettings = () => {
-        updateCharacter(char.id, { 
+    const saveSettings = async () => {
+        updateCharacter(char.id, {
             contextLimit: settingsContextLimit,
             hideSystemLogs: settingsHideSysLogs
         });
-        setModalType('none');
-        addToast('设置已保存', 'success');
+        if (!importedHistoryScope) {
+            setModalType('none');
+            addToast('基础设置已保存；建立面具与角色关系后可单独保存回复呈现', 'info');
+            return;
+        }
+        try {
+            await saveChatRelationshipSettings(importedHistoryScope, {
+                replyMode: settingsReplyMode,
+            });
+            setChatReplyMode(settingsReplyMode);
+            setModalType('none');
+            addToast('设置已保存', 'success');
+        } catch (error) {
+            console.error('Failed to save chat relationship settings:', error);
+            addToast('聊天设置保存失败，请重试', 'error');
+        }
     };
 
     const handleClearHistory = async () => {
@@ -1224,18 +1278,28 @@ const Chat: React.FC = () => {
     // --- Message Management ---
     const handleDeleteMessage = async () => {
         if (!selectedMessage) return;
-        await DB.deleteMessage(selectedMessage.id);
-        setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
-        setTotalMsgCount(prev => Math.max(0, prev - 1));
+        const sourceIds = getPresentationSourceMessageIds(selectedMessage);
+        const sourceIdSet = new Set(sourceIds);
+        await DB.deleteMessages(sourceIds);
+        setMessages(prev => prev.filter(m => !sourceIdSet.has(m.id)));
+        setTotalMsgCount(prev => Math.max(0, prev - sourceIds.length));
         setModalType('none');
         setSelectedMessage(null);
-        addToast('消息已删除', 'success');
+        addToast(sourceIds.length > 1 ? '这次回复已删除' : '消息已删除', 'success');
     };
 
     const confirmEditMessage = async () => {
         if (!selectedMessage) return;
-        await DB.updateMessage(selectedMessage.id, editContent);
-        setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, content: editContent } : m));
+        const [primaryId, ...extraIds] = getPresentationSourceMessageIds(selectedMessage);
+        await DB.updateMessage(primaryId, editContent);
+        if (extraIds.length > 0) await DB.deleteMessages(extraIds);
+        const extraIdSet = new Set(extraIds);
+        setMessages(prev => prev
+            .filter(m => !extraIdSet.has(m.id))
+            .map(m => m.id === primaryId ? { ...m, content: editContent } : m));
+        if (extraIds.length > 0) {
+            setTotalMsgCount(prev => Math.max(0, prev - extraIds.length));
+        }
         setModalType('none');
         setSelectedMessage(null);
         addToast('消息已修改', 'success');
@@ -1270,18 +1334,21 @@ const Chat: React.FC = () => {
     // --- Batch Selection ---
     const handleEnterSelectionMode = () => {
         if (selectedMessage) {
-            setSelectedMsgIds(new Set([selectedMessage.id]));
+            setSelectedMsgIds(new Set(getPresentationSourceMessageIds(selectedMessage)));
             setSelectionMode(true);
             setModalType('none');
             setSelectedMessage(null);
         }
     };
 
-    const toggleMessageSelection = useCallback((id: number) => {
+    const toggleMessageSelection = useCallback((ids: number[]) => {
         setSelectedMsgIds(prev => {
             const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
+            const allSelected = ids.every(id => next.has(id));
+            ids.forEach(id => {
+                if (allSelected) next.delete(id);
+                else next.add(id);
+            });
             return next;
         });
     }, []);
@@ -1367,7 +1434,7 @@ const Chat: React.FC = () => {
         setSelectedMsgIds(new Set());
     };
 
-    const displayMessages = useMemo(() => dedupeStarterMessages(messages
+    const visibleSourceMessages = useMemo(() => dedupeStarterMessages(messages
         .filter(m => m.metadata?.source !== 'date' && m.metadata?.source !== 'call')
         .filter(m => !m.metadata?.proactiveHint) // Hide proactive system hints
         .filter(m => !char?.hideBeforeMessageId || m.id >= char.hideBeforeMessageId)
@@ -1375,7 +1442,12 @@ const Chat: React.FC = () => {
         ).slice(-visibleCount),
         [messages, char?.id, char?.hideBeforeMessageId, char?.hideSystemLogs, visibleCount]);
 
-    const collapsedCount = Math.max(0, totalMsgCount - displayMessages.length);
+    const displayMessages = useMemo(
+        () => mergeAssistantRepliesForPresentation(visibleSourceMessages, chatReplyMode),
+        [visibleSourceMessages, chatReplyMode],
+    );
+
+    const collapsedCount = Math.max(0, totalMsgCount - visibleSourceMessages.length);
 
     // Reset active category if it becomes invisible for the current character
     useEffect(() => {
@@ -1460,6 +1532,7 @@ const Chat: React.FC = () => {
                 emojiImportText={emojiImportText} setEmojiImportText={setEmojiImportText}
                 settingsContextLimit={settingsContextLimit} setSettingsContextLimit={setSettingsContextLimit}
                 settingsHideSysLogs={settingsHideSysLogs} setSettingsHideSysLogs={setSettingsHideSysLogs}
+                settingsReplyMode={settingsReplyMode} setSettingsReplyMode={setSettingsReplyMode}
                 preserveContext={preserveContext} setPreserveContext={setPreserveContext}
                 editContent={editContent} setEditContent={setEditContent}
                 archivePrompts={archivePrompts} selectedPromptId={selectedPromptId} setSelectedPromptId={setSelectedPromptId}
@@ -1510,6 +1583,7 @@ const Chat: React.FC = () => {
                     void withImportedHistoryContext(messages).then(contextMessages => triggerAI(contextMessages));
                 }}
                 onOpenReplyControls={() => setShowReplyModeModal(true)}
+                onOpenChatSettings={openChatSettings}
                 onShowCharsPanel={() => setShowPanel('chars')}
                 onDeleteBuff={(buffId) => {
                     const currentBuffs = char.activeBuffs || [];
@@ -1557,6 +1631,7 @@ const Chat: React.FC = () => {
 
                 <div className="relative z-10">
                 {displayMessages.map((m, i) => {
+                    const presentationSourceIds = getPresentationSourceMessageIds(m);
                     const prevMessage = i > 0 ? displayMessages[i - 1] : null;
                     const nextMessage = i < displayMessages.length - 1 ? displayMessages[i + 1] : null;
                     const messageGroupGapMs = 30 * 60 * 1000;
@@ -1582,8 +1657,8 @@ const Chat: React.FC = () => {
                             userAvatarFramePreset={userAvatarFramePreset}
                             onLongPress={handleMessageLongPress}
                             selectionMode={selectionMode}
-                            isSelected={selectedMsgIds.has(m.id)}
-                            onToggleSelect={toggleMessageSelection}
+                            isSelected={presentationSourceIds.every(id => selectedMsgIds.has(id))}
+                            onToggleSelect={() => toggleMessageSelection(presentationSourceIds)}
                             translationEnabled={translationEnabled && m.type === 'text' && m.role === 'assistant'}
                             isShowingTarget={showingTargetIds.has(m.id)}
                             onTranslateToggle={handleTranslateToggle}

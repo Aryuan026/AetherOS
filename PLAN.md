@@ -106,6 +106,20 @@ Worldline memory architecture:
 - Add a short-lived per-character hot-state layer later, so chat/proactive/date/call surfaces can feel connected to the character's ongoing parallel-world life instead of only recalling archived memories.
 - First slice is read-only and compatibility-first: reuse existing messages, anniversaries, first-contact assets, and a tiny recent slice of `char.memories` before adding new IndexedDB stores.
 - Wire the first selector into chat, meeting/date mode, and proactive-letter generation so UI work later has real code interfaces behind it.
+- Keep Chat formatting separate from character voice: relationship-scoped
+  `preserve/texting` settings control both the allowed text structure and its
+  bubble rendering. `preserve` follows only the player's current structural form
+  (plain dialogue / parenthesized action / narration mixture / paragraphing),
+  never the player's tone, wording, syntax, rhythm, or verbal habits, and renders
+  one model reply as one text bubble. `texting` uses strict remote-IM prose and
+  newline-based bubble splitting. Neither mode classifies scene turns, mutates
+  user messages, or overrides the character card.
+- Keep relationship progression in the character card and reliable context.
+  Common Chat prompts must not supply a default romance stage or mandatory
+  action pose. Proactive letters always resolve to texting.
+- Default fresh and field-less installations to the `minimal` / `简约` chat
+  appearance. Never overwrite an explicitly saved appearance when a character
+  is created or history is imported, because chat appearance is global today.
 - Add an automatic sediment layer without broad DB migration:
   - local transcript-spliced daily summaries are disabled; `char.memories` should stay on model archive, diary, import, or later reviewed refinement paths;
   - `时光簿` node candidates can be silently clipped into `anniversaries`;
@@ -120,15 +134,15 @@ Worldline memory architecture:
 
 Deep-space chat appearance preset:
 
-- Make `深空` the default chat appearance preset.
+- Make `简约` the default chat appearance preset for fresh or field-less local data.
 - Keep avatars circular in chat.
 - Use the fixed WeChat-like concentrated bubble layout for `深空`.
 - Keep character bubbles white.
 - Keep user bubbles light yellow with a slightly deeper yellow edge.
 - Make the bubble's upper corner facing the avatar sharp; do not add a side tail.
 - Keep detailed bubble sizing/height controls out of the visible editor for `深空`.
-- Keep four visible chat theme entries: `深空`, `极简`, `微信`, and `自定义`.
-- Use the four entries mainly as bubble-shape contracts: upper avatar-facing sharp corner for `深空`, soft rectangular corners for `极简`, low-radius square bubbles for `微信`, and free adjustment only for `自定义`.
+- Keep four visible chat theme entries: `深空`, `简约`, `微信`, and `自定义`.
+- Use the four entries mainly as bubble-shape contracts: upper avatar-facing sharp corner for `深空`, soft rectangular corners for `简约`, low-radius square bubbles for `微信`, and free adjustment only for `自定义`.
 - Keep `自定义` bubble controls as a child editor rather than a peer tab beside chat themes.
 - Keep avatar frame/accessory controls in a separate visible area, not inside bubble tuning.
 - Keep Telegram / Discord / QQ-style directions out of the chat appearance preset system.

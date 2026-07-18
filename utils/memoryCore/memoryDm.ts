@@ -2,6 +2,7 @@ import type { Anniversary, APIConfig, CharacterProfile, CompanionWakeupRule, Mem
 import { loadCompanionWakeupSettings, parseClockMinutes, resolveCompanionWakeupMode, scheduleNextCompanionWakeup } from '../companionWakeups';
 import { DB } from '../db';
 import { safeResponseJson } from '../safeApi';
+import { isHistoricalContextMessage } from '../messageContext';
 
 export const MEMORY_DM_UPDATED_EVENT = 'worldline-memory-dm-updated';
 
@@ -157,6 +158,7 @@ const toLocalDate = (timestamp: number): string => {
 
 const isMeaningfulMessage = (message: Message): boolean => (
   message.role !== 'system'
+  && !isHistoricalContextMessage(message)
   && message.metadata?.hidden !== true
   && !!String(message.content || '').trim()
   && !/^\[连接中断[:：]/.test(String(message.content || '').trim())

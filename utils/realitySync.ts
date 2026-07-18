@@ -74,7 +74,11 @@ const describeTime = (includeDate: boolean): string => {
     return daypart ? `当前现实昼夜节律：${daypart}` : full.replace(/^现在是\s*/, '当前现实昼夜节律：');
 };
 
-const buildRuleText = (mode: RealitySyncMode, weatherScope: WeatherScope, careBoundary: CareBoundary): string[] => {
+const buildRuleText = (
+    mode: RealitySyncMode,
+    weatherScope: WeatherScope,
+    careBoundary: CareBoundary,
+): string[] => {
     const lines: string[] = ['### 现实同频规则（高优先级边界）'];
     if (mode === 'real_anchor') {
         lines.push('- 模式：现实锚定 / 次元相隔。真实日期、昼夜和可用天气是用户所在现实世界的信号。');
@@ -98,7 +102,7 @@ const buildRuleText = (mode: RealitySyncMode, weatherScope: WeatherScope, careBo
     }
 
     if (careBoundary === 'soft') {
-        lines.push('- 生活照看：语气轻，像伴侣的关心；不要像任务管理器，也不要频繁催促。');
+        lines.push('- 生活照看：语气轻，像当前关系阶段里自然发生的关心；保持角色口吻和双方已有距离，不要像任务管理器，也不要频繁催促。');
     } else if (careBoundary === 'direct') {
         lines.push('- 生活照看：可以更明确地提醒吃饭、睡觉、带伞，但仍须保持角色口吻。');
     } else {

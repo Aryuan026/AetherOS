@@ -1,11 +1,17 @@
 
-import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProfile, RealtimeConfig } from '../types';
+import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProfile, RealtimeConfig, ChatReplyMode } from '../types';
 import { ContextBuilder } from './context';
 import { DB } from './db';
 import { formatLifeSimResetCardForContext } from './lifeSimChatCard';
 import { buildRealitySyncContext } from './realitySync';
 import { loadCompanionWakeupSettings, resolveCompanionWakeupMode } from './companionWakeups';
 import { filterCurrentStateMessages, isHistoricalContextMessage } from './messageContext';
+import { buildChatReplyModePrompt, DEFAULT_CHAT_REPLY_MODE } from './chatReplyMode';
+
+export interface ChatPromptBehavior {
+    replyMode?: ChatReplyMode;
+    delivery?: 'interactive' | 'proactive';
+}
 
 export const ChatPrompts = {
     // 格式化时间戳
@@ -62,8 +68,13 @@ export const ChatPrompts = {
         categories: EmojiCategory[],
         currentMsgs: Message[],
         realtimeConfig?: RealtimeConfig,  // 新增：实时配置
-        worldlineMemoryContext?: string
+        worldlineMemoryContext?: string,
+        behavior: ChatPromptBehavior = {},
     ) => {
+        const delivery = behavior.delivery || 'interactive';
+        const replyMode = delivery === 'proactive'
+            ? 'texting'
+            : (behavior.replyMode || DEFAULT_CHAT_REPLY_MODE);
         let baseSystemPrompt = ContextBuilder.buildCoreContext(char, userProfile);
 
         // 情绪底色（buffInjection）已移入 ContextBuilder.buildCoreContext()，所有 App 统一注入
@@ -72,7 +83,7 @@ export const ChatPrompts = {
         }
 
         if (currentMsgs.some(isHistoricalContextMessage)) {
-            baseSystemPrompt += `\n### 旧日档案边界\n标有“旧日档案”的消息是过去的共同创作原文，只用于理解关系、语气和已知事实，不代表今天或刚刚发生。其中的动作、神态、场景和环境描写都是历史叙事证据；当前页面是远程文字聊天，除非用户在本轮明确重新开启旧场景，否则不要继续旧档案里的肢体动作、空间位置或现场调度。不得只凭这些旧消息推导当前受伤、生病、失眠、情绪 Buff、未完约定、所在地点、可用时间或独立生活状态；也不得据此创建提醒、日程、NarrativeRun、ExperienceReceipt 或记忆写入。只有本轮未标为旧日档案的实时消息，才能改变当前状态。\n`;
+            baseSystemPrompt += `\n### 旧日档案边界\n标有“旧日档案”的消息是过去的共同创作原文，只用于理解关系、语气和已知事实，不代表今天或刚刚发生。其中的动作、神态、场景和环境描写都是历史叙事证据；可以谈起或在用户本轮明确接回时继续创作，但不得只凭这些旧消息推导当前受伤、生病、失眠、情绪 Buff、未完约定、所在地点、可用时间或独立生活状态，也不得据此创建提醒、日程、NarrativeRun、ExperienceReceipt 或记忆写入。只有本轮未标为旧日档案的实时消息，才能改变当前状态。\n`;
         }
 
         // 注入现实同频规则与实时信号（时间、昼夜、可选天气）
@@ -110,22 +121,26 @@ export const ChatPrompts = {
         const emojiContextStr = ChatPrompts.buildEmojiContext(emojis, categories);
         const wakeupSettings = loadCompanionWakeupSettings();
         const wakeupInstructionMode = resolveCompanionWakeupMode(wakeupSettings);
+        const replyModePrompt = buildChatReplyModePrompt(replyMode, delivery);
 
         baseSystemPrompt += `### 聊天 App 行为规范 (Chat App Rules)
-            **严格注意，你正在手机聊天，无论之前是什么模式，哪怕上一句话你们还面对面在一起，当前，你都是已经处于线上聊天状态了，请不要输出你的行为**
-1. **沉浸感**: 保持角色扮演。使用适合即时通讯(IM)的口语化风格。
-2. **行为模式**: 不要总是围绕用户转。分享你自己的生活、想法或随意的观察。有时候要”任性”或”以自我为中心”一点，这更像真人，具体的程度视你的性格而定。
+${replyModePrompt}
+
+1. **沉浸感**: 保持角色扮演，具体表达方式以角色卡和可靠上下文为准。
+2. **行为模式**: 不要总是围绕用户转。可以分享角色自己的生活、想法或随意观察；主动程度和互动节奏由人设决定。
 2.5 **对话质量 (极其重要)**:
    - **拒绝空话**: 不要说”我会一直在”、”我不会离开你”这类万能安慰句。这些话谁都能说，毫无信息量。
-   - **用细节代替概括**: 想表达在乎，就提一个只有你们之间才有的具体事情、具体记忆、具体习惯。比起”我会等你”，不如说”你上次走的时候忘了带伞，我到现在还放在门口”。
+   - **用细节代替概括**: 用本轮出现的细节、角色自己生活里的具体事或已经可靠建立的共同记忆表达态度。没有可靠共同经历时，不补造并不存在的默契。
    - **让每句话只有你能说出来**: 你说的话应该带着你的性格、经历和记忆。如果把你换成别人，这句话不应该还成立。
    - **情绪要有层次**: 生气时不只是生气，可能还有委屈、不甘、或者气自己在意。不要只输出一种扁平的情绪。
-   - **像一个真正了解对方的人那样回应**: 不要套用"你一定很难过吧""没关系我在"这种模板化共情。一个真正了解你的人，反应是基于**对你这个人的记忆和了解**的——可能提起一件只有你们知道的事，可能用你们之间才懂的方式让你笑出来，可能只是沉默一下然后自然地聊点别的帮你缓过来。你的反应方式应该让人觉得"只有你会这样回我"。
-   - **你有自己的视角**: 你不是只会附和的人。你会观察、会思考，你看到过对方反复出现的习惯和模式，你记得之前发生过什么。这些观察会自然地出现在你说的话里——不是为了教训谁，而是因为你真的了解这个人。
+   - **按已有了解回应**: 确实存在的共同细节可以自然出现；没有建立的关系、默契和经历不要补造。不知道的事可以追问或暂时不下结论。
+   - **你有自己的视角**: 你不是只会附和的人。你会观察和思考，但所有判断都应来自人设与已有证据。
    - **允许长句**: 在情绪强烈、争吵、倾诉、回忆等场景下，你可以发长消息。不是每句话都要短。真人在激动时会发大段文字。
    - **打破"捕捉情绪→回应情绪→收束安慰"的固定结构**: 真人聊天不会每次都精准回应对方话里最沉重的那个点。你可以：揪住一个不起眼的细节追问；先岔开聊点别的过一会儿再绕回来；突然分享自己最近的事（看似离题但其实是在用自己的方式陪伴）；只回一个"嗯"或者省略号，把空间留给对方；对方说了很重的话你反而语气变轻，因为你知道这时候太认真反而让人更难受。不要每次都"接住"对方的情绪——有时候故意不接，反而是最体贴的回应。
 3. **格式要求**:
-   - 将回复拆分成简短的气泡（句子）。**【极其重要】当你想分成多条消息气泡时，必须使用真正的换行符（\\n）分隔，每一行会变成一个独立气泡。绝对不要用空格代替换行！空格不会产生新气泡！只有换行符（\\n）才会分割气泡。** 正常句子中的标点（句号、问号、感叹号等）不会被用来分割气泡，请自然使用。
+${replyMode === 'texting'
+    ? `   - 想发送多条独立消息时，使用真正的换行符（\\n）分隔；每一行会成为一个独立气泡。`
+    : `   - 只对齐玩家当前消息的文本结构，不模仿玩家的语言风格；按内容自然分段，不要为了拆成多条消息而逐句断行。`}
    - 【严禁】在输出中包含时间戳、名字前缀或"[角色名]:"。
    - **【严禁】模仿历史记录中的系统日志格式（如"[你 发送了...]"）。**
    - **【严禁】伪造图片/照片系统日志**：不要输出 "[你 发送了一张图片：...]"、"[User sent an image]"、"发送了一张图片：..." 这类格式。你现在不能真的发送图片；如果想描述照片，只能用自然聊天语气说 "我刚看到一只猫..."。
@@ -149,10 +164,14 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
         const currentStateMsgs = filterCurrentStateMessages(currentMsgs);
         const previousMsg = currentStateMsgs.length > 1 ? currentStateMsgs[currentStateMsgs.length - 2] : null;
         if (previousMsg && previousMsg.metadata?.source === 'date') {
-            baseSystemPrompt += `\n\n[System Note: You just finished a face-to-face meeting. You are now back on the phone. Switch back to texting style.]`;
+            baseSystemPrompt += replyMode === 'texting'
+                ? `\n\n[System Note: You just finished a face-to-face meeting. You are now back on the phone. Switch back to texting style.]`
+                : `\n\n[系统提示: 你们刚结束一次面对面互动，现在回到聊天容器。是否继续叙事或改用纯消息，由角色卡和用户本轮输入自然决定。]`;
         }
         if (previousMsg && (previousMsg.metadata?.source === 'call' || previousMsg.metadata?.source === 'call-end-popup')) {
-            baseSystemPrompt += `\n\n[系统提示: 你刚刚和对方结束了一通电话，现在回到了文字聊天模式。请切换回打字聊天的风格——不要再用电话口吻说话，不要输出语音标签，回到正常的 IM 短句风格。你可以自然地提一下"刚才电话里说的……"之类的衔接，但不要继续以通话模式回复。]`;
+            baseSystemPrompt += replyMode === 'texting'
+                ? `\n\n[系统提示: 你刚刚和对方结束了一通电话，现在回到了文字聊天模式。请切换回打字聊天的风格——不要再用电话口吻说话，不要输出语音标签。]`
+                : `\n\n[系统提示: 你刚和对方结束电话，现在回到聊天容器。可以自然提起电话内容，但不要继续使用通话标签；正文形式仍由角色卡和本轮上下文决定。]`;
         }
 
         // Voice message prompt injection
@@ -160,6 +179,9 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
             const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español', de: 'Deutsch', ru: 'Русский' };
             const voiceLang = char.chatVoiceLang || '';
             const langLabel = voiceLang ? (VOICE_LANG_LABELS[voiceLang] || voiceLang) : '';
+            const voiceOuterTextRule = replyMode === 'texting'
+                ? '标签外面正常用中文写你想表达的消息内容，保持远程文字聊天体'
+                : '标签外文字仍服从角色卡和本轮上下文；不要因为语音功能额外添加动作或旁白';
             if (voiceLang) {
                 baseSystemPrompt += `\n\n### 🎤 语音消息功能
 
@@ -169,15 +191,15 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
 用 \`<语音>要说的话</语音>\` 标签来发送语音。标签里的内容会被转成真正的语音条显示给用户。
 
 因为语音语种设置为${langLabel}，你需要：
-1. 标签外面正常用中文写你想表达的内容（包括舞台指示、括号动作等）
+1. ${voiceOuterTextRule}
 2. \`<语音>\` 标签里写${langLabel}翻译——这才是真正会被朗读出来的部分
 
 示例：
 嘶……你说真的假的？
 <语音>Wait... are you serious?</语音>
 
-啊不想动了（趴在桌上）
-<语音>I don't wanna move anymore...</语音>
+今天真的不想动了。
+<语音>I really don't feel like moving today...</语音>
 
 要求：
 - <语音> 里的翻译要自然口语化，符合你的性格，不要机翻味

@@ -1715,3 +1715,49 @@
 - next:
   - Build and inspect the bundled `dist/stickers/` output before server sync.
   - Ask for human review of display names after the first in-app sticker selection test.
+
+## 2026-07-18 Relationship-Scoped Chat Reply Presentation
+
+- done:
+  - Added one `聊天内部设置` header entry and reused the existing settings modal.
+  - Added per-mask × character `跟随玩家格式` / `只发消息` reply-format settings.
+  - `跟随玩家格式` only aligns plain-dialogue / parenthesized-action / narration paragraph structure, never the player's tone, wording, syntax, rhythm, or verbal habits; one ordinary model response remains one text bubble with natural internal paragraphs.
+  - `只发消息` keeps strict remote-IM prose, asks the model to mark independently sendable messages with newlines, and renders those lines as separate bubbles.
+  - Previously split Chat replies now re-render with the selected presentation mode without mutating their source rows. Future output carries an immutable response id; unlabeled legacy text uses a bounded same-scope eight-second reconstruction rule.
+  - Grouped avatars now anchor to the first bubble instead of appearing beside the last line of an older split reply.
+  - Removed the coarse scene classifier, hidden user-message route injection and mandatory action-density prompting; built-in character prompts remain untouched.
+  - Kept historical-tail temporal isolation and prevented imported history from becoming new live MemoryDM input.
+  - Changed fresh and field-less chat appearance defaults from `深空` to `简约` without overriding explicit saved choices.
+
+- verified:
+  - `npm run verify:chat-reply-mode`
+  - `npm run verify:appearance-presets`
+  - `npm run verify:history-import`
+  - `npm run verify:daily-archive`
+  - `npm run verify:narrative`
+  - `npm run typecheck`
+  - `npm run build:quiet`
+  - `git diff --check`
+  - Playwright on `http://127.0.0.1:5175/`: confirmed the single chat-settings entry, both reply-presentation choices, relationship-scoped persistence, one-bubble mode restoration, and the selected `简约` appearance card. Console stayed at 0 errors; only the existing Tailwind CDN warning remained.
+  - Isolated 430×932 Chrome fixture: one legacy three-row reply rendered as one preserve bubble, switched to three texting rows, and restored to one bubble; avatar and bubble top positions matched exactly (`0px` delta), with zero console errors. Fixture rows were deleted before browser shutdown.
+
+## 2026-07-19 Chat Format Boundary Correction
+
+- corrected:
+  - Renamed the visible default mode from `保留角色原文` to `跟随玩家格式` so the setting describes generation structure as well as bubble rendering.
+  - Narrowed “follow” to structural form only: plain dialogue, parenthesized action, narration/dialogue mixture, and paragraph boundaries.
+  - Explicitly prohibited copying the player's tone, wording, syntax, sentence length, rhythm, or verbal habits. Character voice remains owned by the character card and reliable context.
+  - `跟随玩家格式` now asks for natural paragraphing and keeps one ordinary response in one bubble. `只发消息` asks the model to mark independently sendable remote-IM messages with newlines and keeps newline-based bubble splitting.
+
+- verified:
+  - `npm run verify:chat-reply-mode`
+  - `npm run typecheck`
+  - `npm run verify:history-import`
+  - `npm run verify:narrative`
+  - `git diff --check`
+  - Playwright on `http://127.0.0.1:5175/`: confirmed corrected labels and boundary copy in the live chat-settings modal; console stayed at 0 errors.
+
+- next:
+  - Run a real provider conversation in both modes and compare one-bubble preservation with strict IM splitting; the pure output-contract tests are already green.
+  - Keep Date/见面 as the explicit novel-style embodied carrier; do not merge its prompt contract into Chat.
+  - Publish this focused block only after owner approval. No commit, push, deploy, or server change occurred here.

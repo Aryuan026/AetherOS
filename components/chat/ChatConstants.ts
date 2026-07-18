@@ -39,6 +39,29 @@ export const DEEP_SPACE_CHAT_APPEARANCE: Partial<OSTheme> = {
     chatShowTimestamp: 'hover',
 };
 
+export const MINIMAL_CHAT_APPEARANCE: Partial<OSTheme> = {
+    chatAppearancePreset: 'minimal',
+    chatBubbleThemeId: 'minimal',
+    hue: 211,
+    saturation: 100,
+    lightness: 50,
+    chatChromeStyle: 'soft',
+    chatBackgroundStyle: 'plain',
+    chatBackgroundImage: '',
+    chatHeaderStyle: 'minimal',
+    chatHeaderAlign: 'center',
+    chatHeaderDensity: 'compact',
+    chatStatusStyle: 'subtle',
+    chatAvatarShape: 'circle',
+    chatAvatarSize: 'medium',
+    chatAvatarMode: 'grouped',
+    chatBubbleStyle: 'round',
+    chatMessageSpacing: 'default',
+    chatInputStyle: 'ios',
+    chatSendButtonStyle: 'circle',
+    chatShowTimestamp: 'hover',
+};
+
 export const CHAT_APPEARANCE_PRESETS: Array<{
     id: ChatAppearancePresetId;
     name: string;
@@ -51,29 +74,8 @@ export const CHAT_APPEARANCE_PRESETS: Array<{
     },
     {
         id: 'minimal',
-        name: '极简',
-        config: {
-            chatAppearancePreset: 'minimal',
-            chatBubbleThemeId: 'minimal',
-            hue: 211,
-            saturation: 100,
-            lightness: 50,
-            chatChromeStyle: 'soft',
-            chatBackgroundStyle: 'plain',
-            chatBackgroundImage: '',
-            chatHeaderStyle: 'minimal',
-            chatHeaderAlign: 'center',
-            chatHeaderDensity: 'compact',
-            chatStatusStyle: 'subtle',
-            chatAvatarShape: 'circle',
-            chatAvatarSize: 'medium',
-            chatAvatarMode: 'grouped',
-            chatBubbleStyle: 'round',
-            chatMessageSpacing: 'default',
-            chatInputStyle: 'ios',
-            chatSendButtonStyle: 'circle',
-            chatShowTimestamp: 'hover',
-        },
+        name: '简约',
+        config: MINIMAL_CHAT_APPEARANCE,
     },
     {
         id: 'wechat',
@@ -136,7 +138,7 @@ export const normalizeChatAppearancePresetId = (
 ): ChatAppearancePresetId => {
     if (presetId === LEGACY_MOONLIT_PRESET_ID) return 'minimal';
     if (presetId === LEGACY_SOFT_NOTE_PRESET_ID || presetId === LEGACY_PIXEL_SIGNAL_PRESET_ID) return CUSTOM_APPEARANCE_PRESET_ID;
-    return presetId || DEEP_SPACE_APPEARANCE_PRESET_ID;
+    return presetId || 'minimal';
 };
 
 export const resolveChatAppearanceTheme = (theme: OSTheme): OSTheme => {
@@ -307,7 +309,7 @@ export const PRESET_THEMES: Record<string, ChatTheme> = {
         ai: { textColor: '#1f2933', backgroundColor: '#ffffff', borderColor: 'rgba(255,255,255,0.95)', boxShadow: '0 4px 10px rgba(15,23,42,0.06)', borderRadius: 22, opacity: 1, backgroundImageOpacity: 0.5 }
     },
     minimal: {
-        id: 'minimal', name: '极简', type: 'preset',
+        id: 'minimal', name: '简约', type: 'preset',
         user: { textColor: '#ffffff', backgroundColor: '#0a84ff', borderColor: 'rgba(10,132,255,0.98)', boxShadow: 'none', borderRadius: 16, opacity: 1, backgroundImageOpacity: 0.5 },
         ai: { textColor: '#111827', backgroundColor: '#e9e9eb', borderColor: '#e9e9eb', boxShadow: 'none', borderRadius: 16, opacity: 1, backgroundImageOpacity: 0.5 }
     },

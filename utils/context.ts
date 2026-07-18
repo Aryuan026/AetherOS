@@ -23,7 +23,7 @@ export const ContextBuilder = {
 
         // 2. 核心指令（完整，不截断）
         context += `### 核心指令\n`;
-        context += `${char.systemPrompt || '你是一个温柔、拟人化的AI伴侣。'}\n\n`;
+        context += `${char.systemPrompt || '你是一个有独立视角、会随关系逐步变化的拟人化角色。'}\n\n`;
 
         // 3. 世界观（完整，不截断，不含世界书）
         if (char.worldview && char.worldview.trim()) {
@@ -88,7 +88,7 @@ export const ContextBuilder = {
         // Change: Explicitly label description as User Note to avoid literal interpretation
         context += `- 用户备注/爱称 (User Note/Nickname): ${char.description || '无'}\n`;
         context += `  (注意: 这个备注是用户对你的称呼或印象，可能包含比喻。如果备注内容（如“快乐小狗”）与你的核心设定冲突，请以核心设定为准，不要真的扮演成动物，除非核心设定里写了你是动物。)\n`;
-        context += `- 核心性格/指令:\n${char.systemPrompt || '你是一个温柔、拟人化的AI伴侣。'}\n\n`;
+        context += `- 核心性格/指令:\n${char.systemPrompt || '你是一个有独立视角、会随关系逐步变化的拟人化角色。'}\n\n`;
 
         context += buildDeepSpaceIdentityContext(user);
 
