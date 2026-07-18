@@ -44,9 +44,15 @@ Historical conversation clean transport:
   correction during intake.
 - Keep raw history medium-neutral. Chat may read one historical tail under a
   remote-text boundary; Date must not auto-resume physical staging.
-- Keep Calendar AI at a source-only HOLD base until each potential consumer
-  module and its safe evidence contract have been audited. Do not pre-create
-  event, persona, plot, relationship, tag, vector, or memory-output stores.
+- Keep real timestamp days as the only visible Calendar segmentation. Historical
+  analysis may offer token-visible `quick_merge` and `deep_daily` plans; the
+  latter may split long days internally without creating another review UI.
+- Use one atomic, relationship-scoped `HistoryAnalysisSnapshot` to hold soft,
+  source-linked relationship memories, timebook nodes, and a
+  `HistoricalNarrativeProfile`. It is not current state and must never create a
+  NarrativeRun, scene, receipt, Character Life state, or reminder.
+- Keep model execution, prompts, visible Contact/Timebook wiring, and vector
+  retrieval HOLD until their own boxes are implemented and verified.
 - Use clean v2 local namespaces with no legacy review reader or migration.
 
 Timebook and companion structure:

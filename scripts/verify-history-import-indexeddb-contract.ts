@@ -15,7 +15,7 @@ import {
     openHistoryIndexedDbLab,
 } from '../utils/historyImport/storage/indexedDbLab.ts';
 
-assert.equal(HISTORY_INDEXEDDB_LAB_SCHEMA_VERSION, 1);
+assert.equal(HISTORY_INDEXEDDB_LAB_SCHEMA_VERSION, 2);
 assert.equal(HISTORY_INDEXEDDB_LAB_MAX_CHUNK_RECORDS, 500);
 assert.equal(HISTORY_INDEXEDDB_LAB_MAX_PAGE_RECORDS, 500);
 assert.notEqual(HISTORY_INDEXEDDB_LAB_PREFIX, 'AetherOS_Data');
@@ -34,6 +34,16 @@ assert.deepEqual(
         keyPath: ['batchId', 'sourceOrder'],
         unique: true,
     },
+);
+assert.deepEqual(
+    HISTORY_INDEXEDDB_LAB_SCHEMA[HISTORY_IMPORT_STORE_NAMES.sourceMessages]
+        .indexes.find(index => index.name === 'scope_source_order')?.keyPath,
+    [
+        'scope.progressBundleId',
+        'scope.personaMaskId',
+        'scope.charId',
+        'sourceOrder',
+    ],
 );
 assert.equal(
     HISTORY_INDEXEDDB_LAB_SCHEMA[HISTORY_IMPORT_STORE_NAMES.sourceMessages]

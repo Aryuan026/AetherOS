@@ -12,7 +12,7 @@ import {
 const CHAT_TIMELINE_INDEX = 'scope_imported_order';
 const MAX_CHAT_TIMELINE_PAGE = 100;
 
-type TimelineIndexKey = [string, string, number, number];
+type TimelineIndexKey = [string, string, string, number, number];
 
 interface TimelineCursor {
     indexKey: TimelineIndexKey;
@@ -34,7 +34,7 @@ const decodeCursor = (value?: string): TimelineCursor | undefined => {
     const parsed = JSON.parse(value) as Partial<TimelineCursor>;
     if (
         !Array.isArray(parsed.indexKey)
-        || parsed.indexKey.length !== 4
+        || parsed.indexKey.length !== 5
         || typeof parsed.primaryKey !== 'string'
     ) {
         throw new Error('旧日记录分页位置已失效。');
@@ -43,8 +43,14 @@ const decodeCursor = (value?: string): TimelineCursor | undefined => {
 };
 
 const scopeRange = (scope: HistoryScope, upper?: TimelineIndexKey): IDBKeyRange => IDBKeyRange.bound(
-    [scope.progressBundleId, scope.charId, 0, 0],
-    upper || [scope.progressBundleId, scope.charId, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+    [scope.progressBundleId, scope.personaMaskId, scope.charId, 0, 0],
+    upper || [
+        scope.progressBundleId,
+        scope.personaMaskId,
+        scope.charId,
+        Number.MAX_SAFE_INTEGER,
+        Number.MAX_SAFE_INTEGER,
+    ],
 );
 
 const sameIndexKey = (left: IDBValidKey, right: TimelineIndexKey): boolean => (

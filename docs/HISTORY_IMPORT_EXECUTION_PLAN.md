@@ -1,8 +1,8 @@
 # AetherOS Historical Conversation Import
 
-Status: v2 clean transport implemented; Calendar AI extraction HOLD
+Status: v2 clean transport implemented; historical-analysis foundation active, model execution HOLD
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Product Intent
 
@@ -96,35 +96,33 @@ explicit projection:
 - Keep full local keyword search and source jump available.
 - Permit clipping only from explicit user/char export channels.
 
-## Calendar AI Base — HOLD
+## Historical Analysis Foundation
 
-The only implemented analysis object is a source handoff:
+The consuming-module audit now authorizes three historical outputs over the
+same evidence: relationship memories, timebook nodes, and a narrative profile.
+The foundation therefore provides:
 
-- relationship scope;
-- source document ids;
-- source revision fingerprint;
-- requested question;
-- creation time.
+- full `progressBundleId + personaMaskId + charId` scope in every stable key,
+  archive index, cursor, analysis snapshot, and derived result;
+- token/call preflight for `quick_merge` and `deep_daily` plans;
+- real timestamp days as the only visible source boundary;
+- hidden, bounded deep-analysis packets that do not become another review UI;
+- one atomically replaceable `HistoryAnalysisSnapshot` containing source-linked
+  relationship memories, timebook nodes, and `HistoricalNarrativeProfile`;
+- explicit continuity, interaction surface, memory policy, temporal class, and
+  authority axes rather than one companion/roleplay enum;
+- optimistic-concurrency publication in a relationship-scoped analysis DB;
+- pure relationship-scoped read projections for future Contact, Timebook, and
+  narrative-director consumers.
 
-`createHeldDailyArchiveAnalysisRun` always returns:
+Every automatic result begins as `soft_canon` and remains correctable. The
+historical profile is read-only background for a future narrative director. It
+is not an active run, scene, experience receipt, or current Character Life
+state.
 
-- `status: "hold"`;
-- `holdReason: "module_fit_unverified"`;
-- `output: null`.
-
-It does not call a model. It does not name or persist persona, relationship,
-plot, event, language-fingerprint, tag, vector, memory-card, or narrative-run
-outputs.
-
-Before lifting HOLD, audit every possible consumer independently:
-
-- what question that module needs history to answer;
-- which source granularity is safe;
-- whether the result is evidence, a proposal, or current state;
-- whether human visibility, correction, expiry, and deletion are required;
-- how the result remains source-linked and cannot become “recently happened.”
-
-Only after that audit may a derived schema or store be introduced.
+Model execution, prompts, Calendar UI, Contact/Timebook surface wiring, narrative
+director consumption, vectorization, and whole-device backup inclusion remain
+HOLD as separate implementation boxes.
 
 ## Verification Gates
 
@@ -147,13 +145,14 @@ The deterministic history suite covers:
 - immutable relationship scopes and delayed AI replies;
 - Chat historical-state isolation;
 - Date non-consumption of the history tail;
-- Calendar AI HOLD with no output.
+- relationship-isolated analysis preflight and atomic snapshot publication.
 
 ## Explicit Holds
 
-- Calendar AI extraction categories and prompts;
-- companion/persona/relationship inference;
-- plot/mainline/NPC/time-conversion analysis;
+- model extraction prompts and runtime calls;
+- Contact-memory and Timebook surface wiring;
+- narrative-director consumption and explicit route continuation;
+- time-conversion analysis;
 - language fingerprints and tag governance;
 - vectorization and semantic retrieval;
 - Date-specific historical-scene handoff;

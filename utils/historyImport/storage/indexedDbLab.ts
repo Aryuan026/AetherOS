@@ -33,7 +33,7 @@ import {
  * synthetic "live" image and every temporary restore image.
  */
 export const HISTORY_INDEXEDDB_LAB_PREFIX = 'AetherOS_HistoryImport_Lab:' as const;
-export const HISTORY_INDEXEDDB_LAB_SCHEMA_VERSION = 1 as const;
+export const HISTORY_INDEXEDDB_LAB_SCHEMA_VERSION = 2 as const;
 export const HISTORY_INDEXEDDB_LAB_MAX_CHUNK_RECORDS = 500 as const;
 export const HISTORY_INDEXEDDB_LAB_MAX_PAGE_RECORDS = 500 as const;
 
@@ -48,7 +48,24 @@ export interface HistoryIndexedDbLabStoreSpec {
     indexes: readonly HistoryIndexedDbLabIndexSpec[];
 }
 
-const SCOPE_KEY_PATH = ['scope.progressBundleId', 'scope.charId'] as const;
+const SCOPE_KEY_PATH = [
+    'scope.progressBundleId',
+    'scope.personaMaskId',
+    'scope.charId',
+] as const;
+
+const normalizeIndexKeyPath = (keyPath: string | string[] | DOMStringList): string[] => {
+    if (typeof keyPath === 'string') return [keyPath];
+    return Array.from(keyPath);
+};
+
+const indexMatchesSpec = (index: IDBIndex, spec: HistoryIndexedDbLabIndexSpec): boolean => {
+    const observed = normalizeIndexKeyPath(index.keyPath);
+    const expected = normalizeIndexKeyPath(spec.keyPath);
+    return index.unique === spec.unique
+        && observed.length === expected.length
+        && observed.every((component, position) => component === expected[position]);
+};
 
 export const HISTORY_INDEXEDDB_LAB_SCHEMA: Record<
     HistoryRescueStoreName,
@@ -247,8 +264,15 @@ export const openHistoryIndexedDbLab = async (
         const database = request.result;
         HISTORY_RESCUE_STORE_ORDER.forEach(storeName => {
             const spec = HISTORY_INDEXEDDB_LAB_SCHEMA[storeName];
-            const store = database.createObjectStore(storeName, { keyPath: spec.keyPath });
+            const store = database.objectStoreNames.contains(storeName)
+                ? request.transaction!.objectStore(storeName)
+                : database.createObjectStore(storeName, { keyPath: spec.keyPath });
             spec.indexes.forEach(index => {
+                if (store.indexNames.contains(index.name)) {
+                    const existing = store.index(index.name);
+                    if (indexMatchesSpec(existing, index)) return;
+                    store.deleteIndex(index.name);
+                }
                 store.createIndex(index.name, index.keyPath, { unique: index.unique });
             });
         });

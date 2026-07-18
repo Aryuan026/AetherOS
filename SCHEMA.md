@@ -1090,7 +1090,25 @@ embedding stores in v2. The archive database uses the
 likewise use v2 namespaces and do not read pre-product review databases.
 
 Daily archive search renders source fragments as `原文片段`. Voice clipping is
-limited to explicit user/char export channels. `DailyArchiveAnalysisRequest`
-contains only scope, source document ids, a source revision fingerprint, a
-requested question, and creation time. `HeldDailyArchiveAnalysisRun` always has
-`status: "hold"`, `holdReason: "module_fit_unverified"`, and `output: null`.
+limited to explicit user/char export channels.
+
+The independent `AetherOS_HistoryAnalysis:v1` database stores atomic
+`HistoryAnalysisSnapshot` records. Its active-snapshot index key is:
+
+```text
+progressBundleId + personaMaskId + charId + status + createdAt
+```
+
+An analysis preflight freezes source document ids/revisions and offers
+`quick_merge` and `deep_daily` estimates. A completed snapshot contains
+source-linked relationship memories, timebook nodes, and one
+`HistoricalNarrativeProfile` with routes, NPCs, relationship stages, and open
+threads. `continuity`, interaction `surface`, memory policy, authority, and
+`temporalClass: "historical"` are independent axes.
+
+Snapshots are soft/correctable historical interpretations. They cannot contain
+current-condition/location/buff/reminder fields and cannot represent an active
+NarrativeRun, scene, Character Life state, or experience receipt. The analysis
+database exposes pure relationship view projections, but is not yet connected
+to model execution, Contact/Timebook surfaces, the narrative director, or
+whole-device backup.

@@ -136,6 +136,7 @@ export interface HistorySourceMessage {
 
 export type HistoryJobKind =
     | 'import'
+    | 'relationship_analysis'
     | 'digest'
     | 'rebuild'
     | 'embedding_backfill'

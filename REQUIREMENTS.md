@@ -600,13 +600,26 @@
   must not define, infer, or persist those categories.
 - Unresolved non-empty evidence must remain visible and keyword-searchable in
   Dialogue Calendar with the neutral label `原文片段`.
-- Calendar AI may persist only a held source request containing scope, source
-  document ids, source revision fingerprint, and the requested question. It
-  must not call a model or define output categories until module-fit auditing is
-  complete.
+- Calendar analysis must keep real timestamp days as the only visible source
+  segmentation. It may create hidden bounded packets for a low-use quick merge
+  or a day-by-day deep pass, but those packets are not a second human review UI.
+- Every analysis request and result must use the full
+  `progressBundleId + personaMaskId + charId` relationship scope. Stable keys,
+  indexes, cursors, and derived ids must include all three components.
+- A completed analysis is published atomically as one source-linked snapshot.
+  Its relationship memories, timebook nodes, and historical narrative profile
+  are soft/correctable historical material, not current state.
+- Historical analysis must not create or mutate current emotion, care, location,
+  condition, reminder, Character Life, active NarrativeRun, scene, or played
+  receipt. A historical route becomes a future draft only after the player
+  explicitly chooses to continue it through the narrative line.
+- Model execution, prompts, visible publication adapters, vectorization, and
+  semantic retrieval remain separate implementation boxes; defining the result
+  contract does not claim those runtime paths exist.
 - Raw history is medium-neutral. Chat may use a bounded historical tail while
   staying remote text; Date must not auto-read that tail or resume historical
   actions, positions, environments, or stage direction.
 - The v2 intake, archive, and daily-archive databases are clean breaks. No
-  pre-product review-workspace reader, compatibility field, or migration is
-  permitted.
+  pre-product review-workspace reader or compatibility field is permitted. A
+  bounded in-place index upgrade inside the v2 archive is allowed when it
+  preserves records while correcting the relationship scope key.

@@ -14,7 +14,7 @@ export const HISTORY_IMPORT_STORE_NAMES = {
 } as const;
 
 export type HistoryImportStoreName = typeof HISTORY_IMPORT_STORE_NAMES[keyof typeof HISTORY_IMPORT_STORE_NAMES];
-export type HistoryRecordScopePolicy = 'progress_bundle_and_character' | 'global_registry';
+export type HistoryRecordScopePolicy = 'relationship' | 'global_registry';
 export type HistoryBackupPolicy = 'required' | 'optional' | 'omit_rebuildable';
 export type HistoryDurabilityClass = 'irreplaceable' | 'operational' | 'rebuildable';
 
@@ -31,7 +31,7 @@ export const HISTORY_RECORD_FAMILY_POLICIES: HistoryRecordFamilyPolicy[] = [
     {
         family: 'import_batch',
         store: HISTORY_IMPORT_STORE_NAMES.batches,
-        scope: 'progress_bundle_and_character',
+        scope: 'relationship',
         durability: 'irreplaceable',
         backup: 'required',
         promptReadable: false,
@@ -39,7 +39,7 @@ export const HISTORY_RECORD_FAMILY_POLICIES: HistoryRecordFamilyPolicy[] = [
     {
         family: 'source_message',
         store: HISTORY_IMPORT_STORE_NAMES.sourceMessages,
-        scope: 'progress_bundle_and_character',
+        scope: 'relationship',
         durability: 'irreplaceable',
         backup: 'required',
         promptReadable: false,
@@ -47,7 +47,7 @@ export const HISTORY_RECORD_FAMILY_POLICIES: HistoryRecordFamilyPolicy[] = [
     {
         family: 'job',
         store: HISTORY_IMPORT_STORE_NAMES.jobs,
-        scope: 'progress_bundle_and_character',
+        scope: 'relationship',
         durability: 'operational',
         backup: 'optional',
         promptReadable: false,
@@ -81,7 +81,7 @@ export const HISTORY_RESCUE_CONTRACT = {
 } as const;
 
 export const HISTORY_IDENTITY_CONTRACT = {
-    scopeKeyComponents: ['progressBundleId', 'charId'],
+    scopeKeyComponents: ['progressBundleId', 'personaMaskId', 'charId'],
     batchIdComponents: ['scopeKey', 'sourceFileSha256', 'parserVersion'],
     sourceMessageIdComponents: ['batchId', 'sourceOrder', 'sourceFingerprint'],
     forbiddenStableIdComponents: [
@@ -94,7 +94,9 @@ export const HISTORY_IDENTITY_CONTRACT = {
 const isNonEmpty = (value: string | undefined): boolean => Boolean(value && value.trim());
 
 export const createHistoryScopeKey = (scope: HistoryScope): string => (
-    `${encodeURIComponent(scope.progressBundleId)}::${encodeURIComponent(scope.charId)}`
+    [scope.progressBundleId, scope.personaMaskId, scope.charId]
+        .map(component => encodeURIComponent(component))
+        .join('::')
 );
 
 export const validateHistoryScope = (scope: HistoryScope): string[] => {

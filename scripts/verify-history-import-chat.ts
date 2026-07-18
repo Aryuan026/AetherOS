@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { CharacterProfile, Message, UserProfile } from '../types.ts';
 import { buildHistoryIdentityMaterializationPlan } from '../domain/historyImport/identityMaterialization.ts';
-import { createHeldDailyArchiveAnalysisRun } from '../domain/dailyArchive/analysisBase.ts';
 import type { HistorySourceMessage } from '../domain/historyImport/types.ts';
 import { historySourceMessagesToContext } from '../utils/historyImport/archive/chatTimeline.ts';
 import { ChatPrompts } from '../utils/chatPrompts.ts';
@@ -184,7 +183,7 @@ const storageSource = readFileSync(
 );
 assert.ok(storageSource.includes('scope_imported_order'));
 assert.ok(storageSource.includes("AetherOS_HistoryArchive:v2:"));
-assert.ok(storageSource.includes('HISTORY_ARCHIVE_DB_VERSION = 1'));
+assert.ok(storageSource.includes('HISTORY_ARCHIVE_DB_VERSION = 2'));
 
 const timelineSource = readFileSync(
     new URL('../components/chat/ImportedHistoryTimeline.tsx', import.meta.url),
@@ -214,30 +213,6 @@ assert.ok(chatHeaderSource.includes('旧日记录已接回。'));
 const dateSource = readFileSync(new URL('../apps/DateApp.tsx', import.meta.url), 'utf8');
 for (const forbidden of ['readActiveHistoryChatTail', 'history_import_tail', 'HistorySourceMessage']) {
     assert.equal(dateSource.includes(forbidden), false, `Date must not auto-resume raw history through ${forbidden}`);
-}
-
-const heldAnalysis = createHeldDailyArchiveAnalysisRun({
-    schemaVersion: 1,
-    id: 'synthetic-calendar-base',
-    scope: source.scope,
-    sourceDocumentIds: ['daily:2025-07-16'],
-    sourceRevisionFingerprint: 'sha256:synthetic-calendar-source',
-    requestedQuestion: '待后续模块适配审查后再定义',
-    createdAt: 1_700_000_000_000,
-});
-assert.equal(heldAnalysis.status, 'hold');
-assert.equal(heldAnalysis.holdReason, 'module_fit_unverified');
-assert.equal(heldAnalysis.output, null);
-const analysisBaseSource = readFileSync(
-    new URL('../domain/dailyArchive/analysisBase.ts', import.meta.url),
-    'utf8',
-);
-for (const forbidden of ['fetch(', 'HistoryPlotProjection', 'HistoryCompanionProjection', 'memoryWrite']) {
-    assert.equal(
-        analysisBaseSource.includes(forbidden),
-        false,
-        `Calendar AI base must remain source-only and held: ${forbidden}`,
-    );
 }
 
 console.log(

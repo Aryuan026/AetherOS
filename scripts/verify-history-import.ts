@@ -13,6 +13,7 @@ const verificationModules = [
     './verify-history-import-intake-workspace.ts',
     './verify-history-import-archive.ts',
     './verify-history-import-chat.ts',
+    './verify-history-analysis-foundation.ts',
     './verify-daily-archive.ts',
 ] as const;
 

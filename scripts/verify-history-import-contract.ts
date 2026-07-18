@@ -50,7 +50,10 @@ assert.equal(HISTORY_RESCUE_CONTRACT.operatorCloudPersistence, 'none');
 assert.equal(HISTORY_RESCUE_CONTRACT.legacyMessagesBulkWrite, 'forbidden');
 assert.equal(HISTORY_RESCUE_CONTRACT.restoreStrategy, 'verify_temporary_database_before_switch');
 assert.equal(HISTORY_RESCUE_CONTRACT.excludedCredentialFields.includes('apiConfig.apiKey'), true);
-assert.deepEqual(HISTORY_IDENTITY_CONTRACT.scopeKeyComponents, ['progressBundleId', 'charId']);
+assert.deepEqual(
+    HISTORY_IDENTITY_CONTRACT.scopeKeyComponents,
+    ['progressBundleId', 'personaMaskId', 'charId'],
+);
 assert.equal(HISTORY_IDENTITY_CONTRACT.forbiddenStableIdComponents.includes('importedAt'), true);
 
 assert.deepEqual(validateHistoryScope(HISTORY_SCOPE_ALPHA), []);
@@ -59,6 +62,14 @@ assert.notEqual(
     createHistoryScopeKey(HISTORY_SCOPE_ALPHA),
     createHistoryScopeKey(HISTORY_SCOPE_BETA),
     'two progress bundles using one character must have different durable scope keys',
+);
+assert.notEqual(
+    createHistoryScopeKey(HISTORY_SCOPE_ALPHA),
+    createHistoryScopeKey({
+        ...HISTORY_SCOPE_ALPHA,
+        personaMaskId: 'mask-synthetic-alpha-2',
+    }),
+    'two persona masks using one progress bundle and character must have different durable scope keys',
 );
 assert.match(
     validateHistoryScope({ ...HISTORY_SCOPE_ALPHA, progressBundleId: '' }).join('\n'),

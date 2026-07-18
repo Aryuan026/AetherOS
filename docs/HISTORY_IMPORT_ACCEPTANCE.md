@@ -1,8 +1,8 @@
 # Historical Conversation Import Acceptance
 
-Status: v2 transport acceptance; semantic extraction is out of scope
+Status: v2 transport accepted; historical-analysis contract/storage accepted, model execution out of scope
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## G0 — Product Flow
 
@@ -47,6 +47,10 @@ Last updated: 2026-07-17
 
 ## G3 — Relationship And Daily Archive Isolation
 
+- [x] Stable history scope keys, archive indexes, timeline cursors, and analysis
+      indexes include progress bundle, persona mask, and character.
+- [x] Opening an older v2 archive DB rebuilds the incomplete relationship
+      indexes in place without deleting source records.
 - [x] Every newly created one-to-one message freezes progress bundle, mask, and
       character scope in message metadata.
 - [x] A delayed AI reply keeps the scope captured when the request started.
@@ -81,21 +85,32 @@ Last updated: 2026-07-17
 - [x] Clippings preserve original text and source; they do not auto-write persona,
       memory, relationship, or prompt changes.
 
-## G5 — Calendar AI HOLD
+## G5 — Historical Analysis Foundation
 
-- [x] A request can freeze scope, source document ids, source revision
-      fingerprint, question, and creation time.
-- [x] Every current run has `status: "hold"` and
-      `holdReason: "module_fit_unverified"`.
-- [x] Every current run has `output: null`.
-- [x] The base contains no network/model call.
-- [x] The base names no extraction category or downstream memory target.
-- [ ] Consumer-module evidence audit is complete.
-- [ ] Derived output contracts exist.
-- [ ] Any model extraction or persistence is allowed.
+- [x] Preflight freezes the full relationship scope, source documents, source
+      revisions, source fingerprint, approximate tokens, and calls.
+- [x] Quick merge and day-by-day deep analysis remain separate processing plans,
+      not companion/roleplay labels.
+- [x] Real timestamp days remain the only human-visible segmentation.
+- [x] One atomic snapshot holds source-linked relationship memories, timebook
+      nodes, routes, NPCs, relationship stages, and unresolved threads.
+- [x] Continuity, interaction surface, memory policy, temporal class, and
+      authority are independent fields.
+- [x] Automatic results default to soft/correctable historical material.
+- [x] Same-character analysis under two persona masks remains isolated.
+- [x] Rerun publication uses optimistic concurrency and exposes no partial
+      memory/timebook/profile state.
+- [x] Runtime validation rejects current-state, active-run, scene, and receipt
+      fields in historical snapshots.
+- [x] Pure read projections return only the active relationship's visible
+      memory/timebook rows and historical narrative profile.
+- [ ] Calendar model prompts and execution are implemented.
+- [ ] Contact-memory and Timebook surfaces merge the new read projections.
+- [ ] Narrative Director consumes a historical profile.
+- [ ] Analysis snapshots are included in whole-device backup/restore.
 
-The final three items intentionally remain unchecked. They are not release
-defects; they mark the semantic-analysis HOLD requested for this phase.
+The unchecked items are explicit next boxes, not claims hidden behind the new
+schema.
 
 ## Verification Commands
 

@@ -296,7 +296,6 @@ const indexRecordsById = <RecordType extends { id: string }>(
 
 const scopesMatch = (left: HistoryScope, right: HistoryScope): boolean => (
     createHistoryScopeKey(left) === createHistoryScopeKey(right)
-    && left.personaMaskId === right.personaMaskId
 );
 
 export const validateHistoryRescueReferences = (

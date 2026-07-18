@@ -1,5 +1,36 @@
 # AetherOS Progress
 
+## 2026-07-18 History Reuse Foundation
+
+- done:
+  - Repaired history identity from `progressBundleId + charId` to the full
+    `progressBundleId + personaMaskId + charId` relationship in stable scope
+    keys, formal/lab archive indexes, chat timeline ranges, and cursor shapes.
+  - Added an in-place IndexedDB index upgrade so existing v2 test archives keep
+    their raw records while acquiring the corrected relationship indexes.
+  - Added token/call preflight for `quick_merge` and `deep_daily`; long-day
+    packets remain internal and do not create another Calendar review surface.
+  - Added source-linked, atomically replaceable `HistoryAnalysisSnapshot`
+    storage for relationship memories, timebook nodes, and
+    `HistoricalNarrativeProfile` route/NPC/stage/open-thread material.
+  - Added pure active-relationship read projections for future Contact,
+    Timebook, and narrative-director consumers without copying rows into legacy
+    character-only stores.
+  - Kept continuity, interaction surface, memory policy, historical temporal
+    class, and authority as independent axes. Runtime validation rejects current
+    location/condition/buff/reminder and active run/scene/receipt fields.
+- verified:
+  - `npm run verify:history-import` passes, including an archive v1-index upgrade,
+    same bundle + character under two masks, analysis preflight, atomic reruns,
+    and relationship-isolated active snapshots.
+  - `npm run typecheck` passes.
+- boundary:
+  - No model call, Calendar analysis UI, Contact/Timebook surface wiring,
+    narrative director consumption, vector retrieval, or whole-device backup
+    inclusion exists in this box.
+  - Historical profiles remain soft read-only maps. They do not create played
+    runs, scenes, receipts, Character Life events, or current-state changes.
+
 ## 2026-07-17 Social Detail Header Optical Alignment
 
 - done:

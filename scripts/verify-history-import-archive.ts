@@ -22,9 +22,14 @@ import {
 import { buildHistoryImportFullPreview } from '../utils/historyImport/parsers/sourcePreview.ts';
 import {
     getActiveHistoryArchive,
+    HISTORY_ARCHIVE_DB_PREFIX,
+    HISTORY_ARCHIVE_DB_VERSION,
+    HISTORY_ARCHIVE_SCHEMA,
     openHistoryArchiveDatabase,
     readHistoryArchiveSections,
 } from '../utils/historyImport/storage/indexedDbArchive.ts';
+import { pageActiveHistoryChatTimeline } from '../utils/historyImport/archive/chatTimeline.ts';
+import { HISTORY_RESCUE_STORE_ORDER } from '../domain/historyImport/rescue.ts';
 import {
     createHistoryIntakeWorkspaceFromSource,
     deleteHistoryIntakeWorkspaceDatabase,
@@ -158,6 +163,49 @@ for (const required of [
 
 await deleteHistoryIntakeWorkspaceDatabase();
 const archiveFactory = new IDBFactory();
+
+const legacyDatabaseId = `${HISTORY_ARCHIVE_DB_PREFIX}legacy-scope-index`;
+await new Promise<void>((resolve, reject) => {
+    const request = archiveFactory.open(legacyDatabaseId, 1);
+    request.onerror = () => reject(request.error ?? new Error('legacy archive fixture failed'));
+    request.onupgradeneeded = () => {
+        HISTORY_RESCUE_STORE_ORDER.forEach(storeName => {
+            const spec = HISTORY_ARCHIVE_SCHEMA[storeName];
+            const store = request.result.createObjectStore(storeName, { keyPath: spec.keyPath });
+            spec.indexes.forEach(index => {
+                const legacyKeyPath = Array.isArray(index.keyPath)
+                    ? index.keyPath.filter(component => component !== 'scope.personaMaskId')
+                    : index.keyPath;
+                store.createIndex(index.name, legacyKeyPath, { unique: index.unique });
+            });
+        });
+    };
+    request.onsuccess = () => {
+        request.result.close();
+        resolve();
+    };
+});
+const upgradedLegacyDatabase = await openHistoryArchiveDatabase(legacyDatabaseId, archiveFactory);
+assert.equal(upgradedLegacyDatabase.version, HISTORY_ARCHIVE_DB_VERSION);
+assert.deepEqual(
+    Array.from(
+        upgradedLegacyDatabase
+            .transaction(HISTORY_IMPORT_STORE_NAMES.sourceMessages, 'readonly')
+            .objectStore(HISTORY_IMPORT_STORE_NAMES.sourceMessages)
+            .index('scope_imported_order')
+            .keyPath as string[],
+    ),
+    [
+        'scope.progressBundleId',
+        'scope.personaMaskId',
+        'scope.charId',
+        'importedAt',
+        'sourceOrder',
+    ],
+    'opening a v1 archive must rebuild its relationship index around the persona mask',
+);
+upgradedLegacyDatabase.close();
+
 const makeWorkspace = async (input: {
     name: string;
     binding: ReturnType<typeof buildHistoryIdentityBindingDraft>;
@@ -234,13 +282,31 @@ const thirdWorkspace = await makeWorkspace({
 });
 await activateWorkspace(thirdWorkspace, T0 + 301);
 
+const alternateMaskBinding = buildHistoryIdentityBindingDraft({
+    draftSeed: 'archive-same-bundle-char-other-mask',
+    mask: { id: 'mask-archive-alternate', label: '另一张面具', progressBundleId: 'progress-archive' },
+    character: { id: 'char-archive', label: '糯米' },
+});
+const fourthWorkspace = await makeWorkspace({
+    name: 'same-bundle-char-other-mask.txt',
+    binding: alternateMaskBinding,
+    lines: [
+        'user:这句话只属于另一张面具',
+        'timestamp:2024-05-04 08:00:00',
+        'assistant:不能出现在原面具的分页里',
+        'timestamp:2024-05-04 08:01:00',
+    ],
+    now: T0 + 350,
+});
+await activateWorkspace(fourthWorkspace, T0 + 351);
+
 const active = await getActiveHistoryArchive(archiveFactory);
 assert.ok(active);
 const activeDatabase = await openHistoryArchiveDatabase(active.activeDatabaseId, archiveFactory);
 const activeSections = await readHistoryArchiveSections(activeDatabase);
 activeDatabase.close();
-assert.equal(activeSections[HISTORY_IMPORT_STORE_NAMES.batches].length, 3);
-assert.equal(activeSections[HISTORY_IMPORT_STORE_NAMES.sourceMessages].length, 5);
+assert.equal(activeSections[HISTORY_IMPORT_STORE_NAMES.batches].length, 4);
+assert.equal(activeSections[HISTORY_IMPORT_STORE_NAMES.sourceMessages].length, 7);
 const activeMessages = activeSections[HISTORY_IMPORT_STORE_NAMES.sourceMessages] as HistorySourceMessage[];
 assert.deepEqual(
     new Set(activeMessages.map(message => message.scope.progressBundleId)),
@@ -248,6 +314,26 @@ assert.deepEqual(
 );
 assert.equal(activeMessages.some(message => message.content.includes('第一份从这里开始')), true);
 assert.equal(activeMessages.some(message => message.content.includes('同一段关系的第二份')), true);
+
+const primaryMaskTimeline = await pageActiveHistoryChatTimeline({
+    scope: bindingDraft.scope,
+    limit: 10,
+    factory: archiveFactory,
+});
+assert.equal(primaryMaskTimeline.total, 4);
+assert.equal(primaryMaskTimeline.items.length, 4);
+assert.equal(primaryMaskTimeline.items.some(message => message.content.includes('另一张面具')), false);
+
+const alternateMaskTimeline = await pageActiveHistoryChatTimeline({
+    scope: alternateMaskBinding.scope,
+    limit: 10,
+    factory: archiveFactory,
+});
+assert.equal(alternateMaskTimeline.total, 2);
+assert.equal(alternateMaskTimeline.items.length, 2);
+assert.equal(alternateMaskTimeline.items.every(message => (
+    message.scope.personaMaskId === alternateMaskBinding.scope.personaMaskId
+)), true);
 
 const duplicate = await prepareHistoryArchiveCandidateFromWorkspace({
     manifest: firstWorkspace,
@@ -260,4 +346,4 @@ assert.equal((await getActiveHistoryArchive(archiveFactory))?.activeDatabaseId, 
 
 await deleteHistoryIntakeWorkspaceDatabase();
 
-console.log(`history archive intake OK: source=${rows.length} committed=${messages.length} repeatable=3 batches/2 scopes`);
+console.log(`history archive intake OK: source=${rows.length} committed=${messages.length} repeatable=4 batches/3 relationships`);

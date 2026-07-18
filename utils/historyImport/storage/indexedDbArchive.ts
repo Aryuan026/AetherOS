@@ -29,7 +29,7 @@ import {
 } from '../backup/rescueArchive.ts';
 
 export const HISTORY_ARCHIVE_DB_PREFIX = 'AetherOS_HistoryArchive:v2:' as const;
-export const HISTORY_ARCHIVE_DB_VERSION = 1 as const;
+export const HISTORY_ARCHIVE_DB_VERSION = 2 as const;
 export const HISTORY_ARCHIVE_MAX_CHUNK_RECORDS = 500 as const;
 export const HISTORY_ARCHIVE_MAX_PAGE_RECORDS = 500 as const;
 export const HISTORY_ARCHIVE_CONTROL_DB_NAME = 'AetherOS_HistoryArchive_Control:v2';
@@ -48,7 +48,24 @@ export interface HistoryArchiveStoreSpec {
     indexes: readonly HistoryArchiveIndexSpec[];
 }
 
-const SCOPE_KEY_PATH = ['scope.progressBundleId', 'scope.charId'] as const;
+const SCOPE_KEY_PATH = [
+    'scope.progressBundleId',
+    'scope.personaMaskId',
+    'scope.charId',
+] as const;
+
+const normalizeIndexKeyPath = (keyPath: string | string[] | DOMStringList): string[] => {
+    if (typeof keyPath === 'string') return [keyPath];
+    return Array.from(keyPath);
+};
+
+const indexMatchesSpec = (index: IDBIndex, spec: HistoryArchiveIndexSpec): boolean => {
+    const observed = normalizeIndexKeyPath(index.keyPath);
+    const expected = normalizeIndexKeyPath(spec.keyPath);
+    return index.unique === spec.unique
+        && observed.length === expected.length
+        && observed.every((component, position) => component === expected[position]);
+};
 
 export const HISTORY_ARCHIVE_SCHEMA: Record<HistoryRescueStoreName, HistoryArchiveStoreSpec> = {
     [HISTORY_IMPORT_STORE_NAMES.batches]: {
@@ -244,9 +261,12 @@ export const openHistoryArchiveDatabase = async (
                 ? request.transaction!.objectStore(storeName)
                 : database.createObjectStore(storeName, { keyPath: spec.keyPath });
             spec.indexes.forEach(index => {
-                if (!store.indexNames.contains(index.name)) {
-                    store.createIndex(index.name, index.keyPath, { unique: index.unique });
+                if (store.indexNames.contains(index.name)) {
+                    const existing = store.index(index.name);
+                    if (indexMatchesSpec(existing, index)) return;
+                    store.deleteIndex(index.name);
                 }
+                store.createIndex(index.name, index.keyPath, { unique: index.unique });
             });
         });
     };
