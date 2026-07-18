@@ -1,6 +1,6 @@
 # Long Plot And Character Life Simulation Contract
 
-Status: confirmed contract; explicit draft-run selection implemented, playable scenes and character-life pending
+Status: confirmed contract; read-only Narrative Director context implemented, playable scenes and character-life pending
 Last updated: 2026-07-18
 
 This document defines two connected but non-identical systems:
@@ -197,6 +197,43 @@ in-world action input, DM/Character turns, played/confirmed receipt review,
 memory promotion, life-event application, Character Virtual Life, and launcher
 renaming. The lifecycle module imports no history schema or store and performs
 no AI, memory, Character, archive, or clock write.
+
+## Implemented Read-Only Narrative Director Context — 2026-07-18
+
+The narrative lane can now read current truth and the history lane's soft map
+without collapsing them into one store or granting either side write authority:
+
+- `domain/narrative/directorContext.ts` owns the complete
+  `progressBundleId + personaMaskId + charId` context boundary;
+- current active run/scene and user-confirmed experiences are projected from
+  `NovelBook.narrative` as cloned, frozen truth. Draft and unconfirmed material
+  remain outside the context;
+- an optional `HistoricalNarrativeProfile` is accepted only when the profile
+  and every nested route, NPC, relationship stage, and open thread match the
+  complete relationship scope and remain visible historical material;
+- authority is ordered `active/confirmed truth > user-confirmed history > soft
+  historical > reconstructed`. Historical `status`, source authority,
+  continuity, surface, and memory policy remain independent axes; the history
+  domain's reconstructed/inferred/explicit/user-confirmed order is retained
+  inside those narrative tiers;
+- `utils/narrative/historyAnalysisProfileProvider.ts` adapts the existing
+  history read projection behind a narrative-owned provider interface. The
+  reader is injectable, so domain fixtures and non-browser runtimes do not
+  depend on IndexedDB;
+- the context carries an explicit all-false read-only policy for model calls,
+  run/scene/receipt mutation, memory write, Character Life write, and current
+  state write.
+
+`npm run verify:narrative` now also covers triple-scope fail-closed behavior,
+nested-profile isolation, independent authority mapping, immutable current and
+historical inputs, provider scope forwarding, frozen output, and zero write
+capability.
+
+HOLD after this slice: StoryDesk/history UI wiring, automatic historical route
+adoption, “continue this line” conversion, scene planning/generation, model
+calls, active-run switching, receipt creation, memory/life/current-state writes,
+and Character Virtual Life. A historical profile remains background material;
+it is never evidence that a run or scene has been played in this App.
 
 ## Code-Grounded Starting Point
 

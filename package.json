@@ -11,7 +11,7 @@
     "build": "vite build",
     "build:quiet": "vite build --logLevel warn",
     "typecheck": "tsc --noEmit",
-    "verify:narrative": "node --experimental-strip-types scripts/verify-narrative-foundation.ts",
+    "verify:narrative": "node --experimental-strip-types scripts/verify-narrative-foundation.ts && node --experimental-strip-types scripts/verify-narrative-director-context.ts",
     "verify:history-import": "tsx scripts/verify-history-import.ts",
     "verify:daily-archive": "tsx scripts/verify-daily-archive.ts",
     "verify:appearance-presets": "tsx scripts/verify-appearance-presets.ts",
