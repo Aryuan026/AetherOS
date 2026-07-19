@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useOS } from '../context/OSContext';
 import { AppID, AvatarFramePreset, CharacterProfile, CharacterExportData, UserImpression, MemoryFragment } from '../types';
-import { SlidersHorizontal, SpeakerHigh, Books, BookOpen, Heart } from '@phosphor-icons/react';
+import { SlidersHorizontal, SpeakerHigh, Books, BookOpen, CaretDown, Heart } from '@phosphor-icons/react';
 import Modal from '../components/os/Modal';
 import { processImage } from '../utils/file';
 import { CALL_PORTRAIT_UPLOAD_HELP, SUPPORTED_UPLOAD_IMAGE_ACCEPT } from '../utils/uploadGuidance';
@@ -166,6 +166,7 @@ const Character: React.FC = () => {
   const [showWorldbookModal, setShowWorldbookModal] = useState(false); // New Modal
   const [viewingWorldbook, setViewingWorldbook] = useState<NonNullable<CharacterProfile['mountedWorldbooks']>[number] | null>(null);
   const [identityRiskConfirmBookId, setIdentityRiskConfirmBookId] = useState<string | null>(null);
+  const [expandedWorldbookCategories, setExpandedWorldbookCategories] = useState<Set<string>>(() => new Set());
 
   const [importText, setImportText] = useState('');
   const [exportText, setExportText] = useState('');
@@ -1544,9 +1545,27 @@ ${isInitialGeneration ? `
 	                            const mountableDefaultBooks = sortedBooks.filter(wb => !isOptionalBuiltInWorldbook(wb.id));
 
 	                            return (
-	                        <div key={category} className="space-y-2">
-	                            <div className="flex justify-between items-center px-1">
-	                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{category}</h4>
+	                        <div key={category} className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/70">
+	                            <div className="flex items-center justify-between gap-2 px-3 py-3">
+	                                <button
+	                                    type="button"
+	                                    onClick={() => setExpandedWorldbookCategories(previous => {
+	                                        const next = new Set(previous);
+	                                        if (next.has(category)) next.delete(category);
+	                                        else next.add(category);
+	                                        return next;
+	                                    })}
+	                                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+	                                    aria-expanded={expandedWorldbookCategories.has(category)}
+	                                >
+	                                    <CaretDown
+	                                        size={14}
+	                                        weight="bold"
+	                                        className={`shrink-0 text-indigo-300 transition-transform ${expandedWorldbookCategories.has(category) ? 'rotate-180' : ''}`}
+	                                    />
+	                                    <h4 className="min-w-0 truncate text-xs font-bold uppercase tracking-wider text-slate-500">{category}</h4>
+	                                    <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-slate-400">{sortedBooks.length}</span>
+	                                </button>
 	                                {!isPromptLocked && mountableDefaultBooks.length > 0 && (
 	                                    <button
 	                                        onClick={() => mountCategory(category)}
@@ -1556,6 +1575,8 @@ ${isInitialGeneration ? `
 	                                    </button>
 	                                )}
 	                            </div>
+	                            {expandedWorldbookCategories.has(category) && (
+	                            <div className="space-y-2 border-t border-slate-100 p-2">
 	                            {sortedBooks.map(wb => {
 	                                const isMounted = formData?.mountedWorldbooks?.some(m => m.id === wb.id);
 	                                const isOptional = isOptionalBuiltInWorldbook(wb.id);
@@ -1611,6 +1632,8 @@ ${isInitialGeneration ? `
 	                                    </div>
 	                                );
 	                            })}
+	                            </div>
+	                            )}
 	                        </div>
 	                            );
 	                        })

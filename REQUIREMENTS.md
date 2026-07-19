@@ -637,6 +637,28 @@
 - Backup/export must preserve the full mask-aware `UserProfile`, including
   DeepSpace identity fields, persona masks, and progress bundles.
 
+## Worldbook Library Grouping
+
+- Built-in worldbooks must appear under one default-collapsed, read-only
+  collection. Opening that collection reveals category foldouts; it must not
+  expand every built-in entry onto the mobile screen at once.
+- Custom worldbooks must remain visually separate from built-ins even when a
+  custom category happens to reuse a built-in category name. Built-in/read-only
+  status comes from record metadata, never from the category label.
+- Creating or editing a custom worldbook must show existing custom categories
+  as visible, named controls. Reusing a category must not require typing its
+  name again or relying on a mobile `datalist` suggestion popup.
+- Creating a new category is an explicit action. If no existing custom category
+  is selected, a blank category resolves to `未分类设定 (General)`.
+- A custom group is a projection of entries sharing the same normalized
+  `category`; empty standalone groups are not persisted. Deleting the final
+  entry therefore removes that group naturally.
+- Character worldbook mounting must keep the same records and mount semantics,
+  while category contents start collapsed so large libraries remain usable on
+  a phone.
+- Grouping changes must not introduce a new database version, rewrite mounted
+  worldbooks, or change backup/export compatibility.
+
 ## Public Sticker Packs
 
 - A public sticker pack can be shipped with the static web app.

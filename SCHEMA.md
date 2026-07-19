@@ -1,5 +1,31 @@
 # AetherOS Public Sticker Schema
 
+## Worldbook Group Projection
+
+Worldbook grouping reuses the existing `Worldbook.category` field. There is no
+separate group store and no database migration:
+
+```ts
+interface WorldbookGroupProjection {
+  category: string;
+  books: Worldbook[];
+}
+```
+
+At read time, every category is trimmed and blank values normalize to
+`未分类设定 (General)`. The UI builds two independent projections:
+
+```text
+built-in groups = books where isBuiltIn || lockEditing
+custom groups   = all remaining books
+```
+
+Category text is not an authority boundary. A custom book named under
+`深空世界书` remains custom and editable; it must never inherit read-only status
+from that label. Existing character mounts, local persistence and backup files
+continue to store ordinary `Worldbook` records, so grouping is a presentation
+and selection contract rather than a second source of truth.
+
 ## Shell Chrome And Virtual World Clock
 
 The global appearance preference is intentionally separate from relationship

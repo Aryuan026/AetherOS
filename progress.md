@@ -1820,3 +1820,29 @@
   - Run a real provider conversation in both modes and compare one-bubble preservation with strict IM splitting; the pure output-contract tests are already green.
   - Keep Date/见面 as the explicit novel-style embodied carrier; do not merge its prompt contract into Chat.
   - Publish this focused block only after owner approval. No commit, push, deploy, or server change occurred here.
+
+## 2026-07-19 Worldbook Folding And Custom Groups
+
+- done:
+  - Wrapped all built-in worldbooks in one default-collapsed, read-only library;
+    built-in categories remain independently foldable inside it.
+  - Split custom books into `我的分组` without changing the persisted
+    `Worldbook.category` schema or mounted-worldbook records.
+  - Replaced mobile `datalist` category reuse with visible named group buttons
+    and an explicit `新建分组` action.
+  - Collapsed category contents in the character worldbook mounting modal.
+  - Kept custom records editable even when their category label matches a
+    built-in category; read-only status follows record metadata only.
+
+- verified:
+  - `npm run verify:worldbook-groups`
+  - `npm run typecheck`
+  - Mobile browser at 390×844: built-in outer drawer and nested category
+    foldouts, first custom group creation, existing-group reuse for a second
+    entry, zero horizontal overflow, and zero console errors.
+
+- boundary:
+  - Empty standalone groups are intentionally not stored; a group exists while
+    at least one entry uses its normalized category.
+  - Desktop App hiding/reordering is delegated to the appearance task and is
+    not implemented in this block.
