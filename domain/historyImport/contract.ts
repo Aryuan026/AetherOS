@@ -82,7 +82,7 @@ export const HISTORY_RESCUE_CONTRACT = {
 
 export const HISTORY_IDENTITY_CONTRACT = {
     scopeKeyComponents: ['progressBundleId', 'personaMaskId', 'charId'],
-    batchIdComponents: ['scopeKey', 'sourceFileSha256', 'parserVersion'],
+    batchIdComponents: ['scopeKey', 'sourceFileSha256'],
     sourceMessageIdComponents: ['batchId', 'sourceOrder', 'sourceFingerprint'],
     forbiddenStableIdComponents: [
         'autoIncrementPrimaryKey',

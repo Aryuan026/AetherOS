@@ -36,7 +36,8 @@ Last updated: 2026-07-18
 - [x] The formal archive uses `AetherOS_HistoryArchive:v2:` slots.
 - [x] The formal archive contains exactly batches, source messages, jobs, and
       backup receipts.
-- [x] The daily archive uses `AetherOS_DailyArchive:v2` and current chunk stores.
+- [x] The daily archive uses `AetherOS_DailyArchive:v3` and current chunk stores.
+- [x] Exact source bytes in the same relationship dedupe across parser upgrades.
 - [x] There is no legacy review reader, compatibility field, or migration.
 - [x] There is no active event, companion projection, plot projection,
       tag-registry, or embedding store.

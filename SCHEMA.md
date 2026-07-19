@@ -10,12 +10,27 @@ second display-only database:
 interface DailyArchiveHumanCuration {
   sourceMessageIds: string[]; // all raw rows represented by a merged bubble
   correctedAt: number;
+  authority: 'human_corrected';
+}
+
+interface DailyArchiveManualEntry {
+  status: 'draft' | 'confirmed';
+  createdAt: number;
+  updatedAt: number;
   confirmedAt?: number;
-  authority: 'human_corrected' | 'human_confirmed';
+}
+
+interface DailyArchiveDayConfirmation {
+  status: 'open' | 'confirmed';
+  revision: number;
+  updatedAt: number;
+  confirmedAt?: number;
+  activeMessageCount: number;
+  manualEntryCount: number;
 }
 ```
 
-Content, export-channel role, date, merge, delete, and confirmation operations
+Content, export-channel role, date, merge, and delete operations
 all preserve `sourceRecordId`. Moving a message writes a higher-revision
 tombstone to the old bucket and an active projection with the same stable id to
 the target day. Therefore a later raw-history sync at revision 1 cannot revive
@@ -23,10 +38,19 @@ the old date or overwrite the corrected projection. Empty visible day buckets
 remain internally available for tombstone protection but are excluded from
 calendar and coverage projections.
 
-`human_confirmed` means the user accepted the transcript/date/attribution. It
-locks ordinary edits until explicitly unconfirmed and may become a stronger
-historical-analysis input later. It does not change `temporalClass`, establish
-real-world truth, update current state, or authorize direct memory writes.
+`merge_and_set_date` tombstones every selected source row and writes one merged
+active row to the target date in the same IndexedDB transaction. The receipt
+returns the destination date, stable primary message id, and destination offset
+so the UI can jump to the saved result.
+
+Manual supplements use `source: 'manual_entry'` and start as `draft`. Locking a
+dated document confirms the whole visible day and promotes its active manual
+entries to `confirmed`; unlocking returns them to drafts. Only
+`listConfirmedManualDailyArchiveMessages()` exposes them to future retrieval
+adapters. Imported Word/TXT source rows are never mutated. A day lock does not
+change `temporalClass`, establish real-world truth, update current state, or
+authorize direct memory writes. The clean schema uses
+`AetherOS_DailyArchive:v3` and backup format `aetheros-daily-json-v2`.
 
 ## Worldbook Group Projection
 

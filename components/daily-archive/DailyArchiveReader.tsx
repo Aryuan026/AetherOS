@@ -12,15 +12,18 @@ import {
     Check,
     ClockCounterClockwise,
     LockKey,
+    LockOpen,
     NotePencil,
     PencilSimple,
     Trash,
     UserSwitch,
     ArrowsMerge,
     SpinnerGap,
+    Plus,
     X,
 } from '@phosphor-icons/react';
 import type {
+    DailyArchiveDayConfirmation,
     DailyArchiveMessage,
     DailyArchiveMessagePage,
 } from '../../domain/dailyArchive/types';
@@ -59,10 +62,11 @@ export interface DailyArchiveReaderSource {
     dateKey?: string;
     messageCount: number;
     revisionToken?: number;
+    dayConfirmation?: DailyArchiveDayConfirmation;
 }
 
 export type DailyArchiveSelectionPurpose = 'clipping' | 'curation';
-export type DailyArchiveCurationAction = 'clip' | 'edit' | 'merge' | 'role' | 'date' | 'confirm' | 'delete';
+export type DailyArchiveCurationAction = 'clip' | 'edit' | 'merge' | 'role' | 'date' | 'delete';
 
 export interface DailyArchiveReaderFocus {
     requestId: number;
@@ -88,6 +92,9 @@ interface DailyArchiveReaderProps {
     onSaveClipping: () => void;
     onCurationAction: (action: DailyArchiveCurationAction) => void;
     onOpenLibrary: () => void;
+    onAddManual: () => void;
+    onConfirmDay: () => void;
+    onUnlockDay: () => void;
 }
 
 interface VirtualMessagePageProps {
@@ -102,6 +109,7 @@ interface VirtualMessagePageProps {
     onToggleMessage: (message: DailyArchiveMessage) => void;
     onStartCuration: (message: DailyArchiveMessage) => void;
     onMeasure: (pageIndex: number, height: number) => void;
+    curationLocked: boolean;
 }
 
 const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
@@ -116,6 +124,7 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
     onToggleMessage,
     onStartCuration,
     onMeasure,
+    curationLocked,
 }) => {
     const pageRef = useRef<HTMLDivElement>(null);
     const longPressTimerRef = useRef<number>();
@@ -147,7 +156,7 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
                 const focused = focusMessageId === message.id;
                 const canSelect = selectionPurpose === 'curation' || selectable;
                 const startLongPress = () => {
-                    if (selectionPurpose) return;
+                    if (selectionPurpose || curationLocked) return;
                     if (longPressTimerRef.current !== undefined) window.clearTimeout(longPressTimerRef.current);
                     longPressTimerRef.current = window.setTimeout(() => {
                         longPressedMessageRef.current = message.id;
@@ -185,10 +194,12 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
                                         }`}><Check size={10} weight="bold" /></span>
                                     )}
                                     {sourceLabel}
-                                    {message.curation?.authority === 'human_confirmed' && (
-                                        <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] text-emerald-600">
-                                            <LockKey size={8} weight="fill" /> 已确认
-                                        </span>
+                                    {message.manualEntry && (
+                                        <span className={`ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] ${
+                                            message.manualEntry.status === 'confirmed'
+                                                ? 'bg-emerald-50 text-emerald-600'
+                                                : 'bg-amber-50 text-amber-600'
+                                        }`}>{message.manualEntry.status === 'confirmed' ? '补录已确认' : '补录草稿'}</span>
                                     )}
                                 </div>
                                 <div className="whitespace-pre-wrap break-words">{message.content}</div>
@@ -223,10 +234,12 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
                                     </span>
                                 )}
                                 <span>{isUser ? userName || '我' : characterName || '角色'} · {messageTime(message)}</span>
-                                {message.curation?.authority === 'human_confirmed' && (
-                                    <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] font-black text-emerald-600">
-                                        <LockKey size={8} weight="fill" /> 已确认
-                                    </span>
+                                {message.manualEntry && (
+                                    <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] font-black ${
+                                        message.manualEntry.status === 'confirmed'
+                                            ? 'bg-emerald-50 text-emerald-600'
+                                            : 'bg-amber-50 text-amber-600'
+                                    }`}>{message.manualEntry.status === 'confirmed' ? '补录已确认' : '补录草稿'}</span>
                                 )}
                             </div>
                             <div className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-left text-[13px] leading-relaxed shadow-sm ring-offset-2 transition ${
@@ -262,6 +275,9 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
     onSaveClipping,
     onCurationAction,
     onOpenLibrary,
+    onAddManual,
+    onConfirmDay,
+    onUnlockDay,
 }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const pagesRef = useRef(new Map<number, DailyArchiveMessage[]>());
@@ -276,6 +292,7 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
     const [pageError, setPageError] = useState<string>();
     const [failedPageIndex, setFailedPageIndex] = useState<number>();
     const pageCount = source ? Math.ceil(source.messageCount / pageSize) : 0;
+    const dayLocked = source?.dayConfirmation?.status === 'confirmed';
     sourceIdRef.current = source?.id;
     currentPageRef.current = currentPage;
 
@@ -437,7 +454,7 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                     <button
                         type="button"
                         onClick={selectionPurpose ? onCancelSelection : () => onStartSelection('curation')}
-                        disabled={!source || source.messageCount === 0}
+                        disabled={!source || source.messageCount === 0 || dayLocked}
                         className={`flex h-10 min-w-10 items-center justify-center gap-1 rounded-full px-2.5 text-[10px] font-black shadow-sm disabled:opacity-40 ${
                             selectionPurpose ? 'bg-violet-600 text-white' : 'bg-white text-violet-600'
                         }`}
@@ -462,7 +479,7 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                     <p className="rounded-xl bg-violet-50 px-3 py-2 text-center text-[9px] font-bold leading-relaxed text-violet-600">
                         {selectionPurpose === 'clipping'
                             ? '点选想保留的原话；跨页选择会保留，每份最多 80 条。'
-                            : '点选记录后可合并、改说话人、归入日期、修改、删除或确认。长按任一气泡也能进入这里。'}
+                            : '点选记录后可合并、改说话人、归入日期、修改或删除。长按任一气泡也能进入这里。'}
                     </p>
                 </div>
             )}
@@ -474,6 +491,27 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                         <span className="min-w-0 flex-1 font-bold text-slate-500">当天对话</span>
                         {source && source.messageCount > 0 && (
                             <span className="shrink-0 font-black text-violet-500">{rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()}</span>
+                        )}
+                        {source?.dateKey && !dayLocked && (
+                            <button
+                                type="button"
+                                onClick={onAddManual}
+                                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2 py-1 font-black text-violet-600"
+                            >
+                                <Plus size={11} weight="bold" /> 补录
+                            </button>
+                        )}
+                        {source?.dateKey && (
+                            <button
+                                type="button"
+                                onClick={dayLocked ? onUnlockDay : onConfirmDay}
+                                className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 font-black ${
+                                    dayLocked ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                                }`}
+                            >
+                                {dayLocked ? <LockOpen size={11} weight="duotone" /> : <LockKey size={11} weight="duotone" />}
+                                {dayLocked ? '解锁' : '锁定当天'}
+                            </button>
                         )}
                     </div>
                 </div>
@@ -530,6 +568,7 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                                         onToggleMessage={onToggleMessage}
                                         onStartCuration={message => onStartSelection('curation', message)}
                                         onMeasure={handleMeasure}
+                                        curationLocked={Boolean(dayLocked)}
                                     />
                                 );
                             })}
@@ -570,7 +609,6 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                                 ['merge', ArrowsMerge, '合并'],
                                 ['role', UserSwitch, '说话人'],
                                 ['date', CalendarBlank, '日期'],
-                                ['confirm', LockKey, '确认'],
                                 ['delete', Trash, '删除'],
                             ] as const).map(([action, Icon, label]) => (
                                 <button

@@ -117,7 +117,6 @@ const countHistoryArchiveStores = async (
 const inspectExistingBatch = async (input: {
     activeDatabaseId: string;
     batchId: string;
-    intakeFingerprint: string;
     factory?: IDBFactory;
 }): Promise<HistoryArchiveAlreadyImported | null> => {
     const existing = await getHistoryArchiveRecord<HistoryImportBatch>({
@@ -127,10 +126,7 @@ const inspectExistingBatch = async (input: {
         factory: input.factory,
     });
     if (!existing) return null;
-    if (
-        existing.status === 'imported'
-        && existing.intakeFingerprint === input.intakeFingerprint
-    ) {
+    if (existing.status === 'imported') {
         return {
             status: 'already_imported',
             activeDatabaseId: input.activeDatabaseId,
@@ -138,9 +134,7 @@ const inspectExistingBatch = async (input: {
             sourceMessageCount: existing.counts.committed,
         };
     }
-    throw new Error(
-        '这份源文件已经存在，但本机档案指纹不同。请删除对应批次后重新导入。',
-    );
+    throw new Error('这份源文件已有未完成批次，请先完成或删除该批次。');
 };
 
 export const readHistoryArchiveWorkspaceImportStatus = async (input: {
@@ -156,7 +150,6 @@ export const readHistoryArchiveWorkspaceImportStatus = async (input: {
     return inspectExistingBatch({
         activeDatabaseId: active.activeDatabaseId,
         batchId: plan.batch.id,
-        intakeFingerprint: plan.intakeFingerprint,
         factory: input.factory,
     });
 };
@@ -174,7 +167,6 @@ export const prepareHistoryArchiveCandidateFromWorkspace = async (input: {
         const existing = await inspectExistingBatch({
             activeDatabaseId: active.activeDatabaseId,
             batchId: plan.batch.id,
-            intakeFingerprint: plan.intakeFingerprint,
             factory: input.factory,
         });
         if (existing) return existing;

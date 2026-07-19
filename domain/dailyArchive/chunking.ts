@@ -107,6 +107,7 @@ export const buildDailyArchiveManifestFromDescriptors = (input: {
         createdAt: input.document.createdAt,
         updatedAt: input.document.updatedAt,
         revision: input.document.revision,
+        dayConfirmation: input.document.dayConfirmation ? { ...input.document.dayConfirmation } : undefined,
     };
 };
 
@@ -176,7 +177,7 @@ export const hydrateDailyArchiveDocument = (input: {
 }): DailyArchiveDocument => {
     validateDailyArchiveChunkSet(input);
     return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: input.manifest.id,
         scope: { ...input.manifest.scope },
         dateKey: input.manifest.dateKey,
@@ -193,6 +194,7 @@ export const hydrateDailyArchiveDocument = (input: {
         createdAt: input.manifest.createdAt,
         updatedAt: input.manifest.updatedAt,
         revision: input.manifest.revision,
+        dayConfirmation: input.manifest.dayConfirmation ? { ...input.manifest.dayConfirmation } : undefined,
     };
 };
 

@@ -56,7 +56,9 @@ four store families:
 - `history_jobs`;
 - `history_backup_receipts`.
 
-The daily archive uses `AetherOS_DailyArchive:v2`.
+The daily archive uses the clean `AetherOS_DailyArchive:v3` schema. Exact-file
+batch identity uses relationship scope plus source-file SHA-256, not parser
+version, so upgrading parsing code cannot duplicate an already imported file.
 
 These are clean pre-product breaks. There is no reader, compatibility field, or
 migration for the deleted review workspace or speculative derived stores.

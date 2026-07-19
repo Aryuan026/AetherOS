@@ -36,7 +36,12 @@ import {
   saveConversationClipping,
   searchDailyArchiveMessages,
   curateDailyArchiveMessages,
+  addManualDailyArchiveMessages,
+  confirmDailyArchiveDay,
+  unlockDailyArchiveDay,
   type DailyArchiveCurationOperation,
+  type DailyArchiveCurationResult,
+  type DailyArchiveManualEntryDraft,
 } from '../utils/dailyArchive/storage';
 import { syncActiveHistoryToDailyArchive } from '../utils/dailyArchive/historySync';
 import {
@@ -103,9 +108,11 @@ const DailyArchiveApp: React.FC = () => {
   const [readerLoading, setReaderLoading] = useState(false);
   const [selectionPurpose, setSelectionPurpose] = useState<DailyArchiveSelectionPurpose>();
   const [selectedMessages, setSelectedMessages] = useState<Map<string, DailyArchiveMessage>>(() => new Map());
-  const [curationDialog, setCurationDialog] = useState<'edit' | 'role' | 'date' | 'delete'>();
+  const [curationDialog, setCurationDialog] = useState<'edit' | 'role' | 'date' | 'merge_date' | 'delete'>();
   const [curationDraft, setCurationDraft] = useState('');
   const [curationBusy, setCurationBusy] = useState(false);
+  const [manualDialog, setManualDialog] = useState(false);
+  const [manualDrafts, setManualDrafts] = useState<Array<DailyArchiveManualEntryDraft & { id: string }>>([]);
   const [clippings, setClippings] = useState<ConversationClipping[]>([]);
   const [showClippingLibrary, setShowClippingLibrary] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -252,6 +259,7 @@ const DailyArchiveApp: React.FC = () => {
           dateKey: manifest.dateKey,
           messageCount: manifest.messageCount,
           revisionToken: manifest.revision,
+          dayConfirmation: manifest.dayConfirmation,
         } : undefined);
       })
       .catch(error => {
@@ -366,6 +374,10 @@ const DailyArchiveApp: React.FC = () => {
   };
 
   const startSelection = (purpose: DailyArchiveSelectionPurpose, initial?: DailyArchiveMessage) => {
+    if (purpose === 'curation' && selectedSource?.dayConfirmation?.status === 'confirmed') {
+      addToast('这一天已经锁定，解锁后才能继续整理', 'info');
+      return;
+    }
     setSelectionPurpose(purpose);
     setSelectedMessages(initial ? new Map([[initial.id, initial]]) : new Map());
   };
@@ -416,8 +428,40 @@ const DailyArchiveApp: React.FC = () => {
     }
   };
 
-  const refreshArchiveAfterCuration = async () => {
+  const refreshArchiveAfterCuration = async (result?: DailyArchiveCurationResult) => {
     if (!scope) return;
+    if (result?.destinationDateKey) {
+      const targetMonthKey = result.destinationDateKey.slice(0, 7);
+      const [nextCoverage, nextMonth, manifest] = await Promise.all([
+        readDailyArchiveCoverage({ scope }),
+        listDailyArchiveMonth({ scope, monthKey: targetMonthKey }),
+        getDailyArchiveManifest({ scope, dateKey: result.destinationDateKey }),
+      ]);
+      setCoverage(nextCoverage);
+      setMonthKey(targetMonthKey);
+      setDays(nextMonth.days);
+      setShowUndated(false);
+      setSelectedUndatedKey(undefined);
+      setSelectedDateKey(result.destinationDateKey);
+      setReaderOpen(true);
+      if (manifest) {
+        setSelectedSource({
+          id: manifest.id,
+          dateKey: manifest.dateKey,
+          messageCount: manifest.messageCount,
+          revisionToken: manifest.revision,
+          dayConfirmation: manifest.dayConfirmation,
+        });
+      }
+      if (result.primaryMessageId && result.destinationMessageOffset !== undefined) {
+        setReaderFocus({
+          requestId: Date.now(),
+          messageId: result.primaryMessageId,
+          offset: result.destinationMessageOffset,
+        });
+      }
+      return;
+    }
     const [nextCoverage, nextMonth] = await Promise.all([
       readDailyArchiveCoverage({ scope }),
       listDailyArchiveMonth({ scope, monthKey }),
@@ -436,6 +480,7 @@ const DailyArchiveApp: React.FC = () => {
           id: manifest.id,
           messageCount: manifest.messageCount,
           revisionToken: manifest.revision,
+          dayConfirmation: manifest.dayConfirmation,
         });
         return;
       }
@@ -463,6 +508,7 @@ const DailyArchiveApp: React.FC = () => {
       dateKey: manifest.dateKey,
       messageCount: manifest.messageCount,
       revisionToken: manifest.revision,
+      dayConfirmation: manifest.dayConfirmation,
     });
   };
 
@@ -470,7 +516,7 @@ const DailyArchiveApp: React.FC = () => {
     if (!scope || selectedMessages.size === 0 || curationBusy) return;
     setCurationBusy(true);
     try {
-      await curateDailyArchiveMessages({
+      const result = await curateDailyArchiveMessages({
         scope,
         messages: Array.from(selectedMessages.values()),
         operation,
@@ -478,7 +524,7 @@ const DailyArchiveApp: React.FC = () => {
       setCurationDialog(undefined);
       setSelectionPurpose(undefined);
       setSelectedMessages(new Map());
-      await refreshArchiveAfterCuration();
+      await refreshArchiveAfterCuration(result);
       addToast(successMessage, 'success');
     } catch (error) {
       addToast(error instanceof Error ? error.message : '这次整理暂时没有保存下来。', 'error');
@@ -513,14 +559,71 @@ const DailyArchiveApp: React.FC = () => {
       return;
     }
     if (action === 'merge') {
-      void applyCuration({ kind: 'merge' }, `已把 ${messages.length} 条原文合成一段`);
+      if (showUndated) {
+        setCurationDraft(new Date().toISOString().slice(0, 10));
+        setCurationDialog('merge_date');
+      } else {
+        void applyCuration({ kind: 'merge' }, `已把 ${messages.length} 条原文合成一段`);
+      }
       return;
     }
-    const allConfirmed = messages.every(message => message.curation?.authority === 'human_confirmed');
-    void applyCuration(
-      { kind: 'set_confirmation', confirmed: !allConfirmed },
-      allConfirmed ? '已取消确认，可以继续修改' : `已确认 ${messages.length} 条档案`,
-    );
+  };
+
+  const openManualDialog = () => {
+    if (!selectedDateKey || selectedSource?.dayConfirmation?.status === 'confirmed') return;
+    setManualDrafts([{ id: `draft-${Date.now()}`, role: 'unknown', content: '' }]);
+    setManualDialog(true);
+  };
+
+  const saveManualDrafts = async () => {
+    if (!scope || !selectedDateKey || curationBusy) return;
+    setCurationBusy(true);
+    try {
+      const saved = await addManualDailyArchiveMessages({
+        scope,
+        dateKey: selectedDateKey,
+        entries: manualDrafts,
+      });
+      setManualDialog(false);
+      setManualDrafts([]);
+      await refreshArchiveAfterCuration({
+        affectedDocumentIds: [saved.documentId],
+        activeMessageIds: saved.messageIds,
+        destinationDateKey: selectedDateKey,
+        primaryMessageId: saved.messageIds[0],
+        destinationMessageOffset: saved.firstMessageOffset,
+      });
+      addToast(`已补录 ${saved.messageIds.length} 条；锁定当天后会成为已确认历史`, 'success');
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : '补录暂时没有保存下来。', 'error');
+    } finally {
+      setCurationBusy(false);
+    }
+  };
+
+  const setDayLocked = async (locked: boolean) => {
+    if (!scope || !selectedDateKey || curationBusy) return;
+    setCurationBusy(true);
+    try {
+      if (locked) {
+        await confirmDailyArchiveDay({ scope, dateKey: selectedDateKey });
+      } else {
+        await unlockDailyArchiveDay({ scope, dateKey: selectedDateKey });
+      }
+      setSelectionPurpose(undefined);
+      setSelectedMessages(new Map());
+      await refreshArchiveAfterCuration();
+      addToast(
+        locked
+          ? '这一天已锁定；补录内容已成为确认过的历史来源'
+          : '这一天已解锁，可以继续补录和整理',
+        'success',
+      );
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : '这一天的状态暂时没有保存下来。', 'error');
+    } finally {
+      setCurationBusy(false);
+    }
   };
 
   const removeClipping = async (id: string) => {
@@ -715,6 +818,9 @@ const DailyArchiveApp: React.FC = () => {
           onSaveClipping={() => void saveCurrentClipping()}
           onCurationAction={handleCurationAction}
           onOpenLibrary={() => setShowClippingLibrary(true)}
+          onAddManual={openManualDialog}
+          onConfirmDay={() => void setDayLocked(true)}
+          onUnlockDay={() => void setDayLocked(false)}
         />
       )}
 
@@ -743,6 +849,7 @@ const DailyArchiveApp: React.FC = () => {
               {curationDialog === 'edit' && '修改这段原文'}
               {curationDialog === 'role' && '这是谁说的'}
               {curationDialog === 'date' && '归入哪一天'}
+              {curationDialog === 'merge_date' && '合并并归入哪一天'}
               {curationDialog === 'delete' && '删除选中的记录'}
             </h2>
             <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
@@ -761,7 +868,7 @@ const DailyArchiveApp: React.FC = () => {
               />
             )}
 
-            {curationDialog === 'date' && (
+            {(curationDialog === 'date' || curationDialog === 'merge_date') && (
               <input
                 type="date"
                 value={curationDraft}
@@ -808,6 +915,11 @@ const DailyArchiveApp: React.FC = () => {
                       void applyCuration({ kind: 'edit_content', content: curationDraft }, '原文已经修改');
                     } else if (curationDialog === 'date') {
                       void applyCuration({ kind: 'set_date', dateKey: curationDraft }, `已归入 ${curationDraft}`);
+                    } else if (curationDialog === 'merge_date') {
+                      void applyCuration(
+                        { kind: 'merge_and_set_date', dateKey: curationDraft },
+                        `已合并 ${selectedMessages.size} 条并归入 ${curationDraft}`,
+                      );
                     } else {
                       void applyCuration({ kind: 'delete' }, `已删除 ${selectedMessages.size} 条日档记录`);
                     }
@@ -816,10 +928,94 @@ const DailyArchiveApp: React.FC = () => {
                     curationDialog === 'delete' ? 'bg-rose-500 shadow-rose-100' : 'bg-violet-600 shadow-violet-200'
                   }`}
                 >
-                  {curationBusy ? '正在保存…' : curationDialog === 'delete' ? '确认删除' : '保存修改'}
+                  {curationBusy
+                    ? '正在保存…'
+                    : curationDialog === 'delete'
+                      ? '确认删除'
+                      : curationDialog === 'merge_date'
+                        ? '合并并归入'
+                        : '保存修改'}
                 </button>
               </div>
             )}
+          </section>
+        </div>
+      )}
+
+      {manualDialog && (
+        <div
+          className="absolute inset-0 z-[60] flex items-end bg-slate-950/30 backdrop-blur-[2px]"
+          onClick={() => !curationBusy && setManualDialog(false)}
+        >
+          <section
+            className="max-h-[82%] w-full overflow-y-auto rounded-t-[30px] border-t border-white bg-[#fbf9ff] px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-4 shadow-[0_-20px_60px_rgba(40,31,60,0.20)] no-scrollbar"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-200" />
+            <h2 className="text-base font-black text-slate-800">补录 {formatCoverageDate(selectedDateKey)}</h2>
+            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+              先作为可编辑草稿放进这一天；锁定当天后，才会进入已确认的人工历史来源。
+            </p>
+            <div className="mt-4 space-y-3">
+              {manualDrafts.map((draft, index) => (
+                <div key={draft.id} className="rounded-2xl border border-violet-100 bg-white p-3 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    {([['user', '我'], ['character', character?.name || '角色'], ['unknown', '原文片段']] as const).map(([role, label]) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setManualDrafts(current => current.map(item => (
+                          item.id === draft.id ? { ...item, role } : item
+                        )))}
+                        className={`rounded-full px-2.5 py-1 text-[9px] font-black ${
+                          draft.role === role ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-500'
+                        }`}
+                      >{label}</button>
+                    ))}
+                    {manualDrafts.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setManualDrafts(current => current.filter(item => item.id !== draft.id))}
+                        className="ml-auto text-[9px] font-black text-rose-500"
+                      >移除</button>
+                    )}
+                  </div>
+                  <textarea
+                    value={draft.content}
+                    onChange={event => setManualDrafts(current => current.map(item => (
+                      item.id === draft.id ? { ...item, content: event.target.value } : item
+                    )))}
+                    rows={4}
+                    autoFocus={index === 0}
+                    placeholder="写下要补进这一天的原话或片段…"
+                    className="mt-2 w-full resize-none rounded-xl bg-slate-50 px-3 py-2.5 text-[12px] leading-relaxed text-slate-700 outline-none focus:ring-2 focus:ring-violet-200"
+                  />
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setManualDrafts(current => [
+                ...current,
+                { id: `draft-${Date.now()}-${current.length}`, role: 'unknown', content: '' },
+              ])}
+              disabled={manualDrafts.length >= 50}
+              className="mt-3 w-full rounded-2xl border border-dashed border-violet-200 py-2.5 text-[10px] font-black text-violet-500 disabled:opacity-40"
+            >再补一条</button>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                disabled={curationBusy}
+                onClick={() => setManualDialog(false)}
+                className="flex-1 rounded-2xl bg-slate-100 py-3 text-[11px] font-black text-slate-500"
+              >返回</button>
+              <button
+                type="button"
+                disabled={curationBusy || manualDrafts.every(draft => !draft.content.trim())}
+                onClick={() => void saveManualDrafts()}
+                className="flex-1 rounded-2xl bg-violet-600 py-3 text-[11px] font-black text-white shadow-lg shadow-violet-200 disabled:bg-slate-200 disabled:shadow-none"
+              >{curationBusy ? '正在保存…' : '保存补录草稿'}</button>
+            </div>
           </section>
         </div>
       )}

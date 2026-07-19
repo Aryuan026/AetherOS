@@ -3,9 +3,13 @@ import assert from 'node:assert/strict';
 import type { DailyArchiveMessage } from '../domain/dailyArchive/types.ts';
 import type { HistoryScope } from '../domain/historyImport/types.ts';
 import {
+    addManualDailyArchiveMessages,
+    confirmDailyArchiveDay,
     curateDailyArchiveMessages,
     getDailyArchiveDocument,
+    listConfirmedManualDailyArchiveMessages,
     readDailyArchiveCoverage,
+    unlockDailyArchiveDay,
     upsertDailyArchiveMessages,
 } from '../utils/dailyArchive/storage.ts';
 
@@ -17,7 +21,7 @@ const scope: HistoryScope = {
 const now = new Date(2025, 7, 29, 23, 1, 12).getTime();
 
 const message = (id: string, content: string, sourceOrder: number): DailyArchiveMessage => ({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id,
     scope,
     source: 'history_import',
@@ -47,63 +51,77 @@ let undated = await getDailyArchiveDocument({ scope, undatedKey: 'wrapped-word-b
 let active = undated!.messages.filter(item => item.status === 'active');
 assert.deepEqual(active.map(item => item.role), ['user', 'user']);
 
-await curateDailyArchiveMessages({
+const atomicMove = await curateDailyArchiveMessages({
     scope,
     messages: active,
-    operation: { kind: 'set_date', dateKey: '2025-08-29' },
+    operation: { kind: 'merge_and_set_date', dateKey: '2025-08-29' },
     now: now + 2,
 });
+assert.equal(atomicMove.destinationDateKey, '2025-08-29');
+assert.equal(atomicMove.primaryMessageId, first.id);
+assert.equal(atomicMove.destinationMessageOffset, 0);
 undated = await getDailyArchiveDocument({ scope, undatedKey: 'wrapped-word-batch' });
 assert.equal(undated?.messageCount, 0);
 assert.equal(undated?.messages.every(item => item.status === 'tombstoned'), true);
 
 let dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
 active = dated!.messages.filter(item => item.status === 'active');
-assert.equal(active.length, 2);
-assert.equal(active.every(item => item.time.dateKey === '2025-08-29'), true);
-
-await curateDailyArchiveMessages({
-    scope,
-    messages: active,
-    operation: { kind: 'merge' },
-    now: now + 3,
-});
-dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
-active = dated!.messages.filter(item => item.status === 'active');
 assert.equal(active.length, 1);
+assert.equal(active.every(item => item.time.dateKey === '2025-08-29'), true);
 assert.match(active[0].content, /【朋友圈】2025\.8\.29\n\n和小雨/u);
 assert.deepEqual(active[0].curation?.sourceMessageIds, ['history:wrapped-1', 'history:wrapped-2']);
 
-await curateDailyArchiveMessages({
+const manual = await addManualDailyArchiveMessages({
     scope,
-    messages: active,
-    operation: { kind: 'set_confirmation', confirmed: true },
-    now: now + 4,
+    dateKey: '2025-08-29',
+    entries: [
+        { role: 'user', content: '我后来想起还送过一张手写卡。' },
+        { role: 'character', content: '卡片背面写着：明年也一起过。' },
+    ],
+    now: now + 3,
 });
+assert.equal(manual.messageIds.length, 2);
+assert.equal((await listConfirmedManualDailyArchiveMessages({ scope })).length, 0);
+
+await confirmDailyArchiveDay({ scope, dateKey: '2025-08-29', now: now + 4 });
 dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
 active = dated!.messages.filter(item => item.status === 'active');
-assert.equal(active[0].curation?.authority, 'human_confirmed');
+assert.equal(dated?.dayConfirmation?.status, 'confirmed');
+assert.equal(dated?.dayConfirmation?.manualEntryCount, 2);
+assert.equal(active.filter(item => item.source === 'manual_entry').every(item => (
+    item.manualEntry?.status === 'confirmed'
+)), true);
+assert.equal((await listConfirmedManualDailyArchiveMessages({ scope })).length, 2);
 await assert.rejects(
     curateDailyArchiveMessages({
         scope,
-        messages: active,
+        messages: [active[0]],
         operation: { kind: 'edit_content', content: '不应越过锁定' },
         now: now + 5,
     }),
-    /先取消确认/u,
+    /先解锁/u,
+);
+await assert.rejects(
+    addManualDailyArchiveMessages({
+        scope,
+        dateKey: '2025-08-29',
+        entries: [{ role: 'unknown', content: '不应越过锁定补录' }],
+        now: now + 5,
+    }),
+    /先解锁/u,
 );
 
-await curateDailyArchiveMessages({
-    scope,
-    messages: active,
-    operation: { kind: 'set_confirmation', confirmed: false },
-    now: now + 6,
-});
+await unlockDailyArchiveDay({ scope, dateKey: '2025-08-29', now: now + 6 });
 dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
 active = dated!.messages.filter(item => item.status === 'active');
+assert.equal(dated?.dayConfirmation?.status, 'open');
+assert.equal(active.filter(item => item.source === 'manual_entry').every(item => (
+    item.manualEntry?.status === 'draft'
+)), true);
+assert.equal((await listConfirmedManualDailyArchiveMessages({ scope })).length, 0);
 await curateDailyArchiveMessages({
     scope,
-    messages: active,
+    messages: [active.find(item => item.id === first.id)!],
     operation: { kind: 'edit_content', content: '人工校正后的七夕记录' },
     now: now + 7,
 });
@@ -120,7 +138,7 @@ assert.equal(dated?.messages.find(item => item.status === 'active')?.content, '�
 
 const coverage = await readDailyArchiveCoverage({ scope });
 assert.equal(coverage.undatedMessageCount, 0);
-assert.equal(coverage.datedMessageCount, 1);
+assert.equal(coverage.datedMessageCount, 3);
 assert.equal(coverage.documentCount, 1);
 
-console.log('daily archive curation OK: role/date/edit/merge/delete-safe revisions and human confirmation lock');
+console.log('daily archive curation OK: atomic merge/date, manual drafts, day lock, unlock, and raw-resync protection');

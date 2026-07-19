@@ -344,6 +344,28 @@ assert.equal(duplicate.status, 'already_imported');
 assert.equal(duplicate.sourceMessageCount, 2);
 assert.equal((await getActiveHistoryArchive(archiveFactory))?.activeDatabaseId, active.activeDatabaseId);
 
+const parserUpgradeManifest: HistoryIntakeWorkspaceManifest = {
+    ...firstWorkspace,
+    parserVersion: 'history-intake-v-next',
+    intakeFingerprint: `${firstWorkspace.intakeFingerprint}:parser-upgrade`,
+};
+const [originalIdentityPlan, upgradedIdentityPlan] = await Promise.all([
+    buildHistoryArchiveImportPlan({ manifest: firstWorkspace, now: T0 + 401 }),
+    buildHistoryArchiveImportPlan({ manifest: parserUpgradeManifest, now: T0 + 402 }),
+]);
+assert.equal(
+    upgradedIdentityPlan.batch.id,
+    originalIdentityPlan.batch.id,
+    'exact file identity must not change when parser code is upgraded',
+);
+const parserUpgradeDuplicate = await prepareHistoryArchiveCandidateFromWorkspace({
+    manifest: parserUpgradeManifest,
+    now: T0 + 403,
+    factory: archiveFactory,
+});
+assert.equal(parserUpgradeDuplicate.status, 'already_imported');
+assert.equal(parserUpgradeDuplicate.sourceMessageCount, 2);
+
 await deleteHistoryIntakeWorkspaceDatabase();
 
 console.log(`history archive intake OK: source=${rows.length} committed=${messages.length} repeatable=4 batches/3 relationships`);

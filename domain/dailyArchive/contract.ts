@@ -178,6 +178,28 @@ export const buildDailyArchiveDocument = (input: {
         .map(messageSortValue)
         .filter(Number.isFinite) as number[];
     const sourceKinds = Array.from(new Set(activeMessages.map(message => message.source))).sort();
+    const previousDayConfirmation = input.dateKey ? input.previous?.dayConfirmation : undefined;
+    const previousActiveFingerprint = input.previous?.messages
+        .filter(message => message.status === 'active')
+        .map(message => `${message.id}:${message.revision}`)
+        .sort()
+        .join('|');
+    const nextActiveFingerprint = activeMessages
+        .map(message => `${message.id}:${message.revision}`)
+        .sort()
+        .join('|');
+    const confirmedDayChanged = previousDayConfirmation?.status === 'confirmed'
+        && previousActiveFingerprint !== nextActiveFingerprint;
+    const dayConfirmation = input.dateKey ? {
+        status: confirmedDayChanged ? 'open' as const : (previousDayConfirmation?.status ?? 'open' as const),
+        revision: previousDayConfirmation
+            ? previousDayConfirmation.revision + (confirmedDayChanged ? 1 : 0)
+            : 1,
+        updatedAt: confirmedDayChanged ? input.now : (previousDayConfirmation?.updatedAt ?? input.now),
+        confirmedAt: confirmedDayChanged ? undefined : previousDayConfirmation?.confirmedAt,
+        activeMessageCount: activeMessages.length,
+        manualEntryCount: activeMessages.filter(message => message.source === 'manual_entry').length,
+    } : undefined;
     return {
         schemaVersion: DAILY_ARCHIVE_SCHEMA_VERSION,
         id: createDailyArchiveDocumentId(input),
@@ -193,5 +215,6 @@ export const buildDailyArchiveDocument = (input: {
         createdAt: input.previous?.createdAt ?? input.now,
         updatedAt: input.now,
         revision: (input.previous?.revision ?? 0) + 1,
+        dayConfirmation,
     };
 };

@@ -1,5 +1,39 @@
 # AetherOS Progress
 
+## 2026-07-19 Daily Archive Atomic Curation And Day Lock
+
+- done:
+  - Replaced the two-step undated merge/date flow with one atomic
+    `merge_and_set_date` transaction and a destination receipt that opens and
+    focuses the saved result.
+  - Added date-scoped manual supplements. They remain editable drafts until the
+    whole day is locked; lock promotes them into an explicit confirmed manual
+    historical source, while unlock returns them to draft status.
+  - Replaced per-message confirmation with a day-level lock. Locked days reject
+    edit, merge, move, delete, and new supplements until explicitly unlocked.
+  - Made exact-file import identity independent of parser version. The same
+    source bytes under the same mask/character relationship stay one batch after
+    parser upgrades.
+  - Moved the clean pre-product daily archive to `AetherOS_DailyArchive:v3` and
+    backup format `aetheros-daily-json-v2`; no discarded friend-test schema is
+    read or migrated.
+- verified:
+  - Fake IndexedDB covers atomic merge/date, destination offsets, supplement
+    draft/confirm/unlock, locked-write rejection, confirmed-manual selection,
+    and resistance to revision-1 raw resync.
+  - History archive integration proves a parser-version change retains the same
+    batch id and returns `already_imported`.
+  - `npm run typecheck`, `npm run verify:daily-archive`,
+    `npm run verify:history-import`, `npm run verify:narrative`, and
+    `npm run verify:health` pass.
+  - In-app Chromium at 430 x 932 completed the real flow from undated selection
+    through atomic merge/date, destination focus, two-row supplement, day lock,
+    and unlock-ready rendering with zero console errors. A separate 390 x 844
+    shell check kept document width equal to viewport width with zero errors.
+- boundary:
+  - Locking improves historical-source authority only. It does not create
+    current emotion/life state, NarrativeRun, memory truth, or world facts.
+
 ## 2026-07-19 API And Life-Circle Semantics Seal
 
 - done:
@@ -39,28 +73,27 @@
     text instead of becoming a false date or extra speaker.
   - Opened Daily Archive correction for dated, undated, and unattributed rows:
     long-press/organizer selection, edit, merge, export-channel attribution,
-    date assignment, tombstone deletion, clipping, and confirmation locking.
+    date assignment, tombstone deletion, and clipping. The later day-lock seal
+    supersedes this block's former per-message confirmation control.
   - Kept corrections inside the canonical chunked archive revision stream.
     Date moves leave higher-revision tombstones in the old bucket and retain raw
     source ids, so later history sync cannot restore a corrected mistake.
-  - Kept `human_confirmed` as historical transcript authority only. It does not
+  - Kept human correction as historical transcript authority only. It does not
     advance emotion, care, current life, narrative receipts, or memory.
   - Integrated the already-reviewed launcher visibility/order release and
     Worldbook folding/reusable custom groups into one testable main candidate.
 - verified:
   - `npm run verify:history-import`, `npm run verify:daily-archive`,
     `npm run typecheck`, and `git diff --check` pass.
-  - New fake-IndexedDB integration covers role/date/edit/merge, confirmation
-    lock/unlock, revision tombstones, and resistance to a later raw revision-1
-    sync.
+  - New fake-IndexedDB integration covers role/date/edit/merge, revision
+    tombstones, and resistance to a later raw revision-1 sync.
   - In-app Chromium at 430 x 932 imported a fictional three-row TXT, rendered
     the wrapped朋友圈 turn as one user bubble, opened an unattributed undated row,
-    changed it to the character channel, moved it into a day, and confirmed a
-    dated record. The calendar/reader updated without reload and console errors
-    remained zero.
+    changed it to the character channel, and moved it into a day. The
+    calendar/reader updated without reload and console errors remained zero.
 - boundary:
-  - Confirmation verifies the local transcript projection, not world truth or
-    current state. Calendar semantic analysis/model execution remains HOLD.
+  - Human correction verifies the local transcript projection, not world truth
+    or current state. Calendar semantic analysis/model execution remains HOLD.
 
 ## 2026-07-19 Desktop App Visibility And Ordering
 

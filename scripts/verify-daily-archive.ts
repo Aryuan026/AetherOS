@@ -248,6 +248,7 @@ const backup = await buildDailyArchiveBackupFiles({
 });
 assert.equal(backup.manifest.documentCount, 2);
 assert.equal(backup.manifest.messageCount, 4);
+assert.equal(backup.manifest.format, 'aetheros-daily-json-v2');
 assert.ok(backup.files.some(file => file.path.endsWith('/2025/07/2025-07-16.json')));
 assert.ok(backup.files.some(file => file.path.includes('/undated/')));
 const restored = await verifyDailyArchiveBackupFiles(backup);
@@ -279,6 +280,9 @@ for (const required of [
     'openSearchHit',
     'curateDailyArchiveMessages',
     'setCurationDialog',
+    'addManualDailyArchiveMessages',
+    'confirmDailyArchiveDay',
+    'merge_and_set_date',
 ]) {
     assert.ok(appSource.includes(required));
 }
@@ -295,6 +299,8 @@ for (const required of [
     'onStartCuration',
     '整理对话记录',
     '说话人',
+    '锁定当天',
+    '补录',
     "message.role === 'system' ? '来源说明' : '原文片段'",
 ]) {
     assert.ok(readerSource.includes(required));
@@ -329,7 +335,7 @@ for (const required of [
 }
 const dailyStorageSource = readFileSync(new URL('../utils/dailyArchive/storage.ts', import.meta.url), 'utf8');
 for (const required of [
-    "DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive:v2'",
+    "DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive:v3'",
     'DAILY_ARCHIVE_DB_VERSION = 1',
     'daily_archive_manifests',
     'daily_archive_chunks',

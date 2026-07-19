@@ -1,18 +1,33 @@
 import type { HistoryScope, HistoryTimePrecision } from '../historyImport/types.ts';
 
-export const DAILY_ARCHIVE_SCHEMA_VERSION = 1 as const;
+export const DAILY_ARCHIVE_SCHEMA_VERSION = 2 as const;
 export const DAILY_ARCHIVE_CHUNK_SCHEMA_VERSION = 1 as const;
 export const CONVERSATION_CLIPPING_SCHEMA_VERSION = 1 as const;
 
-export type DailyArchiveSource = 'history_import' | 'live_chat';
+export type DailyArchiveSource = 'history_import' | 'live_chat' | 'manual_entry';
 export type DailyArchiveMessageStatus = 'active' | 'tombstoned';
 
 export interface DailyArchiveHumanCuration {
     /** Every original archive message represented by this visible record. */
     sourceMessageIds: string[];
     correctedAt: number;
+    authority: 'human_corrected';
+}
+
+export interface DailyArchiveManualEntry {
+    status: 'draft' | 'confirmed';
+    createdAt: number;
+    updatedAt: number;
     confirmedAt?: number;
-    authority: 'human_corrected' | 'human_confirmed';
+}
+
+export interface DailyArchiveDayConfirmation {
+    status: 'open' | 'confirmed';
+    revision: number;
+    updatedAt: number;
+    confirmedAt?: number;
+    activeMessageCount: number;
+    manualEntryCount: number;
 }
 
 export interface DailyArchiveMessageTime {
@@ -41,6 +56,8 @@ export interface DailyArchiveMessage {
     revision: number;
     /** Optional post-import correction. It never changes temporalClass or current state. */
     curation?: DailyArchiveHumanCuration;
+    /** Human-authored supplement. It becomes confirmed historical evidence only with a day lock. */
+    manualEntry?: DailyArchiveManualEntry;
 }
 
 export interface DailyArchiveDocument {
@@ -58,6 +75,8 @@ export interface DailyArchiveDocument {
     createdAt: number;
     updatedAt: number;
     revision: number;
+    /** Dated documents can be reviewed and locked as one human-visible unit. */
+    dayConfirmation?: DailyArchiveDayConfirmation;
 }
 
 export interface DailyArchiveMonthDay {
@@ -77,6 +96,7 @@ export interface DailyArchiveDocumentSummary {
     firstTimestamp?: number;
     lastTimestamp?: number;
     updatedAt: number;
+    dayConfirmation?: DailyArchiveDayConfirmation;
 }
 
 export interface DailyArchiveChunkDescriptor {
@@ -176,7 +196,7 @@ export interface DailyArchiveCoverage {
 
 export interface DailyArchiveBackupManifest {
     schemaVersion: typeof DAILY_ARCHIVE_SCHEMA_VERSION;
-    format: 'aetheros-daily-json-v1';
+    format: 'aetheros-daily-json-v2';
     documentCount: number;
     messageCount: number;
     files: Array<{

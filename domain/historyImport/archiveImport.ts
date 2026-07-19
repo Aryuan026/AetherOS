@@ -64,7 +64,6 @@ export const buildHistoryArchiveImportPlan = async (input: {
     const batchFingerprint = await sha256Hex(JSON.stringify({
         scopeKey,
         sourceFileSha256: manifest.sourceFile.sha256,
-        parserVersion: manifest.parserVersion,
     }));
     const batchId = `history-batch-${batchFingerprint.slice(0, 32)}`;
     const jobId = `history-job-import-${batchFingerprint.slice(0, 32)}`;

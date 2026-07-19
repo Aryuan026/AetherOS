@@ -32,7 +32,7 @@ import {
 } from '../../domain/dailyArchive/index.ts';
 import type { HistoryScope } from '../../domain/historyImport/types.ts';
 
-export const DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive:v2';
+export const DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive:v3';
 export const DAILY_ARCHIVE_DB_VERSION = 1;
 export const DAILY_ARCHIVE_SUMMARY_STORE = 'daily_archive_summaries';
 export const DAILY_ARCHIVE_META_STORE = 'daily_archive_meta';
@@ -46,12 +46,20 @@ export type DailyArchiveCurationOperation =
     | { kind: 'set_role'; role: 'user' | 'character' | 'unknown' }
     | { kind: 'set_date'; dateKey: string }
     | { kind: 'merge' }
-    | { kind: 'delete' }
-    | { kind: 'set_confirmation'; confirmed: boolean };
+    | { kind: 'merge_and_set_date'; dateKey: string }
+    | { kind: 'delete' };
 
 export interface DailyArchiveCurationResult {
     affectedDocumentIds: string[];
     activeMessageIds: string[];
+    destinationDateKey?: string;
+    primaryMessageId?: string;
+    destinationMessageOffset?: number;
+}
+
+export interface DailyArchiveManualEntryDraft {
+    role: 'user' | 'character' | 'unknown';
+    content: string;
 }
 
 interface DailyArchiveMessageIndexEntry {
@@ -170,6 +178,7 @@ const summaryForManifest = (manifest: DailyArchiveManifest): DailyArchiveDocumen
     firstTimestamp: manifest.firstTimestamp,
     lastTimestamp: manifest.lastTimestamp,
     updatedAt: manifest.updatedAt,
+    dayConfirmation: manifest.dayConfirmation ? { ...manifest.dayConfirmation } : undefined,
 });
 
 export const hasDailyArchiveSyncReceipt = async (input: {
@@ -411,6 +420,17 @@ const messageOrderFingerprint = (message: DailyArchiveMessage): string => JSON.s
     message.id,
 ]);
 
+const messageStateFingerprint = (message: DailyArchiveMessage): string => JSON.stringify([
+    message.revision,
+    message.status,
+    message.role,
+    message.kind,
+    message.content,
+    message.time,
+    message.curation ?? null,
+    message.manualEntry ?? null,
+]);
+
 const compareDailyArchiveMessage = (
     left: DailyArchiveMessage,
     right: DailyArchiveMessage,
@@ -496,11 +516,13 @@ const upsertMessageGroup = async (input: {
     const chunkById = new Map((loadedChunks as DailyArchiveChunk[]).map(chunk => [chunk.id, chunk]));
     const newMessages: DailyArchiveMessage[] = [];
     let requiresRebuild = false;
+    let visibleMutation = false;
 
     messages.forEach((message, index) => {
         const entry = entries[index];
         if (!entry) {
             newMessages.push(message);
+            visibleMutation = true;
             return;
         }
         if (entry.documentId !== manifest!.id) throw new Error('日档消息编号落入了其他关系范围。');
@@ -511,6 +533,7 @@ const upsertMessageGroup = async (input: {
             return;
         }
         if (message.revision < previous.revision) return;
+        if (messageStateFingerprint(message) !== messageStateFingerprint(previous)) visibleMutation = true;
         if (messageOrderFingerprint(message) !== messageOrderFingerprint(previous)) {
             requiresRebuild = true;
             return;
@@ -577,6 +600,23 @@ const upsertMessageGroup = async (input: {
     const descriptorById = new Map(manifest.chunks.map(descriptor => [descriptor.id, descriptor]));
     chunkById.forEach(chunk => descriptorById.set(chunk.id, dailyArchiveDescriptorForChunk(chunk)));
     const descriptors = Array.from(descriptorById.values()).sort((left, right) => left.chunkIndex - right.chunkIndex);
+    const activeMessageCount = descriptors.reduce((total, descriptor) => total + descriptor.messageCount, 0);
+    const dayConfirmation = manifest.dayConfirmation ? {
+        ...manifest.dayConfirmation,
+        status: visibleMutation && manifest.dayConfirmation.status === 'confirmed'
+            ? 'open' as const
+            : manifest.dayConfirmation.status,
+        revision: manifest.dayConfirmation.revision + (
+            visibleMutation && manifest.dayConfirmation.status === 'confirmed' ? 1 : 0
+        ),
+        updatedAt: visibleMutation && manifest.dayConfirmation.status === 'confirmed'
+            ? input.now
+            : manifest.dayConfirmation.updatedAt,
+        confirmedAt: visibleMutation && manifest.dayConfirmation.status === 'confirmed'
+            ? undefined
+            : manifest.dayConfirmation.confirmedAt,
+        activeMessageCount,
+    } : undefined;
     manifest = buildDailyArchiveManifestFromDescriptors({
         document: {
             schemaVersion: DAILY_ARCHIVE_SCHEMA_VERSION,
@@ -592,6 +632,7 @@ const upsertMessageGroup = async (input: {
             createdAt: manifest.createdAt,
             updatedAt: input.now,
             revision: manifest.revision + 1,
+            dayConfirmation,
         },
         descriptors,
         chunkSize: manifest.chunkSize,
@@ -644,17 +685,11 @@ const curatedSourceIds = (message: DailyArchiveMessage): string[] => (
 const correctedCuration = (
     message: DailyArchiveMessage,
     now: number,
-    confirmed?: boolean,
 ) => ({
     sourceMessageIds: curatedSourceIds(message),
     correctedAt: now,
-    confirmedAt: confirmed ? now : undefined,
-    authority: confirmed ? 'human_confirmed' as const : 'human_corrected' as const,
+    authority: 'human_corrected' as const,
 });
-
-const isConfirmedArchiveMessage = (message: DailyArchiveMessage): boolean => (
-    message.curation?.authority === 'human_confirmed'
-);
 
 const timeMovedToDate = (
     message: DailyArchiveMessage,
@@ -702,7 +737,10 @@ export const curateDailyArchiveMessages = async (input: {
     if (input.operation.kind === 'edit_content' && !input.operation.content.trim()) {
         throw new Error('原文内容不能为空。');
     }
-    if (input.operation.kind === 'set_date' && !isDailyArchiveDateKey(input.operation.dateKey)) {
+    if (
+        (input.operation.kind === 'set_date' || input.operation.kind === 'merge_and_set_date')
+        && !isDailyArchiveDateKey(input.operation.dateKey)
+    ) {
         throw new Error('请选择一个有效日期。');
     }
     if (input.messages.some(message => !sameScope(message.scope, input.scope))) {
@@ -735,11 +773,8 @@ export const curateDailyArchiveMessages = async (input: {
             currentMessages.push(current);
         }
 
-        if (
-            input.operation.kind !== 'set_confirmation'
-            && currentMessages.some(isConfirmedArchiveMessage)
-        ) {
-            throw new Error('已确认的记录需要先取消确认，才能继续修改。');
+        if (Array.from(documentById.values()).some(document => document.dayConfirmation?.status === 'confirmed')) {
+            throw new Error('这一天已经锁定，请先解锁再整理。');
         }
 
         const patches = new Map<string, DailyArchiveMessage[]>();
@@ -756,28 +791,50 @@ export const curateDailyArchiveMessages = async (input: {
             });
         };
 
-        if (input.operation.kind === 'merge') {
+        let destinationDateKey: string | undefined;
+        let primaryMessageId: string | undefined;
+        if (input.operation.kind === 'merge' || input.operation.kind === 'merge_and_set_date') {
             const ordered = sortDailyArchiveMessages(currentMessages);
             const primary = ordered[0];
             const sourceMessageIds = Array.from(new Set(ordered.flatMap(curatedSourceIds)));
             const commonRole = ordered.every(message => message.role === primary.role) ? primary.role : 'unknown';
-            reviseInPlace(primary, {
-                role: commonRole,
-                content: ordered.map(message => message.content.trim()).filter(Boolean).join('\n\n'),
-                curation: {
-                    sourceMessageIds,
-                    correctedAt: now,
-                    authority: 'human_corrected',
-                },
-            });
-            ordered.slice(1).forEach(message => reviseInPlace(message, {
-                status: 'tombstoned',
-                curation: {
-                    sourceMessageIds,
-                    correctedAt: now,
-                    authority: 'human_corrected',
-                },
-            }));
+            const curation = { sourceMessageIds, correctedAt: now, authority: 'human_corrected' as const };
+            primaryMessageId = primary.id;
+            if (input.operation.kind === 'merge') {
+                reviseInPlace(primary, {
+                    role: commonRole,
+                    content: ordered.map(message => message.content.trim()).filter(Boolean).join('\n\n'),
+                    curation,
+                });
+                ordered.slice(1).forEach(message => reviseInPlace(message, {
+                    status: 'tombstoned',
+                    curation,
+                }));
+            } else {
+                destinationDateKey = input.operation.dateKey;
+                const targetBucket = { scope: primary.scope, dateKey: destinationDateKey };
+                const targetDocument = await loadBucket(targetBucket);
+                if (targetDocument?.dayConfirmation?.status === 'confirmed') {
+                    throw new Error('目标日期已经锁定，请先解锁再归档。');
+                }
+                const targetPrevious = targetDocument?.messages.find(message => message.id === primary.id);
+                const primaryRevision = Math.max(primary.revision, targetPrevious?.revision ?? 0) + 1;
+                ordered.forEach(message => addPatch(archiveBucketForMessage(message), {
+                    ...message,
+                    status: 'tombstoned',
+                    revision: message.id === primary.id ? primaryRevision : message.revision + 1,
+                    curation,
+                }));
+                addPatch(targetBucket, {
+                    ...primary,
+                    role: commonRole,
+                    content: ordered.map(message => message.content.trim()).filter(Boolean).join('\n\n'),
+                    time: timeMovedToDate(primary, destinationDateKey),
+                    status: 'active',
+                    revision: primaryRevision,
+                    curation,
+                });
+            }
         } else {
             for (const message of currentMessages) {
                 if (input.operation.kind === 'edit_content') {
@@ -795,15 +852,14 @@ export const curateDailyArchiveMessages = async (input: {
                         status: 'tombstoned',
                         curation: correctedCuration(message, now),
                     });
-                } else if (input.operation.kind === 'set_confirmation') {
-                    reviseInPlace(message, {
-                        curation: correctedCuration(message, now, input.operation.confirmed),
-                    });
                 } else if (input.operation.kind === 'set_date') {
                     const sourceBucket = archiveBucketForMessage(message);
                     const targetTime = timeMovedToDate(message, input.operation.dateKey);
                     const targetBucket = { scope: message.scope, dateKey: input.operation.dateKey };
                     const targetDocument = await loadBucket(targetBucket);
+                    if (targetDocument?.dayConfirmation?.status === 'confirmed') {
+                        throw new Error('目标日期已经锁定，请先解锁再归档。');
+                    }
                     const targetPrevious = targetDocument?.messages.find(item => item.id === message.id);
                     const nextRevision = Math.max(message.revision, targetPrevious?.revision ?? 0) + 1;
                     addPatch(sourceBucket, {
@@ -819,6 +875,8 @@ export const curateDailyArchiveMessages = async (input: {
                         revision: nextRevision,
                         curation: correctedCuration(message, now),
                     });
+                    destinationDateKey = input.operation.dateKey;
+                    primaryMessageId ??= message.id;
                 }
             }
         }
@@ -835,16 +893,174 @@ export const curateDailyArchiveMessages = async (input: {
             }));
         }
         await persistChunkedDocuments({ database, documents });
+        const destinationDocument = destinationDateKey
+            ? documents.find(document => document.dateKey === destinationDateKey)
+            : undefined;
+        const destinationMessageOffset = destinationDocument && primaryMessageId
+            ? destinationDocument.messages
+                .filter(message => message.status === 'active')
+                .findIndex(message => message.id === primaryMessageId)
+            : undefined;
         return {
             affectedDocumentIds: documents.map(document => document.id),
             activeMessageIds: documents.flatMap(document => document.messages)
                 .filter(message => message.status === 'active')
                 .map(message => message.id),
+            destinationDateKey,
+            primaryMessageId,
+            destinationMessageOffset: destinationMessageOffset !== undefined && destinationMessageOffset >= 0
+                ? destinationMessageOffset
+                : undefined,
         };
     } finally {
         database.close();
     }
 };
+
+const manualMessageId = (scope: HistoryScope, dateKey: string): string => {
+    const random = globalThis.crypto?.randomUUID?.()
+        ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    return `manual:${createDailyArchiveDocumentId({ scope, dateKey })}:${random}`;
+};
+
+export const addManualDailyArchiveMessages = async (input: {
+    scope: HistoryScope;
+    dateKey: string;
+    entries: DailyArchiveManualEntryDraft[];
+    now?: number;
+    factory?: IDBFactory;
+}): Promise<{ documentId: string; messageIds: string[]; firstMessageOffset: number }> => {
+    if (!isDailyArchiveDateKey(input.dateKey)) throw new Error('请选择一个有效日期。');
+    const entries = input.entries
+        .map(entry => ({ ...entry, content: entry.content.trim() }))
+        .filter(entry => entry.content.length > 0);
+    if (entries.length === 0) throw new Error('至少写下一条要补录的内容。');
+    if (entries.length > 50) throw new Error('一次最多补录 50 条，可以分几次保存。');
+    const now = input.now ?? Date.now();
+    const database = await openDailyArchiveDatabase(input.factory);
+    try {
+        const documentId = createDailyArchiveDocumentId({ scope: input.scope, dateKey: input.dateKey });
+        const manifest = await ensureChunkedManifest(database, documentId);
+        const previous = manifest ? await hydrateStoredManifest(database, manifest) : undefined;
+        if (previous?.dayConfirmation?.status === 'confirmed') {
+            throw new Error('这一天已经锁定，请先解锁再补录。');
+        }
+        const messages = entries.map((entry, index): DailyArchiveMessage => {
+            const id = manualMessageId(input.scope, input.dateKey);
+            const timestamp = new Date(`${input.dateKey}T12:00:00`).getTime() + index * 1000;
+            return {
+                schemaVersion: DAILY_ARCHIVE_SCHEMA_VERSION,
+                id,
+                scope: { ...input.scope },
+                source: 'manual_entry',
+                sourceRecordId: id,
+                role: entry.role,
+                kind: 'text',
+                content: entry.content,
+                time: {
+                    dateKey: input.dateKey,
+                    originalText: input.dateKey,
+                    iso: new Date(timestamp).toISOString(),
+                    epochMs: timestamp,
+                    precision: 'day',
+                },
+                status: 'active',
+                recordedAt: now,
+                revision: 1,
+                manualEntry: {
+                    status: 'draft',
+                    createdAt: now,
+                    updatedAt: now,
+                },
+            };
+        });
+        const document = buildDailyArchiveDocument({
+            scope: input.scope,
+            dateKey: input.dateKey,
+            messages,
+            previous,
+            now,
+        });
+        await persistChunkedDocument({ database, document });
+        const active = document.messages.filter(message => message.status === 'active');
+        const firstMessageOffset = active.findIndex(message => message.id === messages[0].id);
+        return {
+            documentId,
+            messageIds: messages.map(message => message.id),
+            firstMessageOffset: Math.max(0, firstMessageOffset),
+        };
+    } finally {
+        database.close();
+    }
+};
+
+const setDailyArchiveDayConfirmation = async (input: {
+    scope: HistoryScope;
+    dateKey: string;
+    confirmed: boolean;
+    now?: number;
+    factory?: IDBFactory;
+}): Promise<DailyArchiveDocument> => {
+    if (!isDailyArchiveDateKey(input.dateKey)) throw new Error('请选择一个有效日期。');
+    const now = input.now ?? Date.now();
+    const database = await openDailyArchiveDatabase(input.factory);
+    try {
+        const documentId = createDailyArchiveDocumentId({ scope: input.scope, dateKey: input.dateKey });
+        const manifest = await ensureChunkedManifest(database, documentId);
+        if (!manifest) throw new Error('这一天还没有可以确认的记录。');
+        const previous = await hydrateStoredManifest(database, manifest);
+        const active = previous.messages.filter(message => message.status === 'active');
+        if (active.length === 0) throw new Error('这一天还没有可以确认的记录。');
+        if ((previous.dayConfirmation?.status === 'confirmed') === input.confirmed) return previous;
+        const manualPatches = active
+            .filter(message => message.source === 'manual_entry')
+            .map(message => ({
+                ...message,
+                revision: message.revision + 1,
+                manualEntry: {
+                    status: input.confirmed ? 'confirmed' as const : 'draft' as const,
+                    createdAt: message.manualEntry?.createdAt ?? message.recordedAt,
+                    updatedAt: now,
+                    confirmedAt: input.confirmed ? now : undefined,
+                },
+            }));
+        const document = buildDailyArchiveDocument({
+            scope: input.scope,
+            dateKey: input.dateKey,
+            messages: manualPatches,
+            previous,
+            now,
+        });
+        document.dayConfirmation = {
+            status: input.confirmed ? 'confirmed' : 'open',
+            revision: (previous.dayConfirmation?.revision ?? 0) + 1,
+            updatedAt: now,
+            confirmedAt: input.confirmed ? now : undefined,
+            activeMessageCount: document.messageCount,
+            manualEntryCount: document.messages.filter(message => (
+                message.status === 'active' && message.source === 'manual_entry'
+            )).length,
+        };
+        await persistChunkedDocument({ database, document });
+        return document;
+    } finally {
+        database.close();
+    }
+};
+
+export const confirmDailyArchiveDay = (input: {
+    scope: HistoryScope;
+    dateKey: string;
+    now?: number;
+    factory?: IDBFactory;
+}): Promise<DailyArchiveDocument> => setDailyArchiveDayConfirmation({ ...input, confirmed: true });
+
+export const unlockDailyArchiveDay = (input: {
+    scope: HistoryScope;
+    dateKey: string;
+    now?: number;
+    factory?: IDBFactory;
+}): Promise<DailyArchiveDocument> => setDailyArchiveDayConfirmation({ ...input, confirmed: false });
 
 export const getDailyArchiveDocument = async (input: {
     scope: HistoryScope;
@@ -1000,6 +1216,36 @@ const listScopeDailyArchiveManifests = async (input: {
         manifests.push(manifest);
     }
     return manifests;
+};
+
+/**
+ * Future memory/retrieval adapters may read only manual supplements that the
+ * human promoted by locking their whole day. Draft supplements remain visible
+ * in the calendar but never enter this evidence lane.
+ */
+export const listConfirmedManualDailyArchiveMessages = async (input: {
+    scope: HistoryScope;
+    factory?: IDBFactory;
+}): Promise<DailyArchiveMessage[]> => {
+    const database = await openDailyArchiveDatabase(input.factory);
+    try {
+        const manifests = await listScopeDailyArchiveManifests({ database, scope: input.scope });
+        const confirmed = manifests.filter(manifest => (
+            manifest.dateKey && manifest.dayConfirmation?.status === 'confirmed'
+        ));
+        const messages: DailyArchiveMessage[] = [];
+        for (const manifest of confirmed) {
+            const document = await hydrateStoredManifest(database, manifest);
+            messages.push(...document.messages.filter(message => (
+                message.status === 'active'
+                && message.source === 'manual_entry'
+                && message.manualEntry?.status === 'confirmed'
+            )));
+        }
+        return sortDailyArchiveMessages(messages);
+    } finally {
+        database.close();
+    }
 };
 
 const loadDailyArchiveChunkBatch = async (input: {
@@ -1359,7 +1605,7 @@ export const buildDailyArchiveBackupFiles = async (input: {
     return {
         manifest: {
             schemaVersion: DAILY_ARCHIVE_SCHEMA_VERSION,
-            format: 'aetheros-daily-json-v1',
+            format: 'aetheros-daily-json-v2',
             documentCount: input.documents.length,
             messageCount: input.documents.reduce((total, document) => total + document.messageCount, 0),
             files: manifestFiles,
@@ -1375,7 +1621,7 @@ export const verifyDailyArchiveBackupFiles = async (input: {
 }): Promise<DailyArchiveDocument[]> => {
     if (
         input.manifest.schemaVersion !== DAILY_ARCHIVE_SCHEMA_VERSION
-        || input.manifest.format !== 'aetheros-daily-json-v1'
+        || input.manifest.format !== 'aetheros-daily-json-v2'
     ) throw new Error('每日档案备份版本不受支持。');
     if (input.manifest.documentCount !== input.manifest.files.length) throw new Error('每日档案清单数量不一致。');
     const fileByPath = new Map(input.files.map(file => [file.path, file.json]));
