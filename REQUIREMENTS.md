@@ -311,6 +311,22 @@
 
 ## Social Moments Reply Scheduling
 
+- Every persisted Social row must freeze `progressBundleId + personaMaskId` when
+  it is created or safely migrated. Feed display, profile grids, settings,
+  sharing targets, generation, comments, delayed replies, notifications, and
+  clear/delete actions must all use that same exact scope.
+- Social is intentionally stricter than other experience pickers: when the
+  active mask has no linked characters, it shows an honest empty state instead
+  of falling back to the global character library. Custom characters and
+  built-in characters follow the same `linkedCharacterIds` rule.
+- Legacy Social rows may be attached automatically only when ownership is
+  unambiguous: the browser has one valid mask, or every referenced character
+  resolves to exactly one mask. Ambiguous rows remain stored but invisible;
+  they must never be guessed into whichever mask is active.
+- The empty Social screen must not invent persona-bearing demo posts or comments.
+  A persisted post can be deleted individually. Deletion cancels its pending
+  delayed replies but does not retroactively remove a social card already
+  shared into chat.
 - `朋友圈` must not assume that all five built-in male leads coexist in the same
   visible friend circle. If the active character has not enabled the five-lead
   crossover/NPC worldbook package, the social participant pool is treated as
@@ -332,6 +348,14 @@
 
 ## Chat Appearance Presets
 
+- The ordinary composer stays compact for short messages, grows only to roughly
+  two visible lines, and reveals one expand affordance when text is multiline or
+  overflows that height. Expanding opens a full-app editor over Chat rather than
+  permanently enlarging the bottom bar.
+- Compact and expanded composers must edit the same draft and use the existing
+  send path. Closing the editor preserves the draft; sending clears it through
+  the ordinary Chat flow. Paragraph breaks remain intact, and no second message
+  store or long-message record type is introduced.
 - The default chat appearance preset is `深空`.
 - `深空` uses the existing concentrated chat layout instead of exposing free bubble height or shape controls.
 - Chat avatars are circular in `深空`.
@@ -548,7 +572,9 @@
   Novel route directives, Guidebook, and special-event selection.
 - If the active mask has no linked characters, experience surfaces should fall
   back to all characters and guide the user to establish links rather than
-  showing an empty page.
+  showing an empty page. `朋友圈` is the deliberate exception: because posts,
+  comments, delayed replies, and notifications represent a relationship
+  network, Social fails closed and shows an empty-state link hint.
 - Prompted generation must not let unlinked characters post, reply, or appear as
   current familiar/romance-network members. They may still exist as public
   background people when a worldbook or user explicitly mentions them.

@@ -1,6 +1,6 @@
 
-import React, { useRef } from 'react';
-import { ShareNetwork, Trash, Plus, Smiley, PaperPlaneTilt, Money, BookOpenText, GearSix, Image, Lock, ArrowsClockwise, ChatCircleDots, SmileyWink } from '@phosphor-icons/react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { ShareNetwork, Trash, Plus, Smiley, PaperPlaneTilt, Money, BookOpenText, GearSix, Image, Lock, ArrowsClockwise, ArrowsOutSimple, ChatCircleDots, SmileyWink } from '@phosphor-icons/react';
 import { CharacterProfile, EmojiCategory, Emoji, OSTheme } from '../../types';
 import { isIOSStandaloneWebApp } from '../../utils/iosStandalone';
 import { categoryHasRestrictedVisibility } from '../../utils/emojiVisibility';
@@ -38,6 +38,7 @@ interface ChatInputAreaProps {
     sendButtonStyle?: 'circle' | 'pill' | 'minimal';
     chromeStyle?: 'soft' | 'flat' | 'floating' | 'pixel';
     appearancePreset?: OSTheme['chatAppearancePreset'];
+    onExpandInput: () => void;
 }
 
 const ChatInputArea: React.FC<ChatInputAreaProps> = ({
@@ -53,6 +54,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     sendButtonStyle = 'circle',
     chromeStyle = 'soft',
     appearancePreset = 'custom',
+    onExpandInput,
 }) => {
     const chatImageInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -60,6 +62,18 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     const startPos = useRef({ x: 0, y: 0 }); 
     const isLongPressTriggered = useRef(false); // Track if long press action fired
     const useIOSStandaloneInputFix = isIOSStandaloneWebApp();
+    const [canExpandInput, setCanExpandInput] = useState(false);
+
+    useLayoutEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        const collapsedMaxHeight = 72;
+        textarea.style.height = '0px';
+        const measuredHeight = textarea.scrollHeight;
+        textarea.style.height = `${Math.min(measuredHeight, collapsedMaxHeight)}px`;
+        textarea.style.overflowY = measuredHeight > collapsedMaxHeight ? 'auto' : 'hidden';
+        setCanExpandInput(input.includes('\n') || measuredHeight > collapsedMaxHeight);
+    }, [input]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -297,10 +311,21 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                             enterKeyHint="send"
                             autoCorrect="on"
                             autoCapitalize="sentences"
-                            className={`flex-1 min-w-0 bg-transparent px-4 py-3 ${useIOSStandaloneInputFix ? 'text-[16px]' : 'text-[15px]'} resize-none max-h-24 no-scrollbar ${isPixelStyle ? 'text-[#6a4c35] placeholder:text-[#9b8677]' : ''}`}
+                            className={`flex-1 min-w-0 bg-transparent px-4 py-3 ${useIOSStandaloneInputFix ? 'text-[16px]' : 'text-[15px]'} resize-none no-scrollbar ${isPixelStyle ? 'text-[#6a4c35] placeholder:text-[#9b8677]' : ''}`}
                             placeholder="Message..." 
-                            style={{ height: 'auto' }} 
+                            style={{ maxHeight: 72 }}
                         />
+                        {canExpandInput && (
+                            <button
+                                type="button"
+                                onClick={onExpandInput}
+                                aria-label="展开长消息编辑"
+                                title="展开长消息"
+                                className={`shrink-0 rounded-full p-2 transition-colors ${isPixelStyle ? 'text-[#8f674a] hover:bg-[#eadfce]' : 'text-slate-400 hover:bg-white/60 hover:text-slate-600'}`}
+                            >
+                                <ArrowsOutSimple className="h-5 w-5" weight="bold" />
+                            </button>
+                        )}
                         <button onClick={() => setShowPanel(showPanel === 'emojis' ? 'none' : 'emojis')} className={`p-2 shrink-0 ${isPixelStyle ? 'text-[#8f674a] hover:text-[#a16207]' : 'text-slate-400 hover:text-primary'}`}>
                             <Smiley className="w-6 h-6" weight="regular" />
                         </button>

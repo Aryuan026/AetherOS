@@ -10,6 +10,7 @@ import ImportedHistoryTimeline from '../components/chat/ImportedHistoryTimeline'
 import { DEFAULT_CHAT_BACKGROUND_IMAGE, PRESET_THEMES, DEFAULT_ARCHIVE_PROMPTS, DEEP_SPACE_APPEARANCE_PRESET_ID, normalizeChatAppearancePresetId, resolveChatAppearanceTheme } from '../components/chat/ChatConstants';
 import ChatHeader from '../components/chat/ChatHeaderShell';
 import ChatInputArea from '../components/chat/ChatInputArea';
+import ExpandedChatComposer from '../components/chat/ExpandedChatComposer';
 import ChatModals from '../components/chat/ChatModals';
 import AvatarWithFrame from '../components/common/AvatarWithFrame';
 import Modal from '../components/os/Modal';
@@ -184,6 +185,7 @@ const Chat: React.FC = () => {
     const [isSummarizing, setIsSummarizing] = useState(false);
     const [showReplyModeModal, setShowReplyModeModal] = useState(false);
     const [showEmotionModal, setShowEmotionModal] = useState(false);
+    const [showExpandedComposer, setShowExpandedComposer] = useState(false);
 
     // Archive Prompts State
     const [archivePrompts, setArchivePrompts] = useState<{id: string, name: string, content: string}[]>(DEFAULT_ARCHIVE_PROMPTS);
@@ -754,6 +756,10 @@ const Chat: React.FC = () => {
     useEffect(() => {
         visibleCountRef.current = visibleCount;
     }, [visibleCount]);
+
+    useEffect(() => {
+        setShowExpandedComposer(false);
+    }, [activeCharacterId]);
 
     // Reload char data when background emotion evaluation updates buffs
     useEffect(() => {
@@ -1466,6 +1472,16 @@ const Chat: React.FC = () => {
 
     // Memoize ChatInputArea callbacks
     const handleSendCallback = useCallback(() => handleSendText(), [char, input, replyTarget]);
+    const openExpandedComposer = useCallback(() => {
+        setShowPanel('none');
+        setShowExpandedComposer(true);
+    }, []);
+    const closeExpandedComposer = useCallback(() => setShowExpandedComposer(false), []);
+    const handleExpandedSend = useCallback(() => {
+        if (!input.trim()) return;
+        setShowExpandedComposer(false);
+        void handleSendText();
+    }, [char, input, replyTarget]);
     const handleCharSelectCallback = useCallback((id: string) => { setActiveCharacterId(id); setShowPanel('none'); }, []);
     const chatChromeStyle = osTheme.chatChromeStyle || 'soft';
     const chatBackgroundStyle = osTheme.chatBackgroundStyle || 'plain';
@@ -1732,8 +1748,19 @@ const Chat: React.FC = () => {
                     sendButtonStyle={osTheme.chatSendButtonStyle}
                     chromeStyle={osTheme.chatChromeStyle}
                     appearancePreset={appearancePresetId}
+                    onExpandInput={openExpandedComposer}
                 />
             </div>
+
+            {showExpandedComposer && (
+                <ExpandedChatComposer
+                    input={input}
+                    setInput={handleInputChange}
+                    onClose={closeExpandedComposer}
+                    onSend={handleExpandedSend}
+                    replyPreview={replyTarget?.content}
+                />
+            )}
 
 
             {/* Reply Mode Modal */}

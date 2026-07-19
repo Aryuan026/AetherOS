@@ -498,6 +498,11 @@ Chat appearance remains global in `OSTheme`. The default theme now spreads
 `MINIMAL_CHAT_APPEARANCE`; field-less stored themes receive the same default,
 while explicit stored presets remain untouched.
 
+The expanded Chat composer adds no persisted schema. It is a full-app editing
+surface over the same in-memory `input` draft and calls the same text-send path
+as the compact composer. Closing preserves that draft for the current Chat
+session; sending creates only the existing message records and then clears it.
+
 The first automatic sediment layer also uses localStorage bookkeeping and
 existing stores, so it does not bump IndexedDB yet:
 
@@ -642,9 +647,15 @@ lightweight reply queue. This does not require an IndexedDB version bump because
 the fields live on the stored object:
 
 ```ts
+interface SocialRelationshipScope {
+  progressBundleId: string;
+  personaMaskId: string;
+}
+
 {
   kind: 'moment';
   sourceType: 'user';
+  socialScope: SocialRelationshipScope;
   replyState: 'none' | 'pending' | 'generated';
   replyDueAt?: number;
   replyAudienceCharIds?: string[];
@@ -658,6 +669,14 @@ the user publishes the post. `replyRemainingCharIds` is consumed one character
 at a time. Each successful generated reply appends a `SocialComment` with
 `charId`, updates `replyLastGeneratedAt`, and schedules the next `replyDueAt`
 when more eligible characters remain.
+
+`socialScope` is immutable ownership, not a display filter inferred from the
+currently active mask. The same scope gates the feed, profile grids, settings,
+share targets, generated batches, comments, delayed replies, notifications,
+single deletion, and scoped clear operations. Switching masks cannot redirect
+an in-flight reply. Unscoped legacy rows migrate only when one mask is the sole
+valid owner or all referenced character ids resolve to one mask; ambiguous rows
+remain stored and fail closed. Social does not synthesize fallback demo rows.
 
 The social participant pool is scoped by the active character's worldbooks. If
 the active built-in male lead has not mounted the five-lead crossover package,
@@ -693,11 +712,7 @@ original batch position through `repairIndex`; the repair may replace `content`
 but does not change category, channel, title, or the candidate-truth boundary.
 Rows still below the gate after repair are not persisted.
 
-The browser-local placeholder-dismissal key is:
-
-```text
-aetheros_social_demo_dismissed_tabs_v1
-```
+Social no longer persists or renders persona-bearing placeholder/demo feed rows.
 
 It contains `moments` and/or `news`. Clearing news deletes only news rows from
 the existing `social_posts` IndexedDB store and records `news` in this key so

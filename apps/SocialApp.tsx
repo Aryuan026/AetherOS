@@ -2,12 +2,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { CharacterProfile, SocialPost, SocialComment, SubAccount, SocialAppProfile, SocialNewsCategory } from '../types';
+import { CharacterProfile, SocialPost, SocialComment, SubAccount, SocialAppProfile, SocialNewsCategory, SocialRelationshipScope } from '../types';
 import { ContextBuilder } from '../utils/context';
 import { processImage } from '../utils/file';
 import Modal from '../components/os/Modal';
 import { safeResponseJson } from '../utils/safeApi';
-import { House, User, Package, Warning } from '@phosphor-icons/react';
+import { DotsThreeVertical, House, Package, ShareNetwork, TrashSimple, User, Warning } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 import { Capacitor } from '@capacitor/core';
@@ -16,6 +16,12 @@ import {
     filterCharactersForPersonaSurface,
     resolvePersonaRouteScope,
 } from '../utils/personaRouteScope';
+import {
+    activeSocialRelationshipScope,
+    inferLegacySocialPostScope,
+    socialPostMatchesScope,
+    socialScopesMatch,
+} from '../utils/socialScope';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -41,7 +47,6 @@ const MOMENTS_USER_ID_KEY = 'moments_user_id';
 const MOMENTS_USER_COVER_ASSET_ID = 'moments_user_cover';
 const MOMENTS_PROFILE_ASSET_ID = 'moments_profile';
 const MOMENTS_CHAR_HANDLES_KEY = 'moments_char_handles';
-const SOCIAL_DEMO_DISMISSED_TABS_KEY = 'aetheros_social_demo_dismissed_tabs_v1';
 const NEWS_LONGFORM_MIN_CHARS = 500;
 const POINTER_PULL_DEADZONE_PX = 8;
 const DEEPSPACE_MALE_LEAD_IDS = new Set([
@@ -139,19 +144,6 @@ const NEWS_CHANNEL_STYLE_NOTES: Record<string, string> = {
     微醺菜单: '夜间菜单体，240-380字。用杯沿、冰块、灯色、音乐和散场时间组织段落，保持陪伴感，不写成酒评。',
 };
 const NEWS_LONGFORM_CHANNELS = new Set(['野史不歪', '诡秘谈', '恋爱出走指南', '两个人的地图']);
-const DEMO_MYSTERY_STORY = `投稿人说，他在旧城区那家停业多年的影院做临时清点。那天是周四，晚上十一点十七分，外面下着很细的雨。大厅里没有电，只有安全出口的绿灯亮着。经理把一串生锈钥匙交给他，反复叮嘱：数座椅可以，但第三排无论多出什么，都不要重新数第二遍。
-
-他起初以为这是老员工吓唬新人。第一厅总共十二排，每排十四个座位，除了第三排。手电照过去时，那里整整齐齐摆着十五张椅子，多出来的一张夹在七号和八号之间，椅背比旁边高半寸，扶手上还搭着一件湿漉漉的灰色外套。投稿人喊了两声“有人吗”，放映室却先回答了一声：“没有。”
-
-更怪的是售票机突然自己吐出一张票。票面日期正是当天，场次写着零点零分，座位号只有一个手写的“7½”。背面用蓝色圆珠笔写着：请不要回头。投稿人拍照发给经理，消息旁边很快出现已读，但经理的账号随后回了一句：“我今晚没带手机。”
-
-这时银幕亮了。没有电影，只有一段俯拍监控：画面里的投稿人正站在第三排前，而他身后坐着一排模糊的人影。那些人全都低着头，膝盖上放着同样的灰色外套。监控时间比现实快两分钟。画面里，两分钟后的他慢慢转过身，像在看谁；现实中的他吓得闭上眼，沿过道摸索着往门口跑。
-
-他撞开大厅门时，雨已经停了，经理和保安都在街对面等他。三个人重新进去，第三排恢复成十四张椅子，售票机也断着电。只有他的手机相册里多了一段九秒视频：镜头对着黑暗的银幕，一个女人在很远的地方问，“这次他没有回头，那票留给谁？”
-
-大家都以为事情到这里结束了。投稿人辞掉工作，搬离旧城区，甚至换了号码。可从那以后，每逢周四夜里十一点十七分，他的手机钱包都会自动出现一张无法删除的电子票，座位永远是7½。昨晚那张票第一次换了场次名称，不再写“零点重映”，而是写着他现在住的小区门牌号。
-
-我们向影院旧员工核实时，对方只问了一句：“你们收到的投稿里，他有没有说那件灰外套是什么颜色？”我们回答灰色。电话那头沉默了很久，说：“那就不是他的版本。最早那个人看见的是红色，而且他二十年前就坐在第三排，没有出来。”`;
 
 const getRandomStyle = () => POST_STYLES[Math.floor(Math.random() * POST_STYLES.length)];
 type SocialTab = 'moments' | 'news' | 'me';
@@ -198,10 +190,12 @@ const renderPostSticker = (token?: string, className = 'w-16 h-16') => {
     if (isCodepointSticker(token)) return <img src={twemojiUrl(token)} alt="" className={className} />;
     return <span>{token}</span>;
 };
-const isDemoPost = (post: SocialPost) => post.id.startsWith('demo-');
 const isInteractiveTarget = (target: EventTarget | null) => (
     target instanceof Element &&
     !!target.closest('button, input, textarea, select, a, label, [role="button"]')
+);
+const scopedSocialStorageKey = (base: string, scope?: SocialRelationshipScope) => (
+    scope ? `${base}:v2:${scope.progressBundleId}:${scope.personaMaskId}` : base
 );
 
 // --- Robust JSON Parser ---
@@ -301,15 +295,9 @@ const SocialApp: React.FC = () => {
     // Settings / Handle Management
     const [showSettings, setShowSettings] = useState(false);
     const [showClearNewsConfirm, setShowClearNewsConfirm] = useState(false);
+    const [showPostActions, setShowPostActions] = useState(false);
+    const [showDeletePostConfirm, setShowDeletePostConfirm] = useState(false);
     const [characterHandles, setCharacterHandles] = useState<Record<string, SubAccount[]>>({});
-    const [dismissedDemoTabs, setDismissedDemoTabs] = useState<Set<'moments' | 'news'>>(() => {
-        try {
-            const saved = JSON.parse(localStorage.getItem(SOCIAL_DEMO_DISMISSED_TABS_KEY) || '[]');
-            return new Set(Array.isArray(saved) ? saved.filter(tab => tab === 'moments' || tab === 'news') : []);
-        } catch {
-            return new Set();
-        }
-    });
 
     // Sharing State
     const [showShareModal, setShowShareModal] = useState(false);
@@ -341,30 +329,31 @@ const SocialApp: React.FC = () => {
     const detailScrollRef = useRef<HTMLDivElement>(null);
     const prevCommentCountRef = useRef(0); // Track comment count to prevent initial jump
     const pendingReplyRef = useRef<Set<string>>(new Set());
+    const deletedPostIdsRef = useRef<Set<string>>(new Set());
+    const activeSocialScopeRef = useRef<SocialRelationshipScope | undefined>(undefined);
     const [pullDistance, setPullDistance] = useState(0);
-
-    const dismissDemoTabs = (...tabs: Array<'moments' | 'news'>) => {
-        setDismissedDemoTabs(prev => {
-            const next = new Set(prev);
-            tabs.forEach(tab => next.add(tab));
-            try {
-                localStorage.setItem(SOCIAL_DEMO_DISMISSED_TABS_KEY, JSON.stringify(Array.from(next)));
-            } catch {}
-            return next;
-        });
-    };
 
     const personaScope = useMemo(() => (
         resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
     ), [userProfile, characters, activeCharacterId]);
+    const activeSocialScope = useMemo(() => (
+        activeSocialRelationshipScope(userProfile)
+    ), [userProfile]);
+    activeSocialScopeRef.current = activeSocialScope;
+    const socialProfileAssetId = scopedSocialStorageKey(MOMENTS_PROFILE_ASSET_ID, activeSocialScope);
+    const socialCoverAssetId = scopedSocialStorageKey(MOMENTS_USER_COVER_ASSET_ID, activeSocialScope);
+    const socialUserIdKey = scopedSocialStorageKey(MOMENTS_USER_ID_KEY, activeSocialScope);
     const socialScopedCharacters = useMemo(() => (
         filterCharactersForPersonaSurface(characters, personaScope, {
             surface: 'social',
+            fallbackToAllWhenEmpty: false,
         })
     ), [characters, personaScope]);
     const activeCharacter = useMemo(() => (
-        personaScope.preferredActiveCharacter || characters.find(char => char.id === activeCharacterId) || characters[0]
-    ), [characters, activeCharacterId, personaScope]);
+        socialScopedCharacters.find(char => char.id === personaScope.preferredActiveCharacter?.id)
+        || socialScopedCharacters.find(char => char.id === activeCharacterId)
+        || socialScopedCharacters[0]
+    ), [socialScopedCharacters, activeCharacterId, personaScope.preferredActiveCharacter?.id]);
 
     const isMaleLead = (char?: CharacterProfile | null) => Boolean(char && DEEPSPACE_MALE_LEAD_IDS.has(char.id));
     const hasMountedWorldbook = (char: CharacterProfile | undefined, ids: Set<string>) => (
@@ -420,6 +409,7 @@ const SocialApp: React.FC = () => {
         return `${prefix}当前未启用五位男主共存资料包；朋友圈只把「${activeCharacter.name}」视为当前男主。可以出现他相关的原生 NPC、路人或剧情新增 NPC，但禁止让其他男主${forbiddenNames ? `（${forbiddenNames}）` : ''}发动态、评论或被写成同一熟人圈人物。`;
     }, [activeCharacter, allowsMaleLeadCrossover, characters, personaScope]);
     const getRelatedParticipantsForPost = (post?: SocialPost | null) => {
+        if (post && !socialPostMatchesScope(post, activeSocialScope)) return [];
         const postChar = post?.charId ? characters.find(char => char.id === post.charId) : undefined;
         const base = uniqueById([postChar, ...socialParticipants].filter(Boolean) as CharacterProfile[]);
         if (!activeCharacter || !isMaleLead(activeCharacter) || allowsMaleLeadCrossover) return base;
@@ -446,7 +436,11 @@ const SocialApp: React.FC = () => {
             .map(char => char.id)
     );
     const showSocialReplyNotice = (comments: SocialComment[], post: SocialPost) => {
-        if (comments.length === 0) return;
+        if (
+            comments.length === 0
+            || deletedPostIdsRef.current.has(post.id)
+            || !socialPostMatchesScope(post, activeSocialScopeRef.current)
+        ) return;
         const first = comments[0];
         const names = Array.from(new Set(comments.map(comment => comment.authorName))).slice(0, 2);
         addToast(`${names.join('、')} 回复了你的朋友圈`, 'success');
@@ -459,6 +453,7 @@ const SocialApp: React.FC = () => {
                     silent: false
                 });
                 notif.onclick = () => {
+                    if (!socialPostMatchesScope(post, activeSocialScopeRef.current)) return;
                     window.focus();
                     setActiveTab('moments');
                     setSelectedPost(post);
@@ -467,211 +462,85 @@ const SocialApp: React.FC = () => {
         }
     };
 
+    const scopedFeed = useMemo(() => (
+        feed.filter(post => socialPostMatchesScope(post, activeSocialScope))
+    ), [feed, activeSocialScope]);
+
     const visibleFeed = useMemo(() => {
-        return feed.filter(post => activeTab === 'news' ? getPostKind(post) === 'news' : getPostKind(post) !== 'news');
-    }, [feed, activeTab]);
+        return scopedFeed.filter(post => activeTab === 'news' ? getPostKind(post) === 'news' : getPostKind(post) !== 'news');
+    }, [scopedFeed, activeTab]);
 
-    const placeholderFeed = useMemo<SocialPost[]>(() => {
-        const now = Date.now();
-        const findChar = (keyword: string) => characters.find(c => c.name.includes(keyword));
-        const shen = findChar('沈星回') || characters[0];
-        const qin = findChar('秦彻') || characters[1] || shen;
-        const xia = findChar('夏以昼') || characters[2] || shen;
-        const qi = findChar('祁煜') || characters[3] || shen;
-        const avatarFor = (seed: string) => `https://api.dicebear.com/7.x/icons/svg?seed=${encodeURIComponent(seed)}`;
-        const comment = (authorName: string, authorAvatar: string | undefined, content: string): SocialComment => ({
-            id: `demo-comment-${authorName}-${content}`,
-            authorName,
-            authorAvatar,
-            content,
-            likes: 0,
-            isCharacter: !!authorAvatar
-        });
 
-        return [
-            {
-                id: 'demo-moment-user-1',
-                kind: 'moment',
-                sourceType: 'user',
-                charId: null,
-                authorName: socialProfile.name || '我',
-                authorAvatar: socialProfile.avatar,
-                title: '今天的状态',
-                content: '把手机放在窗边，结果光斑正好落在桌面上。感觉今天适合发生一点小事。',
-                images: [],
-                likes: 9,
-                isCollected: false,
-                isLiked: false,
-                comments: [
-                    shen && comment(shen.name, shen.avatar, '看见了。那束光很适合你。'),
-                    qin && comment(qin.name, qin.avatar, '小事也行，大事也行。别忘了叫我。')
-                ].filter(Boolean) as SocialComment[],
-                timestamp: now - 1000 * 60 * 15,
-                tags: ['朋友圈'],
-                bgStyle: 'linear-gradient(135deg, #fff5f8 0%, #eef8ff 100%)',
-                storySeedStatus: 'none',
-                replyState: 'generated'
-            },
-            {
-                id: 'demo-moment-char-1',
-                kind: 'moment',
-                sourceType: 'character',
-                charId: shen?.id || null,
-                authorName: shen?.name || '沈星回',
-                authorAvatar: shen?.avatar || avatarFor('shen-xinghui'),
-                title: '晚风',
-                content: '路过便利店的时候，货架上的猫粮又换了位置。',
-                images: [],
-                likes: 16,
-                isCollected: false,
-                isLiked: false,
-                comments: [
-                    comment(socialProfile.name || '我', socialProfile.avatar, '你怎么每次都能注意到这种细节。'),
-                    qi && comment(qi.name, qi.avatar, '这不就是很明显吗？')
-                ].filter(Boolean) as SocialComment[],
-                timestamp: now - 1000 * 60 * 48,
-                tags: ['朋友圈'],
-                bgStyle: 'linear-gradient(135deg, #eef2ff 0%, #fff7ed 100%)',
-                storySeedStatus: 'none',
-                replyState: 'none'
-            },
-            {
-                id: 'demo-news-1',
-                kind: 'news',
-                sourceType: 'news',
-                charId: null,
-                authorName: '边角料',
-                authorAvatar: avatarFor('边角料'),
-                title: '剧组值夜班的人说热饮会自己补满',
-                content: '匿名投稿称，某片场最近每晚都会多出几杯温热饮料。目前没人承认是谁买的，评论区已经开始猜是不是哪位猎人顺手照顾人。',
-                images: [],
-                likes: 2048,
-                isCollected: false,
-                isLiked: false,
-                comments: [],
-                timestamp: now - 1000 * 60 * 80,
-                tags: ['小道消息', '支线钩子', '传闻'],
-                newsCategory: 'sidequest',
-                newsChannel: '边角料',
-                bgStyle: 'linear-gradient(135deg, rgba(93,123,154,0.72) 0%, rgba(228,215,200,0.86) 100%)',
-                storySeedStatus: 'candidate',
-                replyState: 'none'
-            },
-            {
-                id: 'demo-news-2',
-                kind: 'news',
-                sourceType: 'news',
-                charId: null,
-                authorName: '诡秘谈',
-                authorAvatar: avatarFor('诡秘谈'),
-                title: '旧影院第三排总会多出一张票',
-                content: DEMO_MYSTERY_STORY,
-                images: [],
-                likes: 767,
-                isCollected: false,
-                isLiked: false,
-                comments: [],
-                timestamp: now - 1000 * 60 * 120,
-                tags: ['小道消息', '支线钩子', '都市传说'],
-                newsCategory: 'sidequest',
-                newsChannel: '诡秘谈',
-                bgStyle: 'linear-gradient(135deg, rgba(31,41,55,0.72) 0%, rgba(148,163,184,0.78) 100%)',
-                storySeedStatus: 'candidate',
-                replyState: 'none'
-            },
-            {
-                id: 'demo-news-3',
-                kind: 'news',
-                sourceType: 'news',
-                charId: null,
-                authorName: '今天想见你',
-                authorAvatar: avatarFor('今天想见你'),
-                title: '本周末适合把人约去旧街区看夜灯',
-                content: '那条路傍晚会亮起一排小灯，风从河边吹过来，适合并肩慢慢走。缺点是太容易让人说出平时不好意思说的话。',
-                images: [],
-                likes: 5312,
-                isCollected: false,
-                isLiked: false,
-                comments: [],
-                timestamp: now - 1000 * 60 * 180,
-                tags: ['约会灵感', '出行种草'],
-                newsCategory: 'date',
-                newsChannel: '今天想见你',
-                bgStyle: 'linear-gradient(135deg, rgba(244,114,182,0.62) 0%, rgba(253,224,71,0.45) 100%)',
-                storySeedStatus: 'candidate',
-                replyState: 'none'
-            },
-            {
-                id: 'demo-news-4',
-                kind: 'news',
-                sourceType: 'news',
-                charId: null,
-                authorName: '便民速递',
-                authorAvatar: avatarFor('便民速递'),
-                title: '今晚部分街区或出现短时星砂雨',
-                content: '气象站称该现象不会影响出行，但夜间外出者请留意通讯设备短暂失灵。',
-                images: [],
-                likes: 991,
-                isCollected: false,
-                isLiked: false,
-                comments: [],
-                timestamp: now - 1000 * 60 * 240,
-                tags: ['主线异常', '便民预警', '天气'],
-                newsCategory: 'mainline',
-                newsChannel: '便民速递',
-                bgStyle: 'linear-gradient(135deg, rgba(59,130,246,0.60) 0%, rgba(236,253,245,0.88) 100%)',
-                storySeedStatus: 'candidate',
-                replyState: 'none'
-            }
-        ];
-    }, [characters, socialProfile.name, socialProfile.avatar]);
-
-    const displayFeed = useMemo(() => {
-        if (visibleFeed.length > 0) return visibleFeed;
-        if (activeTab !== 'me' && dismissedDemoTabs.has(activeTab)) return [];
-        return placeholderFeed.filter(post => activeTab === 'news' ? getPostKind(post) === 'news' : getPostKind(post) !== 'news');
-    }, [visibleFeed, placeholderFeed, activeTab, dismissedDemoTabs]);
+    const displayFeed = visibleFeed;
 
     useEffect(() => {
-        DB.getSocialPosts().then(posts => {
-            if (posts.length > 0) {
-                setFeed(posts.sort((a,b) => b.timestamp - a.timestamp));
-                const presentTabs = new Set(posts.map(post => getPostKind(post) === 'news' ? 'news' : 'moments'));
-                dismissDemoTabs(...Array.from(presentTabs));
-            }
-        });
-        
-        // Load user config and profile assets for the Moments surface.
+        let cancelled = false;
+        void DB.getSocialPosts().then(async posts => {
+            const migrated = posts.map(post => {
+                const inferredScope = inferLegacySocialPostScope(post, userProfile);
+                return inferredScope && !socialScopesMatch(post.socialScope, inferredScope)
+                    ? { ...post, socialScope: inferredScope }
+                    : post;
+            });
+            const changed = migrated.filter((post, index) => post !== posts[index]);
+            if (changed.length > 0) await Promise.all(changed.map(post => DB.saveSocialPost(post)));
+            if (!cancelled) setFeed(migrated.sort((a, b) => b.timestamp - a.timestamp));
+        }).catch(error => console.error('Failed to load Social posts:', error));
+        return () => { cancelled = true; };
+    }, [userProfile.personaMasks, userProfile.progressBundles]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const allowLegacyProfileFallback = (userProfile.personaMasks?.length || 1) === 1;
         const loadAssets = async () => {
-            const savedUserId = localStorage.getItem(MOMENTS_USER_ID_KEY);
-            const dbBg = await DB.getAsset(MOMENTS_USER_COVER_ASSET_ID);
-            const dbProfileStr = await DB.getAsset(MOMENTS_PROFILE_ASSET_ID);
+            const scopedUserId = localStorage.getItem(socialUserIdKey);
+            const legacyUserId = allowLegacyProfileFallback ? localStorage.getItem(MOMENTS_USER_ID_KEY) : null;
+            const scopedBg = await DB.getAsset(socialCoverAssetId);
+            const scopedProfile = await DB.getAsset(socialProfileAssetId);
+            const legacyBg = !scopedBg && allowLegacyProfileFallback
+                ? await DB.getAsset(MOMENTS_USER_COVER_ASSET_ID)
+                : undefined;
+            const legacyProfile = !scopedProfile && allowLegacyProfileFallback
+                ? await DB.getAsset(MOMENTS_PROFILE_ASSET_ID)
+                : undefined;
+            if (cancelled) return;
 
-            if (savedUserId) setUserMomentsId(savedUserId);
-            
-            if (dbBg) {
-                setUserBgImage(dbBg);
+            setUserMomentsId(scopedUserId || legacyUserId || '95279527');
+            setUserBgImage(scopedBg || legacyBg || '');
+            const rawProfile = scopedProfile || legacyProfile;
+            let loadedProfile: SocialAppProfile | null = null;
+            if (rawProfile) {
+                try {
+                    const parsed = JSON.parse(rawProfile) as Partial<SocialAppProfile>;
+                    if (typeof parsed.name === 'string' && typeof parsed.avatar === 'string') {
+                        loadedProfile = {
+                            name: parsed.name,
+                            avatar: parsed.avatar,
+                            bio: typeof parsed.bio === 'string' ? parsed.bio : '',
+                        };
+                    }
+                } catch {}
             }
-            
-            let loadedProfile = null;
-            if (dbProfileStr) {
-                try { loadedProfile = JSON.parse(dbProfileStr); } catch(e) {}
-            }
-
-            if (loadedProfile) {
-                setSocialProfile(loadedProfile);
-            } else {
-                // Initial fallback to global user profile only once
-                setSocialProfile({
-                    name: userProfile.name,
-                    avatar: userProfile.avatar,
-                    bio: userProfile.bio || '这个人很懒，什么都没写。'
-                });
-            }
+            setSocialProfile(loadedProfile || {
+                name: userProfile.name,
+                avatar: userProfile.avatar,
+                bio: userProfile.bio || '这个人很懒，什么都没写。',
+            });
+            setIsEditingId(false);
         };
-        loadAssets();
+        void loadAssets();
+        return () => { cancelled = true; };
+    }, [
+        socialCoverAssetId,
+        socialProfileAssetId,
+        socialUserIdKey,
+        userProfile.avatar,
+        userProfile.bio,
+        userProfile.name,
+        userProfile.personaMasks?.length,
+    ]);
 
-        // Load Handles
+    useEffect(() => {
         const savedHandles = localStorage.getItem(MOMENTS_CHAR_HANDLES_KEY);
         let initialHandles: Record<string, SubAccount[]> = {};
         if (savedHandles) {
@@ -689,8 +558,16 @@ const SocialApp: React.FC = () => {
             }
         });
         setCharacterHandles(initialHandles);
-
     }, [characters.length]);
+
+    useEffect(() => {
+        if (selectedPost && !socialPostMatchesScope(selectedPost, activeSocialScope)) {
+            setSelectedPost(null);
+            setShowPostActions(false);
+            setShowDeletePostConfirm(false);
+            setShowShareModal(false);
+        }
+    }, [activeSocialScope, selectedPost]);
 
     // Save Handles to LocalStorage whenever updated
     useEffect(() => {
@@ -755,8 +632,7 @@ const SocialApp: React.FC = () => {
             try {
                 const base64 = await processImage(file, { skipCompression: true });
                 setUserBgImage(base64);
-                // Save to DB Assets
-                await DB.saveAsset(MOMENTS_USER_COVER_ASSET_ID, base64);
+                await DB.saveAsset(socialCoverAssetId, base64);
                 addToast('背景图已更新', 'success');
             } catch (err) {
                 addToast('图片处理失败', 'error');
@@ -770,7 +646,7 @@ const SocialApp: React.FC = () => {
         try {
             setUserBgImage('');
             if (userBgInputRef.current) userBgInputRef.current.value = '';
-            await DB.deleteAsset(MOMENTS_USER_COVER_ASSET_ID);
+            await DB.deleteAsset(socialCoverAssetId);
             addToast('朋友圈封面已删除', 'success');
         } catch (err) {
             addToast('删除封面失败', 'error');
@@ -790,40 +666,33 @@ const SocialApp: React.FC = () => {
     };
 
     const saveUserProfileChanges = async () => {
-        localStorage.setItem(MOMENTS_USER_ID_KEY, userMomentsId);
-        await DB.saveAsset(MOMENTS_PROFILE_ASSET_ID, JSON.stringify(socialProfile));
+        localStorage.setItem(socialUserIdKey, userMomentsId);
+        await DB.saveAsset(socialProfileAssetId, JSON.stringify(socialProfile));
         setIsEditingId(false);
         addToast('主页资料已保存（仅在朋友圈生效）', 'success');
     };
 
     const persistFeed = (newFeed: SocialPost[]) => {
         setFeed(newFeed);
-        const presentTabs = new Set(newFeed.map(post => getPostKind(post) === 'news' ? 'news' : 'moments'));
-        if (presentTabs.size > 0) dismissDemoTabs(...Array.from(presentTabs));
         Promise.all(newFeed.map(p => DB.saveSocialPost(p))).catch(console.error);
     };
 
     const updatePostInFeed = (post: SocialPost) => {
+        if (deletedPostIdsRef.current.has(post.id)) return;
         setFeed(prev => {
             const next = prev.map(p => p.id === post.id ? post : p);
-            DB.saveSocialPost(post);
+            void DB.saveSocialPost(post).catch(error => console.error('Failed to save Social post:', error));
             return next;
         });
         setSelectedPost(current => (current?.id === post.id ? post : current));
     };
 
-    const removePostFromFeed = (postId: string) => {
-        setFeed(prev => {
-            const next = prev.filter(p => p.id !== postId);
-            DB.deleteSocialPost(postId);
-            return next;
-        });
-        setSelectedPost(current => (current?.id === postId ? null : current));
-    };
-
     const socialCircleBudget = () => {
-        const handleCount = Object.values(characterHandles).reduce((sum, handles) => sum + (handles?.length || 0), 0);
-        return Math.max(8, characters.length + handleCount + 6);
+        const handleCount = socialScopedCharacters.reduce(
+            (sum, char) => sum + (characterHandles[char.id]?.length || 0),
+            0,
+        );
+        return Math.max(8, socialScopedCharacters.length + handleCount + 6);
     };
 
     const simulatedLikes = (kind: 'moment' | 'news', sourceType: SocialPost['sourceType'], category?: SocialNewsCategory, rawLikes?: unknown) => {
@@ -868,7 +737,7 @@ const SocialApp: React.FC = () => {
         let charId: string | null = item.charId || null;
 
         if (item.isCharacter || item.charId) {
-            const c = characters.find(char => char.id === item.charId) || characters.find(char => {
+            const c = socialScopedCharacters.find(char => char.id === item.charId) || socialScopedCharacters.find(char => {
                 const handles = characterHandles[char.id] || [];
                 return handles.some(h => h.handle === item.authorName);
             });
@@ -910,7 +779,8 @@ const SocialApp: React.FC = () => {
             storyLineStatus: kind === 'news' ? 'candidate' : undefined,
             bgStyle: getRandomStyle().bg,
             storySeedStatus: kind === 'news' ? 'candidate' : 'none',
-            replyState: 'none'
+            replyState: 'none',
+            socialScope: activeSocialScope,
         };
     };
 
@@ -945,9 +815,14 @@ const SocialApp: React.FC = () => {
     // --- AI Logic (Updated for Multi-Handle) ---
     const handleRefresh = async (targetTab: SocialTab = activeTab) => {
         if (!apiConfig.apiKey) { addToast('请配置 API Key', 'error'); return; }
+        if (!activeSocialScope) { addToast('当前面具还没有可用的朋友圈进度', 'error'); return; }
+        if (targetTab !== 'news' && socialParticipants.length === 0) {
+            addToast('先在面具里链接想出现在朋友圈的角色', 'info');
+            return;
+        }
         setIsRefreshing(true);
         try {
-            const participantPool = socialParticipants.length > 0 ? socialParticipants : characters.slice(0, 1);
+            const participantPool = socialParticipants;
             const shuffledChars = [...participantPool].sort(() => 0.5 - Math.random());
             const selectedChars = shuffledChars.slice(0, Math.min(3, Math.max(1, participantPool.length)));
             const kind = targetTab === 'news' ? 'news' : 'moment';
@@ -1214,6 +1089,7 @@ ${JSON.stringify(shortLongformItems.map(({ item, index }) => ({
 
     const generateComments = async (post: SocialPost, options: { force?: boolean; replyToUserPost?: boolean } = {}) => {
         const existingComments = post.comments || [];
+        if (deletedPostIdsRef.current.has(post.id) || !socialPostMatchesScope(post, activeSocialScope)) return;
         if (post.sourceType === 'user' && post.replyState === 'pending' && !options.force) return;
         if (!post || (!options.force && existingComments.length > 0) || !apiConfig.apiKey) return;
         setLoadingComments(true);
@@ -1311,7 +1187,7 @@ ${contextPrompt}
             if (response.ok) {
                 const data = await safeResponseJson(response);
                 const json = safeParseJSON(data.choices[0].message.content);
-                if (Array.isArray(json)) {
+                if (Array.isArray(json) && !deletedPostIdsRef.current.has(post.id)) {
                     const comments: SocialComment[] = json.map((c: any) => {
                         let authorName = c.author || c.authorName || 'Unknown';
                         if (isForbiddenCrossLeadAuthor(authorName, selectedChars)) {
@@ -1337,7 +1213,7 @@ ${contextPrompt}
         } finally {
             window.clearTimeout(requestTimer);
             pendingReplyRef.current.delete(post.id);
-            if (!generated && options.replyToUserPost) {
+            if (!generated && options.replyToUserPost && !deletedPostIdsRef.current.has(post.id)) {
                 updatePostInFeed({ ...post, replyDueAt: Date.now() + 5 * 60_000 });
             }
             setLoadingComments(false);
@@ -1345,7 +1221,12 @@ ${contextPrompt}
     };
 
     const generateNextReplyToUserPost = async (post: SocialPost) => {
-        if (!apiConfig.apiKey || post.sourceType !== 'user') return;
+        if (
+            !apiConfig.apiKey
+            || post.sourceType !== 'user'
+            || deletedPostIdsRef.current.has(post.id)
+            || !socialPostMatchesScope(post, activeSocialScope)
+        ) return;
         const eligibleIds = new Set(getRelatedParticipantsForPost(post).map(char => char.id));
         const currentQueue = (post.replyRemainingCharIds?.length ? post.replyRemainingCharIds : post.replyAudienceCharIds || [])
             .filter(charId => eligibleIds.has(charId));
@@ -1400,6 +1281,7 @@ ${coreContext}
             const allowedAuthor = handles.some(handle => handle.handle === rawAuthor) ? rawAuthor : primaryHandle;
             const content = String(first.content || '').trim();
             if (!content) throw new Error('模型没有返回评论正文');
+            if (deletedPostIdsRef.current.has(post.id)) return;
 
             const newComment: SocialComment = {
                 id: `cmt-reply-${Date.now()}-${Math.random()}`,
@@ -1421,6 +1303,7 @@ ${coreContext}
             updatePostInFeed(nextPost);
             showSocialReplyNotice([newComment], nextPost);
         } catch (e) {
+            if (deletedPostIdsRef.current.has(post.id)) return;
             updatePostInFeed({
                 ...post,
                 replyRemainingCharIds: currentQueue,
@@ -1436,6 +1319,7 @@ ${coreContext}
             const duePost = feed.find(post =>
                 getPostKind(post) === 'moment' &&
                 post.sourceType === 'user' &&
+                socialPostMatchesScope(post, activeSocialScope) &&
                 post.replyState === 'pending' &&
                 !!post.replyDueAt &&
                 post.replyDueAt <= Date.now() &&
@@ -1449,10 +1333,14 @@ ${coreContext}
             }
         }, 15000);
         return () => window.clearInterval(timer);
-    }, [feed, apiConfig.apiKey, characters.length, socialProfile.name, socialParticipants]);
+    }, [feed, apiConfig.apiKey, characters.length, socialProfile.name, socialParticipants, activeSocialScope]);
 
     const generateRepliesToUser = async (post: SocialPost, userContent: string) => {
-        if (!apiConfig.apiKey) return;
+        if (
+            !apiConfig.apiKey
+            || deletedPostIdsRef.current.has(post.id)
+            || !socialPostMatchesScope(post, activeSocialScope)
+        ) return;
         const relatedParticipants = getRelatedParticipantsForPost(post).slice(0, 2);
         if (relatedParticipants.length === 0) return;
         setIsReplyingToUser(true);
@@ -1491,7 +1379,7 @@ ${identityMap}
             if (response.ok) {
                 const data = await safeResponseJson(response);
                 const json = safeParseJSON(data.choices[0].message.content);
-                if (Array.isArray(json)) {
+                if (Array.isArray(json) && !deletedPostIdsRef.current.has(post.id)) {
                     const newReplies: SocialComment[] = json.map((c: any) => {
                         let authorName = c.author || c.authorName || 'Unknown';
                         if (isForbiddenCrossLeadAuthor(authorName, relatedParticipants)) {
@@ -1529,6 +1417,10 @@ ${identityMap}
 
     const handleCreatePost = () => {
         if (!newPostContent.trim()) return;
+        if (!activeSocialScope) {
+            addToast('当前面具还没有可用的朋友圈进度', 'error');
+            return;
+        }
         const replyQueue = apiConfig.apiKey ? buildUserPostReplyQueue() : [];
         const shouldScheduleReplies = replyQueue.length > 0;
         const post: SocialPost = { 
@@ -1553,6 +1445,7 @@ ${identityMap}
             replyDueAt: shouldScheduleReplies ? Date.now() + USER_POST_FIRST_REPLY_DELAY_MS : undefined,
             replyAudienceCharIds: replyQueue,
             replyRemainingCharIds: replyQueue,
+            socialScope: activeSocialScope,
         };
         persistFeed([post, ...feed]);
         setNewPostContent(''); setNewPostTitle(''); 
@@ -1561,28 +1454,33 @@ ${identityMap}
         addToast(shouldScheduleReplies ? '已发布，相关角色会陆续回复' : '发布成功', 'success');
     };
 
-    const handleDeletePost = (postId: string) => { removePostFromFeed(postId); addToast('帖子已删除', 'success'); };
+    const handleDeletePost = async (postId: string) => {
+        deletedPostIdsRef.current.add(postId);
+        pendingReplyRef.current.delete(postId);
+        try {
+            await DB.deleteSocialPost(postId);
+            setFeed(prev => prev.filter(post => post.id !== postId));
+            setSelectedPost(current => current?.id === postId ? null : current);
+            setShowPostActions(false);
+            setShowDeletePostConfirm(false);
+            addToast('这条内容已删除', 'success');
+        } catch (error) {
+            deletedPostIdsRef.current.delete(postId);
+            addToast('删除失败，请稍后再试', 'error');
+        }
+    };
     const handleLike = (e: any, post: SocialPost) => {
         e.stopPropagation();
         const nextPost = { ...post, isLiked: !post.isLiked, likes: post.isLiked ? post.likes - 1 : post.likes + 1 };
-        if (isDemoPost(post)) {
-            setSelectedPost(current => current?.id === post.id ? nextPost : current);
-            return;
-        }
         updatePostInFeed(nextPost);
     };
     const handleAdoptStorySeed = (post: SocialPost) => {
-        if (isDemoPost(post)) {
-            setSelectedPost(current => current?.id === post.id ? { ...post, storySeedStatus: 'adopted', adoptedAt: Date.now() } : current);
-            addToast('占位内容仅用于查看布局，真实资讯刷新后才会保存', 'info');
-            return;
-        }
         updatePostInFeed({ ...post, storySeedStatus: 'adopted', adoptedAt: Date.now() });
         addToast('已标记为剧情引导，不会自动写入记忆', 'success');
     };
     
     const handleSendComment = async () => { 
-        if (!selectedPost || !commentInput.trim()) return; 
+        if (!selectedPost || !commentInput.trim() || !socialPostMatchesScope(selectedPost, activeSocialScope)) return;
         
         const updatedPost = { 
             ...selectedPost, 
@@ -1603,36 +1501,56 @@ ${identityMap}
     };
     
     const clearPostsByKind = async (kind: 'moment' | 'news') => {
-        const postIds = feed.filter(post => getPostKind(post) === kind).map(post => post.id);
-        await Promise.all(postIds.map(id => DB.deleteSocialPost(id)));
-        setFeed(prev => prev.filter(post => getPostKind(post) !== kind));
-        setSelectedPost(current => current && getPostKind(current) === kind ? null : current);
-        dismissDemoTabs(kind === 'news' ? 'news' : 'moments');
+        const postIds = feed
+            .filter(post => socialPostMatchesScope(post, activeSocialScope) && getPostKind(post) === kind)
+            .map(post => post.id);
+        postIds.forEach(id => {
+            deletedPostIdsRef.current.add(id);
+            pendingReplyRef.current.delete(id);
+        });
+        try {
+            await Promise.all(postIds.map(id => DB.deleteSocialPost(id)));
+        } catch (error) {
+            postIds.forEach(id => deletedPostIdsRef.current.delete(id));
+            throw error;
+        }
+        const deletedIds = new Set(postIds);
+        setFeed(prev => prev.filter(post => !deletedIds.has(post.id)));
+        setSelectedPost(current => current && deletedIds.has(current.id) ? null : current);
         return postIds.length;
     };
 
     const handleClearMoments = async () => {
-        const count = await clearPostsByKind('moment');
-        setShowSettings(false);
-        addToast(count > 0 ? `已清空 ${count} 条朋友圈动态` : '朋友圈已经是空的', 'success');
+        try {
+            const count = await clearPostsByKind('moment');
+            setShowSettings(false);
+            addToast(count > 0 ? `已清空当前面具的 ${count} 条朋友圈动态` : '当前面具的朋友圈已经是空的', 'success');
+        } catch {
+            addToast('清空失败，请稍后再试', 'error');
+        }
     };
 
     const handleClearNews = async () => {
-        const count = await clearPostsByKind('news');
-        setShowClearNewsConfirm(false);
-        addToast(count > 0 ? `已清空 ${count} 条资讯` : '资讯站已经是空的', 'success');
+        try {
+            const count = await clearPostsByKind('news');
+            setShowClearNewsConfirm(false);
+            addToast(count > 0 ? `已清空当前面具的 ${count} 条资讯` : '当前面具的资讯站已经是空的', 'success');
+        } catch {
+            addToast('清空失败，请稍后再试', 'error');
+        }
     };
 
     // --- Renderers ---
 
     const openPost = (post: SocialPost) => {
+        if (!socialPostMatchesScope(post, activeSocialScope)) return;
         const normalizedPost = {
             ...post,
             comments: post.comments || [],
             tags: post.tags || [],
         };
         setSelectedPost(normalizedPost);
-        if (!isDemoPost(normalizedPost)) generateComments(normalizedPost);
+        generateComments(normalizedPost);
     };
 
     const renderPullRefreshIndicator = () => {
@@ -1827,7 +1745,14 @@ ${identityMap}
                             <img src={selectedPost.authorAvatar} className="w-8 h-8 rounded-full object-cover border border-white/50" />
                             <span className="text-sm font-bold text-slate-800">{selectedPost.authorName}</span>
                         </div>
-                        <button onClick={() => setShowShareModal(true)} className="p-2 -m-2 active:opacity-60"><Icons.Share onClick={() => setShowShareModal(true)} className="w-6 h-6 text-slate-800 cursor-pointer hover:text-[#ff2442]" /></button>
+                        <button
+                            type="button"
+                            onClick={() => setShowPostActions(true)}
+                            aria-label="更多操作"
+                            className="p-2 -m-2 text-slate-800 active:opacity-60"
+                        >
+                            <DotsThreeVertical size={24} weight="bold" />
+                        </button>
                     </div>
 
                     {/* Scrollable Area */}
@@ -1940,7 +1865,7 @@ ${identityMap}
                         <p className="text-xs text-slate-400 bg-slate-50 p-2 rounded-lg">
                             为角色添加账号昵称。AI 发动态或评论时会根据内容选择合适的账号。
                         </p>
-                        {characters.map(c => (
+                        {socialScopedCharacters.map(c => (
                             <div key={c.id} className="space-y-3 pb-4 border-b border-slate-50">
                                 <div className="flex items-center gap-2">
                                     <img src={c.avatar} className="w-6 h-6 rounded-full object-cover" />
@@ -1985,10 +1910,67 @@ ${identityMap}
                                 </div>
                             </div>
                         ))}
+                        {socialScopedCharacters.length === 0 && (
+                            <div className="rounded-2xl bg-slate-50 px-4 py-6 text-center text-xs leading-5 text-slate-400">
+                                当前面具还没有链接角色，链接后这里会出现对应账号。
+                            </div>
+                        )}
                     </div>
                     <div className="flex gap-3 pt-2">
-                        <button onClick={() => void handleClearMoments()} className="flex-1 py-3 bg-white border border-slate-200 text-slate-500 font-bold rounded-xl text-xs active:bg-slate-50">清空朋友圈</button>
+                        <button onClick={() => void handleClearMoments()} className="flex-1 py-3 bg-white border border-slate-200 text-slate-500 font-bold rounded-xl text-xs active:bg-slate-50">清空当前朋友圈</button>
                         <button onClick={() => setShowSettings(false)} className="flex-1 py-3 bg-[#ff2442] text-white font-bold rounded-xl text-xs shadow-lg shadow-red-200 active:scale-95 transition-transform">完成</button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={showPostActions} title="这条内容" onClose={() => setShowPostActions(false)}>
+                <div className="space-y-3">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowPostActions(false);
+                            setShowShareModal(true);
+                        }}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 text-left text-sm font-bold text-slate-700 shadow-sm active:scale-[0.99]"
+                    >
+                        <ShareNetwork size={20} weight="bold" />
+                        分享到聊天
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowPostActions(false);
+                            setShowDeletePostConfirm(true);
+                        }}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-left text-sm font-bold text-rose-500 active:scale-[0.99]"
+                    >
+                        <TrashSimple size={20} weight="bold" />
+                        删除这条内容
+                    </button>
+                </div>
+            </Modal>
+
+            <Modal isOpen={showDeletePostConfirm} title="删除这条内容？" onClose={() => setShowDeletePostConfirm(false)}>
+                <div className="space-y-4">
+                    <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
+                        删除后它不会继续等待角色回复；已经分享进聊天的卡片不会一起消失。
+                    </p>
+                    <div className="flex gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setShowDeletePostConfirm(false)}
+                            className="flex-1 rounded-xl border border-slate-200 bg-white py-3 text-xs font-bold text-slate-500"
+                        >
+                            先留着
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!selectedPost}
+                            onClick={() => selectedPost && void handleDeletePost(selectedPost.id)}
+                            className="flex-1 rounded-xl bg-rose-500 py-3 text-xs font-bold text-white shadow-lg shadow-rose-100 active:scale-95 disabled:opacity-40"
+                        >
+                            确认删除
+                        </button>
                     </div>
                 </div>
             </Modal>
@@ -1996,7 +1978,7 @@ ${identityMap}
             <Modal isOpen={showClearNewsConfirm} title="清空资讯站" onClose={() => setShowClearNewsConfirm(false)}>
                 <div className="space-y-5">
                     <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-4 text-sm leading-6 text-slate-600">
-                        这会删除当前已经生成并保存的全部资讯，但不会影响朋友圈动态，也不会删除已经分享进聊天的卡片。
+                        这会删除当前面具下已经生成并保存的全部资讯，但不会影响其他面具、朋友圈动态或已经分享进聊天的卡片。
                     </div>
                     <div className="flex gap-3">
                         <button onClick={() => setShowClearNewsConfirm(false)} className="flex-1 rounded-xl border border-slate-200 bg-white py-3 text-xs font-bold text-slate-500">先留着</button>
@@ -2007,12 +1989,17 @@ ${identityMap}
 
             <Modal isOpen={showShareModal} title="分享帖子" onClose={() => setShowShareModal(false)}>
                 <div className="grid grid-cols-4 gap-4 p-2">
-                    {characters.slice(0, 8).map(c => (
+                    {socialScopedCharacters.slice(0, 8).map(c => (
                         <button key={c.id} onClick={() => handleShare(c.id, false)} className="flex flex-col items-center gap-2 group">
                             <img src={c.avatar} className="w-12 h-12 rounded-full object-cover border border-slate-100 group-active:scale-90 transition-transform" />
                             <span className="text-[10px] text-slate-600 truncate w-full text-center">{c.name}</span>
                         </button>
                     ))}
+                    {socialScopedCharacters.length === 0 && (
+                        <div className="col-span-4 py-6 text-center text-xs leading-5 text-slate-400">
+                            当前面具还没有可分享的角色。
+                        </div>
+                    )}
                 </div>
             </Modal>
 
@@ -2114,7 +2101,11 @@ ${identityMap}
                                 {displayFeed.length > 0 ? displayFeed.map(post => renderFeedItem(post)) : (
                                     <div className="flex min-h-52 flex-col items-center justify-center gap-2 px-8 text-center">
                                         <div className="text-sm font-bold text-slate-500">{activeTab === 'news' ? '资讯站现在是空的' : '朋友圈现在是空的'}</div>
-                                        <p className="text-xs leading-5 text-slate-400">下拉刷新时会新增一批内容，旧批次不会自己回来。</p>
+                                        <p className="text-xs leading-5 text-slate-400">
+                                            {activeTab === 'moments' && socialParticipants.length === 0
+                                                ? '先在面具中链接角色；这里只有当前面具关系网里的动态。'
+                                                : '下拉刷新时会新增一批内容，旧批次不会自己回来。'}
+                                        </p>
                                     </div>
                                 )}
                             </div>
@@ -2207,7 +2198,7 @@ ${identityMap}
 
                             <div className="p-2 min-h-[300px] bg-slate-50/50 pb-24">
                                 <div className="columns-2 gap-2 space-y-2">
-                                    {feed.filter(p => profileTab === 'notes' ? p.authorName === socialProfile.name : p.isCollected).map(post => (
+                                    {scopedFeed.filter(p => profileTab === 'notes' ? p.authorName === socialProfile.name : p.isCollected).map(post => (
                                         <div key={post.id} onClick={() => { setSelectedPost(post); generateComments(post); }} className="break-inside-avoid bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 cursor-pointer">
                                             <div className="aspect-[4/5] flex items-center justify-center text-4xl" style={{ background: post.bgStyle }}>{renderPostSticker(post.images?.[0], 'w-12 h-12')}</div>
                                             <div className="p-3">
@@ -2220,7 +2211,7 @@ ${identityMap}
                                         </div>
                                     ))}
                                 </div>
-                                {feed.filter(p => profileTab === 'notes' ? p.authorName === socialProfile.name : p.isCollected).length === 0 && (
+                                {scopedFeed.filter(p => profileTab === 'notes' ? p.authorName === socialProfile.name : p.isCollected).length === 0 && (
                                     <div className="flex flex-col items-center justify-center py-20 text-slate-300 gap-2">
                                         <Package size={48} className="text-slate-300 opacity-30" />
                                         <span className="text-xs">空空如也</span>

@@ -1065,6 +1065,11 @@ export interface SocialComment {
 export type SocialNewsCategory = 'mainline' | 'sidequest' | 'date' | 'daily';
 export type SocialStoryLineStatus = 'candidate' | 'active' | 'closed' | 'archived';
 
+export interface SocialRelationshipScope {
+    progressBundleId: string;
+    personaMaskId: string;
+}
+
 export interface SocialPost {
     id: string;
     kind?: 'moment' | 'news';
@@ -1092,6 +1097,7 @@ export interface SocialPost {
     replyAudienceCharIds?: string[];
     replyRemainingCharIds?: string[];
     replyLastGeneratedAt?: number;
+    socialScope?: SocialRelationshipScope;
 }
 
 export interface SubAccount {

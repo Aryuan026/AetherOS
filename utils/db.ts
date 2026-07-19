@@ -675,14 +675,24 @@ export const DB = {
 
   saveSocialPost: async (post: SocialPost): Promise<void> => {
       const db = await openDB();
-      const transaction = db.transaction(STORE_SOCIAL_POSTS, 'readwrite');
-      transaction.objectStore(STORE_SOCIAL_POSTS).put(post);
+      await new Promise<void>((resolve, reject) => {
+          const transaction = db.transaction(STORE_SOCIAL_POSTS, 'readwrite');
+          transaction.objectStore(STORE_SOCIAL_POSTS).put(post);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error ?? new Error('Social post save aborted'));
+      });
   },
 
   deleteSocialPost: async (id: string): Promise<void> => {
       const db = await openDB();
-      const transaction = db.transaction(STORE_SOCIAL_POSTS, 'readwrite');
-      transaction.objectStore(STORE_SOCIAL_POSTS).delete(id);
+      await new Promise<void>((resolve, reject) => {
+          const transaction = db.transaction(STORE_SOCIAL_POSTS, 'readwrite');
+          transaction.objectStore(STORE_SOCIAL_POSTS).delete(id);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error ?? new Error('Social post delete aborted'));
+      });
   },
 
   clearSocialPosts: async (): Promise<void> => {
