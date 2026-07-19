@@ -621,8 +621,9 @@ surface over the same in-memory `input` draft and calls the same text-send path
 as the compact composer. Closing preserves that draft for the current Chat
 session; sending creates only the existing message records and then clears it.
 
-The first automatic sediment layer also uses localStorage bookkeeping and
-existing stores, so it does not bump IndexedDB yet:
+The current automatic interpretation layer uses localStorage only for quiet-run
+settings and a small human-readable ledger. It does not write relationship
+memory, Timebook, scheduler, Narrative, or Character Life truth:
 
 ```ts
 type AutoMemoryDailyMode = 'off' | 'auto' | 'manual';
@@ -642,7 +643,7 @@ interface AutoMemoryLedgerEntry {
   charId: string;
   charName: string;
   kind: 'daily_chat' | 'timebook_candidate';
-  status: 'saved' | 'skipped' | 'failed';
+  status: 'proposed' | 'skipped' | 'failed';
   title: string;
   summary?: string;
   sourceDate?: string;
@@ -653,9 +654,9 @@ interface AutoMemoryLedgerEntry {
 }
 ```
 
-MemoryDM uses localStorage for scheduling and the existing `assets` store for
-candidate records. It deliberately reuses the foreground chat API instead of
-introducing a second memory API config.
+MemoryDM reuses the foreground chat API, reads exact-scope active live
+`InteractionEvidence`, and appends immutable interpretation passes plus
+extraction receipts into the existing `assets` store.
 
 ```ts
 interface MemoryDMSettings {
@@ -663,29 +664,59 @@ interface MemoryDMSettings {
   turnsPerPass: number;
   idleHoursBeforePass: number;
   idlePassEnabled: boolean;
-  autoApplyCharacterMemories: boolean;
-  autoApplyTimebookNodes: boolean;
-  autoApplyCalendarReminders: boolean;
 }
 
-type MemoryDMCandidateKind =
-  | 'character_memory'
-  | 'timebook_node'
-  | 'calendar_reminder'
-  | 'relationship_impression'
-  | 'story_seed'
+type MemoryCandidateTarget =
+  | 'relationship_memory'
+  | 'timebook'
+  | 'scheduler_proposal'
+  | 'narrative_proposal'
+  | 'character_life_proposal'
   | 'discard';
 
-interface MemoryDMCandidate {
+interface MemoryCandidate {
+  schemaVersion: 1;
   id: string;
-  kind: MemoryDMCandidateKind;
+  passId: string;
+  scope: HistoryScope;
+  sourceEvidenceIds: string[];
+  target: MemoryCandidateTarget;
+  knowledge: MemoryCandidateKnowledge;
+  temporalClass: 'historical' | 'live' | 'mixed';
+  authority: 'model_interpretation' | 'deterministic_heuristic';
+  status: 'proposed' | 'discarded';
   title: string;
   summary: string;
-  date?: string;
-  mood?: string;
-  confidence?: number;
-  sourceMessageIds?: number[];
-  tags?: string[];
+}
+
+interface MemoryInterpretationPass {
+  schemaVersion: 1;
+  id: string;
+  requestId: string;
+  analysisRunId: string;
+  scope: HistoryScope;
+  evidenceSpan: EvidenceSpan;
+  extractor: 'model' | 'deterministic_heuristic';
+  status: 'completed';
+  truthEffect: 'none';
+  candidates: MemoryCandidate[];
+  startedAt: number;
+  completedAt: number;
+}
+
+interface MemoryDMExtractionReceipt {
+  schemaVersion: 1;
+  id: string;
+  requestId: string;
+  passId?: string;
+  scope: HistoryScope;
+  evidenceSpan: EvidenceSpan;
+  status: 'completed' | 'failed' | 'rejected';
+  truthEffect: 'none';
+  candidateIds: string[];
+  rejectedCandidateCount: number;
+  usage: MemoryExtractionUsage;
+  createdAt: number;
 }
 ```
 
@@ -696,47 +727,42 @@ instead of preserving the old dense 12/16/24-turn behavior.
 MemoryDM storage keys:
 
 ```text
-aetheros_memory_dm_settings_v1
-aetheros_memory_dm_cursor_v1
-assets/memory_dm_candidate_records_v1
+aetheros_memory_dm_settings_v2
+assets/memory_interpretation_store_v1
 ```
 
-Applied `calendar_reminder` candidates reuse the existing `companion_wakeups`
-store instead of adding a separate calendar table:
+The promotion boundary is declared but intentionally has no implementation in
+this phase:
 
 ```ts
-interface CompanionWakeupRule {
-  source?: 'user' | 'built_in' | 'ai_calendar' | 'migration';
-  priority?: 'heartbeat' | 'care' | 'calendar';
-  repeat: 'once' | 'daily';
-  targetDate?: string; // YYYY-MM-DD for one-time reminders
-  windowStart: string;
-  windowEnd: string;
+interface MemoryPromotionCommand {
+  schemaVersion: 1;
+  id: string;
+  scope: HistoryScope;
+  candidateId: string;
+  passId: string;
+  expectedSourceRevisionFingerprint: string;
+  requestedAt: number;
 }
 ```
 
 Storage keys:
 
 ```text
-aetheros_auto_memory_settings_v1
-aetheros_auto_memory_cursor_v1
-aetheros_auto_memory_ledger_v1
+aetheros_auto_memory_settings_v2
+aetheros_auto_memory_ledger_v2
 ```
 
 Current write targets:
 
-- local transcript-spliced daily chat sediment is disabled. `dailyChatMode` is
-  forced to `off` as a compatibility field for older local settings, and the
-  current automatic pass does not write `auto_daily` memory rows;
-- silent `时光簿` candidates write ordinary `Anniversary` rows into the existing
-  `anniversaries` store;
-- `keepTrivialMoments` is forced to `false` for now. The current timebook writer
-  only keeps rows that match stronger signals such as first time, appointment,
-  gift, meal, illness, meeting, missing-you, or reminders;
-- small affectionate everyday observations should be handled by future
-  `char.memories` automation after prompt and duplicate-policy review, not by
-  the timebook writer;
-- `char.impression` is visible as `关系印象` and is not auto-written by this layer.
+- interpretation pass and extraction receipt: yes, append-only in
+  `assets/memory_interpretation_store_v1` and included by full-device backup;
+- relationship memory / `char.memories`: no;
+- `时光簿` / `anniversaries`: no;
+- scheduler / `companion_wakeups`: no;
+- Narrative and Character Life: no;
+- explicit manual re-analysis may reuse selected active evidence ids with a new
+  run id; automatic passes consume only previously uninterpreted revisions.
 
 ```ts
 interface WorldlineMemoryEvent {

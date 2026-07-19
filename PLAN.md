@@ -166,17 +166,17 @@ Worldline memory architecture:
 - Default fresh and field-less installations to the `minimal` / `简约` chat
   appearance. Never overwrite an explicitly saved appearance when a character
   is created or history is imported, because chat appearance is global today.
-- Add an automatic sediment layer without broad DB migration:
-  - local transcript-spliced daily summaries are disabled; `char.memories` should stay on model archive, diary, import, or later reviewed refinement paths;
-  - `时光簿` node candidates can be silently clipped into `anniversaries`;
-  - `时光簿` auto-write is strict by default and keeps only stronger first-time/appointment/gift/meal/missing-you style nodes;
-  - `角色记忆` auto-write is handled by MemoryDM after a quiet configurable turn interval, using the same foreground chat API and a duplicate gate. The Settings slider spans 20/40/60/80/100 user turns and defaults to 60;
-  - `calendar_reminder` candidates from MemoryDM can silently become existing `companion_wakeups` rules with calendar priority, so date/window care can use the current wakeup runtime before a fuller calendar store is introduced;
-  - MemoryDM may store `story_seed` candidates for a future `剧情生成仓`, but 朋友圈 / 资讯站 UI and final story-bank UX are owned by the separate social-feed pass;
+- Add an extraction-only memory interpretation layer before any durable target writer:
+  - local transcript-spliced daily summaries stay disabled;
+  - Chat/Date live rows are read only through exact-scope active `InteractionEvidence`;
+  - the deterministic timebook helper and LLM MemoryDM both append versioned candidates plus `truthEffect: none` extraction receipts;
+  - the Settings slider spans 20/40/60/80/100 user turns and defaults to 60, but reaching the interval authorizes extraction only;
+  - relationship-memory, Timebook, scheduler, narrative, and Character Life targets remain independent proposal destinations and receive zero writes in this box;
+  - future Memory Promotion validates scope, source revisions, policy, authority, duplicates and required experience receipts before any durable write;
   - the app must never ask immersive prompts like "is this an anniversary?" or "should I remember this?";
   - if a silent timebook candidate is wrong, the player edits or deletes the visible row later.
 - Keep `char.impression` visible as `关系印象` and keep automatic overwrite on hold. It is injected into every prompt by `ContextBuilder`, so every extraction prompt must be audited for role-internal perspective before any background replacement.
-- Keep delivery receipts and durable memory sediment separate in UI and code: `记忆回声` shows prompt delivery, while `最近沉淀` shows actual auto-written local memory rows.
+- Keep delivery receipts, extraction candidates, and durable memory facts separate in UI and code: `记忆回声` shows prompt delivery, `最近候选` shows source-linked proposals, and promoted target rows will remain owned by their destination surfaces.
 
 Deep-space chat appearance preset:
 

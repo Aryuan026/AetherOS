@@ -563,9 +563,10 @@ Current implementation checkpoint:
 - Same-revision payload conflicts fail closed. A pre-checkpoint archive row may
   receive only missing origin metadata when every other source field is byte-for-
   byte equivalent; this is bounded schema enrichment, not a content rewrite.
-- MemoryDM/Promotion remains the next box. Until it migrates, the new evidence
-  contract does not authorize legacy direct memory, anniversary, wakeup,
-  Narrative, or Character Life writes.
+- MemoryDM extraction is now migrated onto exact-scope active evidence and
+  appends immutable interpretation passes plus `truthEffect: none` receipts.
+  Memory Promotion remains the next box; no relationship-memory, Timebook,
+  wakeup, Narrative, or Character Life target write is authorized yet.
 
 The waves order risk; they do not make Chat or Date the exclusive sources of
 memory.
@@ -916,8 +917,9 @@ The following current code should be extended instead of duplicated:
 - `INSTALLED_APPS` describes launcher metadata, not behavior capabilities.
 - Many App components still call shared DB/OSContext methods directly; migration
   should happen block by block, not as one dangerous rewrite.
-- MemoryDM currently has optional direct writes to character memories,
-  anniversaries, and wakeup rules without one shared promotion receipt.
+- MemoryDM direct target writes are retired. Memory Promotion is declared but
+  not implemented, so candidates cannot yet become durable relationship memory
+  or Timebook facts through this new path.
 - `char.memories` and anniversaries are still primarily character-scoped legacy
   stores. They cannot represent two masks' separate relationship continuity;
   new durable relationship memory must use the exact triple scope, with legacy

@@ -149,7 +149,7 @@ confirmed relationship truth by default.
 Sources:
 
 - approved 朋友圈 / 资讯站 posts
-- `story_seed` candidates from MemoryDM
+- `narrative_proposal` candidates from MemoryDM
 - generated date branches
 - canon-story hints
 - future writing/plot-bank surfaces
@@ -196,8 +196,9 @@ Every AI-facing feature should eventually use the same pipeline.
 8. Deduplicate and clip to the surface budget.
 9. Format a tiny prompt block.
 10. Store a delivery receipt.
-11. After the model response, let MemoryDM decide whether anything should be
-    sedimented into `char.memories`, `时光簿`, calendar rules, or story seeds.
+11. After the model response, let MemoryDM append source-linked interpretation
+    candidates and a `truthEffect: none` receipt. A separate future Promotion,
+    Scheduler, Narrative, or Character Life command owns every target write.
 
 ## Hybrid Retrieval Position
 
@@ -249,7 +250,8 @@ Keep and reuse:
 - current `char.memories`, `refinedMemories`, `anniversaries`, `assets`, and
   `companion_wakeups` stores.
 - current worldline delivery receipts.
-- MemoryDM candidate extraction and duplicate-gated write paths.
+- MemoryDM evidence-based extraction and immutable receipt seam. Its legacy
+  direct target writers are retired; Promotion remains a separate HOLD.
 - legacy message history, but later shrink it with a compactor once retrieval
   quality is high enough.
 

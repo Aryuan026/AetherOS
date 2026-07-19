@@ -124,19 +124,44 @@ export const assertInteractionEvidence = (evidence: InteractionEvidence): Intera
     return evidence;
 };
 
-const fnv1a = (value: string): string => {
-    let hash = 0x811c9dc5;
-    for (let index = 0; index < value.length; index += 1) {
-        hash ^= value.charCodeAt(index);
-        hash = Math.imul(hash, 0x01000193) >>> 0;
+export const assertEvidenceSpan = (span: EvidenceSpan): EvidenceSpan => {
+    if (span?.schemaVersion !== INTERACTION_EVIDENCE_SCHEMA_VERSION) {
+        throw new Error('EvidenceSpan schemaVersion 不受支持。');
     }
-    return hash.toString(16).padStart(8, '0');
+    assertEvidenceScope(span.scope);
+    if (!Array.isArray(span.evidenceIds) || span.evidenceIds.length === 0) {
+        throw new Error('EvidenceSpan 至少需要一条证据。');
+    }
+    if (span.evidenceIds.some(id => typeof id !== 'string' || !id.trim())) {
+        throw new Error('EvidenceSpan 不能包含空证据编号。');
+    }
+    if (new Set(span.evidenceIds).size !== span.evidenceIds.length) {
+        throw new Error('EvidenceSpan 不能重复引用同一证据版本。');
+    }
+    if (!/^sha256:[a-f0-9]{64}$/u.test(span.sourceRevisionFingerprint)) {
+        throw new Error('EvidenceSpan sourceRevisionFingerprint 无效。');
+    }
+    return span;
 };
 
-export const createEvidenceSpan = (input: {
+const sha256Hex = async (value: string): Promise<string> => {
+    if (!globalThis.crypto?.subtle) {
+        throw new Error('当前环境缺少 Web Crypto，无法生成证据片段指纹。');
+    }
+    const digest = await globalThis.crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(value),
+    );
+    return Array.from(
+        new Uint8Array(digest),
+        byte => byte.toString(16).padStart(2, '0'),
+    ).join('');
+};
+
+export const createEvidenceSpan = async (input: {
     scope: HistoryScope;
     evidence: readonly InteractionEvidence[];
-}): EvidenceSpan => {
+}): Promise<EvidenceSpan> => {
     const scope = assertEvidenceScope(input.scope);
     if (!input.evidence.length) throw new Error('EvidenceSpan 至少需要一条证据。');
     input.evidence.forEach(item => {
@@ -147,12 +172,11 @@ export const createEvidenceSpan = (input: {
     if (new Set(evidenceIds).size !== evidenceIds.length) throw new Error('EvidenceSpan 不能重复引用同一证据版本。');
     const fingerprintInput = input.evidence
         .map(item => `${item.evidenceId}@${item.source.revision}`)
-        .sort()
         .join('|');
-    return {
+    return assertEvidenceSpan({
         schemaVersion: INTERACTION_EVIDENCE_SCHEMA_VERSION,
         scope,
         evidenceIds,
-        sourceRevisionFingerprint: `fnv1a32:${fnv1a(fingerprintInput)}`,
-    };
+        sourceRevisionFingerprint: `sha256:${await sha256Hex(fingerprintInput)}`,
+    });
 };

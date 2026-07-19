@@ -21,6 +21,16 @@ character?" before it exposes toys, utilities, or experimental systems.
 
 ## Difference Log
 
+### 2026-07-19: Extraction-only memory boundary
+
+This supersedes the direct-write behavior described in the older 2026-07-05
+historical note below. MemoryDM and the deterministic helper now read only
+exact-scope active `InteractionEvidence`, append immutable interpretation
+passes plus `truthEffect: none` receipts, and perform zero writes to character
+memory, Timebook, wakeups, Narrative, or Character Life. Repeated analysis is
+possible only through an explicit manual evidence selection. Durable writes
+belong to later typed promotion/authority gates.
+
 ### 2026-07-05: Automatic Memory Sediment
 
 Files:

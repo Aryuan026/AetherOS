@@ -1,14 +1,31 @@
-import type { Anniversary, CharacterProfile, Message, UserProfile } from '../../types';
-import { DB } from '../db';
+import type { CharacterProfile, UserProfile } from '../../types.ts';
+import {
+  MEMORY_INTERPRETATION_SCHEMA_VERSION,
+  assertMemoryExtractionRequest,
+  assertMemoryExtractionReceipt,
+  assertMemoryInterpretationPass,
+  createMemoryCandidateId,
+  createMemoryExtractionReceiptId,
+  createMemoryExtractionRequestId,
+  createMemoryInterpretationPassId,
+  type MemoryDMEvidenceReadPort,
+  type MemoryInterpretationStorePort,
+} from '../../domain/memoryInterpretation/index.ts';
+import { createEvidenceSpan } from '../../domain/interactionEvidence/index.ts';
+import { strictRelationshipScopeForProfile } from '../messageContext.ts';
+import { resolvePersonaRouteScope } from '../personaRouteScope.ts';
+import { dailyArchiveEvidenceReadPort } from './evidencePort.ts';
+import { memoryInterpretationStore } from './interpretationStore.ts';
 
 export const AUTO_MEMORY_UPDATED_EVENT = 'worldline-auto-memory-updated';
 
-const SETTINGS_STORAGE_KEY = 'aetheros_auto_memory_settings_v1';
-const CURSOR_STORAGE_KEY = 'aetheros_auto_memory_cursor_v1';
-const LEDGER_STORAGE_KEY = 'aetheros_auto_memory_ledger_v1';
+const SETTINGS_STORAGE_KEY = 'aetheros_auto_memory_settings_v2';
+const LEDGER_STORAGE_KEY = 'aetheros_auto_memory_ledger_v2';
 const MAX_LEDGER_ROWS = 80;
 const DEFAULT_MIN_MESSAGES = 3;
 const DEFAULT_QUIET_MINUTES = 90;
+const PROMPT_VERSION = 'timebook-heuristic-v1';
+const OUTPUT_SCHEMA_VERSION = 'memory-candidates-v1';
 
 export type AutoMemoryDailyMode = 'off' | 'auto' | 'manual';
 export type AutoTimebookCandidateMode = 'silent' | 'off';
@@ -28,7 +45,7 @@ export interface AutoMemoryLedgerEntry {
   charId: string;
   charName: string;
   kind: 'daily_chat' | 'timebook_candidate';
-  status: 'saved' | 'skipped' | 'failed';
+  status: 'proposed' | 'skipped' | 'failed';
   title: string;
   summary?: string;
   sourceDate?: string;
@@ -38,15 +55,11 @@ export interface AutoMemoryLedgerEntry {
   trigger: AutoMemoryTrigger;
 }
 
-interface AutoMemoryCursor {
-  daily: Record<string, { at: number; messageCount: number; lastMessageId?: number }>;
-  timebook: Record<string, { at: number; messageId?: number }>;
-  lastAutoRunAt?: number;
-}
-
 export interface AutoMemoryPassResult {
-  appendedMemoryCount: number;
-  savedTimebookCount: number;
+  candidateCount: number;
+  /** Extraction-only invariants retained for existing callers. */
+  appendedMemoryCount: 0;
+  savedTimebookCount: 0;
   skippedCount: number;
   failedCount: number;
   ledgerEntries: AutoMemoryLedgerEntry[];
@@ -58,6 +71,9 @@ export interface RunAutoMemoryPassInput {
   trigger: AutoMemoryTrigger;
   includeToday?: boolean;
   settings?: AutoMemorySettings;
+  evidencePort?: MemoryDMEvidenceReadPort;
+  interpretationStore?: MemoryInterpretationStorePort;
+  now?: number;
 }
 
 const defaultSettings: AutoMemorySettings = {
@@ -68,27 +84,18 @@ const defaultSettings: AutoMemorySettings = {
   quietMinutesBeforeTodayArchive: DEFAULT_QUIET_MINUTES,
 };
 
-const defaultCursor: AutoMemoryCursor = {
-  daily: {},
-  timebook: {},
-};
-
 const canUseLocalStorage = (): boolean => (
-  typeof window !== 'undefined'
-  && typeof window.localStorage !== 'undefined'
+  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 );
 
 const emitAutoMemoryUpdate = (): void => {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent(AUTO_MEMORY_UPDATED_EVENT));
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(AUTO_MEMORY_UPDATED_EVENT));
 };
 
 const readJson = <T>(key: string, fallback: T): T => {
   if (!canUseLocalStorage()) return fallback;
   try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    return JSON.parse(window.localStorage.getItem(key) || '') as T;
   } catch {
     return fallback;
   }
@@ -99,145 +106,25 @@ const writeJson = (key: string, value: unknown): void => {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // Auto-memory bookkeeping is local trust UI; it should never block chat.
+    // Bookkeeping failure must not block the foreground interaction.
   }
 };
 
-const hashText = (value: string): string => {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash).toString(36);
-};
-
-const clip = (value: string, max: number): string => {
-  const text = value.replace(/\s+/g, ' ').trim();
-  if (text.length <= max) return text;
-  return `${text.slice(0, Math.max(0, max - 1)).trim()}…`;
-};
-
-const toLocalDate = (timestamp: number): string => {
-  const date = new Date(timestamp);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const isToday = (date: string): boolean => date === toLocalDate(Date.now());
-
-const isMeaningfulMessage = (message: Message): boolean => (
-  message.role !== 'system'
-  && message.metadata?.hidden !== true
-  && message.metadata?.proactiveHint !== true
-  && message.metadata?.wakeupProbe !== true
-  && !!String(message.content || '').trim()
-  && !/^\[连接中断[:：]/.test(String(message.content || '').trim())
-);
-
-const messageText = (message: Message): string => {
-  if (message.type === 'image') return '[图片]';
-  if (message.type === 'emoji') return '[表情]';
-  if ((message.type as string) === 'score_card') return '[共同完成了一张结算卡]';
-  return String(message.content || '').replace(/\s+/g, ' ').trim();
-};
-
-const groupMessagesByDate = (messages: Message[]): Record<string, Message[]> => {
-  const groups: Record<string, Message[]> = {};
-  messages.filter(isMeaningfulMessage).forEach(message => {
-    const date = toLocalDate(message.timestamp);
-    groups[date] = [...(groups[date] || []), message];
-  });
-  return groups;
-};
-
-const timebookSignalPattern = /第一次|初次|初见|初识|相识|纪念|生日|周年|约定|说好|想见|见面|礼物|照片|蛋糕|旅行|出发|回家|生病|住院|考试|面试|毕业|搬家|告白|和好|重逢|记得|别忘/i;
-const strongTimebookSignalPattern = /第一次|初次|初见|初识|相识|纪念|生日|周年|约定|说好|想见|见面|礼物|照片|蛋糕|旅行|出发|回家|生病|住院|考试|面试|毕业|搬家|告白|和好|重逢/i;
-const casualAssistantCuePattern = /喜欢就好|不用急着回|刚刚突然想到你|想到你|照顾自己|在做什么|早点休息|吃午饭|吃晚饭/i;
-
-const selectTimebookMessage = (
-  messages: Message[],
-  keepTrivialMoments: boolean,
-): Message | null => {
-  const meaningful = messages.filter(isMeaningfulMessage);
-  const signaled = [...meaningful].reverse().find(message => {
-    const text = messageText(message);
-    if (!timebookSignalPattern.test(text)) return false;
-    if (message.role === 'user') return true;
-    if (message.metadata?.source === 'call' && !strongTimebookSignalPattern.test(text)) return false;
-    if (message.metadata?.source === 'companion_wakeup') return false;
-    if (casualAssistantCuePattern.test(text) && !strongTimebookSignalPattern.test(text)) return false;
-    return strongTimebookSignalPattern.test(text);
-  });
-  if (signaled) return signaled;
-  if (!keepTrivialMoments || meaningful.length < 5) return null;
-  return [...meaningful].reverse().find(message => message.role === 'user' && message.metadata?.source !== 'companion_wakeup')
-    || [...meaningful].reverse().find(message => message.metadata?.source !== 'companion_wakeup')
-    || null;
-};
-
-const buildTimebookCandidate = (
-  char: CharacterProfile,
-  date: string,
-  messages: Message[],
-  keepTrivialMoments: boolean,
-): Anniversary | null => {
-  const picked = selectTimebookMessage(messages, keepTrivialMoments);
-  if (!picked) return null;
-  const raw = messageText(picked).replace(/[“”"']/g, '').trim();
-  const titleCore = clip(raw, 18);
-  const title = titleCore ? `「${titleCore}」` : `${date.slice(5).replace('-', '月')}日的片刻`;
-  const id = `auto-timebook-${char.id}-${date}-${hashText(`${picked.id || ''}:${raw}`)}`;
-
-  return {
-    id,
-    title,
-    date,
-    charId: char.id,
-  };
-};
-
-const loadCursor = (): AutoMemoryCursor => ({
-  ...defaultCursor,
-  ...readJson<Partial<AutoMemoryCursor>>(CURSOR_STORAGE_KEY, {}),
-  daily: {
-    ...defaultCursor.daily,
-    ...(readJson<Partial<AutoMemoryCursor>>(CURSOR_STORAGE_KEY, {}).daily || {}),
-  },
-  timebook: {
-    ...defaultCursor.timebook,
-    ...(readJson<Partial<AutoMemoryCursor>>(CURSOR_STORAGE_KEY, {}).timebook || {}),
-  },
+export const loadAutoMemorySettings = (): AutoMemorySettings => ({
+  ...defaultSettings,
+  ...readJson<Partial<AutoMemorySettings>>(SETTINGS_STORAGE_KEY, {}),
+  dailyChatMode: 'off',
+  keepTrivialMoments: false,
 });
-
-const saveCursor = (cursor: AutoMemoryCursor): void => {
-  writeJson(CURSOR_STORAGE_KEY, cursor);
-};
-
-const pushLedger = (entries: AutoMemoryLedgerEntry[]): void => {
-  if (entries.length === 0) return;
-  const next = [...entries, ...loadAutoMemoryLedger()].slice(0, MAX_LEDGER_ROWS);
-  writeJson(LEDGER_STORAGE_KEY, next);
-  emitAutoMemoryUpdate();
-};
-
-export const loadAutoMemorySettings = (): AutoMemorySettings => {
-  const stored = readJson<Partial<AutoMemorySettings>>(SETTINGS_STORAGE_KEY, {});
-  return {
-    ...defaultSettings,
-    ...stored,
-    dailyChatMode: 'off',
-    keepTrivialMoments: false,
-  };
-};
 
 export const saveAutoMemorySettings = (
   updates: Partial<AutoMemorySettings>,
 ): AutoMemorySettings => {
-  const next = {
+  const next: AutoMemorySettings = {
     ...loadAutoMemorySettings(),
     ...updates,
+    dailyChatMode: 'off',
+    keepTrivialMoments: false,
   };
   writeJson(SETTINGS_STORAGE_KEY, next);
   emitAutoMemoryUpdate();
@@ -253,89 +140,188 @@ export const clearAutoMemoryLedger = (): void => {
   emitAutoMemoryUpdate();
 };
 
+const pushLedger = (entries: AutoMemoryLedgerEntry[]): void => {
+  if (!entries.length) return;
+  writeJson(LEDGER_STORAGE_KEY, [...entries, ...loadAutoMemoryLedger()].slice(0, MAX_LEDGER_ROWS));
+  emitAutoMemoryUpdate();
+};
+
+const toLocalDate = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const clip = (value: string, max: number): string => {
+  const text = value.replace(/\s+/gu, ' ').trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1).trim()}…`;
+};
+
+const timebookSignal = /第一次|初次|初见|初识|相识|纪念|生日|周年|约定|说好|想见|见面|礼物|照片|蛋糕|旅行|出发|回家|生病|住院|考试|面试|毕业|搬家|告白|和好|重逢/iu;
+
 export const runAutoMemoryPass = async ({
   characters,
   userProfile,
   trigger,
   includeToday = false,
   settings = loadAutoMemorySettings(),
+  evidencePort = dailyArchiveEvidenceReadPort,
+  interpretationStore = memoryInterpretationStore,
+  now = Date.now(),
 }: RunAutoMemoryPassInput): Promise<AutoMemoryPassResult> => {
-  const cursor = loadCursor();
+  if (settings.timebookCandidateMode === 'off') {
+    return { candidateCount: 0, appendedMemoryCount: 0, savedTimebookCount: 0, skippedCount: 0, failedCount: 0, ledgerEntries: [] };
+  }
   const ledgerEntries: AutoMemoryLedgerEntry[] = [];
-  const existingAnniversaries = await DB.getAllAnniversaries();
-  let appendedMemoryCount = 0;
-  let savedTimebookCount = 0;
+  let candidateCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
 
-  for (const char of characters) {
+  const personaScope = resolvePersonaRouteScope(userProfile, characters);
+  for (const char of personaScope.linkedCharacters) {
+    const scope = strictRelationshipScopeForProfile(char.id, userProfile);
+    if (!scope) continue;
     try {
-      const allMessages = await DB.getMessagesByCharId(char.id);
-      const groups = groupMessagesByDate(allMessages);
-      const dates = Object.keys(groups).sort();
+      const [records, priorPasses] = await Promise.all([
+        evidencePort.listActiveEvidence({ scope, temporalClass: 'live' }),
+        interpretationStore.listPasses(scope),
+      ]);
+      const interpretedFingerprints = new Set(
+        priorPasses
+          .filter(pass => pass.extractor === 'deterministic_heuristic')
+          .map(pass => pass.evidenceSpan.sourceRevisionFingerprint),
+      );
+      const grouped = new Map<string, typeof records>();
+      records.forEach(record => {
+        const rawTime = record.evidence.time.occurredAt || record.evidence.time.recordedAt;
+        const parsed = Date.parse(rawTime);
+        if (!Number.isFinite(parsed)) return;
+        const dateKey = toLocalDate(parsed);
+        grouped.set(dateKey, [...(grouped.get(dateKey) || []), record]);
+      });
 
-      for (const date of dates) {
-        const dayMessages = groups[date];
-        const latestMessage = dayMessages[dayMessages.length - 1];
-        const latestMessageAgeMinutes = latestMessage
-          ? (Date.now() - latestMessage.timestamp) / 60000
-          : Number.POSITIVE_INFINITY;
-        const isCurrentDay = isToday(date);
-        const canArchiveToday = includeToday || latestMessageAgeMinutes >= settings.quietMinutesBeforeTodayArchive;
-
-        if (settings.timebookCandidateMode === 'silent') {
-          const candidate = buildTimebookCandidate(char, date, dayMessages, settings.keepTrivialMoments);
-          const timebookKey = candidate ? candidate.id : `${char.id}:${date}:none`;
-          const hasSameDateMemory = existingAnniversaries.some(item => item.charId === char.id && item.date === date);
-          if (candidate && !cursor.timebook[timebookKey] && !hasSameDateMemory && (!isCurrentDay || canArchiveToday)) {
-            await DB.saveAnniversary(candidate);
-            cursor.timebook[timebookKey] = {
-              at: Date.now(),
-              messageId: selectTimebookMessage(dayMessages, settings.keepTrivialMoments)?.id,
-            };
-            existingAnniversaries.push(candidate);
-            savedTimebookCount += 1;
-            ledgerEntries.push({
-              id: `ledger-${candidate.id}`,
-              at: Date.now(),
-              charId: char.id,
-              charName: char.name,
-              kind: 'timebook_candidate',
-              status: 'saved',
-              title: candidate.title,
-              sourceDate: date,
-              messageCount: dayMessages.length,
-              targetId: candidate.id,
-              trigger,
-            });
-          }
+      for (const [dateKey, dayRecords] of [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+        const latestAt = Math.max(...dayRecords.map(record => Date.parse(record.evidence.time.occurredAt || record.evidence.time.recordedAt)));
+        const isToday = dateKey === toLocalDate(now);
+        const isQuiet = (now - latestAt) / 60000 >= settings.quietMinutesBeforeTodayArchive;
+        if (isToday && !includeToday && !isQuiet) continue;
+        const picked = [...dayRecords].reverse().find(record => timebookSignal.test(record.content));
+        if (!picked) continue;
+        const evidenceSpan = await createEvidenceSpan({
+          scope,
+          evidence: dayRecords.map(record => record.evidence),
+        });
+        if (interpretedFingerprints.has(evidenceSpan.sourceRevisionFingerprint)) {
+          skippedCount += 1;
+          continue;
         }
+        const analysisRunId = `timebook-${dateKey}-${evidenceSpan.sourceRevisionFingerprint.slice(-16)}`;
+        const requestId = createMemoryExtractionRequestId({ scope, analysisRunId });
+        const request = assertMemoryExtractionRequest({
+          schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
+          id: requestId,
+          analysisRunId,
+          scope: { ...scope },
+          trigger,
+          evidenceSpan,
+          extractor: 'deterministic_heuristic' as const,
+          promptVersion: PROMPT_VERSION,
+          outputSchemaVersion: OUTPUT_SCHEMA_VERSION,
+          requestedAt: now,
+        });
+        const passId = createMemoryInterpretationPassId(request);
+        const summary = clip(picked.content, 120);
+        const candidate = {
+          schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
+          id: createMemoryCandidateId(passId, 0),
+          passId,
+          scope: { ...scope },
+          sourceEvidenceIds: [picked.evidence.evidenceId],
+          target: 'timebook' as const,
+          knowledge: 'relationship_private' as const,
+          temporalClass: 'live' as const,
+          authority: 'deterministic_heuristic' as const,
+          status: 'proposed' as const,
+          title: clip(summary.replace(/[“”"']/gu, ''), 18) || `${dateKey.slice(5).replace('-', '月')}日的片刻`,
+          summary,
+          happenedAt: dateKey,
+          tags: ['timebook_candidate'],
+        };
+        const pass = assertMemoryInterpretationPass({
+          schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
+          id: passId,
+          requestId,
+          analysisRunId,
+          scope: { ...scope },
+          evidenceSpan,
+          extractor: 'deterministic_heuristic',
+          promptVersion: PROMPT_VERSION,
+          outputSchemaVersion: OUTPUT_SCHEMA_VERSION,
+          status: 'completed',
+          truthEffect: 'none',
+          candidates: [candidate],
+          startedAt: now,
+          completedAt: now,
+        });
+        const receipt = assertMemoryExtractionReceipt({
+          schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
+          id: createMemoryExtractionReceiptId(requestId),
+          requestId,
+          passId,
+          scope: { ...scope },
+          evidenceSpan,
+          status: 'completed',
+          truthEffect: 'none',
+          candidateIds: [candidate.id],
+          rejectedCandidateCount: 0,
+          extractor: 'deterministic_heuristic',
+          promptVersion: PROMPT_VERSION,
+          outputSchemaVersion: OUTPUT_SCHEMA_VERSION,
+          usage: {
+            evidenceCount: dayRecords.length,
+            inputCharCount: dayRecords.reduce((sum, record) => sum + record.content.length, 0),
+          },
+          createdAt: now,
+        });
+        await interpretationStore.appendCompleted(pass, receipt);
+        interpretedFingerprints.add(evidenceSpan.sourceRevisionFingerprint);
+        candidateCount += 1;
+        ledgerEntries.push({
+          id: `ledger-${candidate.id}`,
+          at: now,
+          charId: char.id,
+          charName: char.name,
+          kind: 'timebook_candidate',
+          status: 'proposed',
+          title: candidate.title,
+          summary: candidate.summary,
+          sourceDate: dateKey,
+          messageCount: dayRecords.length,
+          targetId: candidate.id,
+          reason: 'awaiting_promotion',
+          trigger,
+        });
       }
     } catch (error) {
       failedCount += 1;
       ledgerEntries.push({
-        id: `ledger-auto-failed-${char.id}-${Date.now()}`,
-        at: Date.now(),
+        id: `ledger-auto-failed-${char.id}-${now}`,
+        at: now,
         charId: char.id,
         charName: char.name,
         kind: 'timebook_candidate',
         status: 'failed',
-        title: '沉淀失败',
+        title: '候选整理失败',
         reason: error instanceof Error ? error.message : 'unknown',
         trigger,
       });
     }
   }
 
-  if (trigger === 'auto') {
-    cursor.lastAutoRunAt = Date.now();
-  }
-  saveCursor(cursor);
   pushLedger(ledgerEntries);
-
   return {
-    appendedMemoryCount,
-    savedTimebookCount,
+    candidateCount,
+    appendedMemoryCount: 0,
+    savedTimebookCount: 0,
     skippedCount,
     failedCount,
     ledgerEntries,

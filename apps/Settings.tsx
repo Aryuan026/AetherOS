@@ -284,13 +284,13 @@ const Settings: React.FC = () => {
   const updateAutoMemorySettings = (updates: Partial<typeof autoMemorySettings>) => {
       const next = saveAutoMemorySettings(updates);
       setAutoMemorySettings(next);
-      addToast('自动记忆已收好', 'success');
+      addToast('候选整理规则已收好', 'success');
   };
 
   const updateMemoryDMSettings = (updates: Partial<MemoryDMSettings>) => {
       const next = saveMemoryDMSettings(updates);
       setMemoryDMSettings(next);
-      addToast('角色记忆已收好', 'success');
+      addToast('记忆候选规则已收好', 'success');
   };
 
   const handleRunAutoMemoryOnce = async () => {
@@ -305,8 +305,8 @@ const Settings: React.FC = () => {
               settings: { ...loadAutoMemorySettings(), dailyChatMode: 'off' },
           });
           setAutoMemoryLedger(loadAutoMemoryLedger());
-          const total = result.savedTimebookCount;
-          addToast(total > 0 ? `拾起了 ${total} 个瞬间` : '这次没有新的碎片', total > 0 ? 'success' : 'info');
+          const total = result.candidateCount;
+          addToast(total > 0 ? `整理了 ${total} 个候选` : '这次没有新的候选', total > 0 ? 'success' : 'info');
       } catch (error: any) {
           addToast(`补记失败: ${error.message || 'unknown'}`, 'error');
       } finally {
@@ -759,7 +759,7 @@ const Settings: React.FC = () => {
                     <div>
                         <div className="text-sm font-bold text-slate-700">时光簿</div>
                         <div className="mt-0.5 text-[10px] text-slate-400">
-                            {autoMemorySettings.timebookCandidateMode === 'silent' ? '节点自动写入' : '手动整理'}
+                            {autoMemorySettings.timebookCandidateMode === 'silent' ? '节点候选整理' : '手动整理'}
                         </div>
                     </div>
                     <button
@@ -767,15 +767,15 @@ const Settings: React.FC = () => {
                         disabled={isRunningAutoMemory}
                         className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition active:scale-95 disabled:opacity-50"
                     >
-                        {isRunningAutoMemory ? '拾取中' : '拾取一次'}
+                        {isRunningAutoMemory ? '整理中' : '整理一次'}
                     </button>
                 </div>
 
                 <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50/80 px-3 py-2">
                     <div>
-                        <div className="text-xs font-bold text-slate-600">节点写入</div>
+                        <div className="text-xs font-bold text-slate-600">节点候选</div>
                         <div className="mt-0.5 text-[10px] text-slate-400">
-                            {autoMemorySettings.timebookCandidateMode === 'silent' ? '自动' : '手动'}
+                            {autoMemorySettings.timebookCandidateMode === 'silent' ? '自动整理' : '关闭'}
                         </div>
                     </div>
                     <button
@@ -826,7 +826,7 @@ const Settings: React.FC = () => {
 
                 <div className="mt-4 rounded-2xl border border-slate-100 bg-white p-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                        <div className="text-sm font-bold text-slate-700">最近沉淀</div>
+                        <div className="text-sm font-bold text-slate-700">最近候选</div>
                         <button
                             onClick={handleClearAutoMemoryLedger}
                             className="rounded-xl bg-slate-100 px-2.5 py-1.5 text-[10px] font-bold text-slate-500 transition active:scale-95"
@@ -836,7 +836,7 @@ const Settings: React.FC = () => {
                     </div>
                     {!latestAutoMemory ? (
                         <div className="rounded-xl bg-slate-50 px-3 py-4 text-center text-[11px] text-slate-400">
-                            还没有自动写入。
+                            还没有整理候选。
                         </div>
                     ) : (
                         <div className="space-y-2">

@@ -317,30 +317,31 @@
   imports, or later reviewed refinement, not by replaying ordinary chat snippets.
 - Group memory archive must read the full persisted group history for the target
   group from IndexedDB, not only the messages currently rendered in React state.
-- Important-node / timebook candidates should be collected silently. The product
+- Important-node / timebook candidates should be collected quietly as source-linked proposals. The product
   must not show immersive-breaking prompts such as "要不要记一下" or "这是纪念日吗".
-- The Settings label for automatic timebook writing should be `时光簿`, because
-  this switch controls whether relationship nodes are written into that surface.
+- The Settings label should make candidate status clear; extraction does not
+  imply that a relationship node has already been written into `时光簿`.
 - Silent `时光簿` candidates should stay node-like: first times, appointments,
   gifts, meals, illness, meeting, missing-you, reminders, or comparable
   relationship markers.
-- Small affectionate everyday observations belong to `char.memories` / `角色记忆`,
-  not directly to `时光簿`.
-- `角色记忆` auto-write should be driven by MemoryDM after a quiet configurable
-  number of user turns, using the same foreground API settings as chat. The UI
-  should expose 20-100 turns in sparse steps and default to 60 turns. Existing
-  manual/model archive flows can keep writing `char.memories`.
+- Small affectionate everyday observations may become relationship-memory
+  candidates; they do not directly enter legacy `char.memories` or `时光簿`.
+- MemoryDM extraction may run after a quiet configurable number of user turns,
+  using the same foreground API settings as chat. The UI exposes 20-100 turns
+  in sparse steps and defaults to 60 turns. The extraction pass has
+  `truthEffect: none` and cannot call target writers.
 - MemoryDM may also run an idle closing pass after the configured quiet window;
   background timers must not run it before the quiet window is actually due.
-- MemoryDM must check for near-duplicates before writing `char.memories` or
-  `时光簿` nodes.
-- MemoryDM may produce `story_seed` candidates for a future `剧情生成仓`, but 朋友圈 / 资讯站
+- The future Memory Promotion service must check exact scope, source revision,
+  authority, policy and near-duplicates before writing any target.
+- MemoryDM may produce `narrative_proposal` candidates for a future `剧情生成仓`, but 朋友圈 / 资讯站
   UI remains a separate surface. Feed posts should only enter the story bank
   after a user approval/save action.
-- MemoryDM `calendar_reminder` candidates may silently become `companion_wakeups`
-  rules with source `ai_calendar`, priority `calendar`, an optional one-time
-  `targetDate`, and a windowed trigger. They must not interrupt immersion by
-  asking the player whether to save a reminder.
+- A future calendar selection may explicitly resubmit the same active evidence
+  ids under a new manual analysis run. This intentional re-analysis must not be
+  treated as an automatic duplicate and still has `truthEffect: none`.
+- MemoryDM scheduler candidates remain proposals. Only a separate Scheduler
+  command may later create a wakeup rule; extraction cannot do so as a side effect.
 - `时光簿` must allow editing saved memory rows, including title, date, and page
   note, so automatic candidates have a human correction path.
 - `char.impression` should not be blindly overwritten by the background loop.
@@ -350,9 +351,9 @@
   action.
 - Any prompt that extracts or rewrites `关系印象` must keep the character's
   role-internal private-note perspective, not a third-party diagnostic voice.
-- Settings should distinguish actual sediment from prompt-delivery receipts:
-  `最近沉淀` is about rows written into local memory surfaces, while `记忆回声`
-  is about context selected for a model call.
+- Settings should distinguish extraction candidates from prompt-delivery
+  receipts and promoted facts: `最近候选` is not a durable memory shelf, while
+  `记忆回声` is about context selected for a model call.
 - Every memory-system tuning pass should leave a short reason/effect record so
   a later maintainer can see why the selector, sediment rule, or UI affordance
   changed.

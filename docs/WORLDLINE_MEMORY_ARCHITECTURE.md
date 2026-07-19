@@ -132,11 +132,11 @@ This is intentionally placed in system settings as a verification surface. The
 immersive frontstage still belongs to diary, timebook, album, social posts, and
 future relationship keepsakes.
 
-## Automatic Sediment
+## Automatic Interpretation
 
-The first write-capable layer is intentionally smaller than a full memory
-palace. It closes the most visible gap without creating a second heavy
-retrieval system.
+The current layer is deliberately extraction-only. It turns exact-scope active
+source evidence into auditable candidates without quietly changing any durable
+relationship or world truth.
 
 Current rules:
 
@@ -145,20 +145,19 @@ Current rules:
   truly care about;
 - `char.memories` remains on higher-quality paths for now: model archive, diary
   archive, imports, or later reviewed refinement;
-- timebook-worthy nodes are clipped into `anniversaries` silently;
-- `时光簿` auto-write is strict by default and keeps only stronger first-time,
+- timebook-worthy nodes become source-linked proposals only;
+- the deterministic `时光簿` candidate rule is strict by default and keeps only stronger first-time,
   appointment, gift, meal, illness, meeting, missing-you, or reminder signals;
-- ordinary affectionate observations belong to `char.memories` / `角色记忆`, whose
-  automation is handled by MemoryDM only when the user enables quiet
-  turn-interval sorting. The current UI exposes 20/40/60/80/100 user turns and
-  defaults to 60;
+- ordinary affectionate observations may become relationship-memory candidates
+  when the user enables quiet turn-interval sorting. The current UI exposes
+  20/40/60/80/100 user turns and defaults to 60;
 - MemoryDM uses the same foreground chat API and returns structured candidates.
-  `character_memory` and `timebook_node` may be applied through duplicate gates;
-  `relationship_impression` and `story_seed` remain candidates;
+  All targets remain candidates in this phase; extraction writes no
+  `char.memories`, anniversaries, wakeups, Narrative, or Character Life state;
 - the app must not ask the player "is this an anniversary?" or "should I
   remember this?" during immersive play;
-- wrong timebook nodes are handled by later human edit/delete in `时光簿`, not by
-  frontstage interruption;
+- wrong candidates are handled by future destination review/correction after a
+  separate promotion decision, not by frontstage interruption;
 - `char.impression` is presented as `关系印象` and remains manual/review-first
   because it is injected into every prompt and can change the whole role feel if
   overwritten badly. Every extraction prompt for this layer must be audited for
@@ -166,12 +165,13 @@ Current rules:
 
 The UI distinction is:
 
-- `最近沉淀`: actual rows written into local memory surfaces.
+- `最近候选`: source-linked interpretation proposals, not durable memory facts.
 - `记忆回声`: selector delivery receipts showing what context entered a prompt.
 
 This layer is not a replacement for later vector / Hippocove cold-tree work. It
-is a traceable product bridge so future retrieval tuning has real written rows,
-user-visible correction paths, and a local debug ledger.
+is a traceable product bridge so future retrieval tuning has versioned
+evidence, repeatable interpretation, explicit promotion gates, and a local
+debug ledger.
 
 ## Later Durable Stores
 

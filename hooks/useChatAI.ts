@@ -770,16 +770,14 @@ export const useChatAI = ({
             setRecallStatus('');
             if (aiCompleted) {
                 const memoryDMSettings = loadMemoryDMSettings();
-                if (memoryDMSettings.enabled) {
+                if (memoryDMSettings.enabled && initiatingRelationshipScope) {
                     void runMemoryDMPass({
                         char,
                         userProfile,
+                        relationshipScope: initiatingRelationshipScope,
                         apiConfig: effectiveApi,
                         trigger: 'auto',
                         settings: memoryDMSettings,
-                        onCharacterMemoriesApplied: (charId, memories) => {
-                            updateCharacter?.(charId, { memories });
-                        },
                     }).catch(error => {
                         console.warn('MemoryDM pass failed:', error);
                     });

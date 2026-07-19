@@ -99,15 +99,20 @@ const revisionRecord: DailyArchiveMessageRevision = {
 };
 assert.equal(dailyArchiveRevisionToInteractionEvidence(revisionRecord).source.status, 'superseded');
 
-const span = createEvidenceSpan({ scope: scopeA, evidence: [chatEvidence, dateEvidence] });
+const span = await createEvidenceSpan({ scope: scopeA, evidence: [chatEvidence, dateEvidence] });
 assert.equal(span.evidenceIds.length, 2);
-assert.match(span.sourceRevisionFingerprint, /^fnv1a32:[0-9a-f]{8}$/u);
+assert.match(span.sourceRevisionFingerprint, /^sha256:[0-9a-f]{64}$/u);
 assert.deepEqual(
-    createEvidenceSpan({ scope: scopeA, evidence: [chatEvidence, dateEvidence] }),
+    await createEvidenceSpan({ scope: scopeA, evidence: [chatEvidence, dateEvidence] }),
     span,
     'same source revisions must produce a stable span fingerprint',
 );
-assert.throws(
+assert.notEqual(
+    (await createEvidenceSpan({ scope: scopeA, evidence: [dateEvidence, chatEvidence] })).sourceRevisionFingerprint,
+    span.sourceRevisionFingerprint,
+    'ordered dialogue evidence must not share a fingerprint after reordering',
+);
+await assert.rejects(
     () => createEvidenceSpan({ scope: scopeA, evidence: [chatEvidence, chatEvidence] }),
     /重复引用/,
 );
@@ -126,7 +131,7 @@ const otherMaskEvidence = dailyArchiveMessageToInteractionEvidence(
     }),
 );
 assert.notEqual(chatEvidence.evidenceId, otherMaskEvidence.evidenceId);
-assert.throws(
+await assert.rejects(
     () => createEvidenceSpan({ scope: scopeA, evidence: [chatEvidence, otherMaskEvidence] }),
     /不能跨关系范围/,
 );

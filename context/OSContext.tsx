@@ -40,6 +40,7 @@ import {
 } from '../utils/dailyArchive/storage';
 import type { ConversationClipping, DailyArchiveDocument, DailyArchiveMessageRevision } from '../domain/dailyArchive/types';
 import { apiConfigForActivatedPreset } from '../utils/apiPresets';
+import { strictRelationshipScopeForProfile } from '../utils/messageContext';
 
 
 type JSZipLike = {
@@ -2146,18 +2147,17 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                   });
               }
               const activeMemoryDMChar = characters.find(c => c.id === activeCharacterId) || characters[0];
-              if (memoryDMSettings.enabled && memoryDMSettings.idlePassEnabled && activeMemoryDMChar && apiConfig.baseUrl) {
+              const activeMemoryDMScope = activeMemoryDMChar
+                  ? strictRelationshipScopeForProfile(activeMemoryDMChar.id, userProfile)
+                  : undefined;
+              if (memoryDMSettings.enabled && memoryDMSettings.idlePassEnabled && activeMemoryDMChar && activeMemoryDMScope && apiConfig.baseUrl) {
                   await runMemoryDMPass({
                       char: activeMemoryDMChar,
                       userProfile,
+                      relationshipScope: activeMemoryDMScope,
                       apiConfig,
                       trigger: 'idle',
                       settings: memoryDMSettings,
-                      onCharacterMemoriesApplied: (charId, memories) => {
-                          setCharacters(prev => normalizeCharactersForState(prev.map(c => (
-                              c.id === charId ? { ...c, memories } : c
-                          ))));
-                      },
                   });
               }
           } catch (error) {

@@ -8,3 +8,5 @@ export * from './deliveryProfile';
 export * from './hotState';
 export * from './voiceCore';
 export * from './historicalSelector';
+export * from './evidencePort';
+export * from './interpretationStore';

@@ -1,5 +1,33 @@
 # AetherOS Progress
 
+## 2026-07-19 Memory Interpretation Boundary — Extraction Before Promotion
+
+- done:
+  - Replaced both legacy automatic writers with exact-scope evidence readers.
+    MemoryDM and the deterministic Timebook helper now append versioned
+    interpretation passes and `truthEffect: none` receipts only.
+  - Declared separate candidate destinations for relationship memory, Timebook,
+    scheduler proposals, Narrative proposals, and Character Life proposals.
+    None of those target stores is written in this box.
+  - Made evidence-span fingerprints SHA-256 and order-sensitive, so reordering a
+    scene cannot masquerade as the same analysis source.
+  - Added a manual evidence-id seam for future calendar selection. Automatic
+    passes consume only new revisions; an explicit manual selection may
+    intentionally re-analyse the same active records with a new run id.
+  - Enforced reciprocal bundle/mask/character linkage. Unlinked characters and
+    missing or foreign evidence ids fail closed before model input.
+  - Kept extraction candidates and receipts in the existing full-backup-covered
+    assets store, while leaving Memory Promotion as a declared HOLD boundary.
+- verified:
+  - Focused evidence and MemoryDM fixtures cover ordered fingerprints,
+    cross-mask isolation, unlinked-character rejection, invalid provenance,
+    revision-aware reruns, intentional repeat analysis, heuristic proposals,
+    and zero target writes.
+- boundary:
+  - The accepted Chat/Date prompts and UI structure are unchanged. Historical
+    route extraction, candidate review/promotion UI, Narrative/Character Life
+    writes, and token-budgeted retrieval remain later boxes.
+
 ## 2026-07-19 Evidence Foundation — Source Identity And Revision Ledger
 
 - done:
@@ -32,8 +60,8 @@
     Date session, returned to the desktop, and opened Chat with its imported
     history tail; the browser console reported no errors.
 - boundary:
-  - This is the source/evidence half of Wave 1. MemoryDM still writes legacy
-    character-scoped outputs and remains the next migration block. No prompt,
+  - This is the source/evidence half of Wave 1. MemoryDM migration is recorded
+    in the newer checkpoint above. No prompt,
     accepted UI, narrative truth, Character Life state, or token policy changed.
   - Call/Social/Group/Journal and other legacy message producers are not yet
     evidence-enabled. Their unscoped writes remain operational records but fail

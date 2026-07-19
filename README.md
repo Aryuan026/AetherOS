@@ -233,7 +233,7 @@ A: 在 `context/OSContext.tsx` 里维护 `defaultBuiltInCharacters`。内置角�
 
 **世界线交汇记忆** 走 `utils/memoryCore/`。它把聊天、见面、主动来信、时光簿、角色记忆、未来原作剧情/约会分支理解成同一段关系里的不同入口，按需挑一小段上下文递送给模型。
 
-**自动记忆沉淀** 也放在 `utils/memoryCore/`，但它和递送不是一回事：`autoMemory` 当前只负责把适合留下的关系节点静默夹进 `时光簿`；`memoryDm` 使用同一个前台聊天 API，在配置的 20-100 轮对话后整理候选，默认 60 轮，并通过去重门写入 `char.memories` / `时光簿` / 日历唤醒规则；`receipts` 只记录“这次提示词拿到了哪些线索”。
+**记忆候选整理** 也放在 `utils/memoryCore/`，但它和递送、最终写入不是一回事。Chat、见面和旧日来源先变成带完整关系 scope 与 revision 的 `InteractionEvidence`；`autoMemory` 只提出可追溯的时光簿候选，`memoryDm` 使用同一个前台聊天 API，在配置的 20-100 轮对话后生成版本化 interpretation pass 与 extraction receipt。当前盒明确是 extraction-only：不会直接改写 `char.memories`、时光簿、提醒、剧情或 Character Life；后续必须经过独立 Memory Promotion / Narrative / Life 写权门。
 
 这意味着：不是“只要存进 IndexedDB 就自动进 Prompt”。新功能如果想成为可回忆内容，应该接入 memoryCore selector，标明来源、世界线范围、知情范围和状态，再由具体入口按预算选择。
 

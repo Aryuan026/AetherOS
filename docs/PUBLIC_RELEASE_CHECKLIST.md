@@ -21,21 +21,20 @@ This file tracks blockers and handoff notes for publishing the fork as
 - 2026-07-04: completed the first-screen UI grouping direction and the first
   code split for `时光簿`, `同行计划`, `书房`, shared shell headers, and chat
   appearance ownership.
-- 2026-07-05: built the first memory architecture slice: worldline selector,
-  visible memory receipts, MemoryDM writer, `char.memories` readback, and the
-  first calendar-reminder bridge into companion wakeups.
+- 2026-07-05: built the original memory architecture slice. Its MemoryDM direct
+  writers were retired by the 2026-07-19 extraction-only boundary.
 
 ## Memory / Calendar Code Still Open
 
-- Merge MemoryDM records into the visible `最近沉淀` surface. Records are stored
-  in `assets/memory_dm_candidate_records_v1`, while the current Settings card
-  still only reads the `autoMemory` ledger.
+- Add a visible `最近候选` projection over
+  `assets/memory_interpretation_store_v1`; do not describe candidates as saved
+  memories or mix them with prompt-delivery receipts.
 - Normalize legacy `char.memories` writers behind a shared duplicate gate after
   prompt audit. Current legacy appenders include manual chat archive, group
   archive, study, novel, and game flows.
 - Audit every durable-memory and `关系印象` extraction prompt for role-internal
   private-note perspective before enabling any automatic impression overwrite.
-- Connect approved 朋友圈 / 资讯站 material into the future `story_seed` /
+- Connect approved 朋友圈 / 资讯站 material into the future `narrative_proposal` /
   `剧情生成仓` path after the separate social-feed pass settles.
 - Add a richer calendar inspection/edit surface if `ai_calendar` wakeup rules
   need user-facing correction beyond the current wakeup settings/logs.
