@@ -1,7 +1,7 @@
 import type {
     HistoricalAuthority,
     HistoricalDerivedBase,
-    HistoricalNarrativeProfile,
+    HistoricalNarrativeProjection,
     HistoricalResultStatus,
 } from '../historyImport/analysis/types.ts';
 import { HISTORY_ANALYSIS_AUTHORITY_ORDER } from '../historyImport/analysis/contract.ts';
@@ -69,7 +69,7 @@ export interface NarrativeDirectorCurrentTruth {
 
 export interface NarrativeDirectorHistoricalContext {
     readonly rootAuthority: NarrativeDirectorAuthority;
-    readonly profile: NarrativeDirectorReadOnly<HistoricalNarrativeProfile>;
+    readonly projection: NarrativeDirectorReadOnly<HistoricalNarrativeProjection>;
 }
 
 export interface NarrativeDirectorContext {
@@ -83,22 +83,22 @@ export interface NarrativeDirectorContext {
     readonly readOnlyPolicy: NarrativeDirectorReadOnly<typeof NARRATIVE_DIRECTOR_READ_ONLY_POLICY>;
 }
 
-export interface NarrativeDirectorHistoricalProfileProvider {
-    readHistoricalNarrativeProfile(input: {
+export interface NarrativeDirectorHistoricalProjectionProvider {
+    readHistoricalNarrativeProjection(input: {
         scope: NarrativeDirectorScope;
-    }): Promise<HistoricalNarrativeProfile | null>;
+    }): Promise<HistoricalNarrativeProjection | null>;
 }
 
 export interface CreateNarrativeDirectorContextInput {
     scope: NarrativeDirectorScope;
     currentTruth: NarrativeDirectorReadOnly<NarrativeDirectorCurrentTruth>;
-    historicalProfile?: HistoricalNarrativeProfile | null;
+    historicalProjection?: HistoricalNarrativeProjection | null;
 }
 
 export interface LoadNarrativeDirectorContextInput {
     scope: NarrativeDirectorScope;
     currentTruth: NarrativeDirectorReadOnly<NarrativeDirectorCurrentTruth>;
-    historicalProvider?: NarrativeDirectorHistoricalProfileProvider;
+    historicalProvider?: NarrativeDirectorHistoricalProjectionProvider;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -172,34 +172,49 @@ const assertHistoricalRecord = (
     resolveHistoricalNarrativeAuthority(record.authority);
 };
 
-const assertHistoricalProfile = (
-    profile: HistoricalNarrativeProfile,
+const assertHistoricalProjection = (
+    projection: HistoricalNarrativeProjection,
     scope: NarrativeDirectorScope,
 ): void => {
-    if (profile.kind !== 'narrative_profile') {
-        throw new Error('Historical narrative input is not a narrative profile');
-    }
     if (
-        !Array.isArray(profile.routes)
-        || !Array.isArray(profile.npcs)
-        || !Array.isArray(profile.relationshipStages)
-        || !Array.isArray(profile.openThreads)
+        !Array.isArray(projection.actors)
+        || !Array.isArray(projection.events)
+        || !Array.isArray(projection.eventRouteBindings)
+        || !Array.isArray(projection.routes)
+        || !Array.isArray(projection.npcs)
+        || !Array.isArray(projection.relationshipStages)
+        || !Array.isArray(projection.openThreads)
     ) {
-        throw new Error('Historical narrative profile collections are invalid');
+        throw new Error('Historical narrative projection collections are invalid');
     }
-
-    assertHistoricalRecord(profile, scope, 'historicalProfile');
-    profile.routes.forEach((route, index) => {
-        assertHistoricalRecord(route, scope, `historicalProfile.routes[${index}]`);
+    assertScope(projection.scope, scope, 'historicalProjection');
+    if (projection.temporalClass !== 'historical') {
+        throw new Error('historicalProjection must remain historical');
+    }
+    if (!isVisibleHistoricalStatus(projection.status)) {
+        throw new Error('historicalProjection is not visible to Narrative Director');
+    }
+    resolveHistoricalNarrativeAuthority(projection.authority);
+    projection.actors.forEach((actor, index) => {
+        assertHistoricalRecord(actor, scope, `historicalProjection.actors[${index}]`);
     });
-    profile.npcs.forEach((npc, index) => {
-        assertHistoricalRecord(npc, scope, `historicalProfile.npcs[${index}]`);
+    projection.events.forEach((event, index) => {
+        assertHistoricalRecord(event, scope, `historicalProjection.events[${index}]`);
     });
-    profile.relationshipStages.forEach((stage, index) => {
-        assertHistoricalRecord(stage, scope, `historicalProfile.relationshipStages[${index}]`);
+    projection.eventRouteBindings.forEach((binding, index) => {
+        assertHistoricalRecord(binding, scope, `historicalProjection.eventRouteBindings[${index}]`);
     });
-    profile.openThreads.forEach((thread, index) => {
-        assertHistoricalRecord(thread, scope, `historicalProfile.openThreads[${index}]`);
+    projection.routes.forEach((route, index) => {
+        assertHistoricalRecord(route, scope, `historicalProjection.routes[${index}]`);
+    });
+    projection.npcs.forEach((npc, index) => {
+        assertHistoricalRecord(npc, scope, `historicalProjection.npcs[${index}]`);
+    });
+    projection.relationshipStages.forEach((stage, index) => {
+        assertHistoricalRecord(stage, scope, `historicalProjection.relationshipStages[${index}]`);
+    });
+    projection.openThreads.forEach((thread, index) => {
+        assertHistoricalRecord(thread, scope, `historicalProjection.openThreads[${index}]`);
     });
 };
 
@@ -331,8 +346,8 @@ export const createNarrativeDirectorContext = (
 ): NarrativeDirectorContext => {
     const scope = normalizeScope(input.scope);
     assertCurrentTruth(input.currentTruth, scope);
-    const historicalProfile = input.historicalProfile ?? null;
-    if (historicalProfile) assertHistoricalProfile(historicalProfile, scope);
+    const historicalProjection = input.historicalProjection ?? null;
+    if (historicalProjection) assertHistoricalProjection(historicalProjection, scope);
 
     return deepFreeze({
         schemaVersion: NARRATIVE_DIRECTOR_CONTEXT_SCHEMA_VERSION,
@@ -341,10 +356,10 @@ export const createNarrativeDirectorContext = (
         historicalAuthorityOrder: [...NARRATIVE_DIRECTOR_HISTORICAL_AUTHORITY_ORDER],
         currentTruthAuthority: 'active_confirmed_truth' as const,
         currentTruth: cloneJsonValue(input.currentTruth),
-        historical: historicalProfile
+        historical: historicalProjection
             ? {
-                rootAuthority: resolveHistoricalNarrativeAuthority(historicalProfile.authority),
-                profile: cloneJsonValue(historicalProfile),
+                rootAuthority: resolveHistoricalNarrativeAuthority(historicalProjection.authority),
+                projection: cloneJsonValue(historicalProjection),
             }
             : null,
         readOnlyPolicy: { ...NARRATIVE_DIRECTOR_READ_ONLY_POLICY },
@@ -356,12 +371,12 @@ export const loadNarrativeDirectorContext = async (
     input: LoadNarrativeDirectorContextInput,
 ): Promise<NarrativeDirectorContext> => {
     const scope = normalizeScope(input.scope);
-    const historicalProfile = input.historicalProvider
-        ? await input.historicalProvider.readHistoricalNarrativeProfile({ scope: { ...scope } })
+    const historicalProjection = input.historicalProvider
+        ? await input.historicalProvider.readHistoricalNarrativeProjection({ scope: { ...scope } })
         : null;
     return createNarrativeDirectorContext({
         scope,
         currentTruth: input.currentTruth,
-        historicalProfile,
+        historicalProjection,
     });
 };

@@ -796,6 +796,10 @@
 - Every completed analysis pass is stored immutably. The merged interpretation
   lives in a separate relationship-scoped workspace with bindings and user
   overlays; there is no active-snapshot replacement or legacy analysis reader.
+- Before product release, the required actor/event shape starts in the clean
+  `AetherOS_HistoryAnalysis:v3` namespace. The rebuildable v2 derived workspace
+  is not migrated or aliased; raw History Archive and Daily Archive v2 evidence
+  remains intact and can be analysed again.
 - Re-running the same source revision, date range, clipping, or message span is
   allowed even with the same strategy. The UI must show approximate cost again,
   say that previous results are retained, and never treat a matching source
@@ -803,6 +807,16 @@
 - A source span may have zero, one, or many simultaneous storyline bindings.
   Mainline, IF, meeting/date, co-authored scene, and unknown continuity are
   independent interpretations; assigning one must not remove another.
+- Historical analysis must represent co-authored roleplay with actor references
+  and neutral events rather than reclassifying every transport turn as one
+  in-world speaker. One event may reference several actors; an alias without
+  enough evidence remains ambiguous or unresolved. Export `user/char` values
+  remain transport channels. Unresolved same-name mentions from different
+  source spans must not be auto-merged; exact-span repeats or explicitly
+  resolved identities may coalesce.
+- Historical event-to-route membership is many-to-many. The same event may
+  support mainline and IF bindings simultaneously, and reading either binding
+  must not activate a Narrative run or scene.
 - Many-to-many membership is a persistence and correction rule, not a player
   statistic. Ordinary source/result cards must not show `同时属于 N 条线`, route
   counts, or multi-membership badges. Association editing may live in a compact
@@ -826,6 +840,10 @@
   condition, reminder, Character Life, active NarrativeRun, scene, or played
   receipt. A historical route becomes a future draft only after the player
   explicitly chooses to continue it through the narrative line.
+- Completed extraction pass, bindings, workspace revision, and its
+  `truthEffect: none` receipt must commit atomically. A failed attempt persists
+  only an immutable failure receipt with usage metadata and cannot create a
+  candidate, route, scene, memory, or current-state write.
 - Model execution, prompts, visible publication adapters, vectorization, and
   semantic retrieval remain separate implementation boxes; defining the result
   contract does not claim those runtime paths exist.

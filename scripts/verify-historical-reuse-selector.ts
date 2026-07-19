@@ -87,7 +87,7 @@ const base = (
 });
 
 const resolved: ResolvedHistoricalInterpretation = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     workspaceId: 'workspace-a',
     workspaceRevision: 1,
     scope: { ...SCOPE_A },
@@ -104,6 +104,9 @@ const resolved: ResolvedHistoricalInterpretation = {
         kind: 'narrative_profile',
         title: '旧剧情地图',
         summary: '只作历史参考。',
+        actors: [],
+        events: [],
+        eventRouteBindings: [],
         routes: [],
         npcs: [],
         relationshipStages: [],

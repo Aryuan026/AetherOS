@@ -4,11 +4,21 @@ import {
     validateHistoryAnalysisPass,
     validateHistoryEvidenceBinding,
 } from '../../../domain/historyImport/analysis/contract.ts';
+import {
+    validateHistoricalNarrativeExtractionReceipt,
+    validateHistoricalNarrativeExtractionResult,
+} from '../../../domain/historyImport/analysis/extraction.ts';
+import type {
+    HistoricalNarrativeExtractionReceipt,
+    HistoricalNarrativeExtractionResult,
+    HistoricalNarrativeSourcePacket,
+} from '../../../domain/historyImport/analysis/extraction.ts';
 import type {
     HistoricalInterpretationBundle,
     HistoricalInterpretationWorkspace,
     HistoricalUserOverlay,
     HistoryAnalysisPass,
+    HistoryAnalysisRequest,
     HistoryEvidenceBinding,
 } from '../../../domain/historyImport/analysis/types.ts';
 import type { HistoryScope } from '../../../domain/historyImport/types.ts';
@@ -17,16 +27,18 @@ import {
     validateHistoryScope,
 } from '../../../domain/historyImport/contract.ts';
 
-export const HISTORY_ANALYSIS_DB_NAME = 'AetherOS_HistoryAnalysis:v2' as const;
+export const HISTORY_ANALYSIS_DB_NAME = 'AetherOS_HistoryAnalysis:v3' as const;
 export const HISTORY_ANALYSIS_DB_VERSION = 1 as const;
 export const HISTORY_ANALYSIS_PASS_STORE = 'history_analysis_passes' as const;
 export const HISTORY_ANALYSIS_WORKSPACE_STORE = 'historical_interpretation_workspaces' as const;
 export const HISTORY_EVIDENCE_BINDING_STORE = 'history_evidence_bindings' as const;
 export const HISTORICAL_USER_OVERLAY_STORE = 'historical_user_overlays' as const;
+export const HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE = 'historical_narrative_extraction_receipts' as const;
 export const HISTORY_ANALYSIS_SCOPE_CREATED_INDEX = 'scope_created' as const;
 export const HISTORY_ANALYSIS_WORKSPACE_SCOPE_INDEX = 'scope' as const;
 export const HISTORY_EVIDENCE_SCOPE_STATUS_INDEX = 'scope_status_updated' as const;
 export const HISTORICAL_OVERLAY_SCOPE_CREATED_INDEX = 'scope_created' as const;
+export const HISTORICAL_EXTRACTION_RECEIPT_SCOPE_CREATED_INDEX = 'scope_created' as const;
 
 const scopeKeyPath = [
     'scope.progressBundleId',
@@ -87,6 +99,9 @@ const allPassEntityIds = (pass: HistoryAnalysisPass): string[] => [
     ...pass.relationshipMemories.map(item => item.id),
     ...pass.timebookNodes.map(item => item.id),
     pass.narrativeProfile.id,
+    ...pass.narrativeProfile.actors.map(item => item.id),
+    ...pass.narrativeProfile.events.map(item => item.id),
+    ...pass.narrativeProfile.eventRouteBindings.map(item => item.id),
     ...pass.narrativeProfile.routes.map(item => item.id),
     ...pass.narrativeProfile.npcs.map(item => item.id),
     ...pass.narrativeProfile.relationshipStages.map(item => item.id),
@@ -139,6 +154,19 @@ export const openHistoryAnalysisDatabase = async (factory?: IDBFactory): Promise
             { unique: false },
         );
         overlayStore.createIndex('series_revision', ['seriesId', 'revision'], { unique: true });
+
+        const receiptStore = database.createObjectStore(
+            HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE,
+            { keyPath: 'id' },
+        );
+        receiptStore.createIndex(
+            HISTORICAL_EXTRACTION_RECEIPT_SCOPE_CREATED_INDEX,
+            [...scopeKeyPath, 'createdAt'],
+            { unique: false },
+        );
+        receiptStore.createIndex('analysis_run_id', 'analysisRunId', { unique: true });
+        receiptStore.createIndex('request_id', 'requestId', { unique: false });
+        receiptStore.createIndex('pass_id', 'passId', { unique: true });
     };
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
         request.onsuccess = () => resolve(request.result);
@@ -235,9 +263,10 @@ export const getHistoricalInterpretationBundle = async (input: {
 };
 
 /** Atomically append one immutable pass and extend the editable workspace. */
-export const publishHistoryAnalysisPass = async (input: {
+const publishHistoryAnalysisPassRecord = async (input: {
     pass: HistoryAnalysisPass;
     bindings?: HistoryEvidenceBinding[];
+    receipt?: HistoricalNarrativeExtractionReceipt;
     expectedWorkspaceRevision?: number;
     factory?: IDBFactory;
 }): Promise<HistoricalInterpretationWorkspace> => {
@@ -258,18 +287,39 @@ export const publishHistoryAnalysisPass = async (input: {
     if (new Set(bindings.map(binding => binding.id)).size !== bindings.length) {
         throw new Error('analysis pass binding ids must be unique');
     }
+    if (input.receipt) {
+        const receiptErrors = validateHistoricalNarrativeExtractionReceipt(input.receipt);
+        if (receiptErrors.length > 0) throw new Error(`invalid extraction receipt: ${receiptErrors.join('; ')}`);
+        if (input.receipt.status !== 'completed' || input.receipt.passId !== input.pass.id) {
+            throw new Error('completed extraction receipt must belong to the published pass');
+        }
+        if (input.receipt.analysisRunId !== input.pass.analysisRunId) {
+            throw new Error('extraction receipt crosses analysisRunId');
+        }
+        if (!scopesMatch(input.receipt.scope, input.pass.scope)) {
+            throw new Error('extraction receipt crosses analysis pass scope');
+        }
+        if (input.receipt.sourceRevisionFingerprint !== input.pass.sourceRevisionFingerprint) {
+            throw new Error('extraction receipt source revision fingerprint mismatch');
+        }
+        if (stableJson([...input.receipt.bindingIds].sort()) !== stableJson(bindings.map(item => item.id).sort())) {
+            throw new Error('extraction receipt binding index mismatch');
+        }
+    }
 
     const database = await openHistoryAnalysisDatabase(input.factory);
     const transaction = database.transaction([
         HISTORY_ANALYSIS_PASS_STORE,
         HISTORY_ANALYSIS_WORKSPACE_STORE,
         HISTORY_EVIDENCE_BINDING_STORE,
+        HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE,
     ], 'readwrite', { durability: 'strict' });
     const settled = transactionAsPromise(transaction);
     try {
         const passStore = transaction.objectStore(HISTORY_ANALYSIS_PASS_STORE);
         const workspaceStore = transaction.objectStore(HISTORY_ANALYSIS_WORKSPACE_STORE);
         const bindingStore = transaction.objectStore(HISTORY_EVIDENCE_BINDING_STORE);
+        const receiptStore = transaction.objectStore(HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE);
         const existingPass = await requestAsPromise(passStore.get(input.pass.id)) as HistoryAnalysisPass | undefined;
         const workspace = await getWorkspaceFromStore(workspaceStore, input.pass.scope);
 
@@ -290,6 +340,13 @@ export const publishHistoryAnalysisPass = async (input: {
                     throw new Error(`analysis pass ${input.pass.id} has inconsistent immutable binding ${binding.id}`);
                 }
             }
+            if (input.receipt) {
+                const existingReceipt = await requestAsPromise(receiptStore.get(input.receipt.id)) as
+                    HistoricalNarrativeExtractionReceipt | undefined;
+                if (!existingReceipt || stableJson(existingReceipt) !== stableJson(input.receipt)) {
+                    throw new Error(`analysis pass ${input.pass.id} has inconsistent immutable extraction receipt`);
+                }
+            }
             await settled;
             return workspace;
         }
@@ -306,6 +363,13 @@ export const publishHistoryAnalysisPass = async (input: {
             if (existing !== undefined) throw new Error(`evidence binding id ${binding.id} already exists`);
             await requestAsPromise(bindingStore.add(binding));
         }
+        if (input.receipt) {
+            const existingReceipt = await requestAsPromise(receiptStore.get(input.receipt.id));
+            if (existingReceipt !== undefined) {
+                throw new Error(`extraction receipt id ${input.receipt.id} already exists`);
+            }
+            await requestAsPromise(receiptStore.add(input.receipt));
+        }
         const next: HistoricalInterpretationWorkspace = workspace ? {
             ...workspace,
             contributingPassIds: [...workspace.contributingPassIds, input.pass.id],
@@ -314,7 +378,7 @@ export const publishHistoryAnalysisPass = async (input: {
             updatedAt: Math.max(workspace.updatedAt, input.pass.completedAt),
             revision: workspace.revision + 1,
         } : {
-            schemaVersion: 2,
+            schemaVersion: 3,
             id: createHistoryAnalysisWorkspaceId(input.pass.scope),
             scope: { ...input.pass.scope },
             contributingPassIds: [input.pass.id],
@@ -333,6 +397,104 @@ export const publishHistoryAnalysisPass = async (input: {
     } catch (error) {
         await settleAbort(transaction, settled);
         throw error;
+    } finally {
+        database.close();
+    }
+};
+
+export const publishHistoryAnalysisPass = async (input: {
+    pass: HistoryAnalysisPass;
+    bindings?: HistoryEvidenceBinding[];
+    expectedWorkspaceRevision?: number;
+    factory?: IDBFactory;
+}): Promise<HistoricalInterpretationWorkspace> => publishHistoryAnalysisPassRecord(input);
+
+/**
+ * Persist a history-owned extraction attempt. Completed pass, evidence
+ * bindings, workspace revision, and receipt share one transaction; a failed
+ * attempt stores only its immutable zero-write receipt.
+ */
+export const publishHistoricalNarrativeExtractionResult = async (input: {
+    request: HistoryAnalysisRequest;
+    packets: HistoricalNarrativeSourcePacket[];
+    promptVersion: string;
+    outputSchemaVersion: string;
+    result: HistoricalNarrativeExtractionResult;
+    expectedWorkspaceRevision?: number;
+    factory?: IDBFactory;
+}): Promise<
+    | {
+        status: 'completed';
+        workspace: HistoricalInterpretationWorkspace;
+        receipt: HistoricalNarrativeExtractionReceipt;
+    }
+    | {
+        status: 'failed';
+        receipt: HistoricalNarrativeExtractionReceipt;
+    }
+> => {
+    const errors = validateHistoricalNarrativeExtractionResult(input);
+    if (errors.length > 0) throw new Error(`invalid historical narrative extraction result: ${errors.join('; ')}`);
+    if (input.result.status === 'completed') {
+        const workspace = await publishHistoryAnalysisPassRecord({
+            pass: input.result.pass,
+            bindings: input.result.bindings,
+            receipt: input.result.receipt,
+            expectedWorkspaceRevision: input.expectedWorkspaceRevision,
+            factory: input.factory,
+        });
+        return { status: 'completed', workspace, receipt: input.result.receipt };
+    }
+
+    const receipt = input.result.receipt;
+    const database = await openHistoryAnalysisDatabase(input.factory);
+    const transaction = database.transaction(
+        HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE,
+        'readwrite',
+        { durability: 'strict' },
+    );
+    const settled = transactionAsPromise(transaction);
+    try {
+        const store = transaction.objectStore(HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE);
+        const existing = await requestAsPromise(store.get(receipt.id)) as HistoricalNarrativeExtractionReceipt | undefined;
+        if (existing) {
+            if (stableJson(existing) !== stableJson(receipt)) {
+                throw new Error(`extraction receipt id ${receipt.id} already contains another immutable attempt`);
+            }
+        } else {
+            await requestAsPromise(store.add(receipt));
+        }
+        await settled;
+        return { status: 'failed', receipt };
+    } catch (error) {
+        await settleAbort(transaction, settled);
+        throw error;
+    } finally {
+        database.close();
+    }
+};
+
+export const listHistoricalNarrativeExtractionReceipts = async (input: {
+    scope: HistoryScope;
+    factory?: IDBFactory;
+}): Promise<HistoricalNarrativeExtractionReceipt[]> => {
+    requireScope(input.scope);
+    const database = await openHistoryAnalysisDatabase(input.factory);
+    try {
+        const transaction = database.transaction(HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE, 'readonly');
+        const values = await requestAsPromise(
+            transaction.objectStore(HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE).getAll(),
+        ) as HistoricalNarrativeExtractionReceipt[];
+        return values
+            .filter(receipt => scopesMatch(receipt.scope, input.scope))
+            .map(receipt => {
+                const errors = validateHistoricalNarrativeExtractionReceipt(receipt);
+                if (errors.length > 0) {
+                    throw new Error(`stored extraction receipt ${receipt.id} is invalid: ${errors.join('; ')}`);
+                }
+                return receipt;
+            })
+            .sort((left, right) => left.createdAt - right.createdAt);
     } finally {
         database.close();
     }

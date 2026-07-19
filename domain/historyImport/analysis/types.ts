@@ -3,7 +3,7 @@ import type {
     HistorySourceTime,
 } from '../types.ts';
 
-export const HISTORY_ANALYSIS_SCHEMA_VERSION = 2 as const;
+export const HISTORY_ANALYSIS_SCHEMA_VERSION = 3 as const;
 
 export type HistoryAnalysisStrategy = 'quick_merge' | 'deep_daily';
 
@@ -188,6 +188,59 @@ export interface HistoricalOpenThread extends HistoricalDerivedBase {
     lastEvidenceAt?: HistorySourceTime;
 }
 
+export type HistoricalActorClass = 'user' | 'character' | 'npc' | 'unknown';
+export type HistoricalActorResolution = 'resolved' | 'ambiguous' | 'unresolved';
+
+/**
+ * One evidence-linked actor mention. It does not pretend that a turn has only
+ * one in-world speaker: a co-authored message may reference any number of
+ * actors, and unresolved aliases remain unresolved until evidence supports a
+ * merge.
+ */
+export interface HistoricalActorRef extends HistoricalDerivedBase {
+    kind: 'actor_ref';
+    actorClass: HistoricalActorClass;
+    mention: string;
+    aliases: string[];
+    resolution: HistoricalActorResolution;
+    resolvedNpcProfileId?: string;
+    asOf?: HistorySourceTime;
+}
+
+/**
+ * A neutral historical event reconstructed from one or more source spans.
+ * It is not a NarrativeScene and cannot imply that the event is current,
+ * played, or confirmed by the player.
+ */
+export interface HistoricalEventProfile extends HistoricalDerivedBase {
+    kind: 'event';
+    eventId: string;
+    title: string;
+    summary: string;
+    actorRefIds: string[];
+    startedAt?: HistorySourceTime;
+    endedAt?: HistorySourceTime;
+    surfaces: HistoricalInteractionSurface[];
+    location?: string;
+    topic?: string;
+    objective?: string;
+    outcome?: string;
+}
+
+/**
+ * Many-to-many event/route membership. Sharing one event across mainline, IF,
+ * or scene-only routes is legal and never moves it out of a sibling route.
+ * Profile ids are explicit so they cannot be confused with the event/route's
+ * own semantic ids.
+ */
+export interface HistoricalEventRouteBinding extends HistoricalDerivedBase {
+    kind: 'event_route_binding';
+    eventProfileId: string;
+    routeProfileId: string;
+    continuity: HistoricalContinuity;
+    branchId?: string;
+}
+
 /**
  * Source-linked historical route material available to a future narrative
  * director. It is not an active run, scene, receipt, or current-life state.
@@ -196,6 +249,9 @@ export interface HistoricalNarrativeProfile extends HistoricalDerivedBase {
     kind: 'narrative_profile';
     title: string;
     summary: string;
+    actors: HistoricalActorRef[];
+    events: HistoricalEventProfile[];
+    eventRouteBindings: HistoricalEventRouteBinding[];
     routes: HistoricalRouteProfile[];
     npcs: HistoricalNpcProfile[];
     relationshipStages: HistoricalRelationshipStage[];
@@ -227,6 +283,9 @@ export interface HistoryAnalysisPass {
 export type HistoryEvidenceTargetKind =
     | 'relationship_memory'
     | 'timebook_node'
+    | 'actor_ref'
+    | 'event'
+    | 'event_route_binding'
     | 'route'
     | 'npc'
     | 'relationship_stage'
@@ -314,6 +373,32 @@ export interface ResolvedHistoricalInterpretation {
     timebookNodes: HistoricalTimebookNode[];
     narrativeProfile: HistoricalNarrativeProfile | null;
     provenance: HistoricalEntityProvenance[];
+}
+
+/**
+ * History-owned, read-only narrative material. Narrative consumes this port;
+ * it does not own or cache historical actors, events, or route bindings.
+ */
+export interface HistoricalNarrativeProjection {
+    schemaVersion: typeof HISTORY_ANALYSIS_SCHEMA_VERSION;
+    workspaceId: string;
+    workspaceRevision: number;
+    scope: HistoryScope;
+    temporalClass: 'historical';
+    profileId: string;
+    title: string;
+    summary: string;
+    authority: HistoricalAuthority;
+    knowledge: HistoricalKnowledgeScope;
+    status: HistoricalResultStatus;
+    sourceRefs: HistorySourceSpan[];
+    actors: HistoricalActorRef[];
+    events: HistoricalEventProfile[];
+    eventRouteBindings: HistoricalEventRouteBinding[];
+    routes: HistoricalRouteProfile[];
+    npcs: HistoricalNpcProfile[];
+    relationshipStages: HistoricalRelationshipStage[];
+    openThreads: HistoricalOpenThread[];
 }
 
 export interface HistoricalInterpretationBundle {

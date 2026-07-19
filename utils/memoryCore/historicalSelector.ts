@@ -1,6 +1,7 @@
 import type {
   HistoricalAuthority,
   HistoricalDerivedBase,
+  HistoricalEventProfile,
   HistoricalKnowledgeScope,
   HistoricalNarrativeProfile,
   HistoricalRelationshipMemory,
@@ -25,6 +26,7 @@ import type {
 type HistoricalFamily =
   | 'relationship_memory'
   | 'timebook_node'
+  | 'event'
   | 'route'
   | 'npc'
   | 'relationship_stage'
@@ -60,7 +62,7 @@ export const HISTORICAL_SURFACE_POLICIES: Record<HistoricalConsumerSurface, Hist
   special_moments: { disposition: 'required', families: ['relationship_memory', 'timebook_node'], knowledge: PRIVATE_RELATIONSHIP_KNOWLEDGE, confirmedOnly: true, limit: 8 },
   contact_impression: { disposition: 'required', families: ['relationship_memory', 'timebook_node', 'relationship_stage'], knowledge: PRIVATE_RELATIONSHIP_KNOWLEDGE, requiresQuery: true, limit: 10 },
   exchange_diary: { disposition: 'required', families: ['relationship_memory', 'timebook_node'], knowledge: PRIVATE_RELATIONSHIP_KNOWLEDGE, requiresQuery: true, limit: 8 },
-  storydesk: { disposition: 'required', families: ['relationship_memory', 'timebook_node', 'route', 'npc', 'relationship_stage', 'open_thread'], knowledge: PRIVATE_RELATIONSHIP_KNOWLEDGE, limit: 16 },
+  storydesk: { disposition: 'required', families: ['relationship_memory', 'timebook_node', 'event', 'route', 'npc', 'relationship_stage', 'open_thread'], knowledge: PRIVATE_RELATIONSHIP_KNOWLEDGE, limit: 16 },
   guidebook: { disposition: 'required', families: ['relationship_memory', 'timebook_node', 'relationship_stage'], knowledge: PRIVATE_RELATIONSHIP_KNOWLEDGE, requiresQuery: true, limit: 8 },
   social: { disposition: 'filtered', families: ['relationship_memory', 'timebook_node'], knowledge: PUBLIC_KNOWLEDGE, confirmedOnly: true, requiresQuery: true, limit: 4 },
   check_phone: { disposition: 'filtered', families: ['relationship_memory', 'timebook_node'], knowledge: PRIVATE_RELATIONSHIP_KNOWLEDGE, requiresQuery: true, limit: 5 },
@@ -203,6 +205,17 @@ const narrativeCandidates = (
 ): Array<{ family: HistoricalFamily; candidate: WorldlineMemoryCandidate }> => {
   if (!profile) return [];
   return [
+    ...profile.events.map((item: HistoricalEventProfile) => ({
+      family: 'event' as const,
+      candidate: baseCandidate(
+        item,
+        charId,
+        item.title,
+        item.summary,
+        'event',
+        sourceTime(item.startedAt),
+      ),
+    })),
     ...profile.routes.map(item => ({
       family: 'route' as const,
       candidate: baseCandidate(item, charId, item.title, item.summary, 'route', sourceTime(item.startedAt), continuity(item.continuity)),

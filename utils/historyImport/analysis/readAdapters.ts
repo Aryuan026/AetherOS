@@ -2,6 +2,7 @@ import type {
     HistoricalAuthority,
     HistoricalKnowledgeScope,
     HistoricalNarrativeProfile,
+    HistoricalNarrativeProjection,
     HistorySourceSpan,
     ResolvedHistoricalInterpretation,
 } from '../../../domain/historyImport/analysis/types.ts';
@@ -135,3 +136,38 @@ export const readResolvedHistoricalInterpretation = async (input: {
     const bundle = await getHistoricalInterpretationBundle(input);
     return bundle ? resolveHistoricalInterpretation(bundle) : null;
 };
+
+export const projectHistoricalNarrativeProjection = (
+    resolved: ResolvedHistoricalInterpretation | null,
+): HistoricalNarrativeProjection | null => {
+    const profile = resolved?.narrativeProfile;
+    if (!resolved || !profile) return null;
+    return clone({
+        schemaVersion: resolved.schemaVersion,
+        workspaceId: resolved.workspaceId,
+        workspaceRevision: resolved.workspaceRevision,
+        scope: resolved.scope,
+        temporalClass: 'historical' as const,
+        profileId: profile.id,
+        title: profile.title,
+        summary: profile.summary,
+        authority: profile.authority,
+        knowledge: profile.knowledge,
+        status: profile.status,
+        sourceRefs: profile.sourceRefs,
+        actors: profile.actors,
+        events: profile.events,
+        eventRouteBindings: profile.eventRouteBindings,
+        routes: profile.routes,
+        npcs: profile.npcs,
+        relationshipStages: profile.relationshipStages,
+        openThreads: profile.openThreads,
+    });
+};
+
+export const readHistoricalNarrativeProjection = async (input: {
+    scope: HistoryScope;
+    factory?: IDBFactory;
+}): Promise<HistoricalNarrativeProjection | null> => projectHistoricalNarrativeProjection(
+    await readResolvedHistoricalInterpretation(input),
+);

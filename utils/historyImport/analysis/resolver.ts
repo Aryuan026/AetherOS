@@ -1,6 +1,9 @@
 import type {
+    HistoricalActorRef,
     HistoricalDerivedBase,
     HistoricalEntityProvenance,
+    HistoricalEventProfile,
+    HistoricalEventRouteBinding,
     HistoricalInterpretationBundle,
     HistoricalNarrativeProfile,
     HistoricalNpcProfile,
@@ -21,6 +24,9 @@ import { createHistoricalUserEntityId } from './indexedDbAnalysis.ts';
 type ResolvableEntity =
     | HistoricalRelationshipMemory
     | HistoricalTimebookNode
+    | HistoricalActorRef
+    | HistoricalEventProfile
+    | HistoricalEventRouteBinding
     | HistoricalRouteProfile
     | HistoricalNpcProfile
     | HistoricalRelationshipStage
@@ -92,6 +98,12 @@ const entityKind = (entity: ResolvableEntity): HistoryEvidenceTargetKind => enti
 const editableFields: Record<HistoryEvidenceTargetKind, readonly string[]> = {
     relationship_memory: ['title', 'summary', 'occurredAt', 'memoryPolicy'],
     timebook_node: ['title', 'summary', 'occurredAt', 'continuity', 'surface'],
+    actor_ref: ['actorClass', 'mention', 'aliases', 'resolution', 'resolvedNpcProfileId', 'asOf'],
+    event: [
+        'eventId', 'title', 'summary', 'actorRefIds', 'startedAt', 'endedAt', 'surfaces',
+        'location', 'topic', 'objective', 'outcome',
+    ],
+    event_route_binding: ['eventProfileId', 'routeProfileId', 'continuity', 'branchId'],
     route: [
         'title', 'summary', 'continuity', 'routeId', 'branchId', 'startedAt', 'endedAt',
         'relationshipStageId', 'npcProfileIds', 'openThreadIds', 'surfaces',
@@ -130,7 +142,7 @@ const userBase = (
     confidence: 1,
     status: 'confirmed',
     analysisRunId: `user-overlay:${overlay.seriesId}`,
-    extractorVersion: 'historical-user-overlay-v2',
+    extractorVersion: 'historical-user-overlay-v3',
     createdAt: overlay.createdAt,
     updatedAt: overlay.createdAt,
     revision: overlay.revision,
@@ -168,6 +180,42 @@ const createEntityFromOverlay = (overlay: HistoricalUserOverlay): ResolvableEnti
                 occurredAt: clone(overlay.patch.occurredAt) as HistoricalTimebookNode['occurredAt'],
                 continuity: (overlay.patch.continuity as HistoricalTimebookNode['continuity']) ?? 'unknown',
                 surface: (overlay.patch.surface as HistoricalTimebookNode['surface']) ?? 'unknown',
+            };
+        case 'actor_ref':
+            return {
+                ...base,
+                kind: 'actor_ref',
+                actorClass: (overlay.patch.actorClass as HistoricalActorRef['actorClass']) ?? 'unknown',
+                mention: requiredString(overlay.patch, 'mention', overlay.id),
+                aliases: clone(overlay.patch.aliases as string[] | undefined) ?? [],
+                resolution: (overlay.patch.resolution as HistoricalActorRef['resolution']) ?? 'unresolved',
+                resolvedNpcProfileId: overlay.patch.resolvedNpcProfileId as string | undefined,
+                asOf: clone(overlay.patch.asOf) as HistoricalActorRef['asOf'],
+            };
+        case 'event':
+            return {
+                ...base,
+                kind: 'event',
+                eventId: (overlay.patch.eventId as string | undefined) ?? id,
+                title: requiredString(overlay.patch, 'title', overlay.id),
+                summary: requiredString(overlay.patch, 'summary', overlay.id),
+                actorRefIds: clone(overlay.patch.actorRefIds as string[] | undefined) ?? [],
+                startedAt: clone(overlay.patch.startedAt) as HistoricalEventProfile['startedAt'],
+                endedAt: clone(overlay.patch.endedAt) as HistoricalEventProfile['endedAt'],
+                surfaces: clone(overlay.patch.surfaces as HistoricalEventProfile['surfaces'] | undefined) ?? ['unknown'],
+                location: overlay.patch.location as string | undefined,
+                topic: overlay.patch.topic as string | undefined,
+                objective: overlay.patch.objective as string | undefined,
+                outcome: overlay.patch.outcome as string | undefined,
+            };
+        case 'event_route_binding':
+            return {
+                ...base,
+                kind: 'event_route_binding',
+                eventProfileId: requiredString(overlay.patch, 'eventProfileId', overlay.id),
+                routeProfileId: requiredString(overlay.patch, 'routeProfileId', overlay.id),
+                continuity: (overlay.patch.continuity as HistoricalEventRouteBinding['continuity']) ?? 'unknown',
+                branchId: overlay.patch.branchId as string | undefined,
             };
         case 'route': {
             const continuity = (overlay.patch.continuity as HistoricalRouteProfile['continuity']) ?? 'unknown';
@@ -269,6 +317,35 @@ const semanticKey = (entity: ResolvableEntity): string => {
             return JSON.stringify([entity.kind, entity.title, entity.summary, entity.occurredAt, entity.memoryPolicy]);
         case 'timebook_node':
             return JSON.stringify([entity.kind, entity.title, entity.summary, entity.occurredAt, entity.continuity, entity.surface]);
+        case 'actor_ref':
+            if (entity.resolution === 'resolved') {
+                return JSON.stringify([
+                    entity.kind,
+                    entity.actorClass,
+                    entity.actorClass === 'npc' ? entity.resolvedNpcProfileId : entity.actorClass,
+                ]);
+            }
+            // Unresolved/ambiguous aliases are not identities. Only repeated
+            // extraction of the exact same source span may coalesce them.
+            return JSON.stringify([
+                entity.kind,
+                entity.actorClass,
+                entity.mention,
+                entity.aliases,
+                entity.resolution,
+                entity.asOf,
+                entity.sourceRefs.map(stableSourceRefKey).sort(),
+            ]);
+        case 'event':
+            return JSON.stringify([
+                entity.kind, entity.eventId, entity.title, entity.summary, entity.actorRefIds,
+                entity.startedAt, entity.endedAt, entity.surfaces, entity.location, entity.topic,
+                entity.objective, entity.outcome,
+            ]);
+        case 'event_route_binding':
+            return JSON.stringify([
+                entity.kind, entity.eventProfileId, entity.routeProfileId, entity.continuity, entity.branchId,
+            ]);
         case 'route':
             return JSON.stringify([
                 entity.kind, entity.continuity, entity.routeId, entity.branchId, entity.title, entity.summary,
@@ -309,6 +386,15 @@ const mergeEntries = <T extends ResolvableEntity>(left: EntityEntry<T>, right: E
         merged.openThreadIds = unique([...merged.openThreadIds, ...right.entity.openThreadIds]);
         merged.surfaces = unique([...merged.surfaces, ...right.entity.surfaces]);
         merged.relationshipStageId ??= right.entity.relationshipStageId;
+    } else if (merged.kind === 'actor_ref' && right.entity.kind === 'actor_ref') {
+        merged.aliases = unique([...merged.aliases, ...right.entity.aliases]);
+        merged.resolvedNpcProfileId ??= right.entity.resolvedNpcProfileId;
+        if (merged.resolution !== 'resolved' && right.entity.resolution === 'resolved') {
+            merged.resolution = 'resolved';
+        }
+    } else if (merged.kind === 'event' && right.entity.kind === 'event') {
+        merged.actorRefIds = unique([...merged.actorRefIds, ...right.entity.actorRefIds]);
+        merged.surfaces = unique([...merged.surfaces, ...right.entity.surfaces]);
     }
     return {
         entity: merged,
@@ -385,6 +471,9 @@ export const resolveHistoricalInterpretation = (
     bundle.passes.forEach(pass => {
         pass.relationshipMemories.forEach(entity => addPassEntity(entity, pass.id));
         pass.timebookNodes.forEach(entity => addPassEntity(entity, pass.id));
+        pass.narrativeProfile.actors.forEach(entity => addPassEntity(entity, pass.id));
+        pass.narrativeProfile.events.forEach(entity => addPassEntity(entity, pass.id));
+        pass.narrativeProfile.eventRouteBindings.forEach(entity => addPassEntity(entity, pass.id));
         pass.narrativeProfile.routes.forEach(entity => addPassEntity(entity, pass.id));
         pass.narrativeProfile.npcs.forEach(entity => addPassEntity(entity, pass.id));
         pass.narrativeProfile.relationshipStages.forEach(entity => addPassEntity(entity, pass.id));
@@ -426,6 +515,39 @@ export const resolveHistoricalInterpretation = (
     const npcs = coalesce(
         [...entries.values()].filter((entry): entry is EntityEntry<HistoricalNpcProfile> => entry.entity.kind === 'npc'),
     );
+    const visibleNpcIds = new Set(npcs.entries.map(entry => entry.entity.id));
+    const actorEntries = [...entries.values()]
+        .filter((entry): entry is EntityEntry<HistoricalActorRef> => entry.entity.kind === 'actor_ref')
+        .map(entry => {
+            const resolvedNpcProfileId = entry.entity.resolvedNpcProfileId
+                ? (npcs.alias.get(entry.entity.resolvedNpcProfileId) ?? entry.entity.resolvedNpcProfileId)
+                : undefined;
+            const keepsResolvedNpc = Boolean(resolvedNpcProfileId && visibleNpcIds.has(resolvedNpcProfileId));
+            return {
+                ...entry,
+                entity: {
+                    ...entry.entity,
+                    resolution: entry.entity.actorClass === 'npc' && !keepsResolvedNpc
+                        ? 'unresolved' as const
+                        : entry.entity.resolution,
+                    resolvedNpcProfileId: keepsResolvedNpc ? resolvedNpcProfileId : undefined,
+                },
+            };
+        });
+    const actors = coalesce(actorEntries);
+    const visibleActorIds = new Set(actors.entries.map(entry => entry.entity.id));
+    const eventEntries = [...entries.values()]
+        .filter((entry): entry is EntityEntry<HistoricalEventProfile> => entry.entity.kind === 'event')
+        .map(entry => ({
+            ...entry,
+            entity: {
+                ...entry.entity,
+                actorRefIds: unique(entry.entity.actorRefIds
+                    .map(id => actors.alias.get(id) ?? id)
+                    .filter(id => visibleActorIds.has(id))),
+            },
+        }));
+    const events = coalesce(eventEntries);
     const stages = coalesce(
         [...entries.values()].filter((entry): entry is EntityEntry<HistoricalRelationshipStage> => (
             entry.entity.kind === 'relationship_stage'
@@ -450,12 +572,37 @@ export const resolveHistoricalInterpretation = (
             },
         }));
     const routes = coalesce(routedEntries);
+    const visibleEventIds = new Set(events.entries.map(entry => entry.entity.id));
+    const visibleRouteById = new Map(routes.entries.map(entry => [entry.entity.id, entry.entity]));
+    const eventRouteEntries = [...entries.values()]
+        .filter((entry): entry is EntityEntry<HistoricalEventRouteBinding> => (
+            entry.entity.kind === 'event_route_binding'
+        ))
+        .map(entry => ({
+            ...entry,
+            entity: {
+                ...entry.entity,
+                eventProfileId: events.alias.get(entry.entity.eventProfileId) ?? entry.entity.eventProfileId,
+                routeProfileId: routes.alias.get(entry.entity.routeProfileId) ?? entry.entity.routeProfileId,
+            },
+        }))
+        .filter(entry => {
+            const route = visibleRouteById.get(entry.entity.routeProfileId);
+            return visibleEventIds.has(entry.entity.eventProfileId)
+                && Boolean(route)
+                && route!.continuity === entry.entity.continuity
+                && route!.branchId === entry.entity.branchId;
+        });
+    const eventRouteBindings = coalesce(eventRouteEntries);
 
     const visibleProfiles = bundle.passes
         .map(pass => pass.narrativeProfile)
         .filter(isVisible);
     const latestProfile = visibleProfiles[visibleProfiles.length - 1];
     const narrativeChildren = [
+        ...actors.entries,
+        ...events.entries,
+        ...eventRouteBindings.entries,
         ...routes.entries,
         ...npcs.entries,
         ...stages.entries,
@@ -464,7 +611,7 @@ export const resolveHistoricalInterpretation = (
     const narrativeProfile: HistoricalNarrativeProfile | null = latestProfile || narrativeChildren.length > 0
         ? {
             ...(latestProfile ? clone(latestProfile) : userBase({
-                schemaVersion: 2,
+                schemaVersion: 3,
                 id: `workspace-profile-overlay:${bundle.workspace.id}`,
                 seriesId: `workspace-profile:${bundle.workspace.id}`,
                 scope: bundle.workspace.scope,
@@ -490,7 +637,7 @@ export const resolveHistoricalInterpretation = (
                 : 1,
             status: visibleProfiles.some(profile => profile.status === 'confirmed') ? 'confirmed' : 'soft_canon',
             analysisRunId: `history-workspace:${bundle.workspace.id}`,
-            extractorVersion: 'historical-workspace-resolver-v2',
+            extractorVersion: 'historical-workspace-resolver-v3',
             createdAt: visibleProfiles.length > 0
                 ? Math.min(...visibleProfiles.map(profile => profile.createdAt))
                 : bundle.workspace.createdAt,
@@ -499,6 +646,9 @@ export const resolveHistoricalInterpretation = (
             kind: 'narrative_profile',
             title: latestProfile?.title ?? '我补充的历史线索',
             summary: latestProfile?.summary ?? '由玩家补充、尚未绑定原始记录的历史线索。',
+            actors: actors.entries.map(entry => entry.entity),
+            events: events.entries.map(entry => entry.entity),
+            eventRouteBindings: eventRouteBindings.entries.map(entry => entry.entity),
             routes: routes.entries.map(entry => entry.entity),
             npcs: npcs.entries.map(entry => entry.entity),
             relationshipStages: stages.entries.map(entry => entry.entity),
@@ -524,7 +674,7 @@ export const resolveHistoricalInterpretation = (
     }
 
     return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         workspaceId: bundle.workspace.id,
         workspaceRevision: bundle.workspace.revision,
         scope: { ...bundle.workspace.scope },

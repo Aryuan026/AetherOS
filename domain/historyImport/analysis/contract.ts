@@ -4,7 +4,10 @@ import {
     validateHistorySourceTime,
 } from '../contract.ts';
 import type {
+    HistoricalActorRef,
     HistoricalDerivedBase,
+    HistoricalEventProfile,
+    HistoricalEventRouteBinding,
     HistoricalInterpretationWorkspace,
     HistoricalNarrativeProfile,
     HistoricalRouteProfile,
@@ -94,6 +97,9 @@ const historyAnalysisStrategies = new Set(['quick_merge', 'deep_daily']);
 const evidenceTargetKinds = new Set([
     'relationship_memory',
     'timebook_node',
+    'actor_ref',
+    'event',
+    'event_route_binding',
     'route',
     'npc',
     'relationship_stage',
@@ -103,6 +109,14 @@ const evidencePurposes = new Set(['evidence', 'scene', 'turning_point', 'relatio
 const editableOverlayFields = {
     relationship_memory: new Set(['title', 'summary', 'occurredAt', 'memoryPolicy']),
     timebook_node: new Set(['title', 'summary', 'occurredAt', 'continuity', 'surface']),
+    actor_ref: new Set([
+        'actorClass', 'mention', 'aliases', 'resolution', 'resolvedNpcProfileId', 'asOf',
+    ]),
+    event: new Set([
+        'eventId', 'title', 'summary', 'actorRefIds', 'startedAt', 'endedAt', 'surfaces',
+        'location', 'topic', 'objective', 'outcome',
+    ]),
+    event_route_binding: new Set(['eventProfileId', 'routeProfileId', 'continuity', 'branchId']),
     route: new Set([
         'title', 'summary', 'continuity', 'routeId', 'branchId', 'startedAt', 'endedAt',
         'relationshipStageId', 'npcProfileIds', 'openThreadIds', 'surfaces',
@@ -201,6 +215,76 @@ const validateRoute = (
     return errors;
 };
 
+const validateActorRef = (
+    actor: HistoricalActorRef,
+    pass: HistoryAnalysisPass,
+    label: string,
+): string[] => {
+    const errors = validateDerivedBase(actor, pass, label);
+    if (!['user', 'character', 'npc', 'unknown'].includes(actor.actorClass)) {
+        errors.push(`${label} actorClass is invalid`);
+    }
+    if (!isNonEmpty(actor.mention)) errors.push(`${label} mention is required`);
+    if (!['resolved', 'ambiguous', 'unresolved'].includes(actor.resolution)) {
+        errors.push(`${label} resolution is invalid`);
+    }
+    if (new Set(actor.aliases).size !== actor.aliases.length || actor.aliases.some(alias => !isNonEmpty(alias))) {
+        errors.push(`${label} aliases must be unique non-empty strings`);
+    }
+    if (actor.resolution === 'resolved' && actor.actorClass === 'npc' && !isNonEmpty(actor.resolvedNpcProfileId)) {
+        errors.push(`${label} resolved NPC requires resolvedNpcProfileId`);
+    }
+    if (actor.resolution === 'resolved' && actor.actorClass === 'unknown') {
+        errors.push(`${label} unknown actor cannot claim resolved identity`);
+    }
+    if (actor.resolution !== 'resolved' && actor.resolvedNpcProfileId) {
+        errors.push(`${label} unresolved actor must not claim resolvedNpcProfileId`);
+    }
+    if (actor.actorClass !== 'npc' && actor.resolvedNpcProfileId) {
+        errors.push(`${label} only NPC actor refs may point to an NPC profile`);
+    }
+    if (actor.asOf) errors.push(...validateHistorySourceTime(actor.asOf));
+    return errors;
+};
+
+const validateEvent = (
+    event: HistoricalEventProfile,
+    pass: HistoryAnalysisPass,
+    label: string,
+): string[] => {
+    const errors = validateDerivedBase(event, pass, label);
+    if (!isNonEmpty(event.eventId)) errors.push(`${label} eventId is required`);
+    if (!isNonEmpty(event.title)) errors.push(`${label} title is required`);
+    if (!isNonEmpty(event.summary)) errors.push(`${label} summary is required`);
+    if (new Set(event.actorRefIds).size !== event.actorRefIds.length) {
+        errors.push(`${label} actorRefIds must be unique`);
+    }
+    if (event.surfaces.length < 1 || event.surfaces.some(surface => !historicalSurfaces.has(surface))) {
+        errors.push(`${label} surfaces are invalid`);
+    }
+    if (event.startedAt) errors.push(...validateHistorySourceTime(event.startedAt));
+    if (event.endedAt) errors.push(...validateHistorySourceTime(event.endedAt));
+    return errors;
+};
+
+const validateEventRouteBinding = (
+    binding: HistoricalEventRouteBinding,
+    pass: HistoryAnalysisPass,
+    label: string,
+): string[] => {
+    const errors = validateDerivedBase(binding, pass, label);
+    if (!isNonEmpty(binding.eventProfileId)) errors.push(`${label} eventProfileId is required`);
+    if (!isNonEmpty(binding.routeProfileId)) errors.push(`${label} routeProfileId is required`);
+    if (!historicalContinuities.has(binding.continuity)) errors.push(`${label} continuity is invalid`);
+    if ((binding.continuity === 'mainline' || binding.continuity === 'if_line') && !isNonEmpty(binding.branchId)) {
+        errors.push(`${label} ${binding.continuity} requires branchId`);
+    }
+    if (binding.continuity === 'unknown' && binding.branchId) {
+        errors.push(`${label} unknown continuity must not claim branchId`);
+    }
+    return errors;
+};
+
 const validateNarrativeProfile = (
     profile: HistoricalNarrativeProfile,
     pass: HistoryAnalysisPass,
@@ -208,6 +292,15 @@ const validateNarrativeProfile = (
     const errors = validateDerivedBase(profile, pass, 'narrativeProfile');
     if (!isNonEmpty(profile.title)) errors.push('narrativeProfile title is required');
     if (!isNonEmpty(profile.summary)) errors.push('narrativeProfile summary is required');
+    profile.actors.forEach((actor, index) => {
+        errors.push(...validateActorRef(actor, pass, `narrativeProfile.actors[${index}]`));
+    });
+    profile.events.forEach((event, index) => {
+        errors.push(...validateEvent(event, pass, `narrativeProfile.events[${index}]`));
+    });
+    profile.eventRouteBindings.forEach((binding, index) => {
+        errors.push(...validateEventRouteBinding(binding, pass, `narrativeProfile.eventRouteBindings[${index}]`));
+    });
     profile.routes.forEach((route, index) => {
         errors.push(...validateRoute(route, pass, `narrativeProfile.routes[${index}]`));
     });
@@ -237,6 +330,9 @@ const validateNarrativeProfile = (
     });
 
     const routeIds = new Set(profile.routes.map(route => route.id));
+    const actorIds = new Set(profile.actors.map(actor => actor.id));
+    const eventIds = new Set(profile.events.map(event => event.id));
+    const eventRouteBindingIds = new Set(profile.eventRouteBindings.map(binding => binding.id));
     const npcIds = new Set(profile.npcs.map(npc => npc.id));
     const stageIds = new Set(profile.relationshipStages.map(stage => stage.id));
     const threadIds = new Set(profile.openThreads.map(thread => thread.id));
@@ -251,6 +347,27 @@ const validateNarrativeProfile = (
             errors.push(`route ${route.id} points to missing relationship stage ${route.relationshipStageId}`);
         }
     });
+    profile.actors.forEach(actor => {
+        if (actor.resolvedNpcProfileId && !npcIds.has(actor.resolvedNpcProfileId)) {
+            errors.push(`actor ref ${actor.id} points to missing NPC profile ${actor.resolvedNpcProfileId}`);
+        }
+    });
+    profile.events.forEach(event => {
+        event.actorRefIds.forEach(id => {
+            if (!actorIds.has(id)) errors.push(`event ${event.id} points to missing actor ref ${id}`);
+        });
+    });
+    profile.eventRouteBindings.forEach(binding => {
+        if (!eventIds.has(binding.eventProfileId)) {
+            errors.push(`event route binding ${binding.id} points to missing event ${binding.eventProfileId}`);
+        }
+        const route = profile.routes.find(candidate => candidate.id === binding.routeProfileId);
+        if (!route) {
+            errors.push(`event route binding ${binding.id} points to missing route ${binding.routeProfileId}`);
+        } else if (route.continuity !== binding.continuity || route.branchId !== binding.branchId) {
+            errors.push(`event route binding ${binding.id} does not match route continuity`);
+        }
+    });
     profile.npcs.forEach(npc => {
         if (npc.routeId && !profile.routes.some(route => route.routeId === npc.routeId)) {
             errors.push(`NPC ${npc.id} points to missing routeId ${npc.routeId}`);
@@ -262,6 +379,11 @@ const validateNarrativeProfile = (
         }
     });
     if (routeIds.size !== profile.routes.length) errors.push('narrative route ids must be unique');
+    if (actorIds.size !== profile.actors.length) errors.push('historical actor ref ids must be unique');
+    if (eventIds.size !== profile.events.length) errors.push('historical event ids must be unique');
+    if (eventRouteBindingIds.size !== profile.eventRouteBindings.length) {
+        errors.push('historical event route binding ids must be unique');
+    }
     if (npcIds.size !== profile.npcs.length) errors.push('narrative NPC profile ids must be unique');
     if (stageIds.size !== profile.relationshipStages.length) errors.push('relationship stage ids must be unique');
     if (threadIds.size !== profile.openThreads.length) errors.push('open thread ids must be unique');
@@ -374,6 +496,9 @@ export const validateHistoryAnalysisPass = (pass: HistoryAnalysisPass): string[]
         ...pass.relationshipMemories.map(item => item.id),
         ...pass.timebookNodes.map(item => item.id),
         pass.narrativeProfile.id,
+        ...pass.narrativeProfile.actors.map(item => item.id),
+        ...pass.narrativeProfile.events.map(item => item.id),
+        ...pass.narrativeProfile.eventRouteBindings.map(item => item.id),
         ...pass.narrativeProfile.routes.map(item => item.id),
         ...pass.narrativeProfile.npcs.map(item => item.id),
         ...pass.narrativeProfile.relationshipStages.map(item => item.id),
@@ -454,20 +579,34 @@ export const validateHistoricalUserOverlay = (overlay: HistoricalUserOverlay): s
         if (overlay.targetId) errors.push('create overlay must not claim an existing targetId');
         const requiredFields = overlay.targetKind === 'npc'
             ? ['name']
-            : overlay.targetKind === 'relationship_stage'
-                ? ['label', 'summary']
-                : ['title', 'summary'];
+            : overlay.targetKind === 'actor_ref'
+                ? ['mention']
+                : overlay.targetKind === 'event_route_binding'
+                    ? ['eventProfileId', 'routeProfileId', 'continuity']
+                    : overlay.targetKind === 'relationship_stage'
+                        ? ['label', 'summary']
+                        : ['title', 'summary'];
         requiredFields.forEach(field => {
             const value = overlay.patch[field];
             if (typeof value !== 'string' || !value.trim()) {
                 errors.push(`create overlay requires ${field}`);
             }
         });
+        if (
+            overlay.targetKind === 'event_route_binding'
+            && (overlay.patch.continuity === 'mainline' || overlay.patch.continuity === 'if_line')
+            && (typeof overlay.patch.branchId !== 'string' || !overlay.patch.branchId.trim())
+        ) {
+            errors.push('create event route binding requires branchId for mainline/if_line');
+        }
     } else if (!isNonEmpty(overlay.targetId)) {
         errors.push(`${overlay.operation} overlay requires targetId`);
     }
     if (overlay.operation === 'update' && Object.keys(overlay.patch).length < 1) {
         errors.push('update overlay patch must not be empty');
+    }
+    if (overlay.targetKind === 'event_route_binding' && overlay.operation === 'update') {
+        errors.push('event route binding identity is immutable; hide and create another binding instead');
     }
     if (overlay.operation === 'hide' || overlay.operation === 'restore') {
         if (Object.keys(overlay.patch).length > 0) errors.push(`${overlay.operation} overlay patch must be empty`);

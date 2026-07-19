@@ -475,7 +475,7 @@ The selector currently reuses:
 - `anniversaries` for confirmed shared dates.
 - `assets/timebook_first_contact_${charId}` for the first-contact anchor.
 - a tiny recent slice of `char.memories` for role-private remembered moments.
-- resolved `AetherOS_HistoryAnalysis:v2` interpretations through a full-scope,
+- resolved `AetherOS_HistoryAnalysis:v3` interpretations through a full-scope,
   exhaustively classified surface adapter.
 
 It returns a tiny markdown block plus structured candidates. Future durable
@@ -1328,17 +1328,21 @@ likewise use v2 namespaces and do not read pre-product review databases.
 Daily archive search renders source fragments as `原文片段`. Voice clipping is
 limited to explicit user/char export channels.
 
-The independent `AetherOS_HistoryAnalysis:v2` foundation has four stores:
+The independent `AetherOS_HistoryAnalysis:v3` foundation has five stores:
 
 - `history_analysis_passes` — immutable completed model results;
 - `historical_interpretation_workspaces` — one editable map per relationship;
 - `history_evidence_bindings` — additive many-to-many source associations;
-- `historical_user_overlays` — append-only correction revisions.
+- `historical_user_overlays` — append-only correction revisions;
+- `historical_narrative_extraction_receipts` — immutable completed/failed
+  attempt metadata with `truthEffect: "none"`.
 
 Every index and record uses the full
-`progressBundleId + personaMaskId + charId` scope. The pre-product v1 analysis
-database is not read or migrated. Derived analysis is rebuildable; raw Daily
-Archive documents remain the durable evidence source.
+`progressBundleId + personaMaskId + charId` scope. The pre-product v2 derived
+analysis database is not read or migrated into the required actor/event shape.
+This is an explicit clean break made before product release: derived analysis is
+rebuildable, while raw History Archive and Daily Archive v2 documents remain
+untouched as the durable evidence source.
 
 Every historical derived entity also owns an explicit knowledge boundary:
 
@@ -1358,7 +1362,7 @@ duplicate can never downgrade a private candidate into public delivery.
 
 ```ts
 interface HistoryAnalysisPass {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   scope: HistoryScope;
   requestId: string;
@@ -1376,7 +1380,7 @@ interface HistoryAnalysisPass {
 }
 
 interface HistoricalInterpretationWorkspace {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   scope: HistoryScope;
   contributingPassIds: string[];
@@ -1389,12 +1393,13 @@ interface HistoricalInterpretationWorkspace {
 }
 
 interface HistoryEvidenceBinding {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   scope: HistoryScope;
   sourceRef: HistorySourceSpan;
-  targetKind: 'relationship_memory' | 'timebook_node' | 'route' | 'npc' |
-    'relationship_stage' | 'open_thread';
+  targetKind: 'relationship_memory' | 'timebook_node' | 'actor_ref' | 'event' |
+    'event_route_binding' | 'route' | 'npc' | 'relationship_stage' |
+    'open_thread';
   targetId: string;
   purpose: 'evidence' | 'scene' | 'turning_point' | 'relationship_change';
   origin: 'analysis' | 'user';
@@ -1406,7 +1411,7 @@ interface HistoryEvidenceBinding {
 }
 
 interface HistoricalUserOverlay {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   seriesId: string;
   previousOverlayId?: string;
@@ -1422,6 +1427,57 @@ interface HistoricalUserOverlay {
   createdAt: number;
 }
 ```
+
+`HistoricalNarrativeProfile` now contains three neutral structures before the
+Narrative lifecycle:
+
+```ts
+interface HistoricalActorRef extends HistoricalDerivedBase {
+  kind: 'actor_ref';
+  actorClass: 'user' | 'character' | 'npc' | 'unknown';
+  mention: string;
+  aliases: string[];
+  resolution: 'resolved' | 'ambiguous' | 'unresolved';
+  resolvedNpcProfileId?: string;
+  asOf?: HistorySourceTime;
+}
+
+interface HistoricalEventProfile extends HistoricalDerivedBase {
+  kind: 'event';
+  eventId: string;
+  title: string;
+  summary: string;
+  actorRefIds: string[];
+  startedAt?: HistorySourceTime;
+  endedAt?: HistorySourceTime;
+  surfaces: HistoricalInteractionSurface[];
+  location?: string;
+  topic?: string;
+  objective?: string;
+  outcome?: string;
+}
+
+interface HistoricalEventRouteBinding extends HistoricalDerivedBase {
+  kind: 'event_route_binding';
+  eventProfileId: string; // HistoricalEventProfile.id
+  routeProfileId: string; // HistoricalRouteProfile.id
+  continuity: HistoricalContinuity;
+  branchId?: string;
+}
+```
+
+These are immutable historical interpretations, not per-turn speaker labels or
+played scenes. The history-owned `HistoricalNarrativeProjection` exposes them
+to Narrative with workspace revision and exact relationship scope; its provider
+has no run, scene, receipt, Memory Promotion, Scheduler, or Character Life
+writer.
+
+Hidden extraction packets retain only the export transport role
+`user | char | unknown`. This role never names an in-world actor; actor identity
+is represented only by evidence-linked `HistoricalActorRef` records. Ambiguous
+or unresolved aliases from different source spans are kept separate. They may
+coalesce automatically only when a repeated pass points to the exact same source
+span, or after an explicit resolved identity is available.
 
 `HistoryAnalysisPass` is append-only and published only when complete. Request
 and running lifecycle state remains in the existing history job/request layer.
@@ -1442,8 +1498,10 @@ as extracted evidence. The resolved read projection applies authority order and
 overlays, coalesces exact duplicate visible cards, retains all pass provenance,
 and continues to forbid current-state and lived-experience fields.
 
-Publishing a pass plus its analysis-owned bindings is one strict IndexedDB
-transaction. Binding status updates and overlay appends use optimistic workspace
+Publishing an extracted pass, its analysis-owned bindings, its workspace
+revision, and its completed extraction receipt is one strict IndexedDB
+transaction. A failed attempt writes only an immutable zero-truth receipt with
+its reason and usage metadata. Binding status updates and overlay appends use optimistic workspace
 revision checks. Overlay revisions preserve target identity through
 `seriesId + previousOverlayId`; add, edit, hide, and restore never rewrite an
 earlier revision.

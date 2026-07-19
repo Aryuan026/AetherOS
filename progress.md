@@ -1,5 +1,50 @@
 # AetherOS Progress
 
+## 2026-07-19 Historical Actor/Event/Route Projection Foundation
+
+- done:
+  - Added history-owned `HistoricalActorRef`, `HistoricalEventProfile`, and
+    non-exclusive `HistoricalEventRouteBinding` records. Co-authored turns may
+    reference several actors; unresolved aliases remain unresolved instead of
+    being forced into per-message speaker labels.
+  - Added a typed historical extraction port with hidden source packets,
+    metadata-only token estimates, completion/failure receipts, and an explicit
+    all-false truth-write policy. It does not reuse live
+    `MemoryInterpretationPass` and has no Memory Promotion, Narrative, Scheduler,
+    or Character Life writer.
+  - Kept export `user/char` values as transport channels rather than world
+    actors. Unresolved same-name mentions from different source spans remain
+    separate; only exact-span repeats or explicitly resolved identities may
+    coalesce.
+  - Added an append-only extraction receipt store. Completed pass, bindings,
+    workspace revision, and receipt commit atomically; failed attempts retain
+    reason/usage metadata without creating any historical candidate or truth.
+  - Extended the immutable history resolver so repeated passes coalesce actors
+    and events while one event may retain simultaneous mainline and IF bindings.
+  - Replaced the profile-only Narrative adapter with a history-owned frozen
+    `HistoricalNarrativeProjection` carrying workspace revision, actors, events,
+    event-route bindings, routes, NPCs, relationship stages, and historical open
+    threads under exact triple scope.
+  - Advanced only the rebuildable analysis namespace to
+    `AetherOS_HistoryAnalysis:v3`; raw History Archive and Daily Archive v2
+    evidence remain untouched. No fallback reader aliases the old derived shape
+    into the new required actor/event schema.
+- verified:
+  - History analysis fixtures cover actor scope rejection, missing-route
+    rejection, one event bound to mainline plus IF, projection isolation, source
+    packet/receipt accounting, same-name unresolved actor isolation, persistent
+    success/failure receipts, and zero truth writes.
+  - `npm run typecheck`, focused history analysis, `npm run
+    verify:history-import`, `npm run verify:narrative`, `npm run
+    verify:daily-archive`, `npm run verify:memory-dm-evidence`, `npm run
+    verify:interaction-evidence`, `npm run verify:chat-reply-mode`, `npm run
+    build:quiet`, and `npm run verify:health` pass. Build output retains only the
+    existing Browserslist-age and large-chunk warnings.
+- boundary:
+  - This is a typed extraction/read substrate only. No model prompt, Calendar
+    execution UI, route continuation, Memory Promotion, run/scene/receipt,
+    current-state, or Character Life write is activated.
+
 ## 2026-07-19 Memory Interpretation Boundary — Extraction Before Promotion
 
 - done:

@@ -12,6 +12,7 @@ import type { NarrativeDirectorScope } from '../domain/narrative/directorContext
 import type {
     HistoricalDerivedBase,
     HistoricalNarrativeProfile,
+    HistoricalNarrativeProjection,
     HistorySourceSpan,
 } from '../domain/historyImport/analysis/types.ts';
 import type {
@@ -20,7 +21,7 @@ import type {
     NarrativeScene,
     NovelNarrativeState,
 } from '../domain/narrative/types.ts';
-import { createHistoryAnalysisProfileProvider } from '../utils/narrative/historyAnalysisProfileProvider.ts';
+import { createHistoryAnalysisProjectionProvider } from '../utils/narrative/historyAnalysisProjectionProvider.ts';
 
 const T0 = 1_768_600_000_000;
 const SCOPE_A: NarrativeDirectorScope = {
@@ -153,6 +154,33 @@ const historicalProfile: HistoricalNarrativeProfile = {
     kind: 'narrative_profile',
     title: '旧世界路线图',
     summary: '只供主持后台参考，不代表当前已续写。',
+    actors: [{
+        ...historicalBase('historical-actor-director', 'source_explicit'),
+        kind: 'actor_ref',
+        actorClass: 'npc',
+        mention: '守门人',
+        aliases: ['门卫'],
+        resolution: 'resolved',
+        resolvedNpcProfileId: 'historical-npc-director',
+    }],
+    events: [{
+        ...historicalBase('historical-event-director', 'source_inferred'),
+        kind: 'event',
+        eventId: 'historical-event-id-director',
+        title: '雨夜托付',
+        summary: '守门人替两人保管了尚未拆开的信。',
+        actorRefIds: ['historical-actor-director'],
+        surfaces: ['coauthored_scene'],
+        location: '旧城门',
+    }],
+    eventRouteBindings: [{
+        ...historicalBase('historical-event-route-director', 'source_inferred'),
+        kind: 'event_route_binding',
+        eventProfileId: 'historical-event-director',
+        routeProfileId: 'historical-route-director',
+        continuity: 'mainline',
+        branchId: 'historical-branch-main',
+    }],
     routes: [{
         ...historicalBase('historical-route-director', 'user_confirmed'),
         kind: 'route',
@@ -196,11 +224,32 @@ const historicalProfile: HistoricalNarrativeProfile = {
     }],
 };
 const profileBefore = structuredClone(historicalProfile);
+const historicalProjection: HistoricalNarrativeProjection = {
+    schemaVersion: 3,
+    workspaceId: 'history-workspace-director',
+    workspaceRevision: 4,
+    scope: { ...SCOPE_A },
+    temporalClass: 'historical',
+    profileId: historicalProfile.id,
+    title: historicalProfile.title,
+    summary: historicalProfile.summary,
+    authority: historicalProfile.authority,
+    knowledge: historicalProfile.knowledge,
+    status: historicalProfile.status,
+    sourceRefs: structuredClone(historicalProfile.sourceRefs),
+    actors: structuredClone(historicalProfile.actors),
+    events: structuredClone(historicalProfile.events),
+    eventRouteBindings: structuredClone(historicalProfile.eventRouteBindings),
+    routes: structuredClone(historicalProfile.routes),
+    npcs: structuredClone(historicalProfile.npcs),
+    relationshipStages: structuredClone(historicalProfile.relationshipStages),
+    openThreads: structuredClone(historicalProfile.openThreads),
+};
 
 const context = createNarrativeDirectorContext({
     scope: SCOPE_A,
     currentTruth,
-    historicalProfile,
+    historicalProjection,
 });
 assert.deepEqual(NARRATIVE_DIRECTOR_AUTHORITY_ORDER, [
     'reconstructed',
@@ -223,7 +272,9 @@ assert.equal(resolveHistoricalNarrativeAuthority(historicalProfile.relationshipS
 assert.deepEqual(historicalProfile, profileBefore, 'context assembly must not mutate historical profile');
 assert.deepEqual(narrative, narrativeBefore, 'historical context must not mutate current narrative truth');
 assert.equal(Object.isFrozen(context), true);
-assert.equal(Object.isFrozen(context.historical?.profile.routes[0]), true);
+assert.equal(Object.isFrozen(context.historical?.projection.routes[0]), true);
+assert.equal(context.historical?.projection.events[0].title, '雨夜托付');
+assert.equal(context.historical?.projection.eventRouteBindings.length, 1);
 assert.equal(Object.values(NARRATIVE_DIRECTOR_READ_ONLY_POLICY).every(value => value === false), true);
 assert.equal(Object.values(context.readOnlyPolicy).every(value => value === false), true);
 assert.throws(() => {
@@ -234,34 +285,34 @@ assert.equal(activeRun.status, 'active');
 assert.throws(() => createNarrativeDirectorContext({
     scope: SCOPE_A,
     currentTruth,
-    historicalProfile: { ...historicalProfile, scope: SCOPE_B },
+    historicalProjection: { ...historicalProjection, scope: SCOPE_B },
 }), /crosses Narrative Director relationship scope/);
 assert.throws(() => createNarrativeDirectorContext({
     scope: SCOPE_A,
     currentTruth,
-    historicalProfile: {
-        ...historicalProfile,
-        routes: [{ ...historicalProfile.routes[0], scope: SCOPE_B }],
+    historicalProjection: {
+        ...historicalProjection,
+        routes: [{ ...historicalProjection.routes[0], scope: SCOPE_B }],
     },
-}), /historicalProfile.routes\[0\] crosses Narrative Director relationship scope/);
+}), /historicalProjection.routes\[0\] crosses Narrative Director relationship scope/);
 assert.throws(() => createNarrativeDirectorContext({
     scope: SCOPE_A,
     currentTruth: { ...currentTruth, scope: SCOPE_B },
-    historicalProfile,
+    historicalProjection,
 }), /currentTruth crosses Narrative Director relationship scope/);
 assert.throws(() => createNarrativeDirectorContext({
     scope: SCOPE_A,
     currentTruth,
-    historicalProfile: { ...historicalProfile, status: 'stale' },
+    historicalProjection: { ...historicalProjection, status: 'stale' },
 }), /not visible to Narrative Director/);
 
 let providerReadCount = 0;
 let providerScope: NarrativeDirectorScope | undefined;
-const injectedProvider = createHistoryAnalysisProfileProvider({
-    readViews: async ({ scope }) => {
+const injectedProvider = createHistoryAnalysisProjectionProvider({
+    readProjection: async ({ scope }) => {
         providerReadCount += 1;
         providerScope = { ...scope };
-        return { narrativeProfile: historicalProfile };
+        return historicalProjection;
     },
 });
 const loadedContext = await loadNarrativeDirectorContext({
@@ -271,15 +322,13 @@ const loadedContext = await loadNarrativeDirectorContext({
 });
 assert.equal(providerReadCount, 1);
 assert.deepEqual(providerScope, SCOPE_A);
-assert.equal(loadedContext.historical?.profile.id, historicalProfile.id);
+assert.equal(loadedContext.historical?.projection.profileId, historicalProfile.id);
 
 await assert.rejects(() => loadNarrativeDirectorContext({
     scope: SCOPE_A,
     currentTruth,
-    historicalProvider: createHistoryAnalysisProfileProvider({
-        readViews: async () => ({
-            narrativeProfile: { ...historicalProfile, scope: SCOPE_B },
-        }),
+    historicalProvider: createHistoryAnalysisProjectionProvider({
+        readProjection: async () => ({ ...historicalProjection, scope: SCOPE_B }),
     }),
 }), /crosses Narrative Director relationship scope/);
 

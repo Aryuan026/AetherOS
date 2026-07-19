@@ -5,10 +5,12 @@ import {
     HISTORY_ANALYSIS_AUTHORITY_ORDER,
     HISTORY_ANALYSIS_HOLD,
     HISTORY_ANALYSIS_IDENTITY_CONTRACT,
+    HISTORICAL_NARRATIVE_EXTRACTION_TRUTH_POLICY,
     createHistoryAnalysisPreflight,
     validateHistoricalUserOverlay,
     validateHistoryAnalysisPass,
     validateHistoryAnalysisRequest,
+    validateHistoricalNarrativeExtractionResult,
 } from '../domain/historyImport/analysis/index.ts';
 import type {
     HistoricalDerivedBase,
@@ -17,24 +19,30 @@ import type {
     HistoryAnalysisRequest,
     HistoryEvidenceBinding,
     HistorySourceSpan,
+    HistoricalNarrativeSourcePacket,
 } from '../domain/historyImport/analysis/index.ts';
 import type { HistoryScope } from '../domain/historyImport/types.ts';
 import {
     appendHistoricalUserOverlay,
     createHistoricalUserEntityId,
     getHistoricalInterpretationBundle,
+    HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE,
     HISTORICAL_USER_OVERLAY_STORE,
     HISTORY_ANALYSIS_DB_NAME,
     HISTORY_ANALYSIS_PASS_STORE,
     HISTORY_ANALYSIS_SCOPE_CREATED_INDEX,
     HISTORY_ANALYSIS_WORKSPACE_STORE,
     HISTORY_EVIDENCE_BINDING_STORE,
+    listHistoricalNarrativeExtractionReceipts,
     openHistoryAnalysisDatabase,
+    publishHistoricalNarrativeExtractionResult,
     publishHistoryAnalysisPass,
     saveHistoryEvidenceBinding,
 } from '../utils/historyImport/analysis/indexedDbAnalysis.ts';
 import {
+    projectHistoricalNarrativeProjection,
     projectHistoricalRelationshipViews,
+    readHistoricalNarrativeProjection,
     readHistoricalRelationshipViews,
 } from '../utils/historyImport/analysis/readAdapters.ts';
 import { resolveHistoricalInterpretation } from '../utils/historyImport/analysis/resolver.ts';
@@ -68,14 +76,14 @@ const preflight = createHistoryAnalysisPreflight({
     ],
     generatedAt: T0,
 });
-assert.equal(preflight.schemaVersion, 2);
+assert.equal(preflight.schemaVersion, 3);
 assert.equal(preflight.plans.quick_merge.sourceMessageCount, 5_000);
 assert.equal(preflight.plans.quick_merge.estimatedCalls, 3);
 assert.equal(preflight.plans.deep_daily.estimatedCalls, 6);
 assert.ok(preflight.plans.deep_daily.estimatedInputTokens > preflight.plans.quick_merge.estimatedInputTokens);
 
 const request: HistoryAnalysisRequest = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: 'analysis-request-a-1',
     scope: SCOPE_A,
     sourceRevisionFingerprint: preflight.sourceRevisionFingerprint,
@@ -116,7 +124,7 @@ const derivedBase = (input: {
     confidence: 0.82,
     status: 'soft_canon',
     analysisRunId: input.analysisRunId,
-    extractorVersion: 'history-analysis-fixture-v2',
+    extractorVersion: 'history-analysis-fixture-v3',
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
     revision: 1,
@@ -136,16 +144,20 @@ const createPass = (input: {
         createdAt: input.createdAt,
     });
     const npcId = `${input.id}:npc:keeper`;
+    const actorId = `${input.id}:actor:keeper`;
+    const eventId = `${input.id}:event:rain-letter`;
+    const mainRouteRecordId = `${input.id}:route-record:main`;
+    const ifRouteRecordId = `${input.id}:route-record:if`;
     const stageId = `${input.id}:stage:trust`;
     const threadId = `${input.id}:thread:letter`;
     return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         id: input.id,
         requestId: input.requestId,
         analysisRunId: input.analysisRunId,
         scope: { ...input.scope },
         strategy: 'deep_daily',
-        sourceRevisionFingerprint: 'sha256:same-source-and-strategy-is-allowed',
+        sourceRevisionFingerprint: request.sourceRevisionFingerprint,
         sourceRefs: [{ ...sourceRef, messageIds: [...(sourceRef.messageIds || [])] }],
         temporalClass: 'historical',
         status: 'completed',
@@ -169,6 +181,43 @@ const createPass = (input: {
             kind: 'narrative_profile',
             title: '旧世界路线图',
             summary: '供剧情主持后台只读参考的历史路线。',
+            actors: [{
+                ...base('actor:keeper'),
+                kind: 'actor_ref',
+                actorClass: 'npc',
+                mention: '守门人',
+                aliases: ['门卫'],
+                resolution: 'resolved',
+                resolvedNpcProfileId: npcId,
+            }],
+            events: [{
+                ...base('event:rain-letter'),
+                kind: 'event',
+                eventId: 'event-id:rain-letter',
+                title: '雨夜托付信件',
+                summary: '守门人在雨夜替两人保管了一封尚未拆开的信。',
+                actorRefIds: [actorId],
+                surfaces: ['coauthored_scene'],
+                location: '旧城门',
+                topic: '托付与保密',
+                objective: '保存信件',
+                outcome: '信件被保存，是否拆开仍未知',
+            }],
+            eventRouteBindings: [{
+                ...base('event-route:main'),
+                kind: 'event_route_binding',
+                eventProfileId: eventId,
+                routeProfileId: mainRouteRecordId,
+                continuity: 'mainline',
+                branchId: 'branch:shared-main',
+            }, {
+                ...base('event-route:if'),
+                kind: 'event_route_binding',
+                eventProfileId: eventId,
+                routeProfileId: ifRouteRecordId,
+                continuity: 'if_line',
+                branchId: 'branch:shared-if',
+            }],
             routes: [{
                 ...base('route-record:main'),
                 kind: 'route',
@@ -238,6 +287,44 @@ assert.deepEqual(validateHistoryAnalysisPass(passA1), []);
 assert.match(
     validateHistoryAnalysisPass({
         ...passA1,
+        narrativeProfile: {
+            ...passA1.narrativeProfile,
+            actors: [{ ...passA1.narrativeProfile.actors[0], scope: SCOPE_B }],
+        },
+    }).join('\n'),
+    /crosses analysis pass scope/,
+);
+assert.match(
+    validateHistoryAnalysisPass({
+        ...passA1,
+        narrativeProfile: {
+            ...passA1.narrativeProfile,
+            actors: [{
+                ...passA1.narrativeProfile.actors[0],
+                actorClass: 'unknown',
+                resolution: 'resolved',
+                resolvedNpcProfileId: undefined,
+            }],
+        },
+    }).join('\n'),
+    /unknown actor cannot claim resolved identity/,
+);
+assert.match(
+    validateHistoryAnalysisPass({
+        ...passA1,
+        narrativeProfile: {
+            ...passA1.narrativeProfile,
+            eventRouteBindings: [{
+                ...passA1.narrativeProfile.eventRouteBindings[0],
+                routeProfileId: 'missing-route',
+            }],
+        },
+    }).join('\n'),
+    /points to missing route/,
+);
+assert.match(
+    validateHistoryAnalysisPass({
+        ...passA1,
         narrativeProfile: { ...passA1.narrativeProfile, scope: SCOPE_B },
     }).join('\n'),
     /crosses analysis pass scope/,
@@ -257,9 +344,54 @@ assert.deepEqual(HISTORY_ANALYSIS_AUTHORITY_ORDER, [
 ]);
 assert.equal(Object.values(HISTORY_ANALYSIS_HOLD).every(value => value === 'hold'), true);
 
+const ambiguousActorA = {
+    ...passA1.narrativeProfile.actors[0],
+    resolution: 'ambiguous' as const,
+    resolvedNpcProfileId: undefined,
+};
+const ambiguousActorB = {
+    ...ambiguousActorA,
+    id: `${passA1.id}:actor:keeper-other-source`,
+    sourceRefs: [{ ...sharedSceneRef }],
+};
+const ambiguousActorPass: HistoryAnalysisPass = {
+    ...passA1,
+    narrativeProfile: {
+        ...passA1.narrativeProfile,
+        actors: [ambiguousActorA, ambiguousActorB],
+        events: passA1.narrativeProfile.events.map(event => ({
+            ...event,
+            actorRefIds: [ambiguousActorA.id, ambiguousActorB.id],
+        })),
+    },
+};
+assert.deepEqual(validateHistoryAnalysisPass(ambiguousActorPass), []);
+const ambiguousResolution = resolveHistoricalInterpretation({
+    workspace: {
+        schemaVersion: 3,
+        id: 'history-workspace-ambiguous-fixture',
+        scope: { ...SCOPE_A },
+        contributingPassIds: [ambiguousActorPass.id],
+        entityIds: [],
+        bindingIds: [],
+        overlayIds: [],
+        createdAt: T0,
+        updatedAt: T0,
+        revision: 1,
+    },
+    passes: [ambiguousActorPass],
+    bindings: [],
+    overlays: [],
+});
+assert.equal(
+    ambiguousResolution.narrativeProfile?.actors.length,
+    2,
+    'same unresolved alias in different source spans must not be forced into one NPC',
+);
+
 const factory = new IDBFactory();
 const analysisBindingA1: HistoryEvidenceBinding = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: 'binding-analysis-a1-main',
     scope: { ...SCOPE_A },
     sourceRef: { ...sourceRef },
@@ -273,17 +405,104 @@ const analysisBindingA1: HistoryEvidenceBinding = {
     updatedAt: T0 + 11,
     revision: 1,
 };
-let workspaceA = await publishHistoryAnalysisPass({
+const extractionPacket: HistoricalNarrativeSourcePacket = {
+    id: 'history-source-packet-a-1',
+    scope: { ...SCOPE_A },
+    sourceRefs: [{ ...sourceRef }],
+    turns: [{
+        sourceMessageId: 'daily-message-10',
+        transportChannel: 'user',
+        content: '两人在旧记录中谈起雨夜托付。',
+    }],
+    inputCharCount: '两人在旧记录中谈起雨夜托付。'.length,
+};
+const completedExtraction = {
+    status: 'completed' as const,
     pass: passA1,
     bindings: [analysisBindingA1],
+    receipt: {
+        schemaVersion: 1 as const,
+        id: 'history-extraction-receipt-a-1',
+        requestId: request.id,
+        analysisRunId: passA1.analysisRunId,
+        scope: { ...SCOPE_A },
+        sourceRevisionFingerprint: request.sourceRevisionFingerprint,
+        status: 'completed' as const,
+        truthEffect: 'none' as const,
+        passId: passA1.id,
+        bindingIds: [analysisBindingA1.id],
+        extractorVersion: 'history-analysis-fixture-v3',
+        promptVersion: 'history-narrative-v1',
+        outputSchemaVersion: 'history-analysis-v3',
+        usage: {
+            packetCount: 1,
+            sourceTurnCount: 1,
+            inputCharCount: extractionPacket.inputCharCount,
+            estimatedInputTokens: Math.ceil(extractionPacket.inputCharCount / 3),
+            estimatorId: 'unicode_chars_div_3_v1' as const,
+        },
+        createdAt: T0 + 11,
+    },
+};
+assert.deepEqual(validateHistoricalNarrativeExtractionResult({
+    request,
+    packets: [extractionPacket],
+    promptVersion: 'history-narrative-v1',
+    outputSchemaVersion: 'history-analysis-v3',
+    result: completedExtraction,
+}), []);
+assert.equal(Object.values(HISTORICAL_NARRATIVE_EXTRACTION_TRUTH_POLICY).every(value => value === false), true);
+const completedPublication = await publishHistoricalNarrativeExtractionResult({
+    request,
+    packets: [extractionPacket],
+    promptVersion: 'history-narrative-v1',
+    outputSchemaVersion: 'history-analysis-v3',
+    result: completedExtraction,
     factory,
 });
+assert.equal(completedPublication.status, 'completed');
+let workspaceA = completedPublication.status === 'completed' ? completedPublication.workspace : assert.fail();
 assert.equal(workspaceA.revision, 1);
 assert.deepEqual((await publishHistoryAnalysisPass({
     pass: passA1,
     bindings: [analysisBindingA1],
     factory,
 })).contributingPassIds, [passA1.id]);
+assert.deepEqual(
+    (await listHistoricalNarrativeExtractionReceipts({ scope: SCOPE_A, factory })).map(item => item.id),
+    [completedExtraction.receipt.id],
+    'completed pass and its receipt must commit atomically',
+);
+const failedExtraction = {
+    status: 'failed' as const,
+    receipt: {
+        ...completedExtraction.receipt,
+        id: 'history-extraction-receipt-a-failed',
+        analysisRunId: 'analysis-run-a-failed',
+        status: 'failed' as const,
+        passId: undefined,
+        bindingIds: [],
+        reason: 'fixture provider timeout',
+        createdAt: T0 + 12,
+    },
+};
+await publishHistoricalNarrativeExtractionResult({
+    request,
+    packets: [extractionPacket],
+    promptVersion: 'history-narrative-v1',
+    outputSchemaVersion: 'history-analysis-v3',
+    result: failedExtraction,
+    factory,
+});
+assert.deepEqual(
+    (await listHistoricalNarrativeExtractionReceipts({ scope: SCOPE_A, factory }))
+        .map(item => [item.id, item.status]),
+    [
+        [completedExtraction.receipt.id, 'completed'],
+        [failedExtraction.receipt.id, 'failed'],
+    ],
+    'failed attempts retain usage and reason without creating truth',
+);
 await assert.rejects(
     () => publishHistoryAnalysisPass({
         pass: { ...passA1, completedAt: passA1.completedAt + 50 },
@@ -315,6 +534,23 @@ assert.ok(bundleA);
 assert.equal(bundleA.passes.length, 2, 'same source and strategy must preserve both passes');
 let resolvedA = resolveHistoricalInterpretation(bundleA);
 assert.equal(resolvedA.relationshipMemories.length, 1, 'exact duplicate cards should coalesce');
+assert.equal(resolvedA.narrativeProfile?.actors.length, 1);
+assert.equal(resolvedA.narrativeProfile?.events.length, 1);
+assert.equal(resolvedA.narrativeProfile?.eventRouteBindings.length, 2);
+assert.deepEqual(
+    resolvedA.narrativeProfile?.eventRouteBindings.map(binding => binding.continuity).sort(),
+    ['if_line', 'mainline'],
+    'one event may remain attached to several routes without moving between them',
+);
+const narrativeProjection = projectHistoricalNarrativeProjection(resolvedA);
+assert.equal(narrativeProjection?.workspaceRevision, workspaceA.revision);
+assert.equal(narrativeProjection?.events.length, 1);
+assert.equal(narrativeProjection?.eventRouteBindings.length, 2);
+assert.deepEqual(
+    (await readHistoricalNarrativeProjection({ scope: SCOPE_A, factory }))?.profileId,
+    narrativeProjection?.profileId,
+);
+assert.equal(await readHistoricalNarrativeProjection({ scope: SCOPE_B, factory }), null);
 assert.deepEqual(
     resolvedA.provenance.find(item => item.entityId === resolvedA.relationshipMemories[0].id)?.analysisPassIds,
     [passA1.id, passA2.id],
@@ -324,7 +560,7 @@ assert.deepEqual(
 const mainRouteId = passA1.narrativeProfile.routes[0].id;
 const ifRouteId = passA1.narrativeProfile.routes[1].id;
 const bindingMain: HistoryEvidenceBinding = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: 'binding-shared-scene-main',
     scope: { ...SCOPE_A },
     sourceRef: { ...sharedSceneRef },
@@ -381,7 +617,7 @@ assert.equal(bundleA.bindings.find(binding => binding.id === bindingIf.id)?.stat
 assert.equal(bundleA.workspace.contributingPassIds.length, 2, 'hiding one binding must not remove source or passes');
 
 const correctionOverlay: HistoricalUserOverlay = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: 'overlay-memory-rain-edit-v1',
     seriesId: 'overlay-memory-rain-edit',
     scope: { ...SCOPE_A },
@@ -427,7 +663,7 @@ assert.equal(
 assert.equal(passA1.relationshipMemories[0].title, '第一次一起看雨', 'overlay must not mutate pass output');
 
 const manualOverlay: HistoricalUserOverlay = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: 'overlay-manual-memory-v1',
     seriesId: 'overlay-manual-memory',
     scope: { ...SCOPE_A },
@@ -531,6 +767,7 @@ assert.deepEqual(
     [...database.objectStoreNames].sort(),
     [
         HISTORICAL_USER_OVERLAY_STORE,
+        HISTORICAL_NARRATIVE_EXTRACTION_RECEIPT_STORE,
         HISTORY_ANALYSIS_PASS_STORE,
         HISTORY_ANALYSIS_WORKSPACE_STORE,
         HISTORY_EVIDENCE_BINDING_STORE,
@@ -553,4 +790,4 @@ assert.deepEqual(
 );
 database.close();
 
-console.log('history analysis v2 OK: immutable passes + workspace + many-to-many bindings + overlays');
+console.log('history analysis v3 OK: actors + events + non-exclusive routes + immutable passes + overlays');

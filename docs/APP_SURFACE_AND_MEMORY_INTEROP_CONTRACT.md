@@ -929,8 +929,9 @@ The following current code should be extended instead of duplicated:
   persist the full `progressBundleId + personaMaskId + charId` scope even though
   Director context can receive it. Truth-bearing narrative records must be
   upgraded before mask-private continuity is considered safe.
-- Historical event/actor/route-binding types are planned but not yet sealed in
-  the public history schema.
+- Historical actor/event/non-exclusive route-binding records and a frozen
+  history-owned Narrative projection are now sealed locally. Model execution,
+  promotion, and `继续这条线` remain separate unimplemented gates.
 - Some legacy App records are scoped only by character or global store and need
   explicit bundle/mask ownership before they can join cross-App memory.
 - Several live surfaces still derive relationship scope from the currently

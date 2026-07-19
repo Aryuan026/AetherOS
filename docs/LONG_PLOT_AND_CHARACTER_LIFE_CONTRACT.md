@@ -208,15 +208,16 @@ without collapsing them into one store or granting either side write authority:
 - current active run/scene and user-confirmed experiences are projected from
   `NovelBook.narrative` as cloned, frozen truth. Draft and unconfirmed material
   remain outside the context;
-- an optional `HistoricalNarrativeProfile` is accepted only when the profile
-  and every nested route, NPC, relationship stage, and open thread match the
-  complete relationship scope and remain visible historical material;
+- an optional history-owned `HistoricalNarrativeProjection` is accepted only
+  when its actor refs, neutral events, event-route bindings, routes, NPCs,
+  relationship stages, and open threads match the complete relationship scope
+  and remain visible historical material;
 - authority is ordered `active/confirmed truth > user-confirmed history > soft
   historical > reconstructed`. Historical `status`, source authority,
   continuity, surface, and memory policy remain independent axes; the history
   domain's reconstructed/inferred/explicit/user-confirmed order is retained
   inside those narrative tiers;
-- `utils/narrative/historyAnalysisProfileProvider.ts` adapts the existing
+- `utils/narrative/historyAnalysisProjectionProvider.ts` adapts the existing
   history read projection behind a narrative-owned provider interface. The
   reader is injectable, so domain fixtures and non-browser runtimes do not
   depend on IndexedDB;
@@ -228,6 +229,10 @@ without collapsing them into one store or granting either side write authority:
 nested-profile isolation, independent authority mapping, immutable current and
 historical inputs, provider scope forwarding, frozen output, and zero write
 capability.
+
+The projection is not a `NarrativeScene`: one historical event can keep
+simultaneous mainline and IF bindings, unresolved actor aliases remain
+unresolved, and no route becomes active merely because it is readable.
 
 HOLD after this slice: StoryDesk/history UI wiring, automatic historical route
 adoption, “continue this line” conversion, scene planning/generation, model
