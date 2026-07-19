@@ -34,8 +34,11 @@
     console errors; visual screenshots kept row controls aligned.
 - boundary:
   - Worldbook grouping, history import, Daily Archive, chat, retrieval,
-    continuation, current story state, tasks, memories, server deployment,
-    commit, and GitHub push were not changed or performed.
+    continuation, current story state, tasks, memories, and server deployment
+    were not changed or performed.
+- publication:
+  - Published from `codex/aetheros-desktop-layout` through focused GitHub PR
+    `#9`; no manual server deployment was performed.
 
 ## 2026-07-19 Startup Asset Hardening
 
