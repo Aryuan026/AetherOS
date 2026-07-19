@@ -1,5 +1,36 @@
 # AetherOS Progress
 
+## 2026-07-19 App Surface And Shared-Truth Contract
+
+- done:
+  - Added one cross-thread reviewed routing contract for virtual App ownership,
+    shared projections, typed commands, receipt truth effects, exact
+    relationship scope, backup/removal gates, and clean module boundaries.
+  - Mapped the current core Apps to their player verb, owned data, readable
+    projections, commands, and receipts without creating a standalone memory
+    display App.
+  - Separated imported evidence, historical interpretation, non-exclusive route
+    binding, narrative planning, played experience, durable memory, and current
+    Character Life authority.
+  - Distinguished ordinary live-memory promotion from narrative confirmation:
+    normal player-participated interaction may use an enabled memory policy,
+    while unplayed/generated plot and offscreen world changes cannot bypass
+    experience and Life receipts.
+  - Recorded the missing Memory Promotion Service, multi-port App capability
+    manifest, receipt taxonomy, and current legacy scope/provenance debt as
+    staged implementation seams rather than pretending they already exist.
+- verified:
+  - Reviewed against `origin/main@bfb5fbb`, the existing history selector,
+    MemoryDM, Daily Archive, Narrative Director, virtual-world context, persona
+    scope, and the in-progress long-plot/Character Life contracts.
+  - The long-plot thread independently reviewed the authority ladder, write
+    rights, typed ports, and reusable seams; its corrections are incorporated.
+  - `git diff --check` passes.
+- boundary:
+  - This block writes architecture and agent/product constraints only. It does
+    not migrate stores, activate historical routes, change prompts, remove Apps,
+    or implement Character Life/Memory Promotion runtime code.
+
 ## 2026-07-19 Daily Archive Atomic Curation And Day Lock
 
 - done:

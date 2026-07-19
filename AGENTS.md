@@ -36,6 +36,29 @@ This is the maintained AetherOS work copy for A-Yuan.
   `verify:launcher-layout`, `verify:appearance-presets`, `verify:shell-chrome`,
   and `verify:health` Green.
 
+## App Surface And Shared-Truth Contract
+
+- Follow `docs/APP_SURFACE_AND_MEMORY_INTEROP_CONTRACT.md` when adding,
+  splitting, connecting, or removing a virtual App.
+- An App owns its interaction and assigned records; it must not become the
+  private owner of relationship, memory, world time/location, narrative, or
+  current-life truth merely because it displays those facts.
+- Cross-App information must use typed, scoped projections, commands, and
+  receipts. Do not read another App's IndexedDB table or pass an untyped global
+  prompt blob as an integration seam.
+- Relationship-private reads and delayed writes require the exact captured
+  `progressBundleId + personaMaskId + charId` scope and fail closed.
+- Imported evidence, model interpretation, route planning, played experience,
+  durable memory, and current Character Life are different authority levels.
+  A new path must name which level it reads and which receipt permits promotion.
+- A new core App must document its player verb, owner domain, projections,
+  commands, receipts, backup behavior, and removal/migration path. A feature
+  that only retrieves memory belongs in a shared selector or an existing App
+  panel, not a standalone memory organ.
+- Do not delete an App from the launcher until its durable data, consumers,
+  backup path, deep links, and user-authored material have an explicit migration
+  or preservation decision.
+
 ## Verification
 
 - Prefer `npm run build` for deploy readiness.

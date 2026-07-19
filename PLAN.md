@@ -98,6 +98,21 @@ Historical conversation clean transport:
   inheriting one mask's relationship history.
 - Use clean v2 local namespaces with no legacy review reader or migration.
 
+App surfaces and shared truth:
+
+- Use `docs/APP_SURFACE_AND_MEMORY_INTEROP_CONTRACT.md` as the central routing
+  contract before adding, splitting, wiring, or removing a virtual App.
+- Keep one canonical App registry and declare behavioral capabilities per port;
+  one App may expose device-, persona-, and relationship-scoped ports.
+- Shared domains own durable truth. Apps read typed projections, submit scoped
+  commands, and render receipts with explicit truth effect; they do not read
+  another App's private store.
+- Add Memory Promotion and Scheduler as explicit target-domain gates instead of
+  extending MemoryDM side effects. Keep Character Life as the sole current-life
+  owner and Narrative Director as a proposal-only reader.
+- Migrate legacy scope and store access block by block. Do not remove Apps or
+  rewrite stores as part of the documentation seal.
+
 Timebook and companion structure:
 
 - Rename `时光契约` to `时光簿`.

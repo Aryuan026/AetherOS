@@ -1,5 +1,32 @@
 # SullyOS Requirements
 
+## App Surfaces And Cross-App Information
+
+- `docs/APP_SURFACE_AND_MEMORY_INTEROP_CONTRACT.md` is the central routing
+  contract for virtual Apps, shared relationship information, memory, world
+  context, narrative, and current Character Life.
+- Each gameplay feature must land in an App whose player verb already matches
+  the action. Shared retrieval or analysis must appear as a projection or child
+  workflow instead of creating a display-only memory App.
+- Core Apps must declare their owned records, scoped projections, commands,
+  receipts, backup behavior, and lifecycle/removal plan in explicit code or
+  contract metadata.
+- Cross-App relationship information requires the exact
+  `progressBundleId + personaMaskId + charId` scope. Missing or mismatched scope
+  fails closed; multi-character Apps resolve one scope per participant.
+- Imported source, historical interpretation, route association, narrative
+  plans, played scenes, confirmed experience, durable memory, and current Life
+  state must remain distinguishable and traceable.
+- Ordinary live interaction may enter a user-enabled memory-promotion policy
+  without per-message confirmation. It must not thereby become mainline plot or
+  current Life truth. Generated narrative and offscreen world changes require
+  the narrative play/receipt lifecycle before promotion.
+- Appearance, virtual time/location, memory delivery, persona visibility,
+  backup, and source-time rules are global contracts. App pages must consume
+  their shared projections rather than reimplementing them.
+- Removing an App requires a data-owner and consumer audit; hiding or reordering
+  an icon is not evidence that the App is safe to delete.
+
 ## Post-import Daily Archive Curation
 
 - History intake must stay one high-tolerance flow. Speaker/date correction,
