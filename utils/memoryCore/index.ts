@@ -10,3 +10,5 @@ export * from './voiceCore';
 export * from './historicalSelector';
 export * from './evidencePort';
 export * from './interpretationStore';
+export * from './promotionStore';
+export * from './memoryPromotion';

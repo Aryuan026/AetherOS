@@ -1,9 +1,12 @@
 import type { Anniversary, MemoryFragment, Message } from '../../types';
+import type { PromotedMemoryRecord } from '../../domain/memoryInterpretation';
+import { sameEvidenceScope } from '../../domain/interactionEvidence';
 import { DB } from '../db';
-import { filterCurrentStateMessages } from '../messageContext';
+import { filterCurrentStateMessages, strictRelationshipScopeForProfile } from '../messageContext';
 import { classifyWorldlineDelivery, extractMemorySearchTerms } from './deliveryProfile';
 import { formatHotStatePrompt, resolveWorldlineHotState } from './hotState';
 import { HISTORICAL_SURFACE_POLICIES, selectHistoricalRelationshipCandidates } from './historicalSelector';
+import { listFreshPromotedMemoryRecords } from './memoryPromotion';
 import { formatWorldlinePromptBlock } from './promptFormatter';
 import { recordWorldlineMemoryReceipt } from './receipts';
 import { formatVoiceCorePrompt, loadCharacterVoiceCore } from './voiceCore';
@@ -127,6 +130,48 @@ const buildCharacterMemoryCandidates = (
       weight: 0.78 - Math.min(index, 20) * 0.015,
     }))
 );
+
+const promotedKnowledge = (
+  knowledge: PromotedMemoryRecord['knowledge'],
+): KnowledgeScope => knowledge === 'character_private' ? 'char_private' : knowledge;
+
+export const promotedMemoryCandidateForSelector = (
+  record: PromotedMemoryRecord,
+): WorldlineMemoryCandidate => ({
+  id: `promoted-memory:${record.id}`,
+  charId: record.scope.charId,
+  origin: record.target === 'timebook'
+    ? 'timebook'
+    : record.temporalClass === 'live' ? 'daily_chat' : 'system_import',
+  continuity: 'relationship',
+  knowledge: promotedKnowledge(record.knowledge),
+  status: record.promotionTrigger === 'manual' ? 'confirmed' : 'soft_canon',
+  title: record.title,
+  summary: record.summary,
+  happenedAt: record.happenedAt,
+  sourceRefs: [
+    { kind: 'memory_promotion_receipt', id: record.promotionReceiptId },
+    ...record.source.sourceEvidenceIds.map(id => ({ kind: 'interaction_evidence', id })),
+  ],
+  tags: [
+    'promoted_memory',
+    record.target,
+    ...(record.tags || []),
+  ],
+  weight: record.target === 'timebook' ? 0.86 : 0.8,
+  temporalClass: record.temporalClass,
+  sourceKind: record.temporalClass === 'live' ? 'live_memory' : 'history_analysis',
+});
+
+const promotedScopeIsLinked = (input: WorldlineSelectorInput): boolean => {
+  const active = strictRelationshipScopeForProfile(input.char.id, input.user);
+  const mask = input.user.personaMasks?.find(item => item.id === input.relationshipScope.personaMaskId);
+  return Boolean(
+    active
+    && sameEvidenceScope(active, input.relationshipScope)
+    && mask?.linkedCharacterIds?.includes(input.char.id)
+  );
+};
 
 const buildRecentIntersectionCandidates = (
   charId: string,
@@ -314,6 +359,18 @@ export const selectWorldlineMemoryContext = async (
   const currentStateMessages = filterCurrentStateMessages(messages);
 
   const candidates: WorldlineMemoryCandidate[] = [];
+
+  if (promotedScopeIsLinked(input)) {
+    try {
+      const promoted = await listFreshPromotedMemoryRecords({ scope: input.relationshipScope });
+      candidates.push(...promoted.records.map(promotedMemoryCandidateForSelector));
+      warnings.push(...promoted.warnings);
+    } catch (error) {
+      warnings.push(`promoted_memory_unavailable:${error instanceof Error ? error.message : 'unknown'}`);
+    }
+  } else {
+    warnings.push('promoted_memory_unavailable:scope_not_linked');
+  }
 
   try {
     const historical = await selectHistoricalRelationshipCandidates({

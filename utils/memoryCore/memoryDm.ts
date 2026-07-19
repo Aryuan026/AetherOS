@@ -187,10 +187,16 @@ target 说明：
 - character_life_proposal：可能影响当前生活状态的提案，必须等待独立 Life 验证。
 - discard：无需保留。
 
+claimClass 说明（只描述候选声称的事实类型，不能替代后续授权）：
+- conversation_fact：偏好、说过的话、普通约定、交流中的情绪事实；不声称世界或关系阶段已经改变。
+- shared_experience：双方实际共同参与的一段日常或场景经历。
+- world_state_change：NPC、地点、势力、受伤/恢复或其他持续世界状态发生改变。
+- relationship_stage_change：告白、交往、结婚、分手等关系阶段改变。
+
 每个非 discard 候选必须给出 sourceEvidenceIds，且只能逐字复制上方 evidence id。多个候选可以引用同一证据；不要为了分流而互斥。不要猜测世界内真正说话的 NPC 身份，除非正文明确支持。
 
 只输出严格 JSON：
-{"candidates":[{"target":"relationship_memory | timebook | scheduler_proposal | narrative_proposal | character_life_proposal | discard","title":"短标题","summary":"候选正文","knowledge":"character_private | user_private | relationship_private | shared | public_safe | unknown_to_char | unknown_to_user","temporalClass":"live","happenedAt":"可选 ISO/日期","mood":"可选","confidence":0.0,"sourceEvidenceIds":["完整 evidence id"],"tags":["可选"]}]}`;
+{"candidates":[{"target":"relationship_memory | timebook | scheduler_proposal | narrative_proposal | character_life_proposal | discard","claimClass":"conversation_fact | shared_experience | world_state_change | relationship_stage_change","title":"短标题","summary":"候选正文","knowledge":"character_private | user_private | relationship_private | shared | public_safe | unknown_to_char | unknown_to_user","temporalClass":"live","happenedAt":"可选 ISO/日期","mood":"可选","confidence":0.0,"sourceEvidenceIds":["完整 evidence id"],"tags":["可选"]}]}`;
 };
 
 const targets = new Set<MemoryCandidateTarget>([
@@ -200,6 +206,9 @@ const targets = new Set<MemoryCandidateTarget>([
 const knowledgeValues = new Set<MemoryCandidateKnowledge>([
   'character_private', 'user_private', 'relationship_private', 'shared',
   'public_safe', 'unknown_to_char', 'unknown_to_user',
+]);
+const claimClasses = new Set<MemoryCandidate['claimClass']>([
+  'conversation_fact', 'shared_experience', 'world_state_change', 'relationship_stage_change',
 ]);
 
 const parseCandidates = (input: {
@@ -226,6 +235,7 @@ const parseCandidates = (input: {
     const hasInvalidSource = sourceEvidenceIds.some(id => !allowed.has(id));
     if (
       !targets.has(target)
+      || !claimClasses.has(row?.claimClass)
       || !summary
       || sourceEvidenceIds.length === 0
       || hasInvalidSource
@@ -247,6 +257,7 @@ const parseCandidates = (input: {
       knowledge,
       temporalClass: 'live',
       authority: 'model_interpretation',
+      claimClass: row.claimClass as MemoryCandidate['claimClass'],
       status: target === 'discard' ? 'discarded' : 'proposed',
       title: String(row.title || summary.slice(0, 12) || '未命名').trim(),
       summary,

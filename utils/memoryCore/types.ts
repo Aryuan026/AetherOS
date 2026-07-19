@@ -155,7 +155,7 @@ export interface WorldlineMemoryCandidate {
   sourceRefs?: SourceRef[];
   tags?: string[];
   weight: number;
-  temporalClass?: 'live' | 'historical';
+  temporalClass?: 'live' | 'historical' | 'mixed';
   sourceKind?: 'live_memory' | 'history_analysis';
   historicalAuthority?: HistoricalAuthority;
   historicalKnowledge?: HistoricalKnowledgeScope;

@@ -197,8 +197,31 @@ Every AI-facing feature should eventually use the same pipeline.
 9. Format a tiny prompt block.
 10. Store a delivery receipt.
 11. After the model response, let MemoryDM append source-linked interpretation
-    candidates and a `truthEffect: none` receipt. A separate future Promotion,
-    Scheduler, Narrative, or Character Life command owns every target write.
+    candidates and a `truthEffect: none` receipt.
+12. `MemoryPromotionService` may promote only exact-scope relationship-memory
+    or Timebook candidates. Target row and promotion receipt commit together;
+    Scheduler, Narrative, and Character Life keep separate command gates.
+13. Automatic promotion distinguishes a conversational fact, a shared
+    experience, a world-state change, and a relationship-stage change. `live`
+    alone is never proof that generated plot was played. Embodied scenes and
+    high-impact changes require a verified full-scope experience receipt;
+    historical or mixed evidence requires an explicit manual promotion path.
+    Manual commands carry a candidate-bound decision that distinguishes
+    remembering historical material, remembering a relationship fact, and
+    confirming a played experience; the word `manual` alone grants nothing.
+14. Promotion independently classifies the cited evidence from immutable
+    surface, medium, producer, and transport-role provenance. A model cannot
+    lower its own gate by labeling co-authored plot as `conversation_fact`.
+    Model-interpreted automatic candidates require verified scoped experience;
+    deterministic candidates must match the source class expected by the
+    claim. Unknown provenance fails closed.
+15. Idempotency never erases audit. An exact command retry reuses its receipt;
+    a distinct command that reaches an existing target appends a
+    `duplicate/no-truth-change` receipt and reuses only the original target.
+16. Extractor authority is structural: model passes cannot emit deterministic
+    candidates, and deterministic passes cannot masquerade as model output.
+    `mixed` promoted material remains in the historical/non-current prompt
+    lane throughout selection and formatting.
 
 ## Hybrid Retrieval Position
 
@@ -251,7 +274,12 @@ Keep and reuse:
   `companion_wakeups` stores.
 - current worldline delivery receipts.
 - MemoryDM evidence-based extraction and immutable receipt seam. Its legacy
-  direct target writers are retired; Promotion remains a separate HOLD.
+  direct target writers are retired.
+- exact-scope promoted relationship-memory / Timebook rows under
+  `assets/memory_promotion_store_v1`, with immutable source spans and atomic
+  promotion receipts, deterministic provenance snapshots, and explicit
+  duplicate-attempt receipts. The selector filters rows whose source revision
+  is no longer active instead of silently using stale text.
 - legacy message history, but later shrink it with a compactor once retrieval
   quality is high enough.
 
@@ -274,9 +302,13 @@ Do not merge:
    recent-only selection to keyword-aware scoring, dedupe, and surface budgets.
 5. Done in the first code slice: wire the same delivery pipeline into chat,
    proactive letters, meeting/date, call, and calendar wakeup rendering.
-6. Next: surface write receipts and delivery receipts separately so users can see both
+6. Done in the promotion slice: add the independent target gate, atomic durable
+   rows plus receipts, stale-source fail-closed reads, knowledge limits, and an
+   experience-verifier seam without writing legacy character, anniversary,
+   Narrative, Scheduler, hot-state, or Character Life stores.
+7. Next: surface write receipts and delivery receipts separately so users can see both
    "it remembered" and "it used this memory".
-7. Next: add optional vector indexes only after keyword/scoped delivery is testable.
+8. Next: add optional vector indexes only after keyword/scoped delivery is testable.
 
 Current local asset keys:
 

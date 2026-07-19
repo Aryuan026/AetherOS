@@ -96,6 +96,7 @@ const modelPort: MemoryDMModelPort = {
         candidates: [
           {
             target: 'narrative_proposal',
+            claimClass: 'shared_experience',
             title: '多人场景',
             summary: 'A、B 与 C 出现在同一段轻剧情里。',
             knowledge: 'shared',
@@ -104,6 +105,7 @@ const modelPort: MemoryDMModelPort = {
           },
           {
             target: 'relationship_memory',
+            claimClass: 'conversation_fact',
             title: '同源关系候选',
             summary: '同一段证据也可以支持关系记忆候选。',
             knowledge: 'relationship_private',
@@ -112,6 +114,7 @@ const modelPort: MemoryDMModelPort = {
           },
           {
             target: 'relationship_memory',
+            claimClass: 'conversation_fact',
             title: '越界来源',
             summary: '这条必须被拒绝。',
             sourceEvidenceIds: [request.evidenceSpan.evidenceIds[0], 'interaction-evidence:v1:foreign'],

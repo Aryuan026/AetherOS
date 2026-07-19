@@ -1,5 +1,59 @@
 # AetherOS Progress
 
+## 2026-07-20 Exact-Scope Memory Promotion Gate
+
+- done:
+  - Added an independent `MemoryPromotionService` for exact
+    `progressBundleId + personaMaskId + charId` relationship scope. It can write
+    only new scoped relationship-memory or Timebook rows under
+    `assets/memory_promotion_store_v1`; it does not mutate legacy
+    `char.memories`, anniversaries, Scheduler, Narrative, hot state, emotion,
+    or Character Life.
+  - Made target row plus applied receipt one IndexedDB asset transaction.
+    Stable target identity prevents duplicate facts, while every distinct
+    command that hits an existing target now retains its own
+    `duplicate / truthEffect:none` audit receipt. Exact command retries reuse
+    only that command's receipt.
+  - Bound manual decisions to exact scope and candidate with distinct meanings
+    for remembering historical material, remembering a live relationship fact,
+    and confirming a played experience. High-impact or embodied claims cannot
+    use a generic manual click as proof that they happened.
+  - Added a deterministic source assessment from immutable evidence surface,
+    medium, producer, and transport role. Model-interpreted automatic
+    candidates require verified scoped experience and cannot lower their own
+    gate through `claimClass`; deterministic candidates must match their
+    expected provenance class. Extractor and candidate authority are enforced
+    at both pass validation and Promotion service entry.
+  - Kept historical and mixed promotions out of current-state semantics.
+    `mixed` now survives shared selection and is formatted only in the
+    historical/non-current prompt lane. Promoted rows whose source revisions
+    are no longer active fail closed at read time.
+  - Wired fresh promoted rows into the shared Worldline selector rather than a
+    display-only memory organ. Exact active mask/character linkage is checked
+    before any promoted row can be delivered.
+- verified:
+  - Focused fixtures cover cross-mask isolation, target/receipt atomicity,
+    source-provenance classification, model self-authorization rejection,
+    extractor-authority spoof rejection, manual decision semantics, verified
+    experience retry, concurrent promotion, distinct duplicate-attempt
+    receipts, stale source rejection, stale target filtering, mixed historical
+    formatting, target-domain isolation, and foreign scope rejection.
+  - The long-plot thread completed three narrow reviews; its final result is
+    `P0/P1 已清零，可以封箱`.
+  - `npm run verify:history-import`, `npm run verify:daily-archive`, `npm run
+    verify:narrative`, and `npm run verify:health` pass. Health includes focused
+    evidence/Promotion fixtures, typecheck, and production build; only the
+    existing Browserslist-age and large-chunk warnings remain.
+- boundary:
+  - No visible candidate-approval or destination-edit UI is activated in this
+    box. Contacts and Timebook ownership/correction surfaces are the next
+    focused audit.
+  - Current `NarrativeExperienceReceipt` still lacks full persona-mask scope and
+    stable accepted-fact references, so its adapter remains HOLD rather than
+    being treated as proof.
+  - No GitHub push, main merge, server deployment, or accepted Chat/Date prompt
+    change belongs to this checkpoint.
+
 ## 2026-07-19 Historical Actor/Event/Route Projection Foundation
 
 - done:

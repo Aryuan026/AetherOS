@@ -254,6 +254,7 @@ export const runAutoMemoryPass = async ({
           knowledge: 'relationship_private' as const,
           temporalClass: 'live' as const,
           authority: 'deterministic_heuristic' as const,
+          claimClass: 'shared_experience' as const,
           status: 'proposed' as const,
           title: clip(summary.replace(/[“”"']/gu, ''), 18) || `${dateKey.slice(5).replace('-', '月')}日的片刻`,
           summary,

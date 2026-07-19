@@ -107,9 +107,16 @@ App surfaces and shared truth:
 - Shared domains own durable truth. Apps read typed projections, submit scoped
   commands, and render receipts with explicit truth effect; they do not read
   another App's private store.
-- Add Memory Promotion and Scheduler as explicit target-domain gates instead of
-  extending MemoryDM side effects. Keep Character Life as the sole current-life
-  owner and Narrative Director as a proposal-only reader.
+- Keep the implemented Memory Promotion gate limited to exact-scope durable
+  relationship-memory and Timebook rows instead of extending MemoryDM side
+  effects. Add Scheduler through its own target-domain gate later. Character
+  Life remains the sole current-life owner and Narrative Director remains a
+  proposal-only reader.
+- Automatic promotion must intersect the model candidate with a deterministic
+  interaction-provenance assessment. Model interpretation cannot authorize
+  itself from `claimClass`; without a verified scoped experience reference it
+  fails closed. A new command that hits an existing target writes a
+  no-truth-change duplicate receipt instead of hiding the attempt.
 - Migrate legacy scope and store access block by block. Do not remove Apps or
   rewrite stores as part of the documentation seal.
 - Treat App removal as a later audit, not the current objective. Existing Apps
@@ -172,7 +179,12 @@ Worldline memory architecture:
   - the deterministic timebook helper and LLM MemoryDM both append versioned candidates plus `truthEffect: none` extraction receipts;
   - the Settings slider spans 20/40/60/80/100 user turns and defaults to 60, but reaching the interval authorizes extraction only;
   - relationship-memory, Timebook, scheduler, narrative, and Character Life targets remain independent proposal destinations and receive zero writes in this box;
-  - future Memory Promotion validates scope, source revisions, policy, authority, duplicates and required experience receipts before any durable write;
+  - Memory Promotion validates scope, source revisions, policy, authority,
+  claim class, deterministic source provenance, duplicates, and required
+  full-scope experience receipts before any durable write;
+  - interpretation pass extractor and candidate authority are bound at both
+    contract and promotion-service boundaries; `mixed` promoted material stays
+    in the historical prompt lane rather than falling through as live state;
   - the app must never ask immersive prompts like "is this an anniversary?" or "should I remember this?";
   - if a silent timebook candidate is wrong, the player edits or deletes the visible row later.
 - Keep `char.impression` visible as `关系印象` and keep automatic overwrite on hold. It is injected into every prompt by `ContextBuilder`, so every extraction prompt must be audited for role-internal perspective before any background replacement.

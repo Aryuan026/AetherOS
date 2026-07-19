@@ -13,7 +13,9 @@ const clip = (value: string, max: number): string => {
 const formatCandidate = (candidate: WorldlineMemoryCandidate): string => {
   const date = candidate.happenedAt ? `${candidate.happenedAt} · ` : '';
   const scope = candidate.continuity === 'branch' ? '分支' : candidate.continuity === 'canon' ? '原作' : '关系';
-  const temporal = candidate.temporalClass === 'historical' ? '旧日·' : '';
+  const temporal = candidate.temporalClass === 'mixed'
+    ? '混合旧日·'
+    : candidate.temporalClass === 'historical' ? '旧日·' : '';
   return `- [${temporal}${scope}] ${date}${candidate.title}: ${clip(candidate.summary, 120)}`;
 };
 
@@ -42,8 +44,12 @@ export const formatWorldlinePromptBlock = (
     lines.push(options.hotStateMarkdown.trim());
   }
 
-  const liveCandidates = candidates.filter(candidate => candidate.temporalClass !== 'historical');
-  const historicalCandidates = candidates.filter(candidate => candidate.temporalClass === 'historical');
+  const liveCandidates = candidates.filter(candidate => (
+    candidate.temporalClass !== 'historical' && candidate.temporalClass !== 'mixed'
+  ));
+  const historicalCandidates = candidates.filter(candidate => (
+    candidate.temporalClass === 'historical' || candidate.temporalClass === 'mixed'
+  ));
 
   if (liveCandidates.length > 0) {
     if (lines.length > 0) lines.push('');

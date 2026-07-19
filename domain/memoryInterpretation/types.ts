@@ -5,6 +5,24 @@ export const MEMORY_INTERPRETATION_SCHEMA_VERSION = 1 as const;
 
 export type MemoryExtractionTrigger = 'auto' | 'idle' | 'manual';
 export type MemoryInterpretationExtractor = 'model' | 'deterministic_heuristic';
+export type MemoryPromotionTrigger = 'manual' | 'automatic_policy';
+export type MemoryPromotionManualDecisionKind =
+    | 'remember_historical'
+    | 'remember_relationship'
+    | 'confirm_played_experience';
+export type MemoryCandidateClaimClass =
+    | 'conversation_fact'
+    | 'shared_experience'
+    | 'world_state_change'
+    | 'relationship_stage_change';
+export type MemoryPromotionSourceClass =
+    | 'historical_material'
+    | 'embodied_interaction'
+    | 'user_remote_statement'
+    | 'two_party_remote_exchange'
+    | 'model_or_system_generated'
+    | 'manual_material'
+    | 'unclassified';
 export type MemoryCandidateTarget =
     | 'relationship_memory'
     | 'timebook'
@@ -49,6 +67,7 @@ export interface MemoryCandidate {
     knowledge: MemoryCandidateKnowledge;
     temporalClass: 'historical' | 'live' | 'mixed';
     authority: 'model_interpretation' | 'deterministic_heuristic';
+    claimClass: MemoryCandidateClaimClass;
     status: 'proposed' | 'discarded';
     title: string;
     summary: string;
@@ -122,7 +141,6 @@ export interface MemoryExtractionClaim {
     updatedAt: number;
 }
 
-/** Declared now so extraction cannot grow an implicit direct-write path. */
 export interface MemoryPromotionCommand {
     schemaVersion: typeof MEMORY_INTERPRETATION_SCHEMA_VERSION;
     id: string;
@@ -130,7 +148,46 @@ export interface MemoryPromotionCommand {
     candidateId: string;
     passId: string;
     expectedSourceRevisionFingerprint: string;
+    trigger: MemoryPromotionTrigger;
+    policyVersion: 'memory-promotion-policy-v1';
+    manualDecision?: MemoryPromotionManualDecision;
+    experienceRef?: MemoryPromotionExperienceRef;
     requestedAt: number;
+}
+
+export interface MemoryPromotionManualDecision {
+    id: string;
+    scope: HistoryScope;
+    candidateId: string;
+    decision: MemoryPromotionManualDecisionKind;
+    confirmedAt: number;
+}
+
+export interface MemoryPromotionExperienceRef {
+    kind: 'scoped_experience_receipt';
+    scope: HistoryScope;
+    receiptId: string;
+    acceptedFactRefs: string[];
+}
+
+export interface MemoryPromotionCandidateDecision {
+    target: MemoryCandidateTarget;
+    knowledge: MemoryCandidateKnowledge;
+    temporalClass: MemoryCandidate['temporalClass'];
+    interpretationAuthority: MemoryCandidate['authority'];
+    claimClass: MemoryCandidateClaimClass;
+    sourceEvidenceIds: string[];
+}
+
+/** Deterministic provenance assessment. It never trusts the model's claimClass. */
+export interface MemoryPromotionSourceAssessment {
+    classifierVersion: 'interaction-provenance-v1';
+    sourceClass: MemoryPromotionSourceClass;
+    evidenceIds: string[];
+    surfaces: InteractionEvidence['source']['surface'][];
+    media: InteractionEvidence['source']['medium'][];
+    producers: InteractionEvidence['producer'][];
+    transportRoles: InteractionEvidence['transportRole'][];
 }
 
 export interface MemoryPromotionReceipt {
@@ -139,11 +196,74 @@ export interface MemoryPromotionReceipt {
     commandId: string;
     scope: HistoryScope;
     candidateId: string;
-    status: 'applied' | 'rejected' | 'duplicate' | 'stale';
+    passId: string;
+    expectedSourceRevisionFingerprint: string;
+    trigger: MemoryPromotionTrigger;
+    policyVersion: 'memory-promotion-policy-v1';
+    candidateDecision?: MemoryPromotionCandidateDecision;
+    sourceAssessment?: MemoryPromotionSourceAssessment;
+    manualDecision?: MemoryPromotionManualDecision;
+    experienceRef?: MemoryPromotionExperienceRef;
+    status: 'applied' | 'rejected' | 'stale' | 'duplicate';
     truthEffect: 'none' | 'relationship_memory' | 'timebook';
     targetRecordId?: string;
+    duplicateOfTargetRecordId?: string;
+    duplicateOfReceiptId?: string;
     reason?: string;
     createdAt: number;
+}
+
+export interface PromotedMemorySource {
+    passId: string;
+    candidateId: string;
+    evidenceSpan: EvidenceSpan;
+    sourceEvidenceIds: string[];
+}
+
+interface PromotedMemoryRecordBase {
+    schemaVersion: typeof MEMORY_INTERPRETATION_SCHEMA_VERSION;
+    id: string;
+    scope: HistoryScope;
+    title: string;
+    summary: string;
+    happenedAt?: string;
+    mood?: string;
+    confidence?: number;
+    tags?: string[];
+    knowledge: MemoryCandidateKnowledge;
+    temporalClass: MemoryCandidate['temporalClass'];
+    interpretationAuthority: MemoryCandidate['authority'];
+    claimClass: MemoryCandidateClaimClass;
+    sourceAssessment: MemoryPromotionSourceAssessment;
+    promotionTrigger: MemoryPromotionTrigger;
+    promotionReceiptId: string;
+    manualDecision?: MemoryPromotionManualDecision;
+    experienceRef?: MemoryPromotionExperienceRef;
+    source: PromotedMemorySource;
+    createdAt: number;
+}
+
+export interface PromotedRelationshipMemory extends PromotedMemoryRecordBase {
+    target: 'relationship_memory';
+}
+
+export interface PromotedTimebookEntry extends PromotedMemoryRecordBase {
+    target: 'timebook';
+    happenedAt: string;
+}
+
+export type PromotedMemoryRecord = PromotedRelationshipMemory | PromotedTimebookEntry;
+
+export interface MemoryPromotionCommitResult {
+    outcome: 'committed' | 'existing_command' | 'existing_target';
+    receipt: MemoryPromotionReceipt;
+    targetRecord?: PromotedMemoryRecord;
+}
+
+export interface MemoryPromotionResult {
+    outcome: 'applied' | 'rejected' | 'stale' | 'duplicate';
+    receipt: MemoryPromotionReceipt;
+    targetRecord?: PromotedMemoryRecord;
 }
 
 export interface MemoryDMEvidenceReadPort {
@@ -174,7 +294,28 @@ export interface MemoryInterpretationStorePort {
     appendFailure(request: MemoryDMExtractionRequest, receipt: MemoryDMExtractionReceipt): Promise<void>;
 }
 
-/** Promotion implementation is intentionally HOLD in the extraction-only box. */
+export interface MemoryPromotionStorePort {
+    listRelationshipMemories(scope: HistoryScope): Promise<PromotedRelationshipMemory[]>;
+    listTimebookEntries(scope: HistoryScope): Promise<PromotedTimebookEntry[]>;
+    listReceipts(scope: HistoryScope): Promise<MemoryPromotionReceipt[]>;
+    commit(input: {
+        receipt: MemoryPromotionReceipt;
+        targetRecord?: PromotedMemoryRecord;
+    }): Promise<MemoryPromotionCommitResult>;
+}
+
+export interface MemoryPromotionScopeAccessPort {
+    isLinked(scope: HistoryScope): Promise<boolean>;
+}
+
+export interface MemoryPromotionExperiencePort {
+    verify(input: {
+        scope: HistoryScope;
+        candidate: MemoryCandidate;
+        experienceRef: MemoryPromotionExperienceRef;
+    }): Promise<{ verified: boolean; reason?: string }>;
+}
+
 export interface MemoryPromotionPort {
-    promote(command: MemoryPromotionCommand): Promise<MemoryPromotionReceipt>;
+    promote(command: MemoryPromotionCommand): Promise<MemoryPromotionResult>;
 }

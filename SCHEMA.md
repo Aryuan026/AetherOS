@@ -684,6 +684,11 @@ interface MemoryCandidate {
   knowledge: MemoryCandidateKnowledge;
   temporalClass: 'historical' | 'live' | 'mixed';
   authority: 'model_interpretation' | 'deterministic_heuristic';
+  claimClass:
+    | 'conversation_fact'
+    | 'shared_experience'
+    | 'world_state_change'
+    | 'relationship_stage_change';
   status: 'proposed' | 'discarded';
   title: string;
   summary: string;
@@ -742,8 +747,9 @@ aetheros_memory_dm_settings_v2
 assets/memory_interpretation_store_v1
 ```
 
-The promotion boundary is declared but intentionally has no implementation in
-this phase:
+Memory Promotion is an independent target-domain gate. It does not mutate an
+interpretation pass and it has no Character, Anniversary, Scheduler, Narrative,
+hot-state, emotion, or Character Life writer.
 
 ```ts
 interface MemoryPromotionCommand {
@@ -753,9 +759,79 @@ interface MemoryPromotionCommand {
   candidateId: string;
   passId: string;
   expectedSourceRevisionFingerprint: string;
+  trigger: 'manual' | 'automatic_policy';
+  policyVersion: 'memory-promotion-policy-v1';
+  manualDecision?: {
+    id: string;
+    scope: HistoryScope;
+    candidateId: string;
+    decision:
+      | 'remember_historical'
+      | 'remember_relationship'
+      | 'confirm_played_experience';
+    confirmedAt: number;
+  };
+  experienceRef?: {
+    kind: 'scoped_experience_receipt';
+    scope: HistoryScope;
+    receiptId: string;
+    acceptedFactRefs: string[];
+  };
   requestedAt: number;
 }
 ```
+
+Successful promotion atomically appends one immutable target row and one
+`MemoryPromotionReceipt` under the same asset transaction. Target identity is
+stable by exact scope + pass + candidate, so concurrent/manual retries cannot
+create duplicate durable rows. A new command that reaches an existing target
+appends its own `status: duplicate`, `truthEffect: none` receipt referencing the
+original target and applied receipt; an exact retry of the same command reuses
+that command's receipt. Rejected and stale attempts also append zero-write
+receipts. Full source `EvidenceSpan`, candidate evidence ids, interpretation
+authority, claim class, deterministic interaction-provenance assessment,
+knowledge, temporal class, trigger, and optional scoped experience reference
+remain auditable on the row/receipt pair.
+
+The provenance assessment is computed from source surface, medium, producer,
+and transport role, never from model output. Its v1 classes are historical
+material, embodied interaction, user remote statement, two-party remote
+exchange, model/system-generated, manual material, and unclassified. Unknown
+combinations fail closed.
+
+Storage key:
+
+```text
+assets/memory_promotion_store_v1
+```
+
+Automatic policy rules:
+
+- only `live` candidates may enter automatic promotion;
+- `historical` / `mixed` candidates require an explicit manual path and remain
+  non-current historical material;
+- `manual` is not a magic bypass string: its command must carry an exact-scope,
+  candidate-bound user decision. Remembering a relationship fact is distinct
+  from confirming that a high-impact or embodied event was actually played;
+- conversational facts need user-channel evidence;
+- shared experiences need two-party source evidence;
+- model-interpreted candidates cannot automatically authorize themselves by
+  choosing a low-impact `claimClass`; they need verified scoped experience.
+  Deterministic candidates must additionally match the provenance class
+  required by their claim;
+- a pass with `extractor: model` can contain only `model_interpretation`
+  candidates, while a deterministic pass can contain only
+  `deterministic_heuristic` candidates. Promotion repeats this check even when
+  its store port is replaced;
+- embodied scenes, world-state changes, and relationship-stage changes require
+  a verified full-scope experience receipt;
+- current `NarrativeExperienceReceipt` lacks `personaMaskId`, so it is not
+  accepted directly. A future adapter must expose a verified scoped receipt and
+  stable accepted-fact refs;
+- source revision changes make the candidate stale. Existing promoted rows are
+  also filtered at selector read time if their source span is no longer active.
+- promoted `mixed` material remains `mixed` in the shared selector and is
+  formatted with historical evidence, never with live/current-state memory.
 
 Storage keys:
 
@@ -768,8 +844,10 @@ Current write targets:
 
 - interpretation pass and extraction receipt: yes, append-only in
   `assets/memory_interpretation_store_v1` and included by full-device backup;
-- relationship memory / `char.memories`: no;
-- `时光簿` / `anniversaries`: no;
+- scoped promoted relationship-memory rows: yes, in
+  `assets/memory_promotion_store_v1`; legacy `char.memories` remains untouched;
+- scoped promoted Timebook-entry rows: yes, in the same promotion store; legacy
+  `anniversaries` remains untouched;
 - scheduler / `companion_wakeups`: no;
 - Narrative and Character Life: no;
 - explicit manual re-analysis may reuse selected active evidence ids with a new
