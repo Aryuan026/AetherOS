@@ -148,9 +148,11 @@ Call messages, Date beats, Social posts, and user edits.
 - Imported raw source is immutable. Daily Archive owns a revisioned curation
   projection over source identity; it does not become the owner of the original
   Word/TXT file merely because the player corrected or locked a day.
-- Live Chat/Call/Date evidence currently permits overwrite-style edits. A
-  queryable live-evidence revision ledger is a future strengthening, not a
-  property this contract pretends already exists.
+- Live Chat/Call/Date evidence currently permits overwrite-style edits. Phase 1
+  must add addressable source revisions (or an equivalent append-only change
+  ledger) so stale interpretations and promotion commands can be rejected after
+  edit/reroll/delete. The current overwrite path is not accepted as a stable
+  evidence foundation.
 - Export-channel roles are transport roles, not guaranteed in-world actors.
 - Historical source timestamps remain real archive boundaries. Virtual-world
   time does not rewrite them.
@@ -394,6 +396,288 @@ Every core App may consume only the relevant subset of these shared contracts.
 | Confirmed Narrative receipt | lived scoped experience | memory promotion and Character Life event proposals | bypass target-domain validation |
 | Worldbook entry | canon/source material | prompt base, world/NPC constraints, plot planning | claim that an event happened or a relationship changed |
 | Character Life event | append-only current-state evidence | shared life projection, hot-state prompt adapter | rewrite historical evidence or relationship keepsakes |
+
+## Implementation Order
+
+App removal is not an early milestone. A currently awkward App may still own a
+useful player verb or become a better-shaped child surface later. First make the
+shared foundation trustworthy, then move already accepted UI flows onto it
+without redesigning those flows.
+
+### Phase 1: Evidence-to-memory foundation and surface alignment
+
+The first large phase stabilizes imported history plus newly produced Chat and
+Date evidence before optimizing prompt delivery.
+
+```text
+historical source / Chat / Date / Call / Social / other accepted UI
+  -> scoped InteractionEvidence
+  -> immutable or revisioned interpretation candidate
+  -> target-specific gate
+
+memory lane:
+  -> Memory Promotion Service -> relationship memory / Timebook
+
+narrative lane:
+  -> Narrative application/play/confirmation -> narrative truth
+
+current-life lane:
+  -> Character Life validation/policy -> current Life transition
+
+all accepted outputs
+  -> policy-scoped App projections
+```
+
+Chat is not a dialogue-only memory lane. It may contain parentheses, actions,
+environment, NPCs, scene changes, relationship turns, and light plot. Date is a
+more explicitly embodied/visual-novel surface, not the sole owner of plot
+evidence. The source surface and medium remain metadata; they do not decide
+continuity or promotion target.
+
+A target shared evidence envelope should carry only source-level facts:
+
+```ts
+type InteractionMedium =
+  | 'remote_text'
+  | 'mixed_text'
+  | 'embodied_scene'
+  | 'voice_call'
+  | 'social'
+  | 'diary'
+  | 'other';
+
+type InteractionSurface =
+  | 'history_import'
+  | 'chat'
+  | 'date'
+  | 'call'
+  | 'social'
+  | 'group_chat'
+  | 'journal'
+  | 'proactive'
+  | 'other';
+
+interface InteractionEvidence {
+  schemaVersion: 1;
+  evidenceId: string;
+  scope: RelationshipScope;
+  temporalClass: 'historical' | 'live';
+  source: {
+    surface: InteractionSurface;
+    medium: InteractionMedium;
+    storeFamily: string;
+    recordId: string;
+    revision: number;
+    status: 'active' | 'superseded' | 'tombstoned';
+    previousRevisionRef?: SourceRef;
+  };
+  transportRole:
+    | 'user_channel'
+    | 'assistant_channel'
+    | 'system_channel'
+    | 'unknown';
+  producer: 'user' | 'model' | 'system' | 'import' | 'manual';
+  content: {
+    kind: 'text' | 'image' | 'audio' | 'interaction' | 'mixed';
+    ref: SourceRef;
+    hash?: string;
+    charCount?: number;
+  };
+  time: {
+    recordedAt: string;
+    occurredAt?: string;
+    virtualTimeRef?: SourceRef;
+  };
+  correlation: {
+    interactionId: string;
+    turnId?: string;
+    responseId?: string;
+    parentEvidenceIds?: readonly string[];
+    sequence: number;
+  };
+}
+
+interface EvidenceSpan {
+  schemaVersion: 1;
+  scope: RelationshipScope;
+  evidenceIds: readonly string[];
+  sourceRevisionFingerprint: string;
+}
+```
+
+One evidence item represents one atomic source record at one revision. A
+multi-turn scene, analysis window, or curated merged range uses `EvidenceSpan`;
+it does not flatten several speakers, timestamps, or revisions into one record.
+
+`transportRole` records the transport speaker only. NPC identity, scene, event,
+objective, continuity, relationship meaning, and current-state meaning belong
+to versioned interpretation candidates; they are not guessed into the source
+envelope and are never reduced to per-line speaker homework.
+
+`InteractionEvidence` is preferably a typed projection, not another full-text
+store. The current Daily Archive already provides relationship-scoped,
+chunked, searchable, backed-up source custody for imported and live records.
+Phase 1 should extend its live rows with origin surface, medium, session/source
+refs, and revision semantics, then let evidence adapters reference those rows.
+The operational Message/Date stores remain responsible for UI behavior, and the
+raw import store remains the immutable origin. This avoids a third duplicate
+copy of private conversation text while keeping provenance navigable.
+
+Chat and Date preserve their real differences:
+
+- Chat owns remote/mixed thread presentation, reply format, quoting, and live
+  turn continuity. One response may remain a whole bubble while still carrying
+  paragraphs, actions, NPCs, and light plot as evidence.
+- Date owns a bounded embodied session, scene presentation, sprites/visual
+  beats, reroll/edit controls, and an experience lifecycle. Its evidence keeps
+  a session/scene reference but does not become mainline merely because the
+  medium is embodied.
+
+Every accepted UI block is audited without forcing a UI rewrite. The audit asks
+whether each create/edit/delete/reroll/lock/confirm path has:
+
+1. source identity, revision/tombstone behavior, and captured exact scope;
+2. a typed evidence adapter that preserves its medium without inventing actors;
+3. an interpretation path with source refs and repeatable versions;
+4. a promotion command and receipt instead of direct target-store writes;
+5. target-specific current-state and historical isolation;
+6. selector/knowledge policy for every consuming App;
+7. full backup/restore and code-update survival;
+8. integration fixtures proving delayed writes and mask changes cannot cross
+   relationship scope.
+
+Suggested migration waves inside the same phase are:
+
+- Wave 1: History Import/Daily Archive + Chat + Date + MemoryDM/Promotion;
+- Wave 2: Contacts + Timebook + StoryDesk/Narrative + Character Life boundary;
+- Wave 3: Call + Social + Group Chat + Journal + proactive delivery;
+- Wave 4: already accepted supporting Apps, one capability manifest and focused
+  regression fixture at a time.
+
+The waves order risk; they do not make Chat or Date the exclusive sources of
+memory.
+
+The first code migration points are already identifiable:
+
+1. `types.ts`, `utils/messageContext.ts`, `utils/db.ts`, and a new
+   `domain/interactionEvidence/`: replace open-ended integration metadata with
+   validated evidence/source types; require the caller to capture exact scope
+   when an interaction begins. The current save-time active-profile fallback is
+   unsafe for delayed Date/Call/AI writes. Character-wide message queries remain
+   UI compatibility only.
+2. `domain/dailyArchive/types.ts`, `domain/dailyArchive/contract.ts`, and
+   `utils/dailyArchive/liveSync.ts`: preserve origin surface, medium, producer,
+   turn/session correlation, revision, and supersession. Current live adaptation
+   labels Date/Call-origin records as `live_chat`, while live edits can lose the
+   old content revision.
+3. `hooks/useChatAI.ts`, `apps/Chat.tsx`, and `utils/chatParser.ts`: emit scoped
+   Chat evidence and invoke interpretation/promotion through ports; do not
+   classify parentheses or NPC prose as a separate App. Remove direct
+   character-memory, anniversary, schedule/wakeup, or current-buff side effects
+   from Chat parsing/action paths.
+4. `apps/DateApp.tsx`, `components/date/DateSession.tsx`, and Date state:
+   capture one durable session scope, retain session/scene/beat sequence, and
+   replace raw character-wide message reads with scoped projections. Current
+   paths save `source: 'date'` but may rely on the DB fallback, construct context
+   from every message for the character, and keep resumable state too close to
+   character-wide storage.
+5. `utils/memoryCore/memoryDm.ts`, `autoMemory.ts`, `selector.ts`, `types.ts`,
+   `receipts.ts`, and `utils/context.ts`: replace char-id cursors and
+   `getMessagesByCharId(...).slice(-48)` with scoped `EvidenceSpan` input;
+   append immutable interpretation passes; preserve all provenance through
+   dedupe; remove direct writes to character memories, anniversaries, and wakeup
+   rules; then call target-specific promotion/proposal ports.
+6. Memory Promotion, Timebook, Narrative Proposal, Scheduler, and Character
+   Life Proposal ports: validate target-specific authority and return receipts
+   before UI consumers are migrated.
+7. `context/OSContext.tsx`, `FullBackupData`, and focused backup adapters:
+   round-trip evidence, interpretation, promotion, and delivery receipt identity
+   and prove delayed writes, mask switches, edits, rerolls, tombstones, and
+   repeated analysis remain isolated and idempotent.
+
+Memory Promotion is not the common writer for all three targets. It writes only
+relationship-memory and Timebook families. Narrative and Character Life receive
+the same source-linked candidates through their own commands, lifecycle checks,
+and receipts. A candidate rejected by one target may remain eligible for
+another without implying partial truth leakage.
+
+Phase 1 acceptance needs cross-surface fixtures rather than one pure-function
+test per adapter:
+
+- the same character under masks A and B produces isolated evidence,
+  candidates, promotions, and delivery receipts;
+- a Chat turn containing actions, an NPC, a scene change, and light plot stays a
+  Chat source while supporting relationship and narrative candidates without
+  per-line actor assignment;
+- a Date reroll tombstones or supersedes the discarded response so only the
+  chosen revision can be promoted;
+- editing/deleting a source invalidates stale interpretation/promotion attempts,
+  while repeating the same command is idempotent;
+- historical “I am hurt / meet tomorrow” evidence remains retrievable but
+  cannot set current care, open threads, emotion, or Life state;
+- one source span may support relationship memory plus several non-exclusive
+  mainline/IF/date bindings without duplicating or moving the source;
+- automatic live-memory policy returns an audit receipt without asking the
+  player to confirm each message, but cannot create current Life or mainline;
+- full backup/restore preserves source refs, scope, revisions, candidates, and
+  receipts, and the accepted Chat/Date UI renders the same behavior before and
+  after the adapter migration.
+
+Phase 1 HOLD boundaries:
+
+- keep accepted Chat/Date UI behavior and do not add per-message confirmation;
+- do not remove or visually restructure Apps;
+- do not choose fixed token thresholds, layer percentages, vector retrieval, or
+  provider-specific prompt policies;
+- keep Narrative on read-only candidate projections: no automatic Run/Scene or
+  historical-route continuation;
+- defer the full Character Life state machine, but block all legacy paths from
+  bypassing it to write current truth;
+- audit Call/Social/Group/Journal/proactive in Phase 1 and migrate them in later
+  waves; keep deep NPC merge/DM hosting UI later while ensuring the
+  interpretation schema can already preserve Chat-borne NPC/event/route/open
+  thread candidates.
+
+### Phase 2: Token-balanced information delivery
+
+Token optimization begins only after Phase 1 produces trustworthy candidates,
+provenance, scope, and receipts. Phase 1 must nevertheless record enough
+metadata to study the problem without retaining another raw prompt archive:
+
+- receipt/request/interaction ids, exact scope, surface, trigger, and query
+  class;
+- selector-policy, projection, source-fingerprint, prompt, and schema versions;
+- provider/model identity and known context window, leaving unknown values empty
+  rather than guessing;
+- requested and effective budget plus explicit unit; characters are not silently
+  labeled as tokens;
+- candidate counts and estimated characters/tokens by stable base, recent live
+  tail, hot state, relationship memory, historical, narrative, Life, and
+  Worldbook layers;
+- selected/dropped candidate ids, policy reason codes, authority, freshness,
+  knowledge/temporal distribution, duplication/overlap, and compression
+  savings;
+- optional token estimates with an `estimatorId`; omit estimates when the model
+  tokenizer is not known well enough;
+- final estimated input, provider-reported prompt/completion/total/cached-input/
+  reasoning tokens when available, API call/retry counts, truncation/fallback
+  path, warnings, and retrieval/assembly/request latency;
+- generated response/evidence ids and later reroll/edit/delete/promotion links,
+  so Phase 2 can measure whether a smaller packet degraded continuity;
+- the delivery receipt's scope and revision, without storing API keys or a
+  second copy of the raw query, prompt, candidate text, or conversation.
+
+Phase 2 can then compare real questions rather than invent one global limit:
+which information is always resident, query-retrieved, narratively adjacent,
+temporarily hot, compressed, or omitted for each App and model. Vector recall is
+one possible retrieval tool, not a substitute for scope, authority, lifecycle,
+or token-budget policy.
+
+The current `WorldlineMemoryReceipt`/localStorage ledger is a compatibility
+diagnostic with a small rolling limit and title-oriented summaries. It is not
+the Phase 2 research ledger. The target observation receipt is structured,
+metadata-only, relationship-scoped, backup-aware, and uses stable ids/counts
+instead of retaining private delivered text.
 
 ## Core App Capability Map
 

@@ -112,6 +112,21 @@ App surfaces and shared truth:
   owner and Narrative Director as a proposal-only reader.
 - Migrate legacy scope and store access block by block. Do not remove Apps or
   rewrite stores as part of the documentation seal.
+- Treat App removal as a later audit, not the current objective. Existing Apps
+  may keep their player verb while changing presentation or becoming a child
+  surface.
+- Phase 1 is the evidence-to-memory foundation: stabilize imported history and
+  new Chat/Date interaction evidence, then audit every already accepted UI flow
+  for exact scope, source revision, interpretation, promotion receipt, selector,
+  current-state isolation, and backup. Chat can carry actions, NPCs, scene
+  changes, and light plot; Date is an embodied medium, not the only plot source.
+- Move the remaining accepted Apps onto the same base in focused waves without
+  redesigning their confirmed UI: Contacts/Timebook/StoryDesk/Life, then
+  Call/Social/Group/Journal/proactive, then supporting Apps.
+- Phase 2 is token-balanced delivery. Phase 1 records metadata-only delivery
+  budgets, per-layer candidate/selection/drop counts, overlap/compression,
+  provider token usage when available, latency, and fallback reasons. Do not
+  hard-code a universal prompt budget before those real delivery traces exist.
 
 Timebook and companion structure:
 

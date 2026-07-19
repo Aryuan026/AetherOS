@@ -19,6 +19,16 @@
   - Recorded the missing Memory Promotion Service, multi-port App capability
     manifest, receipt taxonomy, and current legacy scope/provenance debt as
     staged implementation seams rather than pretending they already exist.
+  - User-confirmed the implementation order: postpone App removal; first build
+    the shared evidence-to-memory base, stabilize imported plus new Chat/Date
+    memory processing, and audit every already accepted UI flow against it.
+    Chat light plot remains first-class evidence rather than being reassigned to
+    Date. Token-balanced delivery follows as Phase 2 after metadata-only real
+    delivery traces exist.
+  - The long-plot window's second review tightened Phase 1: one evidence item is
+    one source record/revision and multi-turn material uses `EvidenceSpan`;
+    live edits/rerolls require traceable supersession; Memory Promotion,
+    Narrative, and Character Life are three independent write gates.
 - verified:
   - Reviewed against `origin/main@bfb5fbb`, the existing history selector,
     MemoryDM, Daily Archive, Narrative Director, virtual-world context, persona

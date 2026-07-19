@@ -26,6 +26,29 @@
   their shared projections rather than reimplementing them.
 - Removing an App requires a data-owner and consumer audit; hiding or reordering
   an icon is not evidence that the App is safe to delete.
+- App removal is not part of the first foundation phase. Existing Apps may be
+  reshaped or folded into another surface after their player verb, data, and
+  consumers are understood.
+- Phase 1 must stabilize one evidence-to-memory path for imported history and
+  newly created Chat/Date records, then audit each already accepted UI flow
+  against the same scope, revision, promotion, receipt, selector, and backup
+  contract without forcing a visual redesign.
+- Chat messages may contain actions, narration, NPCs, scene transitions, and
+  light plot. The Chat source adapter must preserve that evidence; Date remains
+  the explicitly embodied medium but must not be treated as the only source of
+  narrative or relationship progression.
+- One `InteractionEvidence` identifies one source record at one revision;
+  multi-turn analysis uses an `EvidenceSpan` of ids/fingerprint. Editing,
+  deleting, or rerolling must append supersession/revision evidence so stale
+  candidates cannot be promoted.
+- Interpretation has three separate exits: Memory Promotion may write only
+  relationship memory/Timebook; Narrative owns directive/play/experience truth;
+  Character Life owns current-state validation and transitions.
+- Phase 1 delivery receipts must capture metadata-only per-layer budget,
+  selected/dropped candidate ids and reasons, estimated/provider token usage,
+  overlap/compression, latency, and fallback behavior. Phase 2 will use those
+  traces to design surface/model-aware token delivery instead of one universal
+  hard-coded limit.
 
 ## Post-import Daily Archive Curation
 
