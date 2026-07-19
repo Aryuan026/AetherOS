@@ -8,6 +8,7 @@ import {
   createMemoryExtractionReceiptId,
   createMemoryExtractionRequestId,
   createMemoryInterpretationPassId,
+  type MemoryDMExtractionRequest,
   type MemoryDMEvidenceReadPort,
   type MemoryInterpretationStorePort,
 } from '../../domain/memoryInterpretation/index.ts';
@@ -180,15 +181,17 @@ export const runAutoMemoryPass = async ({
   for (const char of personaScope.linkedCharacters) {
     const scope = strictRelationshipScopeForProfile(char.id, userProfile);
     if (!scope) continue;
+    let activeRequest: MemoryDMExtractionRequest | undefined;
+    let activeInputCharCount = 0;
     try {
       const [records, priorPasses] = await Promise.all([
         evidencePort.listActiveEvidence({ scope, temporalClass: 'live' }),
         interpretationStore.listPasses(scope),
       ]);
-      const interpretedFingerprints = new Set(
+      const interpretedEvidenceIds = new Set(
         priorPasses
           .filter(pass => pass.extractor === 'deterministic_heuristic')
-          .map(pass => pass.evidenceSpan.sourceRevisionFingerprint),
+          .flatMap(pass => [...pass.evidenceSpan.evidenceIds]),
       );
       const grouped = new Map<string, typeof records>();
       records.forEach(record => {
@@ -204,17 +207,22 @@ export const runAutoMemoryPass = async ({
         const isToday = dateKey === toLocalDate(now);
         const isQuiet = (now - latestAt) / 60000 >= settings.quietMinutesBeforeTodayArchive;
         if (isToday && !includeToday && !isQuiet) continue;
-        const picked = [...dayRecords].reverse().find(record => timebookSignal.test(record.content));
+        const uninterpretedDayRecords = dayRecords.filter(record => (
+          !interpretedEvidenceIds.has(record.evidence.evidenceId)
+        ));
+        const picked = [...uninterpretedDayRecords].reverse().find(record => timebookSignal.test(record.content));
         if (!picked) continue;
         const evidenceSpan = await createEvidenceSpan({
           scope,
-          evidence: dayRecords.map(record => record.evidence),
+          evidence: uninterpretedDayRecords.map(record => record.evidence),
         });
-        if (interpretedFingerprints.has(evidenceSpan.sourceRevisionFingerprint)) {
-          skippedCount += 1;
-          continue;
-        }
-        const analysisRunId = `timebook-${dateKey}-${evidenceSpan.sourceRevisionFingerprint.slice(-16)}`;
+        const analysisRunId = [
+          'timebook',
+          dateKey,
+          evidenceSpan.sourceRevisionFingerprint.slice(-16),
+          now,
+          Math.random().toString(36).slice(2, 10),
+        ].join('-');
         const requestId = createMemoryExtractionRequestId({ scope, analysisRunId });
         const request = assertMemoryExtractionRequest({
           schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
@@ -228,6 +236,12 @@ export const runAutoMemoryPass = async ({
           outputSchemaVersion: OUTPUT_SCHEMA_VERSION,
           requestedAt: now,
         });
+        if (!await interpretationStore.claimRequest(request)) {
+          skippedCount += 1;
+          continue;
+        }
+        activeRequest = request;
+        activeInputCharCount = uninterpretedDayRecords.reduce((sum, record) => sum + record.content.length, 0);
         const passId = createMemoryInterpretationPassId(request);
         const summary = clip(picked.content, 120);
         const candidate = {
@@ -266,6 +280,7 @@ export const runAutoMemoryPass = async ({
           schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
           id: createMemoryExtractionReceiptId(requestId),
           requestId,
+          analysisRunId,
           passId,
           scope: { ...scope },
           evidenceSpan,
@@ -277,13 +292,15 @@ export const runAutoMemoryPass = async ({
           promptVersion: PROMPT_VERSION,
           outputSchemaVersion: OUTPUT_SCHEMA_VERSION,
           usage: {
-            evidenceCount: dayRecords.length,
-            inputCharCount: dayRecords.reduce((sum, record) => sum + record.content.length, 0),
+            evidenceCount: uninterpretedDayRecords.length,
+            inputCharCount: activeInputCharCount,
           },
           createdAt: now,
         });
         await interpretationStore.appendCompleted(pass, receipt);
-        interpretedFingerprints.add(evidenceSpan.sourceRevisionFingerprint);
+        activeRequest = undefined;
+        activeInputCharCount = 0;
+        evidenceSpan.evidenceIds.forEach(id => interpretedEvidenceIds.add(id));
         candidateCount += 1;
         ledgerEntries.push({
           id: `ledger-${candidate.id}`,
@@ -295,13 +312,41 @@ export const runAutoMemoryPass = async ({
           title: candidate.title,
           summary: candidate.summary,
           sourceDate: dateKey,
-          messageCount: dayRecords.length,
+          messageCount: uninterpretedDayRecords.length,
           targetId: candidate.id,
           reason: 'awaiting_promotion',
           trigger,
         });
       }
     } catch (error) {
+      if (activeRequest) {
+        const failedAt = Date.now();
+        try {
+          await interpretationStore.appendFailure(activeRequest, assertMemoryExtractionReceipt({
+            schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
+            id: createMemoryExtractionReceiptId(activeRequest.id),
+            requestId: activeRequest.id,
+            analysisRunId: activeRequest.analysisRunId,
+            scope: { ...activeRequest.scope },
+            evidenceSpan: activeRequest.evidenceSpan,
+            status: 'failed',
+            truthEffect: 'none',
+            candidateIds: [],
+            rejectedCandidateCount: 0,
+            reason: error instanceof Error ? error.message : 'unknown',
+            extractor: activeRequest.extractor,
+            promptVersion: activeRequest.promptVersion,
+            outputSchemaVersion: activeRequest.outputSchemaVersion,
+            usage: {
+              evidenceCount: activeRequest.evidenceSpan.evidenceIds.length,
+              inputCharCount: activeInputCharCount,
+            },
+            createdAt: failedAt,
+          }));
+        } catch {
+          // The local debug ledger below still reports failure; target truth remains untouched.
+        }
+      }
       failedCount += 1;
       ledgerEntries.push({
         id: `ledger-auto-failed-${char.id}-${now}`,

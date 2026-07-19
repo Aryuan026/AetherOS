@@ -708,6 +708,7 @@ interface MemoryDMExtractionReceipt {
   schemaVersion: 1;
   id: string;
   requestId: string;
+  analysisRunId: string;
   passId?: string;
   scope: HistoryScope;
   evidenceSpan: EvidenceSpan;
@@ -717,6 +718,16 @@ interface MemoryDMExtractionReceipt {
   rejectedCandidateCount: number;
   usage: MemoryExtractionUsage;
   createdAt: number;
+}
+
+interface MemoryExtractionClaim {
+  schemaVersion: 1;
+  id: string; // scope + extractor + schema/prompt + ordered source fingerprint
+  requestId: string;
+  scope: HistoryScope;
+  status: 'pending' | 'completed' | 'failed';
+  createdAt: number;
+  updatedAt: number;
 }
 ```
 
@@ -763,6 +774,8 @@ Current write targets:
 - Narrative and Character Life: no;
 - explicit manual re-analysis may reuse selected active evidence ids with a new
   run id; automatic passes consume only previously uninterpreted revisions.
+- automatic requests first acquire an atomic source-fingerprint claim in the
+  same asset transaction; manual re-analysis intentionally bypasses this claim.
 
 ```ts
 interface WorldlineMemoryEvent {

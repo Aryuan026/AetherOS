@@ -919,8 +919,51 @@ export const DB = {
 
   saveAsset: async (id: string, data: string): Promise<void> => {
     const db = await openDB();
-    const transaction = db.transaction(STORE_ASSETS, 'readwrite');
-    transaction.objectStore(STORE_ASSETS).put({ id, data });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_ASSETS, 'readwrite');
+      const request = transaction.objectStore(STORE_ASSETS).put({ id, data });
+      request.onerror = () => reject(request.error);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error ?? new DOMException('Asset 写入事务已中止', 'AbortError'));
+      transaction.oncomplete = () => resolve();
+    });
+  },
+
+  updateAsset: async <T>(
+    id: string,
+    update: (current: string | null) => { data: string; result: T },
+  ): Promise<T> => {
+    const db = await openDB();
+    return await new Promise<T>((resolve, reject) => {
+      const transaction = db.transaction(STORE_ASSETS, 'readwrite');
+      const store = transaction.objectStore(STORE_ASSETS);
+      const request = store.get(id);
+      let result: T;
+      let settled = false;
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+      request.onerror = () => fail(request.error);
+      request.onsuccess = () => {
+        try {
+          const next = update(request.result?.data || null);
+          result = next.result;
+          store.put({ id, data: next.data });
+        } catch (error) {
+          transaction.abort();
+          fail(error);
+        }
+      };
+      transaction.onerror = () => fail(transaction.error);
+      transaction.onabort = () => fail(transaction.error ?? new DOMException('Asset 更新事务已中止', 'AbortError'));
+      transaction.oncomplete = () => {
+        if (settled) return;
+        settled = true;
+        resolve(result!);
+      };
+    });
   },
 
   getAssetRaw: async (id: string): Promise<any | null> => {

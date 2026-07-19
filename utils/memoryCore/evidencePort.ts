@@ -8,7 +8,7 @@ import type {
   MemoryDMEvidenceRecord,
 } from '../../domain/memoryInterpretation/index.ts';
 import { dailyArchiveMessageToInteractionEvidence } from '../../domain/dailyArchive/contract.ts';
-import { listAllDailyArchiveDocuments } from '../dailyArchive/storage.ts';
+import { listDailyArchiveDocumentsForScope } from '../dailyArchive/storage.ts';
 
 const sortValue = (record: MemoryDMEvidenceRecord): number => {
   const occurredAt = record.evidence.time.occurredAt;
@@ -25,7 +25,7 @@ export const createDailyArchiveEvidenceReadPort = (): MemoryDMEvidenceReadPort =
     scope: HistoryScope;
     temporalClass?: 'historical' | 'live';
   }): Promise<MemoryDMEvidenceRecord[]> => {
-    const documents = await listAllDailyArchiveDocuments();
+    const documents = await listDailyArchiveDocumentsForScope({ scope: input.scope });
     const records: MemoryDMEvidenceRecord[] = [];
     documents
       .filter(document => sameEvidenceScope(document.scope, input.scope))

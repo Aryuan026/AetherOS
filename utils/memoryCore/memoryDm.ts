@@ -357,13 +357,18 @@ export const runMemoryDMPass = async ({
     outputSchemaVersion: OUTPUT_SCHEMA_VERSION,
     requestedAt: now,
   });
+  if (trigger !== 'manual' && !await interpretationStore.claimRequest(request)) {
+    return emptyResult('already_claimed', newUserTurns);
+  }
   const passId = createMemoryInterpretationPassId(request);
   const inputCharCount = sourceEvidence.reduce((sum, record) => sum + record.content.length, 0);
+  const prompt = buildMemoryDMPrompt(char, userProfile, sourceEvidence);
+  const promptCharCount = prompt.length;
   const startedAt = Date.now();
   try {
     const modelResult = await modelPort.run({
       request,
-      prompt: buildMemoryDMPrompt(char, userProfile, sourceEvidence),
+      prompt,
       api: { ...apiConfig },
     });
     const parsed = parseCandidates({
@@ -393,6 +398,7 @@ export const runMemoryDMPass = async ({
       schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
       id: createMemoryExtractionReceiptId(requestId),
       requestId,
+      analysisRunId,
       passId,
       scope: { ...relationshipScope },
       evidenceSpan,
@@ -407,7 +413,9 @@ export const runMemoryDMPass = async ({
       usage: {
         evidenceCount: sourceEvidence.length,
         inputCharCount,
-        estimatedInputTokens: Math.ceil(inputCharCount / 3),
+        promptCharCount,
+        estimatedInputTokens: Math.ceil(promptCharCount / 3),
+        estimatorId: 'unicode_chars_div_3_v1',
         ...modelResult.usage,
       },
       createdAt: completedAt,
@@ -430,6 +438,7 @@ export const runMemoryDMPass = async ({
       schemaVersion: MEMORY_INTERPRETATION_SCHEMA_VERSION,
       id: createMemoryExtractionReceiptId(requestId),
       requestId,
+      analysisRunId,
       scope: { ...relationshipScope },
       evidenceSpan,
       status: 'failed',
@@ -443,12 +452,14 @@ export const runMemoryDMPass = async ({
       usage: {
         evidenceCount: sourceEvidence.length,
         inputCharCount,
-        estimatedInputTokens: Math.ceil(inputCharCount / 3),
+        promptCharCount,
+        estimatedInputTokens: Math.ceil(promptCharCount / 3),
+        estimatorId: 'unicode_chars_div_3_v1',
         latencyMs: Date.now() - startedAt,
       },
       createdAt: Date.now(),
     });
-    await interpretationStore.appendReceipt(receipt);
+    await interpretationStore.appendFailure(request, receipt);
     emitMemoryDMUpdate();
     throw error;
   }

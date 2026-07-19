@@ -18,11 +18,18 @@
     missing or foreign evidence ids fail closed before model input.
   - Kept extraction candidates and receipts in the existing full-backup-covered
     assets store, while leaving Memory Promotion as a declared HOLD boundary.
+  - Closed cross-task duplicate and orphan-record seams: automatic work acquires
+    an atomic scope/extractor/fingerprint claim, completion persists pass plus
+    receipt in one IndexedDB transaction, failure uses its own validated port,
+    and the store no longer exposes standalone pass/receipt append methods.
+  - Receipt usage now distinguishes source text from complete prompt size and
+    names its rough token estimator; provider-reported usage remains separate.
 - verified:
   - Focused evidence and MemoryDM fixtures cover ordered fingerprints,
     cross-mask isolation, unlinked-character rejection, invalid provenance,
     revision-aware reruns, intentional repeat analysis, heuristic proposals,
-    and zero target writes.
+    shared-source multi-candidates, production-store atomic claims, committed
+    pass/receipt pairs, and zero target writes.
 - boundary:
   - The accepted Chat/Date prompts and UI structure are unchanged. Historical
     route extraction, candidate review/promotion UI, Narrative/Character Life

@@ -1557,6 +1557,21 @@ export const listAllDailyArchiveDocuments = async (factory?: IDBFactory): Promis
     }
 };
 
+export const listDailyArchiveDocumentsForScope = async (input: {
+    scope: HistoryScope;
+    factory?: IDBFactory;
+}): Promise<DailyArchiveDocument[]> => {
+    const database = await openDailyArchiveDatabase(input.factory);
+    try {
+        const manifests = await listScopeDailyArchiveManifests({ database, scope: input.scope });
+        const documents: DailyArchiveDocument[] = [];
+        for (const manifest of manifests) documents.push(await hydrateStoredManifest(database, manifest));
+        return documents.sort((left, right) => left.id.localeCompare(right.id));
+    } finally {
+        database.close();
+    }
+};
+
 export const saveConversationClipping = async (input: {
     clipping: ConversationClipping;
     factory?: IDBFactory;

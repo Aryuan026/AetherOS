@@ -78,7 +78,9 @@ export interface MemoryInterpretationPass {
 export interface MemoryExtractionUsage {
     evidenceCount: number;
     inputCharCount: number;
+    promptCharCount?: number;
     estimatedInputTokens?: number;
+    estimatorId?: 'unicode_chars_div_3_v1';
     providerPromptTokens?: number;
     providerCompletionTokens?: number;
     providerTotalTokens?: number;
@@ -89,6 +91,7 @@ export interface MemoryDMExtractionReceipt {
     schemaVersion: typeof MEMORY_INTERPRETATION_SCHEMA_VERSION;
     id: string;
     requestId: string;
+    analysisRunId: string;
     passId?: string;
     scope: HistoryScope;
     evidenceSpan: EvidenceSpan;
@@ -103,6 +106,20 @@ export interface MemoryDMExtractionReceipt {
     outputSchemaVersion: string;
     usage: MemoryExtractionUsage;
     createdAt: number;
+}
+
+export interface MemoryExtractionClaim {
+    schemaVersion: typeof MEMORY_INTERPRETATION_SCHEMA_VERSION;
+    id: string;
+    requestId: string;
+    scope: HistoryScope;
+    extractor: MemoryInterpretationExtractor;
+    sourceRevisionFingerprint: string;
+    promptVersion: string;
+    outputSchemaVersion: string;
+    status: 'pending' | 'completed' | 'failed';
+    createdAt: number;
+    updatedAt: number;
 }
 
 /** Declared now so extraction cannot grow an implicit direct-write path. */
@@ -151,9 +168,10 @@ export interface MemoryDMModelPort {
 export interface MemoryInterpretationStorePort {
     listPasses(scope: HistoryScope): Promise<MemoryInterpretationPass[]>;
     listReceipts(scope: HistoryScope): Promise<MemoryDMExtractionReceipt[]>;
-    appendPass(pass: MemoryInterpretationPass): Promise<void>;
-    appendReceipt(receipt: MemoryDMExtractionReceipt): Promise<void>;
+    /** Atomic claim for automatic work. Manual re-analysis intentionally bypasses it. */
+    claimRequest(request: MemoryDMExtractionRequest): Promise<boolean>;
     appendCompleted(pass: MemoryInterpretationPass, receipt: MemoryDMExtractionReceipt): Promise<void>;
+    appendFailure(request: MemoryDMExtractionRequest, receipt: MemoryDMExtractionReceipt): Promise<void>;
 }
 
 /** Promotion implementation is intentionally HOLD in the extraction-only box. */

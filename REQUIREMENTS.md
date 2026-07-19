@@ -340,6 +340,10 @@
 - A future calendar selection may explicitly resubmit the same active evidence
   ids under a new manual analysis run. This intentional re-analysis must not be
   treated as an automatic duplicate and still has `truthEffect: none`.
+- Automatic extraction must acquire an atomic exact-scope source claim before
+  model work. Unchanged evidence cannot create concurrent or repeated automatic
+  candidates; failed claims may be retried, while manual evidence selection is
+  the explicit repeat-analysis path.
 - MemoryDM scheduler candidates remain proposals. Only a separate Scheduler
   command may later create a wakeup rule; extraction cannot do so as a side effect.
 - `时光簿` must allow editing saved memory rows, including title, date, and page

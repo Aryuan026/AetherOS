@@ -4,6 +4,7 @@ import {
     type MemoryCandidate,
     type MemoryDMExtractionReceipt,
     type MemoryDMExtractionRequest,
+    type MemoryExtractionClaim,
     type MemoryInterpretationPass,
 } from './types.ts';
 
@@ -32,6 +33,7 @@ const TEMPORAL_CLASSES = new Set(['historical', 'live', 'mixed']);
 const CANDIDATE_AUTHORITIES = new Set(['model_interpretation', 'deterministic_heuristic']);
 const CANDIDATE_STATUSES = new Set(['proposed', 'discarded']);
 const RECEIPT_STATUSES = new Set(['completed', 'failed', 'rejected']);
+const CLAIM_STATUSES = new Set(['pending', 'completed', 'failed']);
 
 export const createMemoryExtractionRequestId = (input: {
     scope: ReturnType<typeof assertEvidenceScope>;
@@ -52,6 +54,19 @@ export const createMemoryCandidateId = (passId: string, index: number): string =
 export const createMemoryExtractionReceiptId = (requestId: string): string => (
     `memory-extraction-receipt:v1:${encodeURIComponent(requiredString(requestId, 'requestId'))}`
 );
+
+export const createMemoryExtractionClaimId = (
+    request: Pick<MemoryDMExtractionRequest, 'scope' | 'extractor' | 'promptVersion' | 'outputSchemaVersion'> & {
+        evidenceSpan: Pick<MemoryDMExtractionRequest['evidenceSpan'], 'sourceRevisionFingerprint'>;
+    },
+): string => [
+    'memory-extraction-claim:v1',
+    scopeToken(assertEvidenceScope(request.scope)),
+    encodeURIComponent(request.extractor),
+    encodeURIComponent(requiredString(request.promptVersion, 'promptVersion')),
+    encodeURIComponent(requiredString(request.outputSchemaVersion, 'outputSchemaVersion')),
+    encodeURIComponent(requiredString(request.evidenceSpan.sourceRevisionFingerprint, 'sourceRevisionFingerprint')),
+].join(':');
 
 export const assertMemoryCandidate = (
     candidate: MemoryCandidate,
@@ -144,6 +159,7 @@ export const assertMemoryExtractionReceipt = (
     assertEvidenceScope(receipt.scope);
     requiredString(receipt.id, 'receipt.id');
     requiredString(receipt.requestId, 'receipt.requestId');
+    requiredString(receipt.analysisRunId, 'receipt.analysisRunId');
     requiredString(receipt.promptVersion, 'receipt.promptVersion');
     requiredString(receipt.outputSchemaVersion, 'receipt.outputSchemaVersion');
     if (!RECEIPT_STATUSES.has(receipt.status)) throw new Error('MemoryDMExtractionReceipt status 无效。');
@@ -151,6 +167,11 @@ export const assertMemoryExtractionReceipt = (
     assertEvidenceSpan(receipt.evidenceSpan);
     if (!sameEvidenceScope(receipt.scope, receipt.evidenceSpan.scope)) throw new Error('MemoryDMExtractionReceipt evidence span 跨越关系范围。');
     if (receipt.truthEffect !== 'none') throw new Error('提取回执不能产生真相写入。');
+    const expectedRequestId = createMemoryExtractionRequestId({
+        scope: receipt.scope,
+        analysisRunId: receipt.analysisRunId,
+    });
+    if (receipt.requestId !== expectedRequestId) throw new Error('MemoryDMExtractionReceipt requestId 与运行归属不一致。');
     if (receipt.id !== createMemoryExtractionReceiptId(receipt.requestId)) throw new Error('MemoryDMExtractionReceipt id 与 requestId 不一致。');
     if (receipt.status === 'completed' && !receipt.passId) throw new Error('完成回执必须引用 interpretation pass。');
     if (receipt.status !== 'completed' && (receipt.passId || receipt.candidateIds.length > 0)) {
@@ -160,5 +181,40 @@ export const assertMemoryExtractionReceipt = (
     if (!Number.isSafeInteger(receipt.rejectedCandidateCount) || receipt.rejectedCandidateCount < 0) throw new Error('rejectedCandidateCount 无效。');
     if (!Number.isSafeInteger(receipt.usage.evidenceCount) || receipt.usage.evidenceCount < 1) throw new Error('receipt evidenceCount 无效。');
     if (!Number.isSafeInteger(receipt.usage.inputCharCount) || receipt.usage.inputCharCount < 0) throw new Error('receipt inputCharCount 无效。');
+    if (receipt.usage.promptCharCount !== undefined && (!Number.isSafeInteger(receipt.usage.promptCharCount) || receipt.usage.promptCharCount < 0)) {
+        throw new Error('receipt promptCharCount 无效。');
+    }
+    if (receipt.usage.estimatedInputTokens !== undefined && (!Number.isSafeInteger(receipt.usage.estimatedInputTokens) || receipt.usage.estimatedInputTokens < 0)) {
+        throw new Error('receipt estimatedInputTokens 无效。');
+    }
+    if (receipt.usage.estimatedInputTokens !== undefined && receipt.usage.estimatorId !== 'unicode_chars_div_3_v1') {
+        throw new Error('估算 token 必须记录 estimatorId。');
+    }
     return receipt;
+};
+
+export const assertMemoryExtractionClaim = (
+    claim: MemoryExtractionClaim,
+): MemoryExtractionClaim => {
+    if (claim.schemaVersion !== MEMORY_INTERPRETATION_SCHEMA_VERSION) throw new Error('MemoryExtractionClaim schemaVersion 无效。');
+    assertEvidenceScope(claim.scope);
+    requiredString(claim.id, 'claim.id');
+    requiredString(claim.requestId, 'claim.requestId');
+    requiredString(claim.sourceRevisionFingerprint, 'claim.sourceRevisionFingerprint');
+    requiredString(claim.promptVersion, 'claim.promptVersion');
+    requiredString(claim.outputSchemaVersion, 'claim.outputSchemaVersion');
+    if (!EXTRACTORS.has(claim.extractor)) throw new Error('MemoryExtractionClaim extractor 无效。');
+    if (!CLAIM_STATUSES.has(claim.status)) throw new Error('MemoryExtractionClaim status 无效。');
+    if (!Number.isFinite(claim.createdAt) || !Number.isFinite(claim.updatedAt) || claim.updatedAt < claim.createdAt) {
+        throw new Error('MemoryExtractionClaim 时间无效。');
+    }
+    const expectedId = createMemoryExtractionClaimId({
+        scope: claim.scope,
+        extractor: claim.extractor,
+        promptVersion: claim.promptVersion,
+        outputSchemaVersion: claim.outputSchemaVersion,
+        evidenceSpan: { sourceRevisionFingerprint: claim.sourceRevisionFingerprint },
+    });
+    if (claim.id !== expectedId) throw new Error('MemoryExtractionClaim id 与来源归属不一致。');
+    return claim;
 };
