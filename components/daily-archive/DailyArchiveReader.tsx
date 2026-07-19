@@ -8,8 +8,15 @@ import React, {
 import {
     BookmarkSimple,
     Bookmarks,
+    CalendarBlank,
     Check,
     ClockCounterClockwise,
+    LockKey,
+    NotePencil,
+    PencilSimple,
+    Trash,
+    UserSwitch,
+    ArrowsMerge,
     SpinnerGap,
     X,
 } from '@phosphor-icons/react';
@@ -51,7 +58,11 @@ export interface DailyArchiveReaderSource {
     id: string;
     dateKey?: string;
     messageCount: number;
+    revisionToken?: number;
 }
+
+export type DailyArchiveSelectionPurpose = 'clipping' | 'curation';
+export type DailyArchiveCurationAction = 'clip' | 'edit' | 'merge' | 'role' | 'date' | 'confirm' | 'delete';
 
 export interface DailyArchiveReaderFocus {
     requestId: number;
@@ -66,15 +77,16 @@ interface DailyArchiveReaderProps {
     userName: string;
     characterName: string;
     pageSize: number;
-    selectionMode: boolean;
+    selectionPurpose?: DailyArchiveSelectionPurpose;
     selectedMessageIds: Set<string>;
     focus?: DailyArchiveReaderFocus;
     loadPage: (offset: number, limit: number) => Promise<DailyArchiveMessagePage>;
     onBack: () => void;
-    onStartSelection: () => void;
+    onStartSelection: (purpose: DailyArchiveSelectionPurpose, initial?: DailyArchiveMessage) => void;
     onCancelSelection: () => void;
     onToggleMessage: (message: DailyArchiveMessage) => void;
     onSaveClipping: () => void;
+    onCurationAction: (action: DailyArchiveCurationAction) => void;
     onOpenLibrary: () => void;
 }
 
@@ -84,10 +96,11 @@ interface VirtualMessagePageProps {
     top: number;
     userName: string;
     characterName: string;
-    selectionMode: boolean;
+    selectionPurpose?: DailyArchiveSelectionPurpose;
     selectedMessageIds: Set<string>;
     focusMessageId?: string;
     onToggleMessage: (message: DailyArchiveMessage) => void;
+    onStartCuration: (message: DailyArchiveMessage) => void;
     onMeasure: (pageIndex: number, height: number) => void;
 }
 
@@ -97,13 +110,16 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
     top,
     userName,
     characterName,
-    selectionMode,
+    selectionPurpose,
     selectedMessageIds,
     focusMessageId,
     onToggleMessage,
+    onStartCuration,
     onMeasure,
 }) => {
     const pageRef = useRef<HTMLDivElement>(null);
+    const longPressTimerRef = useRef<number>();
+    const longPressedMessageRef = useRef<string>();
 
     useEffect(() => {
         const element = pageRef.current;
@@ -129,16 +145,54 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
                 const selectable = isUser || isCharacter;
                 const selected = selectedMessageIds.has(message.id);
                 const focused = focusMessageId === message.id;
+                const canSelect = selectionPurpose === 'curation' || selectable;
+                const startLongPress = () => {
+                    if (selectionPurpose) return;
+                    if (longPressTimerRef.current !== undefined) window.clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = window.setTimeout(() => {
+                        longPressedMessageRef.current = message.id;
+                        onStartCuration(message);
+                    }, 520);
+                };
+                const cancelLongPress = () => {
+                    if (longPressTimerRef.current !== undefined) window.clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = undefined;
+                };
+                const handleMessageClick = () => {
+                    if (longPressedMessageRef.current === message.id) {
+                        longPressedMessageRef.current = undefined;
+                        return;
+                    }
+                    if (selectionPurpose && canSelect) onToggleMessage(message);
+                };
                 if (!selectable) {
                     const sourceLabel = message.role === 'system' ? '来源说明' : '原文片段';
                     return (
                         <div key={message.id} className="flex justify-center">
-                            <div className="max-w-[88%] rounded-2xl bg-slate-100 px-3 py-2 text-[10px] leading-relaxed text-slate-500">
+                            <button
+                                type="button"
+                                onPointerDown={startLongPress}
+                                onPointerUp={cancelLongPress}
+                                onPointerCancel={cancelLongPress}
+                                onPointerLeave={cancelLongPress}
+                                onClick={handleMessageClick}
+                                className={`max-w-[88%] rounded-2xl bg-slate-100 px-3 py-2 text-left text-[10px] leading-relaxed text-slate-500 ${selected ? 'ring-2 ring-violet-400' : ''}`}
+                            >
                                 <div className="mb-1 text-[8px] font-black tracking-wide text-slate-400">
+                                    {selectionPurpose === 'curation' && (
+                                        <span className={`mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full border align-middle ${
+                                            selected ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300 bg-white text-transparent'
+                                        }`}><Check size={10} weight="bold" /></span>
+                                    )}
                                     {sourceLabel}
+                                    {message.curation?.authority === 'human_confirmed' && (
+                                        <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] text-emerald-600">
+                                            <LockKey size={8} weight="fill" /> 已确认
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                            </div>
+                            </button>
                         </div>
                     );
                 }
@@ -150,14 +204,18 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
                     >
                         <button
                             type="button"
-                            onClick={() => selectionMode && onToggleMessage(message)}
+                            onPointerDown={startLongPress}
+                            onPointerUp={cancelLongPress}
+                            onPointerCancel={cancelLongPress}
+                            onPointerLeave={cancelLongPress}
+                            onClick={handleMessageClick}
                             className={`relative max-w-[88%] text-left transition ${
-                                selectionMode ? 'cursor-pointer active:scale-[0.99]' : 'cursor-default'
+                                selectionPurpose ? 'cursor-pointer active:scale-[0.99]' : 'cursor-default'
                             } ${isUser ? 'text-right' : 'text-left'}`}
-                            aria-pressed={selectionMode ? selected : undefined}
+                            aria-pressed={selectionPurpose ? selected : undefined}
                         >
                             <div className="mb-1 flex items-center gap-1 px-1 text-[8px] font-bold text-slate-400">
-                                {selectionMode && (
+                                {selectionPurpose && (
                                     <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${
                                         selected ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300 bg-white text-transparent'
                                     }`}>
@@ -165,6 +223,11 @@ const VirtualMessagePage: React.FC<VirtualMessagePageProps> = ({
                                     </span>
                                 )}
                                 <span>{isUser ? userName || '我' : characterName || '角色'} · {messageTime(message)}</span>
+                                {message.curation?.authority === 'human_confirmed' && (
+                                    <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] font-black text-emerald-600">
+                                        <LockKey size={8} weight="fill" /> 已确认
+                                    </span>
+                                )}
                             </div>
                             <div className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-left text-[13px] leading-relaxed shadow-sm ring-offset-2 transition ${
                                 isUser
@@ -188,7 +251,7 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
     userName,
     characterName,
     pageSize,
-    selectionMode,
+    selectionPurpose,
     selectedMessageIds,
     focus,
     loadPage,
@@ -197,6 +260,7 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
     onCancelSelection,
     onToggleMessage,
     onSaveClipping,
+    onCurationAction,
     onOpenLibrary,
 }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -268,7 +332,7 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
         setPageError(undefined);
         setFailedPageIndex(undefined);
         if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    }, [source?.id, source?.messageCount]);
+    }, [source?.id, source?.messageCount, source?.revisionToken]);
 
     useEffect(() => {
         if (!source || !focus || source.messageCount === 0) return;
@@ -308,7 +372,7 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
             pagesRef.current = next;
             setPages(new Map(next));
         }
-    }, [currentPage, loadPageIndex, pageCount, source?.id]);
+    }, [currentPage, loadPageIndex, pageCount, source?.id, source?.revisionToken]);
 
     useEffect(() => () => {
         if (scrollFrameRef.current !== undefined) cancelAnimationFrame(scrollFrameRef.current);
@@ -372,15 +436,14 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                     <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={selectionMode ? onCancelSelection : onStartSelection}
+                        onClick={selectionPurpose ? onCancelSelection : () => onStartSelection('curation')}
                         disabled={!source || source.messageCount === 0}
                         className={`flex h-10 min-w-10 items-center justify-center gap-1 rounded-full px-2.5 text-[10px] font-black shadow-sm disabled:opacity-40 ${
-                            selectionMode ? 'bg-violet-600 text-white' : 'bg-white text-violet-600'
+                            selectionPurpose ? 'bg-violet-600 text-white' : 'bg-white text-violet-600'
                         }`}
-                        aria-label={selectionMode ? '取消剪藏选择' : '选择对话剪藏'}
+                        aria-label={selectionPurpose ? '取消选择' : '整理对话记录'}
                     >
-                        {selectionMode ? <X size={16} weight="bold" /> : <BookmarkSimple size={17} weight="duotone" />}
-                        <span>{selectionMode ? '取消' : '剪藏'}</span>
+                        {selectionPurpose ? <X size={16} weight="bold" /> : <PencilSimple size={17} weight="duotone" />}
                     </button>
                     <button
                         type="button"
@@ -394,10 +457,12 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                 )}
             />
 
-            {selectionMode && (
+            {selectionPurpose && (
                 <div className="relative z-10 shrink-0 px-4 py-2">
                     <p className="rounded-xl bg-violet-50 px-3 py-2 text-center text-[9px] font-bold leading-relaxed text-violet-600">
-                        点选角色原话，也可以把前后几句一起夹进去；跨页选择会保留，每份最多 80 条。
+                        {selectionPurpose === 'clipping'
+                            ? '点选想保留的原话；跨页选择会保留，每份最多 80 条。'
+                            : '点选记录后可合并、改说话人、归入日期、修改、删除或确认。长按任一气泡也能进入这里。'}
                     </p>
                 </div>
             )}
@@ -459,10 +524,11 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                                         top={top}
                                         userName={userName}
                                         characterName={characterName}
-                                        selectionMode={selectionMode}
+                                        selectionPurpose={selectionPurpose}
                                         selectedMessageIds={selectedMessageIds}
                                         focusMessageId={focus?.messageId}
                                         onToggleMessage={onToggleMessage}
+                                        onStartCuration={message => onStartSelection('curation', message)}
                                         onMeasure={handleMeasure}
                                     />
                                 );
@@ -484,17 +550,44 @@ const DailyArchiveReader: React.FC<DailyArchiveReaderProps> = ({
                 )}
             </main>
 
-            {selectionMode && (
+            {selectionPurpose && (
                 <footer className="relative z-20 shrink-0 border-t border-white bg-white/92 px-4 pb-[max(14px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl">
-                    <button
-                        type="button"
-                        onClick={onSaveClipping}
-                        disabled={selectedMessageIds.size === 0}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 py-3.5 text-sm font-black text-white shadow-lg shadow-violet-200 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
-                    >
-                        <BookmarkSimple size={18} weight="fill" />
-                        {selectedMessageIds.size > 0 ? `存入剪藏库 · ${selectedMessageIds.size} 条` : '点选想留下的对话'}
-                    </button>
+                    {selectionPurpose === 'clipping' ? (
+                        <button
+                            type="button"
+                            onClick={onSaveClipping}
+                            disabled={selectedMessageIds.size === 0}
+                            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 py-3.5 text-sm font-black text-white shadow-lg shadow-violet-200 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                        >
+                            <BookmarkSimple size={18} weight="fill" />
+                            {selectedMessageIds.size > 0 ? `存入剪藏库 · ${selectedMessageIds.size} 条` : '点选想留下的对话'}
+                        </button>
+                    ) : (
+                        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                            {([
+                                ['clip', BookmarkSimple, '剪藏'],
+                                ['edit', NotePencil, '修改'],
+                                ['merge', ArrowsMerge, '合并'],
+                                ['role', UserSwitch, '说话人'],
+                                ['date', CalendarBlank, '日期'],
+                                ['confirm', LockKey, '确认'],
+                                ['delete', Trash, '删除'],
+                            ] as const).map(([action, Icon, label]) => (
+                                <button
+                                    key={action}
+                                    type="button"
+                                    disabled={selectedMessageIds.size === 0 || (action === 'edit' && selectedMessageIds.size !== 1)}
+                                    onClick={() => onCurationAction(action)}
+                                    className={`flex min-w-[62px] shrink-0 flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[9px] font-black disabled:opacity-35 ${
+                                        action === 'delete' ? 'bg-rose-50 text-rose-600' : 'bg-violet-50 text-violet-600'
+                                    }`}
+                                >
+                                    <Icon size={17} weight="duotone" />
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </footer>
             )}
         </section>

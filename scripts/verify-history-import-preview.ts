@@ -212,6 +212,30 @@ assert.match(oneParagraphPreview.rows[0].content, /只是角色正文的换行/u
 assert.match(oneParagraphPreview.rows[2].content, /assistant: 这个字样/u);
 assert.match(oneParagraphPreview.rows[1].sourceLocator.label || '', /片段 2/u);
 
+const wrappedWordExport = await buildHistoryImportPreview({
+    name: 'synthetic-wrapped-paid-export.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    bytes: await createParagraphOnlyDocx([
+        'user:【朋友圈】2025.8.29',
+        '和小雨在一起的第一个七夕~',
+        '赶出来的一张贺图~',
+        '不过我知道你不管我画啥样都会喜欢。',
+        'timestamp:2025-08-29 23:01:12',
+        'assistant:当然，我也爱你。',
+        '（配图：九宫格）',
+        'timestamp:2025-08-29 23:01:13',
+    ]),
+    bindingDraft,
+});
+assert.equal(wrappedWordExport.counts.accepted, 2);
+assert.equal(wrappedWordExport.rows.length, 2);
+assert.deepEqual(wrappedWordExport.rows.map(row => row.authorChannel), ['user', 'char']);
+assert.equal(wrappedWordExport.rows[0].sourceTime.originalText, '2025-08-29 23:01:12');
+assert.equal(wrappedWordExport.rows[1].sourceTime.originalText, '2025-08-29 23:01:13');
+assert.match(wrappedWordExport.rows[0].content, /【朋友圈】2025\.8\.29\n和小雨/u);
+assert.match(wrappedWordExport.rows[0].content, /赶出来的一张贺图/u);
+assert.match(wrappedWordExport.rows[1].content, /（配图：九宫格）/u);
+
 const wpsSelfClosingPreview = await buildHistoryImportPreview({
     name: 'synthetic-wps-self-closing-paragraph.docx',
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

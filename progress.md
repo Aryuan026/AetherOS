@@ -1,5 +1,37 @@
 # AetherOS Progress
 
+## 2026-07-19 Post-import Archive Curation Seal
+
+- done:
+  - Fixed paid Word/WPS exports whose one `user:` or `assistant:` turn spans
+    several paragraphs. Continuation paragraphs now stay inside that turn until
+    the trailing `timestamp:`; prose such as `【朋友圈】2025.8.29` remains body
+    text instead of becoming a false date or extra speaker.
+  - Opened Daily Archive correction for dated, undated, and unattributed rows:
+    long-press/organizer selection, edit, merge, export-channel attribution,
+    date assignment, tombstone deletion, clipping, and confirmation locking.
+  - Kept corrections inside the canonical chunked archive revision stream.
+    Date moves leave higher-revision tombstones in the old bucket and retain raw
+    source ids, so later history sync cannot restore a corrected mistake.
+  - Kept `human_confirmed` as historical transcript authority only. It does not
+    advance emotion, care, current life, narrative receipts, or memory.
+  - Integrated the already-reviewed launcher visibility/order release and
+    Worldbook folding/reusable custom groups into one testable main candidate.
+- verified:
+  - `npm run verify:history-import`, `npm run verify:daily-archive`,
+    `npm run typecheck`, and `git diff --check` pass.
+  - New fake-IndexedDB integration covers role/date/edit/merge, confirmation
+    lock/unlock, revision tombstones, and resistance to a later raw revision-1
+    sync.
+  - In-app Chromium at 430 x 932 imported a fictional three-row TXT, rendered
+    the wrapped朋友圈 turn as one user bubble, opened an unattributed undated row,
+    changed it to the character channel, moved it into a day, and confirmed a
+    dated record. The calendar/reader updated without reload and console errors
+    remained zero.
+- boundary:
+  - Confirmation verifies the local transcript projection, not world truth or
+    current state. Calendar semantic analysis/model execution remains HOLD.
+
 ## 2026-07-19 Desktop App Visibility And Ordering
 
 - done:
@@ -1820,3 +1852,29 @@
   - Run a real provider conversation in both modes and compare one-bubble preservation with strict IM splitting; the pure output-contract tests are already green.
   - Keep Date/见面 as the explicit novel-style embodied carrier; do not merge its prompt contract into Chat.
   - Publish this focused block only after owner approval. No commit, push, deploy, or server change occurred here.
+
+## 2026-07-19 Worldbook Folding And Custom Groups
+
+- done:
+  - Wrapped all built-in worldbooks in one default-collapsed, read-only library;
+    built-in categories remain independently foldable inside it.
+  - Split custom books into `我的分组` without changing the persisted
+    `Worldbook.category` schema or mounted-worldbook records.
+  - Replaced mobile `datalist` category reuse with visible named group buttons
+    and an explicit `新建分组` action.
+  - Collapsed category contents in the character worldbook mounting modal.
+  - Kept custom records editable even when their category label matches a
+    built-in category; read-only status follows record metadata only.
+
+- verified:
+  - `npm run verify:worldbook-groups`
+  - `npm run typecheck`
+  - Mobile browser at 390×844: built-in outer drawer and nested category
+    foldouts, first custom group creation, existing-group reuse for a second
+    entry, zero horizontal overflow, and zero console errors.
+
+- boundary:
+  - Empty standalone groups are intentionally not stored; a group exists while
+    at least one entry uses its normalized category.
+  - Desktop App hiding/reordering is delegated to the appearance task and is
+    not implemented in this block.

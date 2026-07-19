@@ -1,5 +1,27 @@
 # SullyOS Requirements
 
+## Post-import Daily Archive Curation
+
+- History intake must stay one high-tolerance flow. Speaker/date correction,
+  merging, deletion, and confirmation belong in Dialogue Calendar after import.
+- Word/WPS paragraphs following one explicit `user:` / `assistant:` / `char:`
+  marker must remain in that turn until a real `timestamp:` or next explicit
+  role marker. Dates written inside prose must remain prose.
+- Dated, undated, and unattributed archive rows must all be selectable. Long
+  press and an explicit organizer control must reach the same mobile selection
+  mode.
+- A user may edit one row, change one or many export-channel roles, move one or
+  many rows to a date, merge selected rows in source order, tombstone selected
+  rows, and mark selected rows confirmed/unconfirmed.
+- Moving or deleting must be revision-safe: later source synchronization cannot
+  revive the old projection. Every merged row must retain all represented
+  source message ids.
+- Confirmation is a transcript lock and future evidence-strength signal only.
+  Confirmed historical rows stay excluded from current emotion, care, open
+  threads, Character Life, NarrativeRun, ExperienceReceipt, and direct memory.
+- The archive reader must continue to page/virtualize chat-heavy days; curation
+  may not load or render the entire day in one DOM tree.
+
 ## Global Software Shell And Virtual-City Time
 
 - The default web shell must not simulate the host device's real clock,
@@ -636,6 +658,28 @@
   slices.
 - Backup/export must preserve the full mask-aware `UserProfile`, including
   DeepSpace identity fields, persona masks, and progress bundles.
+
+## Worldbook Library Grouping
+
+- Built-in worldbooks must appear under one default-collapsed, read-only
+  collection. Opening that collection reveals category foldouts; it must not
+  expand every built-in entry onto the mobile screen at once.
+- Custom worldbooks must remain visually separate from built-ins even when a
+  custom category happens to reuse a built-in category name. Built-in/read-only
+  status comes from record metadata, never from the category label.
+- Creating or editing a custom worldbook must show existing custom categories
+  as visible, named controls. Reusing a category must not require typing its
+  name again or relying on a mobile `datalist` suggestion popup.
+- Creating a new category is an explicit action. If no existing custom category
+  is selected, a blank category resolves to `未分类设定 (General)`.
+- A custom group is a projection of entries sharing the same normalized
+  `category`; empty standalone groups are not persisted. Deleting the final
+  entry therefore removes that group naturally.
+- Character worldbook mounting must keep the same records and mount semantics,
+  while category contents start collapsed so large libraries remain usable on
+  a phone.
+- Grouping changes must not introduce a new database version, rewrite mounted
+  worldbooks, or change backup/export compatibility.
 
 ## Public Sticker Packs
 

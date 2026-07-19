@@ -7,8 +7,10 @@ import {
     chunkDailyArchiveDocument,
     createDailyArchiveDocumentId,
     DAILY_ARCHIVE_KEYWORD_RESULT_LIMIT,
+    DAILY_ARCHIVE_PAGE_MESSAGE_LIMIT,
     dailyArchiveDescriptorForChunk,
     hydrateDailyArchiveDocument,
+    isDailyArchiveDateKey,
     normalizeDailyArchiveKeyword,
     readDailyArchivePageFromChunks,
     searchDailyArchiveChunk,
@@ -38,6 +40,19 @@ export const CONVERSATION_CLIPPING_STORE = 'conversation_clippings';
 export const DAILY_ARCHIVE_MANIFEST_STORE = 'daily_archive_manifests';
 export const DAILY_ARCHIVE_CHUNK_STORE = 'daily_archive_chunks';
 export const DAILY_ARCHIVE_MESSAGE_INDEX_STORE = 'daily_archive_message_index';
+
+export type DailyArchiveCurationOperation =
+    | { kind: 'edit_content'; content: string }
+    | { kind: 'set_role'; role: 'user' | 'character' | 'unknown' }
+    | { kind: 'set_date'; dateKey: string }
+    | { kind: 'merge' }
+    | { kind: 'delete' }
+    | { kind: 'set_confirmation'; confirmed: boolean };
+
+export interface DailyArchiveCurationResult {
+    affectedDocumentIds: string[];
+    activeMessageIds: string[];
+}
 
 interface DailyArchiveMessageIndexEntry {
     id: string;
@@ -317,6 +332,63 @@ const persistChunkedDocument = async (input: {
     return manifest;
 };
 
+const persistChunkedDocuments = async (input: {
+    database: IDBDatabase;
+    documents: DailyArchiveDocument[];
+}): Promise<void> => {
+    const chunked = input.documents.map(document => ({
+        document,
+        ...chunkDailyArchiveDocument(document),
+    }));
+    const staleKeys = await Promise.all(chunked.map(async ({ document }) => {
+        const transaction = input.database.transaction([
+            DAILY_ARCHIVE_CHUNK_STORE,
+            DAILY_ARCHIVE_MESSAGE_INDEX_STORE,
+        ], 'readonly');
+        const [chunkKeys, messageKeys] = await Promise.all([
+            requestAsPromise(
+                transaction.objectStore(DAILY_ARCHIVE_CHUNK_STORE)
+                    .index('document_id').getAllKeys(IDBKeyRange.only(document.id)),
+            ),
+            requestAsPromise(
+                transaction.objectStore(DAILY_ARCHIVE_MESSAGE_INDEX_STORE)
+                    .index('document_id').getAllKeys(IDBKeyRange.only(document.id)),
+            ),
+        ]);
+        return { chunkKeys, messageKeys };
+    }));
+    const transaction = input.database.transaction([
+        DAILY_ARCHIVE_MANIFEST_STORE,
+        DAILY_ARCHIVE_CHUNK_STORE,
+        DAILY_ARCHIVE_MESSAGE_INDEX_STORE,
+        DAILY_ARCHIVE_SUMMARY_STORE,
+    ], 'readwrite');
+    const settled = transactionAsPromise(transaction);
+    const manifestStore = transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE);
+    const chunkStore = transaction.objectStore(DAILY_ARCHIVE_CHUNK_STORE);
+    const messageIndexStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_INDEX_STORE);
+    const summaryStore = transaction.objectStore(DAILY_ARCHIVE_SUMMARY_STORE);
+    staleKeys.forEach(({ chunkKeys, messageKeys }) => {
+        chunkKeys.forEach(key => chunkStore.delete(key));
+        messageKeys.forEach(key => messageIndexStore.delete(key));
+    });
+    chunked.forEach(({ manifest, chunks }) => {
+        manifestStore.put(manifest);
+        summaryStore.put(summaryForManifest(manifest));
+        chunks.forEach(chunk => {
+            chunkStore.put(chunk);
+            chunk.messages.forEach(message => messageIndexStore.put({
+                id: dailyArchiveMessageIndexId(manifest.id, message.id),
+                messageId: message.id,
+                documentId: manifest.id,
+                chunkId: chunk.id,
+                revision: message.revision,
+            } satisfies DailyArchiveMessageIndexEntry));
+        });
+    });
+    await settled;
+};
+
 const ensureChunkedManifest = async (
     database: IDBDatabase,
     documentId: string,
@@ -553,6 +625,227 @@ export const upsertDailyArchiveMessages = async (input: {
     }
 };
 
+const archiveBucketForMessage = (message: DailyArchiveMessage): {
+    scope: HistoryScope;
+    dateKey?: string;
+    undatedKey?: string;
+} => ({
+    scope: message.scope,
+    dateKey: message.time.dateKey,
+    undatedKey: message.time.dateKey ? undefined : message.sourceBatchId || message.source,
+});
+
+const curatedSourceIds = (message: DailyArchiveMessage): string[] => (
+    message.curation?.sourceMessageIds?.length
+        ? [...message.curation.sourceMessageIds]
+        : [message.id]
+);
+
+const correctedCuration = (
+    message: DailyArchiveMessage,
+    now: number,
+    confirmed?: boolean,
+) => ({
+    sourceMessageIds: curatedSourceIds(message),
+    correctedAt: now,
+    confirmedAt: confirmed ? now : undefined,
+    authority: confirmed ? 'human_confirmed' as const : 'human_corrected' as const,
+});
+
+const isConfirmedArchiveMessage = (message: DailyArchiveMessage): boolean => (
+    message.curation?.authority === 'human_confirmed'
+);
+
+const timeMovedToDate = (
+    message: DailyArchiveMessage,
+    dateKey: string,
+): DailyArchiveMessage['time'] => {
+    const clock = message.time.originalText?.match(/(\d{1,2}:\d{2}(?::\d{2})?)/u)?.[1];
+    const sourceDate = Number.isFinite(message.time.epochMs)
+        ? new Date(message.time.epochMs!)
+        : undefined;
+    const [year, month, day] = dateKey.split('-').map(Number);
+    const hour = sourceDate?.getHours() ?? 12;
+    const minute = sourceDate?.getMinutes() ?? 0;
+    const second = sourceDate?.getSeconds() ?? 0;
+    const moved = new Date(year, month - 1, day, hour, minute, second);
+    return {
+        ...message.time,
+        dateKey,
+        originalText: clock ? `${dateKey} ${clock}` : dateKey,
+        iso: Number.isNaN(moved.getTime()) ? undefined : moved.toISOString(),
+        epochMs: Number.isNaN(moved.getTime()) ? undefined : moved.getTime(),
+        precision: clock ? message.time.precision : 'day',
+    };
+};
+
+/**
+ * Applies post-import human corrections to the durable daily archive.
+ * Source rows stay recoverable through sourceRecordId/sourceMessageIds; moved
+ * rows leave a higher-revision tombstone in their old date bucket so a later
+ * raw-history sync cannot silently revive the old projection.
+ */
+export const curateDailyArchiveMessages = async (input: {
+    scope: HistoryScope;
+    messages: DailyArchiveMessage[];
+    operation: DailyArchiveCurationOperation;
+    now?: number;
+    factory?: IDBFactory;
+}): Promise<DailyArchiveCurationResult> => {
+    if (input.messages.length === 0) throw new Error('先选中要整理的记录。');
+    if (input.messages.length > DAILY_ARCHIVE_PAGE_MESSAGE_LIMIT) {
+        throw new Error(`一次最多整理 ${DAILY_ARCHIVE_PAGE_MESSAGE_LIMIT} 条记录。`);
+    }
+    if (input.operation.kind === 'edit_content' && input.messages.length !== 1) {
+        throw new Error('一次只能修改一条原文。');
+    }
+    if (input.operation.kind === 'edit_content' && !input.operation.content.trim()) {
+        throw new Error('原文内容不能为空。');
+    }
+    if (input.operation.kind === 'set_date' && !isDailyArchiveDateKey(input.operation.dateKey)) {
+        throw new Error('请选择一个有效日期。');
+    }
+    if (input.messages.some(message => !sameScope(message.scope, input.scope))) {
+        throw new Error('一次整理不能跨越不同面具或角色。');
+    }
+
+    const now = input.now ?? Date.now();
+    const database = await openDailyArchiveDatabase(input.factory);
+    try {
+        const documentById = new Map<string, DailyArchiveDocument>();
+        const bucketById = new Map<string, ReturnType<typeof archiveBucketForMessage>>();
+        const loadBucket = async (bucket: ReturnType<typeof archiveBucketForMessage>): Promise<DailyArchiveDocument | undefined> => {
+            const id = createDailyArchiveDocumentId(bucket);
+            bucketById.set(id, bucket);
+            if (documentById.has(id)) return documentById.get(id);
+            const manifest = await ensureChunkedManifest(database, id);
+            const document = manifest ? await hydrateStoredManifest(database, manifest) : undefined;
+            if (document) documentById.set(id, document);
+            return document;
+        };
+
+        const currentMessages: DailyArchiveMessage[] = [];
+        for (const snapshot of input.messages) {
+            const bucket = archiveBucketForMessage(snapshot);
+            const document = await loadBucket(bucket);
+            const current = document?.messages.find(message => message.id === snapshot.id);
+            if (!current || current.status !== 'active' || current.revision !== snapshot.revision) {
+                throw new Error('这段日档刚刚发生了变化，请重新打开后再整理。');
+            }
+            currentMessages.push(current);
+        }
+
+        if (
+            input.operation.kind !== 'set_confirmation'
+            && currentMessages.some(isConfirmedArchiveMessage)
+        ) {
+            throw new Error('已确认的记录需要先取消确认，才能继续修改。');
+        }
+
+        const patches = new Map<string, DailyArchiveMessage[]>();
+        const addPatch = (bucket: ReturnType<typeof archiveBucketForMessage>, message: DailyArchiveMessage) => {
+            const id = createDailyArchiveDocumentId(bucket);
+            bucketById.set(id, bucket);
+            patches.set(id, [...(patches.get(id) || []), message]);
+        };
+        const reviseInPlace = (message: DailyArchiveMessage, patch: Partial<DailyArchiveMessage>) => {
+            addPatch(archiveBucketForMessage(message), {
+                ...message,
+                ...patch,
+                revision: message.revision + 1,
+            });
+        };
+
+        if (input.operation.kind === 'merge') {
+            const ordered = sortDailyArchiveMessages(currentMessages);
+            const primary = ordered[0];
+            const sourceMessageIds = Array.from(new Set(ordered.flatMap(curatedSourceIds)));
+            const commonRole = ordered.every(message => message.role === primary.role) ? primary.role : 'unknown';
+            reviseInPlace(primary, {
+                role: commonRole,
+                content: ordered.map(message => message.content.trim()).filter(Boolean).join('\n\n'),
+                curation: {
+                    sourceMessageIds,
+                    correctedAt: now,
+                    authority: 'human_corrected',
+                },
+            });
+            ordered.slice(1).forEach(message => reviseInPlace(message, {
+                status: 'tombstoned',
+                curation: {
+                    sourceMessageIds,
+                    correctedAt: now,
+                    authority: 'human_corrected',
+                },
+            }));
+        } else {
+            for (const message of currentMessages) {
+                if (input.operation.kind === 'edit_content') {
+                    reviseInPlace(message, {
+                        content: input.operation.content.trim(),
+                        curation: correctedCuration(message, now),
+                    });
+                } else if (input.operation.kind === 'set_role') {
+                    reviseInPlace(message, {
+                        role: input.operation.role,
+                        curation: correctedCuration(message, now),
+                    });
+                } else if (input.operation.kind === 'delete') {
+                    reviseInPlace(message, {
+                        status: 'tombstoned',
+                        curation: correctedCuration(message, now),
+                    });
+                } else if (input.operation.kind === 'set_confirmation') {
+                    reviseInPlace(message, {
+                        curation: correctedCuration(message, now, input.operation.confirmed),
+                    });
+                } else if (input.operation.kind === 'set_date') {
+                    const sourceBucket = archiveBucketForMessage(message);
+                    const targetTime = timeMovedToDate(message, input.operation.dateKey);
+                    const targetBucket = { scope: message.scope, dateKey: input.operation.dateKey };
+                    const targetDocument = await loadBucket(targetBucket);
+                    const targetPrevious = targetDocument?.messages.find(item => item.id === message.id);
+                    const nextRevision = Math.max(message.revision, targetPrevious?.revision ?? 0) + 1;
+                    addPatch(sourceBucket, {
+                        ...message,
+                        status: 'tombstoned',
+                        revision: nextRevision,
+                        curation: correctedCuration(message, now),
+                    });
+                    addPatch(targetBucket, {
+                        ...message,
+                        time: targetTime,
+                        status: 'active',
+                        revision: nextRevision,
+                        curation: correctedCuration(message, now),
+                    });
+                }
+            }
+        }
+
+        const documents: DailyArchiveDocument[] = [];
+        for (const [documentId, messages] of patches) {
+            const bucket = bucketById.get(documentId)!;
+            const previous = documentById.get(documentId) ?? await loadBucket(bucket);
+            documents.push(buildDailyArchiveDocument({
+                ...bucket,
+                messages,
+                previous,
+                now,
+            }));
+        }
+        await persistChunkedDocuments({ database, documents });
+        return {
+            affectedDocumentIds: documents.map(document => document.id),
+            activeMessageIds: documents.flatMap(document => document.messages)
+                .filter(message => message.status === 'active')
+                .map(message => message.id),
+        };
+    } finally {
+        database.close();
+    }
+};
+
 export const getDailyArchiveDocument = async (input: {
     scope: HistoryScope;
     dateKey?: string;
@@ -644,7 +937,7 @@ export const listDailyArchiveMonth = async (input: {
             input.monthKey,
         ]))) as DailyArchiveDocumentSummary[];
         const days = documents
-            .filter(document => Boolean(document.dateKey))
+            .filter(document => Boolean(document.dateKey) && document.messageCount > 0)
             .map(document => ({
                 dateKey: document.dateKey!,
                 messageCount: document.messageCount,
@@ -671,15 +964,16 @@ export const readDailyArchiveCoverage = async (input: {
         const transaction = database.transaction(DAILY_ARCHIVE_SUMMARY_STORE, 'readonly');
         const index = transaction.objectStore(DAILY_ARCHIVE_SUMMARY_STORE).index('scope');
         const documents = await requestAsPromise(index.getAll(IDBKeyRange.only(scopeKey(input.scope)))) as DailyArchiveDocumentSummary[];
-        const dated = documents.filter(document => Boolean(document.dateKey));
-        const undated = documents.filter(document => !document.dateKey);
+        const visible = documents.filter(document => document.messageCount > 0);
+        const dated = visible.filter(document => Boolean(document.dateKey));
+        const undated = visible.filter(document => !document.dateKey);
         const dateKeys = dated.map(document => document.dateKey!).sort();
         return {
             scope: { ...input.scope },
-            documentCount: documents.length,
+            documentCount: visible.length,
             datedDocumentCount: dated.length,
             undatedDocumentCount: undated.length,
-            messageCount: documents.reduce((total, document) => total + document.messageCount, 0),
+            messageCount: visible.reduce((total, document) => total + document.messageCount, 0),
             datedMessageCount: dated.reduce((total, document) => total + document.messageCount, 0),
             undatedMessageCount: undated.reduce((total, document) => total + document.messageCount, 0),
             earliestDateKey: dateKeys[0],
@@ -816,7 +1110,7 @@ export const listUndatedDailyArchiveManifests = async (input: {
     const database = await openDailyArchiveDatabase(input.factory);
     try {
         return (await listScopeDailyArchiveManifests({ database, scope: input.scope }))
-            .filter(manifest => !manifest.dateKey)
+            .filter(manifest => !manifest.dateKey && manifest.messageCount > 0)
             .sort((left, right) => left.id.localeCompare(right.id));
     } finally {
         database.close();

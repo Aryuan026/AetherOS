@@ -7,6 +7,14 @@ export const CONVERSATION_CLIPPING_SCHEMA_VERSION = 1 as const;
 export type DailyArchiveSource = 'history_import' | 'live_chat';
 export type DailyArchiveMessageStatus = 'active' | 'tombstoned';
 
+export interface DailyArchiveHumanCuration {
+    /** Every original archive message represented by this visible record. */
+    sourceMessageIds: string[];
+    correctedAt: number;
+    confirmedAt?: number;
+    authority: 'human_corrected' | 'human_confirmed';
+}
+
 export interface DailyArchiveMessageTime {
     dateKey?: string;
     originalText?: string;
@@ -31,6 +39,8 @@ export interface DailyArchiveMessage {
     status: DailyArchiveMessageStatus;
     recordedAt: number;
     revision: number;
+    /** Optional post-import correction. It never changes temporalClass or current state. */
+    curation?: DailyArchiveHumanCuration;
 }
 
 export interface DailyArchiveDocument {
