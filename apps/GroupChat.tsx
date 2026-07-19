@@ -219,27 +219,24 @@ const GroupChat: React.FC = () => {
     // Create/Edit Group State
     const [tempGroupName, setTempGroupName] = useState('');
     const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
-    const [showAllGroupCandidates, setShowAllGroupCandidates] = useState(false);
     const [transferAmount, setTransferAmount] = useState('');
     
     // Refs
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const groupAvatarInputRef = useRef<HTMLInputElement>(null);
-    const activeGroupMembers = useMemo(() => (
-        activeGroup
-            ? activeGroup.members.map(id => characters.find(char => char.id === id)).filter((char): char is CharacterProfile => Boolean(char))
-            : []
-    ), [activeGroup, characters]);
     const personaScope = useMemo(() => (
         resolvePersonaRouteScope(userProfile, characters)
     ), [userProfile, characters]);
     const groupScopedCharacters = useMemo(() => (
         filterCharactersForPersonaSurface(characters, personaScope, { surface: 'group_chat' })
     ), [characters, personaScope]);
-    const groupCandidateCharacters = personaScope.hasLinkedFocus && !showAllGroupCandidates
-        ? groupScopedCharacters
-        : characters;
+    const groupCandidateCharacters = groupScopedCharacters;
+    const activeGroupMembers = useMemo(() => {
+        if (!activeGroup) return [];
+        const memberIds = new Set(activeGroup.members);
+        return groupScopedCharacters.filter(char => memberIds.has(char.id));
+    }, [activeGroup, groupScopedCharacters]);
 
     // Load shared archive prompts from localStorage (same key as Chat app)
     useEffect(() => {
@@ -669,7 +666,7 @@ ${logText.substring(0, 10000)}
             ).catch(() => ({ messages: currentMsgs, totalCount: currentMsgs.length }));
 
             // 1. Prepare Group Context
-            const groupMembers = characters.filter(c => activeGroup.members.includes(c.id));
+            const groupMembers = groupScopedCharacters.filter(c => activeGroup.members.includes(c.id));
             
             // Calculate Time Context
             const lastMsg = directorMsgs[directorMsgs.length - 1];
@@ -955,7 +952,7 @@ ${recentGroupMsgs}
                     titleClassName="truncate text-lg font-semibold tracking-wide text-slate-700"
                     right={(
                     <AppHeaderAddButton
-                        onClick={() => { setModalType('create'); setSelectedMembers(new Set()); setTempGroupName(''); setShowAllGroupCandidates(false); }}
+                        onClick={() => { setModalType('create'); setSelectedMembers(new Set()); setTempGroupName(''); }}
                         className="text-violet-500 bg-violet-50 hover:bg-violet-100"
                         title="创建群聊"
                     />
@@ -999,23 +996,18 @@ ${recentGroupMsgs}
                 <Modal isOpen={modalType === 'create'} title="创建群聊" onClose={() => setModalType('none')} footer={<button onClick={handleCreateGroup} className="w-full py-3 bg-violet-500 text-white font-bold rounded-2xl shadow-lg shadow-violet-200">创建</button>}>
                     <div className="space-y-4">
                         <input value={tempGroupName} onChange={e => setTempGroupName(e.target.value)} placeholder="群聊名称" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/20 transition-all" />
-                        {personaScope.hasLinkedFocus && (
+                        {personaScope.hasLinkedFocus ? (
                             <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-3 py-2 text-[11px] leading-relaxed text-violet-500">
-                                默认只从当前面具「{personaScope.activeMaskLabel || '未命名面具'}」链接的角色里建群；如果这次要临时拉入其他人，可以展开全部。
+                                群聊属于面具「{personaScope.activeMaskLabel || '未命名面具'}」的生活圈，只能邀请已经链接的角色。
+                            </div>
+                        ) : (
+                            <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-3 py-2 text-[11px] leading-relaxed text-violet-500">
+                                当前面具还没有链接角色。先在通讯录里建立关系，再创建群聊。
                             </div>
                         )}
                         <div>
                             <div className="mb-2 flex items-center justify-between gap-3">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">选择成员</label>
-                                {personaScope.hasLinkedFocus && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAllGroupCandidates(prev => !prev)}
-                                        className="rounded-full bg-white px-3 py-1 text-[10px] font-bold text-slate-500 shadow-sm active:scale-95"
-                                    >
-                                        {showAllGroupCandidates ? '只看链接' : '显示全部'}
-                                    </button>
-                                )}
                             </div>
                             <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
                                 {groupCandidateCharacters.map(c => (
@@ -1024,6 +1016,9 @@ ${recentGroupMsgs}
                                         <span className="text-[9px] text-slate-600 truncate w-full text-center font-medium">{c.name}</span>
                                     </div>
                                 ))}
+                                {groupCandidateCharacters.length === 0 && (
+                                    <div className="col-span-4 py-6 text-center text-xs text-slate-400">暂无可邀请的生活圈角色</div>
+                                )}
                             </div>
                         </div>
                     </div>

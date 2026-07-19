@@ -42,6 +42,12 @@ This is the maintained AetherOS work copy for A-Yuan.
 - Prefer `npm run verify:health` during long Codex sessions. It type-checks and builds without printing the full chunk table into the session.
 - `npm exec tsc -- --noEmit` may surface broad pre-existing TypeScript debt; do not treat unrelated legacy TS errors as part of a narrow sticker-pack patch unless the touched code caused them.
 
+## Persona Life-Surface Contract
+
+- `通讯录`、角色卡与面具设置是管理面：必须保留全部角色可达。
+- 聊天、群聊、电话、见面、朋友圈、小说/剧情与特别时光是生活/生成面：只能使用当前面具已链接角色；没有链接时必须空态关闭，禁止静默回退到全角色或 `characters[0]`。
+- 新 App 必须通过 `utils/personaRouteScope.ts` 投影参与者，不得自行复制一套 `linkedCharacterIds` 判断；相应修改必须通过 `verify:persona-scope`。
+
 ## Resource Health
 
 - Keep exactly one canonical human-verification frontend at `http://127.0.0.1:5174/`. At the start of every window, run `npm run frontstage:status`; reuse it when healthy and start it only when absent. Do not stop it when a task ends unless the user explicitly asks or it must be replaced.

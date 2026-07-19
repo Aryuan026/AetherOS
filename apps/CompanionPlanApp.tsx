@@ -6,6 +6,7 @@ import { DB } from '../utils/db';
 import { ContextBuilder } from '../utils/context';
 import { safeResponseJson } from '../utils/safeApi';
 import AppHeader, { AppHeaderAddButton } from '../components/shell/AppHeader';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const cadenceLabel: Record<NonNullable<Task['cadence']>, string> = {
     daily: '每日陪跑',
@@ -63,6 +64,14 @@ const CompanionPlanApp: React.FC = () => {
     const [newSupervisorId, setNewSupervisorId] = useState(activeCharacterId || '');
     const [processingId, setProcessingId] = useState<string | null>(null);
 
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [userProfile, characters, activeCharacterId]);
+    const companionCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'companion_plan' })
+    ), [characters, personaScope]);
+    const companionCharacterIds = useMemo(() => new Set(companionCharacters.map(char => char.id)), [companionCharacters]);
+
     useEffect(() => {
         loadPlans();
     }, []);
@@ -72,8 +81,15 @@ const CompanionPlanApp: React.FC = () => {
         setPlans(sortPlans(stored));
     };
 
-    const activePlans = useMemo(() => plans.filter(plan => !plan.isCompleted), [plans]);
-    const completedPlans = useMemo(() => plans.filter(plan => plan.isCompleted), [plans]);
+    const visiblePlans = useMemo(() => plans.filter(plan => plan.supervisorId && companionCharacterIds.has(plan.supervisorId)), [plans, companionCharacterIds]);
+    const activePlans = useMemo(() => visiblePlans.filter(plan => !plan.isCompleted), [visiblePlans]);
+    const completedPlans = useMemo(() => visiblePlans.filter(plan => plan.isCompleted), [visiblePlans]);
+
+    useEffect(() => {
+        if (!companionCharacters.some(char => char.id === newSupervisorId)) {
+            setNewSupervisorId(companionCharacters[0]?.id || '');
+        }
+    }, [companionCharacters, newSupervisorId]);
 
     const savePlan = async (plan: Task) => {
         await DB.saveTask(plan);
@@ -84,7 +100,13 @@ const CompanionPlanApp: React.FC = () => {
 
     const handleAddPlan = async () => {
         if (!newTitle.trim()) return;
-        const fallbackSupervisor = newSupervisorId || activeCharacterId || characters[0]?.id || '';
+        const fallbackSupervisor = companionCharacters.some(char => char.id === newSupervisorId)
+            ? newSupervisorId
+            : companionCharacters[0]?.id || '';
+        if (!fallbackSupervisor) {
+            addToast('先在通讯录里把陪你的人链接到当前面具', 'info');
+            return;
+        }
         const plan: Task = {
             id: `plan-${Date.now()}`,
             title: newTitle.trim(),
@@ -126,7 +148,7 @@ const CompanionPlanApp: React.FC = () => {
     };
 
     const generateMilestoneNote = async (plan: Task): Promise<string | undefined> => {
-        const supervisor = characters.find(c => c.id === plan.supervisorId);
+        const supervisor = companionCharacters.find(c => c.id === plan.supervisorId);
         if (!supervisor || !apiConfig.apiKey) return undefined;
 
         const checkInSummary = (plan.checkIns || [])
@@ -202,7 +224,7 @@ ${checkInSummary}
     };
 
     const renderPlan = (plan: Task) => {
-        const supervisor = characters.find(c => c.id === plan.supervisorId);
+        const supervisor = companionCharacters.find(c => c.id === plan.supervisorId);
         const daysLeft = getDaysLeft(plan.deadline);
         const latestCheckIn = (plan.checkIns || []).slice(-1)[0];
         const checkedToday = latestCheckIn ? isSameLocalDay(latestCheckIn.at, Date.now()) : false;
@@ -379,7 +401,7 @@ ${checkInSummary}
                     <div>
                         <div className="text-[10px] font-bold text-slate-400 tracking-[0.18em] mb-2">陪你的人</div>
                         <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
-                            {characters.map(char => (
+                            {companionCharacters.map(char => (
                                 <button
                                     key={char.id}
                                     onClick={() => setNewSupervisorId(char.id)}
@@ -389,6 +411,9 @@ ${checkInSummary}
                                     <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">{char.name}</span>
                                 </button>
                             ))}
+                            {companionCharacters.length === 0 && (
+                                <p className="text-xs leading-5 text-slate-400">先在通讯录里链接角色，再选择陪你推进的人。</p>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -113,8 +113,6 @@ const DateApp: React.FC = () => {
     const [peekStatus, setPeekStatus] = useState<string>('');
     const [peekLoading, setPeekLoading] = useState(false);
     const [peekCopySeed, setPeekCopySeed] = useState(0);
-    const [showAllDateCharacters, setShowAllDateCharacters] = useState(false);
-    
     // History State
     const [historySessions, setHistorySessions] = useState<DateHistorySession[]>([]);
     const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
@@ -132,7 +130,13 @@ const DateApp: React.FC = () => {
     const [editTargetMsg, setEditTargetMsg] = useState<Message | null>(null);
     const [editContent, setEditContent] = useState('');
 
-    const char = characters.find(c => c.id === activeCharacterId);
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [userProfile, characters, activeCharacterId]);
+    const dateScopedCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'date' })
+    ), [characters, personaScope]);
+    const char = dateScopedCharacters.find(c => c.id === activeCharacterId);
     const peekVisual = useMemo(() => {
         if (!char) return null;
         const portrait = resolveDateDefaultPortrait(char);
@@ -146,15 +150,7 @@ const DateApp: React.FC = () => {
             `${char?.id || 'date'}-${virtualTime.day}-${virtualTime.hours}-${peekCopySeed}-${peekLoading ? 'loading' : 'ready'}`
         )
     ), [char?.id, virtualTime.day, virtualTime.hours, peekCopySeed, peekLoading]);
-    const personaScope = useMemo(() => (
-        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
-    ), [userProfile, characters, activeCharacterId]);
-    const dateScopedCharacters = useMemo(() => (
-        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'date' })
-    ), [characters, personaScope]);
-    const visibleDateCharacters = personaScope.hasLinkedFocus && !showAllDateCharacters
-        ? dateScopedCharacters
-        : characters;
+    const visibleDateCharacters = dateScopedCharacters;
 
     useEffect(() => {
         const isImmersiveMode = mode === 'peek' || mode === 'session';
@@ -677,7 +673,7 @@ ${DATE_EXPERIENCE_BOUNDARY}
             <div className="h-full w-full bg-gradient-to-b from-rose-50 via-slate-50 to-white flex flex-col font-light">
                 <AppHeader
                     title="见面"
-                    subtitle={personaScope.hasLinkedFocus && !showAllDateCharacters ? `日常陪伴 · 当前面具 ${dateScopedCharacters.length} 位` : '日常陪伴 · 轻剧情'}
+                    subtitle={`日常陪伴 · 当前面具 ${dateScopedCharacters.length} 位`}
                     onBack={closeApp}
                     center
                 />
@@ -685,8 +681,6 @@ ${DATE_EXPERIENCE_BOUNDARY}
                 {personaScope.hasLinkedFocus && (
                     <DatePersonaScopeNotice
                         activeMaskLabel={personaScope.activeMaskLabel}
-                        showAll={showAllDateCharacters}
-                        onToggleShowAll={() => setShowAllDateCharacters(prev => !prev)}
                     />
                 )}
                 <div className="p-4 grid grid-cols-2 gap-4 overflow-y-auto">
@@ -698,6 +692,11 @@ ${DATE_EXPERIENCE_BOUNDARY}
                             onOpenHistory={(e) => { e.stopPropagation(); openHistory(c); }}
                         />
                     ))}
+                    {visibleDateCharacters.length === 0 && (
+                        <div className="col-span-2 rounded-[28px] border border-rose-100 bg-white/75 px-5 py-10 text-center text-sm leading-6 text-slate-400">
+                            当前面具还没有链接角色。先在通讯录里建立关系，再来赴约。
+                        </div>
+                    )}
                 </div>
                 <Modal isOpen={!!pendingSessionChar} title="发现进度" onClose={() => setPendingSessionChar(null)} footer={<div className="flex gap-3 w-full"><button onClick={handleStartNewSession} className="flex-1 py-3 bg-slate-100 rounded-2xl text-slate-600 font-bold">新的见面</button><button onClick={handleResumeSession} className="flex-1 py-3 bg-green-500 text-white rounded-2xl font-bold shadow-lg shadow-green-200">继续上次</button></div>}>
                     <div className="text-center text-slate-500 text-sm py-4">检测到 {pendingSessionChar?.name} 有未结束的见面。<br/><span className="text-xs text-slate-400 mt-2 block">(存档时间: {pendingSessionChar?.savedDateState?.timestamp ? new Date(pendingSessionChar.savedDateState.timestamp).toLocaleString() : 'Unknown'})</span></div>

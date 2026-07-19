@@ -10,7 +10,13 @@ export type PersonaSurfaceKind =
     | 'social'
     | 'novel'
     | 'guidebook'
-    | 'special_moments';
+    | 'special_moments'
+    | 'timebook'
+    | 'companion_plan'
+    | 'study'
+    | 'journal'
+    | 'room'
+    | 'launcher';
 
 export interface PersonaRouteScope {
     activeMaskId?: string;
@@ -33,9 +39,7 @@ export const resolvePersonaRouteScope = (
     const linkedIdSet = new Set(linkedIds);
     const linkedCharacters = characters.filter(char => linkedIdSet.has(char.id));
     const activeCharacter = characters.find(char => char.id === activeCharacterId);
-    const preferredActiveCharacter = activeCharacter && (
-        linkedCharacters.length === 0 || linkedIdSet.has(activeCharacter.id)
-    )
+    const preferredActiveCharacter = activeCharacter && linkedIdSet.has(activeCharacter.id)
         ? activeCharacter
         : linkedCharacters[0];
 
@@ -54,7 +58,7 @@ export const isCharacterInPersonaScope = (
     char: CharacterProfile,
     scope: PersonaRouteScope,
 ): boolean => (
-    !scope.hasLinkedFocus || scope.linkedCharacterIds.includes(char.id)
+    scope.linkedCharacterIds.includes(char.id)
 );
 
 export const filterCharactersForPersonaSurface = (
@@ -62,23 +66,19 @@ export const filterCharactersForPersonaSurface = (
     scope: PersonaRouteScope,
     options: {
         surface: PersonaSurfaceKind;
-        includeActiveCharacterId?: string;
-        fallbackToAllWhenEmpty?: boolean;
         includeUnlinkedForDirectory?: boolean;
     },
 ): CharacterProfile[] => {
-    if (!scope.hasLinkedFocus) {
-        return options.fallbackToAllWhenEmpty === false ? [] : characters;
-    }
-
     if (options.surface === 'directory' && options.includeUnlinkedForDirectory !== false) {
         return characters;
     }
 
+    // Life/generative surfaces fail closed. An unlinked character is still
+    // available in management surfaces, but does not silently enter the
+    // current mask's social world, calls, meetings, chats or story runs.
+    if (!scope.hasLinkedFocus) return [];
+
     const allowed = new Set(scope.linkedCharacterIds);
-    if (options.includeActiveCharacterId && characters.some(char => char.id === options.includeActiveCharacterId)) {
-        allowed.add(options.includeActiveCharacterId);
-    }
     return characters.filter(char => allowed.has(char.id));
 };
 
@@ -87,7 +87,7 @@ export const buildPersonaScopePromptNote = (
     surfaceLabel: string,
 ): string => {
     if (!scope.hasLinkedFocus) {
-        return `当前 user 面具尚未建立专属角色链接；${surfaceLabel}可从已激活角色或当前上下文中自然选择参与者，但不要默认全员互相熟识。`;
+        return `当前 user 面具尚未链接任何角色；${surfaceLabel}不得从系统角色库自动挑选参与者，也不得让未链接角色作为账号、熟人、攻略对象或当前生活成员出现。只有用户明确写进当前文本的临时路人或外部人物可以作为背景证据。`;
     }
 
     const names = scope.linkedCharacters.map(char => char.name).join('、');

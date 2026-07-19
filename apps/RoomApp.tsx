@@ -11,6 +11,7 @@ import { Door, Sparkle, Image, GearSix, Camera } from '@phosphor-icons/react';
 import { FURNITURE_ICONS } from '../utils/furnitureIcons';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -212,7 +213,9 @@ const RoomApp: React.FC = () => {
     const actorInputRef = useRef<HTMLInputElement>(null); 
     const customItemInputRef = useRef<HTMLInputElement>(null);
 
-    const char = characters.find(c => c.id === activeCharacterId);
+    const personaScope = useMemo(() => resolvePersonaRouteScope(userProfile, characters, activeCharacterId), [userProfile, characters, activeCharacterId]);
+    const roomCharacters = useMemo(() => filterCharactersForPersonaSurface(characters, personaScope, { surface: 'room' }), [characters, personaScope]);
+    const char = roomCharacters.find(c => c.id === activeCharacterId);
 
     // Custom Item Library State (new: unified with visibility)
     type CustomAsset = { id: string; name: string; image: string; defaultScale: number; description?: string; visibility: 'public' | 'character'; assignedCharIds?: string[] };
@@ -950,7 +953,7 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
             <div className="h-full w-full bg-slate-50 flex flex-col font-light">
                 <AppHeader title="拜访谁的房间?" onBack={closeApp} center />
                <div className="p-6 grid grid-cols-2 gap-4 overflow-y-auto pb-20 no-scrollbar">
-    {characters.map(c => (
+    {roomCharacters.map(c => (
         <div key={c.id} onClick={() => handleEnterRoom(c)} className="min-h-[180px] bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex flex-col items-center justify-center gap-3 cursor-pointer active:scale-95 transition-all relative overflow-hidden group hover:shadow-md">
                             <div className="w-20 h-20 rounded-full p-1 border-2 border-slate-100 relative">
                                 <img src={c.avatar} className="w-full h-full rounded-full object-cover" />
@@ -959,6 +962,11 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
                             <span className="font-bold text-slate-700 text-sm">{c.name}</span>
                         </div>
                     ))}
+                    {roomCharacters.length === 0 && (
+                        <div className="col-span-2 rounded-2xl border border-dashed border-slate-200 bg-white/70 px-5 py-10 text-center text-xs leading-6 text-slate-400">
+                            先在通讯录里链接角色，才会出现可以拜访的房间。
+                        </div>
+                    )}
                 </div>
             </div>
         );

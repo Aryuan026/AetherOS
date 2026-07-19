@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { StudyCourse, CharacterProfile, APIConfig, StudyTutorPreset, QuizQuestion, QuizSession, QuizQuestionNote } from '../types';
@@ -37,6 +37,7 @@ import {
     buildStudyMemoryPrompt,
     buildStudyQuestionPrompt,
 } from '../utils/studyPrompts';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 type PdfJsLike = {
     getDocument: (src: { data: ArrayBuffer }) => { promise: Promise<any> };
@@ -404,6 +405,13 @@ const StudyApp: React.FC = () => {
     const [followUpInput, setFollowUpInput] = useState('');
     const [followUpLoading, setFollowUpLoading] = useState(false);
 
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [userProfile, characters, activeCharacterId]);
+    const studyCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'study' })
+    ), [characters, personaScope]);
+
     const currentSprite = selectedChar?.sprites?.['normal'] || selectedChar?.avatar;
 
     useEffect(() => {
@@ -411,17 +419,17 @@ const StudyApp: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (characters.length === 0) {
+        if (studyCharacters.length === 0) {
             setSelectedChar(null);
             return;
         }
 
         setSelectedChar(prev => {
-            const stillExists = prev ? characters.find(c => c.id === prev.id) : null;
+            const stillExists = prev ? studyCharacters.find(c => c.id === prev.id) : null;
             if (stillExists) return stillExists;
-            return (activeCharacterId ? characters.find(c => c.id === activeCharacterId) : null) || characters[0];
+            return (activeCharacterId ? studyCharacters.find(c => c.id === activeCharacterId) : null) || studyCharacters[0];
         });
-    }, [activeCharacterId, characters]);
+    }, [activeCharacterId, studyCharacters]);
 
 
     useEffect(() => {
@@ -1533,7 +1541,7 @@ const StudyApp: React.FC = () => {
                     <div className="mb-8">
                         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">当前助教</h3>
                         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-                            {characters.map(c => (
+                            {studyCharacters.map(c => (
                                 <div key={c.id} onClick={() => setSelectedChar(c)} className={`flex flex-col items-center gap-2 cursor-pointer transition-opacity ${selectedChar?.id === c.id ? 'opacity-100' : 'opacity-50'}`}>
                                     <div className={`w-14 h-14 rounded-full p-[2px] ${selectedChar?.id === c.id ? 'border-2 border-emerald-500' : 'border border-slate-200'}`}>
                                         <img src={c.avatar} className="w-full h-full rounded-full object-cover" />
@@ -1541,6 +1549,9 @@ const StudyApp: React.FC = () => {
                                     <span className="text-[10px] font-bold text-slate-600">{c.name}</span>
                                 </div>
                             ))}
+                            {studyCharacters.length === 0 && (
+                                <p className="text-xs leading-5 text-slate-400">先在通讯录里链接角色，书房才会邀请对应助教。</p>
+                            )}
                         </div>
                     </div>
 

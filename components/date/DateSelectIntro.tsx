@@ -23,21 +23,8 @@ export const DateSelectIntro: React.FC = () => (
 
 export const DatePersonaScopeNotice: React.FC<{
     activeMaskLabel?: string;
-    showAll: boolean;
-    onToggleShowAll: () => void;
-}> = ({ activeMaskLabel, showAll, onToggleShowAll }) => (
+}> = ({ activeMaskLabel }) => (
     <div className="mx-4 mt-3 rounded-2xl border border-rose-100 bg-white/70 px-3 py-2.5 text-[11px] leading-relaxed text-rose-400">
-        <div className="flex items-start justify-between gap-3">
-            <span className="min-w-0 flex-1">
-                默认只显示当前面具「{activeMaskLabel || '未命名面具'}」链接的角色。
-            </span>
-            <button
-                type="button"
-                onClick={onToggleShowAll}
-                className="shrink-0 rounded-full bg-white px-3 py-1 text-[10px] font-bold text-rose-400 shadow-sm active:scale-95"
-            >
-                {showAll ? '只看链接' : '显示全部'}
-            </button>
-        </div>
+        这里属于面具「{activeMaskLabel || '未命名面具'}」的生活圈，只显示已经链接的角色。
     </div>
 );

@@ -38,6 +38,7 @@ import {
     verifyDailyArchiveBackupFiles,
 } from '../utils/dailyArchive/storage';
 import type { ConversationClipping, DailyArchiveDocument } from '../domain/dailyArchive/types';
+import { apiConfigForActivatedPreset } from '../utils/apiPresets';
 
 
 type JSZipLike = {
@@ -194,8 +195,10 @@ interface OSContextType {
   
   // API Presets
   apiPresets: ApiPreset[];
+  activeApiPresetId: string;
   addApiPreset: (name: string, config: APIConfig) => void;
   removeApiPreset: (id: string) => void;
+  activateApiPreset: (id: string) => boolean;
 
   // 实时配置（时间上下文 + 可选天气）
   realtimeConfig: RealtimeConfig;
@@ -1224,6 +1227,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [apiPresets, setApiPresets] = useState<ApiPreset[]>([]);
+  const [activeApiPresetId, setActiveApiPresetId] = useState<string>('');
   const [realtimeConfig, setRealtimeConfig] = useState<RealtimeConfig>(defaultRealtimeConfig);
   const [customThemes, setCustomThemes] = useState<ChatTheme[]>([]);
   const [customIcons, setCustomIcons] = useState<Record<string, string>>({});
@@ -1397,6 +1401,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const savedApi = localStorage.getItem('os_api_config');
         const savedModels = localStorage.getItem('os_available_models');
         const savedPresets = localStorage.getItem('os_api_presets');
+        const savedActivePresetId = localStorage.getItem('os_active_api_preset_id');
         
         let loadedTheme = { ...defaultTheme };
         if (savedThemeStr) {
@@ -1430,6 +1435,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (savedApi) setApiConfig(JSON.parse(savedApi));
         if (savedModels) setAvailableModels(JSON.parse(savedModels));
         if (savedPresets) setApiPresets(JSON.parse(savedPresets));
+        if (savedActivePresetId) setActiveApiPresetId(savedActivePresetId);
 
         // 加载实时配置
         const savedRealtimeConfig = localStorage.getItem('os_realtime_config');
@@ -2068,7 +2074,13 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     localStorage.setItem('os_theme', JSON.stringify(lsTheme));
   };
-  const updateApiConfig = (updates: Partial<APIConfig>) => { const newConfig = { ...apiConfig, ...updates }; setApiConfig(newConfig); localStorage.setItem('os_api_config', JSON.stringify(newConfig)); };
+  const updateApiConfig = (updates: Partial<APIConfig>) => {
+      const newConfig = { ...apiConfig, ...updates };
+      setApiConfig(newConfig);
+      localStorage.setItem('os_api_config', JSON.stringify(newConfig));
+      setActiveApiPresetId('');
+      localStorage.removeItem('os_active_api_preset_id');
+  };
   const updateRealtimeConfig = (updates: Partial<RealtimeConfig>) => {
     const newConfig = sanitizeRealtimeConfig({ ...realtimeConfig, ...updates });
     setRealtimeConfig(newConfig);
@@ -2076,7 +2088,27 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   };
   const saveModels = (models: string[]) => { setAvailableModels(models); localStorage.setItem('os_available_models', JSON.stringify(models)); };
   const addApiPreset = (name: string, config: APIConfig) => { setApiPresets(prev => { const next = [...prev, { id: Date.now().toString(), name, config }]; localStorage.setItem('os_api_presets', JSON.stringify(next)); return next; }); };
-  const removeApiPreset = (id: string) => { setApiPresets(prev => { const next = prev.filter(p => p.id !== id); localStorage.setItem('os_api_presets', JSON.stringify(next)); return next; }); };
+  const removeApiPreset = (id: string) => {
+      setApiPresets(prev => {
+          const next = prev.filter(p => p.id !== id);
+          localStorage.setItem('os_api_presets', JSON.stringify(next));
+          return next;
+      });
+      if (activeApiPresetId === id) {
+          setActiveApiPresetId('');
+          localStorage.removeItem('os_active_api_preset_id');
+      }
+  };
+  const activateApiPreset = (id: string): boolean => {
+      const preset = apiPresets.find(item => item.id === id);
+      if (!preset) return false;
+      const nextConfig = apiConfigForActivatedPreset(apiConfig, preset);
+      setApiConfig(nextConfig);
+      localStorage.setItem('os_api_config', JSON.stringify(nextConfig));
+      setActiveApiPresetId(id);
+      localStorage.setItem('os_active_api_preset_id', id);
+      return true;
+  };
   const savePresets = (presets: ApiPreset[]) => { setApiPresets(presets); localStorage.setItem('os_api_presets', JSON.stringify(presets)); };
   const addCharacter = async () => { const name = 'New Character'; const newChar: CharacterProfile = { id: `char-${Date.now()}`, name: name, avatar: generateAvatar(name), description: '点击编辑设定...', systemPrompt: '', memories: [], contextLimit: 500 }; setCharacters(prev => normalizeCharactersForState([...prev, newChar])); setActiveCharacterId(newChar.id); await DB.saveCharacter(newChar); };
   const addPreparedCharacter = async (character: CharacterProfile) => {
@@ -2512,6 +2544,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
               version: 5,
               apiConfig: (mode === 'text_only' || mode === 'full') ? apiConfig : undefined,
               apiPresets: (mode === 'text_only' || mode === 'full') ? apiPresets : undefined,
+              activeApiPresetId: (mode === 'text_only' || mode === 'full') ? activeApiPresetId : undefined,
               availableModels: (mode === 'text_only' || mode === 'full') ? availableModels : undefined,
               realtimeConfig: (mode === 'text_only' || mode === 'full') ? realtimeConfig : undefined,
               theme: theme, // Include theme in all modes (text/media)
@@ -2811,6 +2844,10 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           if (data.apiConfig) updateApiConfig(data.apiConfig);
           if (data.availableModels) saveModels(data.availableModels);
           if (data.apiPresets) savePresets(data.apiPresets);
+          if (data.activeApiPresetId && data.apiPresets?.some(preset => preset.id === data.activeApiPresetId)) {
+              setActiveApiPresetId(data.activeApiPresetId);
+              localStorage.setItem('os_active_api_preset_id', data.activeApiPresetId);
+          }
           if (data.realtimeConfig) updateRealtimeConfig(data.realtimeConfig); // 恢复实时感知配置
 
           if (data.customIcons !== undefined || data.appearancePresets !== undefined) {
@@ -3002,8 +3039,10 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     availableModels,
     setAvailableModels,
     apiPresets,
+    activeApiPresetId,
     addApiPreset,
     removeApiPreset,
+    activateApiPreset,
     realtimeConfig,
     updateRealtimeConfig,
     customThemes,

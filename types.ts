@@ -1298,6 +1298,7 @@ export interface FullBackupData {
     theme?: OSTheme;
     apiConfig?: APIConfig;
     apiPresets?: ApiPreset[];
+    activeApiPresetId?: string;
     availableModels?: string[];
     realtimeConfig?: RealtimeConfig;  // 实时感知配置（天气）
     customIcons?: Record<string, string>;

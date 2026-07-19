@@ -4,7 +4,7 @@ import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { Anniversary } from '../types';
 import Modal from '../components/os/Modal';
-import { AppHeaderAddButton } from '../components/shell/AppHeader';
+import AppHeader, { AppHeaderAddButton } from '../components/shell/AppHeader';
 import { ContextBuilder } from '../utils/context';
 import { safeResponseJson } from '../utils/safeApi';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
@@ -14,6 +14,7 @@ import {
     sortTimebookAnniversaries,
 } from '../utils/timebook';
 import { publicAsset } from '../utils/publicAssets';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const TIMEBOOK_BACKGROUND = publicAsset('assets/aetheros/timebook-desk-bg.jpg');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -126,11 +127,18 @@ const ScheduleApp: React.FC = () => {
     const [newAnniDate, setNewAnniDate] = useState('');
     const [newAnniChar, setNewAnniChar] = useState<string>(activeCharacterId || '');
 
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [userProfile, characters, activeCharacterId]);
+    const timebookCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'timebook' })
+    ), [characters, personaScope]);
+
     const activeCharacter = useMemo(
-        () => characters.find(c => c.id === activeCharacterId) || characters[0],
-        [activeCharacterId, characters]
+        () => timebookCharacters.find(c => c.id === activeCharacterId) || timebookCharacters[0],
+        [activeCharacterId, timebookCharacters]
     );
-    const activeTimebookCharId = activeCharacter?.id || activeCharacterId || '';
+    const activeTimebookCharId = activeCharacter?.id || '';
 
     useEffect(() => {
         loadData();
@@ -200,7 +208,7 @@ const ScheduleApp: React.FC = () => {
     );
 
     const generateAnniversaryThought = async (anni: Anniversary) => {
-        const char = characters.find(c => c.id === anni.charId);
+        const char = timebookCharacters.find(c => c.id === anni.charId);
         if (!char || !apiConfig.apiKey || anni.aiThought) return;
 
         const baseContext = ContextBuilder.buildCoreContext(char, userProfile);
@@ -250,11 +258,18 @@ const ScheduleApp: React.FC = () => {
     const handleAddAnni = async () => {
         if (!newAnniTitle.trim() || !newAnniDate) return;
 
+        const selectedCharId = timebookCharacters.some(char => char.id === newAnniChar)
+            ? newAnniChar
+            : activeCharacter?.id;
+        if (!selectedCharId) {
+            addToast('先在通讯录里把角色链接到当前面具', 'info');
+            return;
+        }
         const anni: Anniversary = {
             id: `anni-${Date.now()}`,
             title: newAnniTitle.trim(),
             date: newAnniDate,
-            charId: newAnniChar || activeCharacterId || characters[0]?.id || 'default',
+            charId: selectedCharId,
         };
 
         await DB.saveAnniversary(anni);
@@ -369,6 +384,17 @@ const ScheduleApp: React.FC = () => {
         addToast('这一页已经改好了。', 'success');
     };
 
+    if (!activeCharacter) {
+        return (
+            <div className="flex h-full w-full flex-col bg-[#fff8ef]">
+                <AppHeader title="时光簿" onBack={closeApp} center />
+                <div className="flex flex-1 items-center justify-center px-8 text-center text-sm leading-7 text-[#9b8378]">
+                    先在通讯录里把角色链接到当前面具，再一起留下时间页。
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="relative h-full w-full overflow-hidden bg-[#d4ad7a] text-[#4b3d35]">
             <div
@@ -425,7 +451,7 @@ const ScheduleApp: React.FC = () => {
                         <div className="space-y-1 pb-4">
                             {sortedMemories.map(memory => {
                                 const expanded = expandedId === memory.id;
-                                const character = characters.find(c => c.id === memory.charId);
+                                const character = timebookCharacters.find(c => c.id === memory.charId);
                                 const writerName = character?.name || '他';
 
                                 return (
@@ -607,7 +633,7 @@ const ScheduleApp: React.FC = () => {
                     <div>
                         <label className="mb-2 block text-[12px] font-semibold text-[#9b8378]">由谁记下</label>
                         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                            {characters.map(c => (
+                            {timebookCharacters.map(c => (
                                 <button
                                     key={c.id}
                                     onClick={() => setNewAnniChar(c.id)}

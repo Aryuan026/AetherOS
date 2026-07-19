@@ -7,7 +7,7 @@ import { ContextBuilder } from '../utils/context';
 import { processImage } from '../utils/file';
 import Modal from '../components/os/Modal';
 import { safeResponseJson } from '../utils/safeApi';
-import { DotsThreeVertical, House, Package, ShareNetwork, TrashSimple, User, Warning } from '@phosphor-icons/react';
+import { DotsThreeVertical, House, Package, PencilSimple, ShareNetwork, TrashSimple, User, Warning } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 import { Capacitor } from '@capacitor/core';
@@ -22,6 +22,7 @@ import {
     socialPostMatchesScope,
     socialScopesMatch,
 } from '../utils/socialScope';
+import { buildSocialProfileMetrics, visibleMomentLikes } from '../utils/socialMetrics';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -297,6 +298,7 @@ const SocialApp: React.FC = () => {
     const [showClearNewsConfirm, setShowClearNewsConfirm] = useState(false);
     const [showPostActions, setShowPostActions] = useState(false);
     const [showDeletePostConfirm, setShowDeletePostConfirm] = useState(false);
+    const [editingPostDraft, setEditingPostDraft] = useState<{ id: string; title: string; content: string } | null>(null);
     const [characterHandles, setCharacterHandles] = useState<Record<string, SubAccount[]>>({});
 
     // Sharing State
@@ -346,7 +348,6 @@ const SocialApp: React.FC = () => {
     const socialScopedCharacters = useMemo(() => (
         filterCharactersForPersonaSurface(characters, personaScope, {
             surface: 'social',
-            fallbackToAllWhenEmpty: false,
         })
     ), [characters, personaScope]);
     const activeCharacter = useMemo(() => (
@@ -465,6 +466,16 @@ const SocialApp: React.FC = () => {
     const scopedFeed = useMemo(() => (
         feed.filter(post => socialPostMatchesScope(post, activeSocialScope))
     ), [feed, activeSocialScope]);
+
+    const socialMetrics = useMemo(() => buildSocialProfileMetrics(
+        scopedFeed,
+        socialScopedCharacters.map(char => char.id),
+        socialProfile.name,
+    ), [scopedFeed, socialScopedCharacters, socialProfile.name]);
+
+    const profilePosts = useMemo(() => scopedFeed.filter(post => (
+        profileTab === 'notes' ? post.sourceType === 'user' : post.isCollected
+    )), [scopedFeed, profileTab]);
 
     const visibleFeed = useMemo(() => {
         return scopedFeed.filter(post => activeTab === 'news' ? getPostKind(post) === 'news' : getPostKind(post) !== 'news');
@@ -687,20 +698,13 @@ const SocialApp: React.FC = () => {
         setSelectedPost(current => (current?.id === post.id ? post : current));
     };
 
-    const socialCircleBudget = () => {
-        const handleCount = socialScopedCharacters.reduce(
-            (sum, char) => sum + (characterHandles[char.id]?.length || 0),
-            0,
-        );
-        return Math.max(8, socialScopedCharacters.length + handleCount + 6);
-    };
+    const socialCircleBudget = () => socialMetrics.audience;
 
     const simulatedLikes = (kind: 'moment' | 'news', sourceType: SocialPost['sourceType'], category?: SocialNewsCategory, rawLikes?: unknown) => {
         const raw = typeof rawLikes === 'number' && Number.isFinite(rawLikes) ? Math.max(0, Math.round(rawLikes)) : undefined;
         if (kind === 'moment') {
             const circle = socialCircleBudget();
-            const multiplier = sourceType === 'character' ? 2.4 : sourceType === 'user' ? 1.5 : 1.8;
-            const cap = Math.max(6, Math.round(circle * multiplier));
+            const cap = Math.max(0, circle);
             return Math.min(raw ?? Math.floor(Math.random() * (cap + 1)), cap);
         }
         const caps: Record<SocialNewsCategory, number> = {
@@ -1202,7 +1206,8 @@ ${contextPrompt}
                         });
 
                         if (char) avatar = char.avatar;
-                        return { id: `cmt-${Math.random()}`, authorName: authorName, authorAvatar: avatar, charId: char?.id, content: c.content || '...', likes: Math.floor(Math.random() * (isNewsPost ? 18 : 36)), isCharacter: !!char };
+                        const commentLikeCap = isNewsPost ? 18 : socialCircleBudget();
+                        return { id: `cmt-${Math.random()}`, authorName: authorName, authorAvatar: avatar, charId: char?.id, content: c.content || '...', likes: Math.floor(Math.random() * (commentLikeCap + 1)), isCharacter: !!char };
                     });
                     updatePostInFeed({ ...post, comments, replyState: post.replyState === 'pending' ? 'generated' : post.replyState });
                     generated = true;
@@ -1289,12 +1294,16 @@ ${coreContext}
                 authorAvatar: nextChar.avatar,
                 charId: nextChar.id,
                 content,
-                likes: Math.floor(Math.random() * 8),
+                likes: Math.floor(Math.random() * (socialCircleBudget() + 1)),
                 isCharacter: true,
             };
             const nextPost: SocialPost = {
                 ...post,
                 comments: [...(post.comments || []), newComment],
+                likes: Math.max(
+                    visibleMomentLikes(post, socialCircleBudget()),
+                    Math.min(socialCircleBudget(), new Set([...(post.comments || []), newComment].map(comment => comment.charId).filter(Boolean)).size),
+                ),
                 replyRemainingCharIds: remainingIds,
                 replyState: remainingIds.length > 0 ? 'pending' : 'generated',
                 replyDueAt: remainingIds.length > 0 ? Date.now() + randomReplyDelayMs() : undefined,
@@ -1394,7 +1403,7 @@ ${identityMap}
                         }
 
                         if (char) avatar = char.avatar;
-                        return { id: `cmt-reply-${Date.now()}-${Math.random()}`, authorName: authorName, authorAvatar: avatar, charId: char?.id, content: `回复 @${socialProfile.name}: ${c.content}`, likes: Math.floor(Math.random() * 10), isCharacter: !!char };
+                        return { id: `cmt-reply-${Date.now()}-${Math.random()}`, authorName: authorName, authorAvatar: avatar, charId: char?.id, content: `回复 @${socialProfile.name}: ${c.content}`, likes: Math.floor(Math.random() * (socialCircleBudget() + 1)), isCharacter: !!char };
                     });
                     if (newReplies.length > 0) {
                         const nextPost = { ...post, comments: [...(post.comments || []), ...newReplies] };
@@ -1469,9 +1478,31 @@ ${identityMap}
             addToast('删除失败，请稍后再试', 'error');
         }
     };
+    const handleSaveEditedPost = () => {
+        if (!editingPostDraft || selectedPost?.id !== editingPostDraft.id || selectedPost.sourceType !== 'user') return;
+        const content = editingPostDraft.content.trim();
+        if (!content) {
+            addToast('动态正文不能是空的', 'error');
+            return;
+        }
+        updatePostInFeed({
+            ...selectedPost,
+            title: editingPostDraft.title.trim() || '无标题',
+            content,
+        });
+        setEditingPostDraft(null);
+        addToast('我的动态已更新', 'success');
+    };
     const handleLike = (e: any, post: SocialPost) => {
         e.stopPropagation();
-        const nextPost = { ...post, isLiked: !post.isLiked, likes: post.isLiked ? post.likes - 1 : post.likes + 1 };
+        const currentLikes = getPostKind(post) === 'news'
+            ? Math.max(0, post.likes)
+            : visibleMomentLikes(post, socialMetrics.audience);
+        const nextPost = {
+            ...post,
+            isLiked: !post.isLiked,
+            likes: post.isLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1,
+        };
         updatePostInFeed(nextPost);
     };
     const handleAdoptStorySeed = (post: SocialPost) => {
@@ -1657,7 +1688,7 @@ ${identityMap}
                             </div>
                         )}
                         <div className="mt-3 flex items-center gap-4 text-[12px] font-semibold text-slate-400">
-                            <span>{post.likes} 赞</span>
+                            <span>{visibleMomentLikes(post, socialMetrics.audience)} 赞</span>
                             <span>{(post.comments || []).length} 评论</span>
                             {post.sourceType === 'user' && post.replyState === 'pending' && (
                                 <span className="text-[#ff2442]">相关角色陆续回复中</span>
@@ -1840,7 +1871,7 @@ ${identityMap}
                             <div className="flex gap-5 text-slate-600 shrink-0 items-center">
                                 <div className="flex flex-col items-center gap-0.5">
                                     <Icons.Heart filled={selectedPost.isLiked} onClick={(e) => handleLike(e, selectedPost)} className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">{selectedPost.likes}</span>
+                                    <span className="text-[10px] font-medium">{getPostKind(selectedPost) === 'news' ? selectedPost.likes : visibleMomentLikes(selectedPost, socialMetrics.audience)}</span>
                                 </div>
                                 <div className="flex flex-col items-center gap-0.5">
                                     <Icons.Star filled={selectedPost.isCollected} onClick={() => updatePostInFeed({...selectedPost, isCollected: !selectedPost.isCollected})} className="w-6 h-6" />
@@ -1936,6 +1967,19 @@ ${identityMap}
                         <ShareNetwork size={20} weight="bold" />
                         分享到聊天
                     </button>
+                    {selectedPost?.sourceType === 'user' && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setEditingPostDraft({ id: selectedPost.id, title: selectedPost.title, content: selectedPost.content });
+                                setShowPostActions(false);
+                            }}
+                            className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 text-left text-sm font-bold text-slate-700 shadow-sm active:scale-[0.99]"
+                        >
+                            <PencilSimple size={20} weight="bold" />
+                            编辑我的动态
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => {
@@ -1945,15 +1989,17 @@ ${identityMap}
                         className="flex w-full items-center gap-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-left text-sm font-bold text-rose-500 active:scale-[0.99]"
                     >
                         <TrashSimple size={20} weight="bold" />
-                        删除这条内容
+                        {selectedPost?.sourceType === 'user' ? '删除我的动态' : '从当前生活圈移除'}
                     </button>
                 </div>
             </Modal>
 
-            <Modal isOpen={showDeletePostConfirm} title="删除这条内容？" onClose={() => setShowDeletePostConfirm(false)}>
+            <Modal isOpen={showDeletePostConfirm} title={selectedPost?.sourceType === 'user' ? '删除我的动态？' : '从当前生活圈移除？'} onClose={() => setShowDeletePostConfirm(false)}>
                 <div className="space-y-4">
                     <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
-                        删除后它不会继续等待角色回复；已经分享进聊天的卡片不会一起消失。
+                        {selectedPost?.sourceType === 'user'
+                            ? '删除后它不会继续等待角色回复；已经分享进聊天的卡片不会一起消失。'
+                            : '这里只移除你本机当前面具下保存的这一条，不会改写角色，也不会影响其他面具。'}
                     </p>
                     <div className="flex gap-3">
                         <button
@@ -1972,6 +2018,24 @@ ${identityMap}
                             确认删除
                         </button>
                     </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={Boolean(editingPostDraft)} title="编辑我的动态" onClose={() => setEditingPostDraft(null)}>
+                <div className="space-y-4">
+                    <input
+                        value={editingPostDraft?.title || ''}
+                        onChange={event => setEditingPostDraft(current => current ? { ...current, title: event.target.value } : current)}
+                        placeholder="标题（可选）"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-[#ff2442]/40"
+                    />
+                    <textarea
+                        value={editingPostDraft?.content || ''}
+                        onChange={event => setEditingPostDraft(current => current ? { ...current, content: event.target.value } : current)}
+                        rows={8}
+                        className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-[#ff2442]/40"
+                    />
+                    <button onClick={handleSaveEditedPost} className="w-full rounded-xl bg-[#ff2442] py-3 text-xs font-bold text-white shadow-lg shadow-red-100 active:scale-95">保存修改</button>
                 </div>
             </Modal>
 
@@ -2184,34 +2248,34 @@ ${identityMap}
                                 )}
 
                                 <div className="flex gap-6 mt-5 bg-white/40 p-4 rounded-2xl border border-white/50 shadow-sm">
-                                    <div className="text-center"><span className="block font-bold text-slate-800">142</span><span className="text-[10px] text-slate-400">关注</span></div>
-                                    <div className="text-center"><span className="block font-bold text-slate-800">12.5k</span><span className="text-[10px] text-slate-400">粉丝</span></div>
-                                    <div className="text-center"><span className="block font-bold text-slate-800">8902</span><span className="text-[10px] text-slate-400">获赞与收藏</span></div>
+                                    <div className="text-center"><span className="block font-bold text-slate-800">{socialMetrics.audience}</span><span className="text-[10px] text-slate-400">生活圈</span></div>
+                                    <div className="text-center"><span className="block font-bold text-slate-800">{socialMetrics.ownPosts}</span><span className="text-[10px] text-slate-400">我的动态</span></div>
+                                    <div className="text-center"><span className="block font-bold text-slate-800">{socialMetrics.receivedLikes}</span><span className="text-[10px] text-slate-400">收到的赞</span></div>
                                 </div>
                             </div>
 
                             {/* Sticky Tabs */}
                             <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 border-b border-slate-100 flex">
                                 <button onClick={() => setProfileTab('notes')} className={`flex-1 py-3 text-sm font-bold transition-colors ${profileTab === 'notes' ? 'text-slate-900 border-b-2 border-[#ff2442]' : 'text-slate-400'}`}>笔记</button>
-                                <button onClick={() => setProfileTab('collects')} className={`flex-1 py-3 text-sm font-bold transition-colors ${profileTab === 'collects' ? 'text-slate-900 border-b-2 border-[#ff2442]' : 'text-slate-400'}`}>收藏</button>
+                                <button onClick={() => setProfileTab('collects')} className={`flex-1 py-3 text-sm font-bold transition-colors ${profileTab === 'collects' ? 'text-slate-900 border-b-2 border-[#ff2442]' : 'text-slate-400'}`}>我收藏的</button>
                             </div>
 
                             <div className="p-2 min-h-[300px] bg-slate-50/50 pb-24">
                                 <div className="columns-2 gap-2 space-y-2">
-                                    {scopedFeed.filter(p => profileTab === 'notes' ? p.authorName === socialProfile.name : p.isCollected).map(post => (
+                                    {profilePosts.map(post => (
                                         <div key={post.id} onClick={() => { setSelectedPost(post); generateComments(post); }} className="break-inside-avoid bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 cursor-pointer">
                                             <div className="aspect-[4/5] flex items-center justify-center text-4xl" style={{ background: post.bgStyle }}>{renderPostSticker(post.images?.[0], 'w-12 h-12')}</div>
                                             <div className="p-3">
                                                 <h4 className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight">{post.title}</h4>
                                                 <div className="flex justify-between items-center mt-2">
                                                     <div className="flex items-center gap-1"><img src={post.authorAvatar} className="w-3 h-3 rounded-full" /><span className="text-[9px] text-slate-400 truncate w-12">{post.authorName}</span></div>
-                                                    <div className="flex items-center gap-0.5 text-slate-400"><Icons.Heart filled={post.isLiked} className="w-3 h-3" /><span className="text-[9px]">{post.likes}</span></div>
+                                                    <div className="flex items-center gap-0.5 text-slate-400"><Icons.Heart filled={post.isLiked} className="w-3 h-3" /><span className="text-[9px]">{getPostKind(post) === 'news' ? post.likes : visibleMomentLikes(post, socialMetrics.audience)}</span></div>
                                                 </div>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                                {scopedFeed.filter(p => profileTab === 'notes' ? p.authorName === socialProfile.name : p.isCollected).length === 0 && (
+                                {profilePosts.length === 0 && (
                                     <div className="flex flex-col items-center justify-center py-20 text-slate-300 gap-2">
                                         <Package size={48} className="text-slate-300 opacity-30" />
                                         <span className="text-xs">空空如也</span>

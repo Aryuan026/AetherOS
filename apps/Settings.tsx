@@ -6,7 +6,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { safeResponseJson } from '../utils/safeApi';
 import Modal from '../components/os/Modal';
-import { Sun, Notebook } from '@phosphor-icons/react';
+import { CheckCircle, CopySimple, Notebook, Sun } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
 import {
   CompanionWakeupSettings,
@@ -118,7 +118,7 @@ const Settings: React.FC = () => {
   const {
       apiConfig, updateApiConfig, closeApp, availableModels, setAvailableModels,
       exportSystem, importSystem, addToast, resetSystem,
-      apiPresets, addApiPreset, removeApiPreset,
+      apiPresets, activeApiPresetId, addApiPreset, removeApiPreset, activateApiPreset,
       sysOperation, // Get progress state
       realtimeConfig, updateRealtimeConfig, // 实时感知配置
       characters, userProfile, updateTheme
@@ -187,7 +187,27 @@ const Settings: React.FC = () => {
       setLocalModel(preset.config.model);
       // MiniMax settings are NOT overwritten by presets — typically one user has
       // only one MiniMax account regardless of which LLM API preset they use.
-      addToast(`已加载配置: ${preset.name}`, 'info');
+      addToast(`“${preset.name}”已放入编辑区，还没有启用`, 'info');
+  };
+
+  const copyText = async (value: string, label: string) => {
+      if (!value.trim()) return;
+      try {
+          await navigator.clipboard.writeText(value);
+          addToast(`已复制${label}：${value}`, 'success');
+      } catch {
+          addToast('复制失败，请长按文字复制', 'error');
+      }
+  };
+
+  const copyPresetName = (name: string) => copyText(name, '预设名');
+
+  const handleActivatePreset = (preset: typeof apiPresets[0]) => {
+      if (!activateApiPreset(preset.id)) {
+          addToast('没有找到这份预设', 'error');
+          return;
+      }
+      addToast(`已启用：${preset.name}`, 'success');
   };
 
   const handleSavePreset = () => {
@@ -568,19 +588,31 @@ const Settings: React.FC = () => {
                     <h2 className="text-sm font-semibold text-slate-600 tracking-wider">对话 AI</h2>
                 </div>
                 <button onClick={() => setShowPresetModal(true)} className="text-[10px] bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-transform">
-                    保存为预设
+                    保存为新预设
                 </button>
             </div>
 
             {/* Presets List */}
             {apiPresets.length > 0 && (
                 <div className="mb-4">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block pl-1">我的预设 (Presets)</label>
-                    <div className="flex gap-2 flex-wrap">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block pl-1">我的预设</label>
+                    <div className="space-y-2">
                         {apiPresets.map(preset => (
-                            <div key={preset.id} className="flex items-center bg-white border border-slate-200 rounded-lg pl-3 pr-1 py-1 shadow-sm">
-                                <span onClick={() => loadPreset(preset)} className="text-xs font-medium text-slate-600 cursor-pointer hover:text-primary mr-2">{preset.name}</span>
-                                <button onClick={() => removeApiPreset(preset.id)} className="p-1 rounded-full text-slate-300 hover:bg-red-50 hover:text-red-400 transition-colors">
+                            <div key={preset.id} className={`flex items-center gap-2 bg-white border rounded-xl pl-3 pr-2 py-2 shadow-sm ${activeApiPresetId === preset.id ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-slate-200'}`}>
+                                <button onClick={() => loadPreset(preset)} className="min-w-0 flex-1 text-left">
+                                    <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                        {activeApiPresetId === preset.id && <CheckCircle size={14} weight="fill" className="text-emerald-500 shrink-0" />}
+                                        <span className="truncate">{preset.name}</span>
+                                    </span>
+                                    <span className="block truncate text-[10px] text-slate-400 mt-0.5">{preset.config.model || '未填写模型'} · 点这里放入编辑区</span>
+                                </button>
+                                <button onClick={() => void copyPresetName(preset.name)} aria-label={`复制${preset.name}`} className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100 hover:text-primary transition-colors">
+                                    <CopySimple size={14} />
+                                </button>
+                                <button onClick={() => handleActivatePreset(preset)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${activeApiPresetId === preset.id ? 'bg-emerald-50 text-emerald-600' : 'bg-primary/10 text-primary'}`}>
+                                    {activeApiPresetId === preset.id ? '使用中' : '使用'}
+                                </button>
+                                <button onClick={() => removeApiPreset(preset.id)} aria-label={`删除${preset.name}`} className="p-1 rounded-full text-slate-300 hover:bg-red-50 hover:text-red-400 transition-colors">
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg>
                                 </button>
                             </div>
@@ -618,18 +650,32 @@ const Settings: React.FC = () => {
                         <button onClick={fetchModels} disabled={isLoadingModels} className="text-[10px] text-primary font-bold">{isLoadingModels ? 'Fetching...' : '刷新模型列表'}</button>
                     </div>
                     
-                    <button 
-                        onClick={() => setShowModelModal(true)}
-                        className="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-sm text-slate-700 flex justify-between items-center active:bg-white transition-all shadow-sm"
-                    >
-                        <span className="truncate font-mono">{localModel || 'Select Model...'}</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400"><path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" /></svg>
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setShowModelModal(true)}
+                            className="min-w-0 flex-1 bg-white/50 border border-slate-200/60 rounded-xl px-4 py-3 text-sm text-slate-700 flex justify-between items-center active:bg-white transition-all shadow-sm"
+                        >
+                            <span className="truncate font-mono">{localModel || 'Select Model...'}</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400"><path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" /></svg>
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!localModel.trim()}
+                            onClick={() => void copyText(localModel, '模型名')}
+                            aria-label="复制当前模型名"
+                            className="flex w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200/60 bg-white/50 text-slate-400 shadow-sm active:scale-95 disabled:opacity-35"
+                        >
+                            <CopySimple size={17} />
+                        </button>
+                    </div>
                 </div>
                 
                 <button onClick={handleSaveApi} className="w-full py-3 rounded-2xl font-bold text-white shadow-lg shadow-primary/20 bg-primary active:scale-95 transition-all mt-2">
-                    {statusMsg || '保存配置'}
+                    {statusMsg || '保存并启用当前填写'}
                 </button>
+                <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+                    点预设名称只会放进编辑区；点“使用”或上方按钮，才会真正切换对话连接。
+                </p>
             </div>
         </section>
 
@@ -993,10 +1039,15 @@ const Settings: React.FC = () => {
       <Modal isOpen={showModelModal} title="选择模型" onClose={() => setShowModelModal(false)}>
         <div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-2 p-1">
             {availableModels.length > 0 ? availableModels.map(m => (
-                <button key={m} onClick={() => { setLocalModel(m); setShowModelModal(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-mono flex justify-between items-center ${m === localModel ? 'bg-primary/10 text-primary font-bold ring-1 ring-primary/20' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>
-                    <span className="truncate">{m}</span>
-                    {m === localModel && <div className="w-2 h-2 rounded-full bg-primary"></div>}
-                </button>
+                <div key={m} className={`flex items-center gap-2 rounded-xl px-2 ${m === localModel ? 'bg-primary/10 text-primary ring-1 ring-primary/20' : 'bg-slate-50 text-slate-600'}`}>
+                    <button onClick={() => { setLocalModel(m); setShowModelModal(false); }} className="min-w-0 flex-1 px-2 py-3 text-left text-sm font-mono flex justify-between items-center">
+                        <span className="truncate">{m}</span>
+                        {m === localModel && <div className="w-2 h-2 rounded-full bg-primary"></div>}
+                    </button>
+                    <button type="button" onClick={() => void copyText(m, '模型名')} aria-label={`复制模型名${m}`} className="shrink-0 rounded-full p-2 text-slate-400 hover:bg-white/70 hover:text-primary">
+                        <CopySimple size={15} />
+                    </button>
+                </div>
             )) : <div className="text-center text-slate-400 py-8 text-xs">列表为空，请先点击“刷新模型列表”</div>}
         </div>
       </Modal>

@@ -1,5 +1,35 @@
 # AetherOS Progress
 
+## 2026-07-19 API And Life-Circle Semantics Seal
+
+- done:
+  - Split API preset interaction into three explicit states: loading a preset
+    into the editor, activating it for conversations, and saving/activating the
+    manually edited form. The active preset identity is persisted and included
+    in full/text backup without overwriting device-wide MiniMax credentials.
+  - Added copy controls for preset names, the current model id, and every model
+    row so long provider lists no longer require manual retyping.
+  - Promoted persona linking into a global life-surface rule. Directory and card
+    management keep all characters reachable; Chat, GroupChat, Call, Date,
+    Social, Novel, special moments, Timebook, Companion Plan, Study, Journal,
+    Room, and Launcher widgets fail closed when the active mask has no links.
+  - Replaced the Social profile's fixed `142 / 12.5k / 8902` with current-scope
+    life-circle people, user-authored post count, and received likes. Character
+    aliases are deduplicated and media/news strangers do not inflate the circle.
+  - Clarified `我收藏的` as locally starred Social posts. User-authored posts can
+    be edited or deleted; character/NPC/news posts cannot be rewritten and may
+    only be removed from the current local life circle.
+  - Capped moment and comment likes to the current relationship audience while
+    retaining larger public-flow ranges for the separate news surface.
+- verified:
+  - Added `verify:api-presets` and `verify:persona-scope`; extended
+    `verify:social-scope` with profile-stat, author-permission, collection, and
+    audience-cap fixtures.
+  - `npm run typecheck` and production build pass.
+- boundary:
+  - No server stores Social or API secrets. All values remain in this browser /
+    device and follow the existing local backup contract.
+
 ## 2026-07-19 Post-import Archive Curation Seal
 
 - done:

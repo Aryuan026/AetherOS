@@ -17,6 +17,7 @@ import {
 import { resolveShellChromeMode } from '../utils/shellChrome';
 import { useVirtualWorldClock } from '../hooks/useVirtualWorldClock';
 import { normalizeLauncherLayout, paginateLauncherAppIds } from '../utils/launcherLayout';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const DESKTOP_SIGNAL_LABEL = 'SIGNAL RECEIVED';
 const DESKTOP_SLOGAN = 'I am a part of all that I have met.';
@@ -193,13 +194,15 @@ let _lastPageIndex = 0;
 // --- Main Launcher ---
 
 const Launcher: React.FC = () => {
-  const { openApp, characters, activeCharacterId, theme, lastMsgTimestamp, isDataLoaded, unreadMessages } = useOS();
+  const { openApp, characters, activeCharacterId, theme, lastMsgTimestamp, isDataLoaded, unreadMessages, userProfile } = useOS();
 
   // Local state for widget data to prevent context trashing
   const [widgetChar, setWidgetChar] = useState<CharacterProfile | null>(null);
   const [lastMessage, setLastMessage] = useState<string>('');
   const [anniversaries, setAnniversaries] = useState<Anniversary[]>([]);
   const [widgetImages, setWidgetImages] = useState<CharacterWidgetImage[]>(EMPTY_WIDGET_IMAGES);
+  const personaScope = useMemo(() => resolvePersonaRouteScope(userProfile, characters, activeCharacterId), [userProfile, characters, activeCharacterId]);
+  const launcherCharacters = useMemo(() => filterCharactersForPersonaSurface(characters, personaScope, { surface: 'launcher' }), [characters, personaScope]);
 
   const [activePageIndex, setActivePageIndex] = useState(_lastPageIndex);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -251,14 +254,14 @@ const Launcher: React.FC = () => {
   useEffect(() => {
       const loadData = async () => {
           // SAFEGUARD: If characters array is empty, reset widget char
-          if (!characters || characters.length === 0) {
+          if (launcherCharacters.length === 0) {
               setWidgetChar(null);
               setLastMessage('No Character Connected');
               setAnniversaries([]);
               return;
           }
 
-          const targetChar = characters.find(c => c.id === activeCharacterId) || characters[0];
+          const targetChar = launcherCharacters.find(c => c.id === activeCharacterId) || launcherCharacters[0];
           setWidgetChar(targetChar);
 
           try {
@@ -293,7 +296,7 @@ const Launcher: React.FC = () => {
       if (isDataLoaded) {
           loadData();
       }
-  }, [activeCharacterId, lastMsgTimestamp, isDataLoaded, characters]); // Trigger on characters change
+  }, [activeCharacterId, lastMsgTimestamp, isDataLoaded, launcherCharacters]); // Trigger on scoped characters change
 
   useEffect(() => {
       let cancelled = false;

@@ -26,8 +26,8 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
         personaScope.activeProgressBundleId,
     ), [personaScope.activeProgressBundleId, writerProps.activeBook]);
     const availableStoryCharacters = useMemo(() => (
-        personaScope.hasLinkedFocus ? personaScope.linkedCharacters : writerProps.characters
-    ), [personaScope.hasLinkedFocus, personaScope.linkedCharacters, writerProps.characters]);
+        personaScope.linkedCharacters
+    ), [personaScope.linkedCharacters]);
     const defaultStoryCharacterIds = useMemo(() => {
         const availableIds = new Set(availableStoryCharacters.map(character => character.id));
         const collaboratorIds = writerProps.activeBook.collaboratorIds.filter(id => availableIds.has(id));

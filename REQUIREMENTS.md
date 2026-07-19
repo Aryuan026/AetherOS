@@ -621,23 +621,23 @@
 - Contact/directory surfaces should keep all characters reachable, with linked
   characters shown first and unlinked characters available for adding to the
   mask.
-- Experience/generation surfaces should default to linked characters only when
-  the active mask has links. This includes Social, Date, Call, future StoryDesk,
-  Novel route directives, Guidebook, and special-event selection.
-- If the active mask has no linked characters, experience surfaces should fall
-  back to all characters and guide the user to establish links rather than
-  showing an empty page. `朋友圈` is the deliberate exception: because posts,
-  comments, delayed replies, and notifications represent a relationship
-  network, Social fails closed and shows an empty-state link hint.
+- Experience/generation surfaces use linked characters only. This includes
+  Chat, GroupChat, Social, Date, Call, StoryDesk/Novel directives, Guidebook,
+  and special-event selection.
+- If the active mask has no linked characters, every life/generation surface
+  must fail closed with a link hint. It must not silently fall back to the full
+  character library or `characters[0]`; unlinked characters are reachable only
+  from management/directory surfaces until the player links them.
 - Prompted generation must not let unlinked characters post, reply, or appear as
   current familiar/romance-network members. They may still exist as public
   background people when a worldbook or user explicitly mentions them.
 - New route surfaces must use the shared `personaRouteScope` helper rather than
   hand-written `linkedCharacterIds` checks, so directory/contact pages,
   experience pickers, and prompt pools keep the same behavior.
-- Current connected surfaces: Social participant generation, Character
-  directory sorting/linking, Date role picker, Call role picker, and GroupChat
-  member creation.
+- Current connected surfaces: Chat, Social participant generation, Character
+  directory sorting/linking, Date and Call role pickers, GroupChat member
+  creation, Novel/Story collaborator selection, special-event selection,
+  Timebook, Companion Plan, Study, Journal, Room, and Launcher widgets.
 - The identity mode list must include a non-DeepSpace option for fully custom
   worlds and imported original character cards. In that mode, prompt context
   must not force DeepSpace hunter, canon protagonist, aether core, or original

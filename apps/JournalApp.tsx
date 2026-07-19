@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { CharacterProfile, DiaryEntry, StickerData, MemoryFragment, DiaryPage } from '../types';
@@ -10,6 +10,7 @@ import { safeResponseJson } from '../utils/safeApi';
 import { Sparkle } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -70,21 +71,30 @@ const JournalApp: React.FC = () => {
     const [deletingSticker, setDeletingSticker] = useState<{name: string, url: string} | null>(null);
     const [deletingDiary, setDeletingDiary] = useState<DiaryEntry | null>(null);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [userProfile, characters, activeCharacterId]);
+    const journalCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'journal' })
+    ), [characters, personaScope]);
 
     // --- Data Loading ---
 
     useEffect(() => {
-        if (characters.length > 0 && activeCharacterId) {
-            const initial = characters.find(c => c.id === activeCharacterId);
+        if (journalCharacters.length > 0) {
+            const initial = journalCharacters.find(c => c.id === activeCharacterId) || journalCharacters[0];
             if (initial) {
                 setSelectedChar(initial);
                 setMode('calendar');
                 loadDiaries(initial.id);
             }
+        } else {
+            setSelectedChar(null);
+            setMode('select');
         }
         // Load custom stickers from new journal store
         DB.getJournalStickers().then(setCustomStickers);
-    }, [activeCharacterId]);
+    }, [activeCharacterId, journalCharacters]);
 
     const loadDiaries = async (charId: string) => {
         const list = await DB.getDiariesByCharId(charId);
@@ -583,7 +593,7 @@ Structure:
                 />
                 
                 <div className="p-5 grid grid-cols-2 gap-3 overflow-y-auto pb-20 no-scrollbar">
-                    {characters.map(c => (
+                    {journalCharacters.map(c => (
                         <div key={c.id} onClick={() => handleCharSelect(c)} className="h-44 bg-white rounded-r-2xl rounded-l-md border-l-4 border-l-amber-800 shadow-[2px_4px_12px_rgba(0,0,0,0.07)] p-3 flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all relative overflow-hidden group">
                             <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/10 to-transparent"></div>
                             <div className="w-12 h-12 rounded-full p-[2px] border border-amber-100 bg-amber-50">
@@ -593,6 +603,11 @@ Structure:
                             <span className="text-[8px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-mono uppercase tracking-wide">Journal</span>
                         </div>
                     ))}
+                    {journalCharacters.length === 0 && (
+                        <div className="col-span-2 rounded-2xl border border-dashed border-amber-200 bg-white/70 px-5 py-10 text-center text-xs leading-6 text-amber-700/60">
+                            先在通讯录里把角色链接到当前面具，再交换日记。
+                        </div>
+                    )}
                 </div>
             </div>
         );

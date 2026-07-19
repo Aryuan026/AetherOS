@@ -47,6 +47,8 @@ import {
     getPresentationSourceMessageIds,
     mergeAssistantRepliesForPresentation,
 } from '../utils/chatPresentation';
+import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import AppHeader from '../components/shell/AppHeader';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
 
@@ -147,6 +149,13 @@ const dedupeStarterMessages = (messages: Message[]) => {
 
 const Chat: React.FC = () => {
     const { characters, activeCharacterId, setActiveCharacterId, updateCharacter, apiConfig, apiPresets, addApiPreset, closeApp, customThemes, addToast, userProfile, lastMsgTimestamp, groups, clearUnread, realtimeConfig, theme: rawOsTheme } = useOS();
+    const personaScope = useMemo(() => (
+        resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
+    ), [activeCharacterId, characters, userProfile]);
+    const chatScopedCharacters = useMemo(() => (
+        filterCharactersForPersonaSurface(characters, personaScope, { surface: 'chat' })
+    ), [characters, personaScope]);
+    const char = chatScopedCharacters.find(c => c.id === activeCharacterId) || chatScopedCharacters[0];
     const [messages, setMessages] = useState<Message[]>([]);
     const [totalMsgCount, setTotalMsgCount] = useState(0);
     const [visibleCount, setVisibleCount] = useState(30);
@@ -210,7 +219,6 @@ const Chat: React.FC = () => {
     // Which messages are currently showing "译" version (toggle state only, no API calls)
     const [showingTargetIds, setShowingTargetIds] = useState<Set<number>>(new Set());
 
-    const char = characters.find(c => c.id === activeCharacterId) || characters[0];
     charRef.current = char; // Keep ref in sync for async callbacks
     const importedHistoryScope = useMemo<HistoryScope | undefined>(() => {
         if (!char || !userProfile.activePersonaMaskId || !userProfile.activeProgressBundleId) return undefined;
@@ -1485,6 +1493,17 @@ const Chat: React.FC = () => {
     const handleCharSelectCallback = useCallback((id: string) => { setActiveCharacterId(id); setShowPanel('none'); }, []);
     const chatChromeStyle = osTheme.chatChromeStyle || 'soft';
     const chatBackgroundStyle = osTheme.chatBackgroundStyle || 'plain';
+    if (!char) {
+        return (
+            <div className="flex h-full w-full flex-col bg-slate-50">
+                <AppHeader title="聊天" subtitle="当前面具还没有生活圈联系人" onBack={closeApp} center />
+                <div className="flex flex-1 items-center justify-center px-8 text-center text-sm leading-7 text-slate-400">
+                    先在通讯录里把角色链接到当前面具，再从这里继续聊天。
+                </div>
+            </div>
+        );
+    }
+
     const chatBackgroundImage = char.chatBackground || (osTheme.chatBackgroundImage ?? DEFAULT_CHAT_BACKGROUND_IMAGE);
     const chatImageBackgroundColor = chatBackgroundImage === DEFAULT_CHAT_BACKGROUND_IMAGE ? '#e7e5e4' : '#eef0f3';
     const isDeepSpaceAppearance = appearancePresetId === DEEP_SPACE_APPEARANCE_PRESET_ID;
@@ -1857,7 +1876,7 @@ const Chat: React.FC = () => {
             <Modal isOpen={showForwardModal} title="转发聊天记录" onClose={() => setShowForwardModal(false)}>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                     <p className="text-xs text-slate-400 mb-3">选择要转发给的角色 (已选 {selectedMsgIds.size} 条消息)</p>
-                    {characters.filter(c => c.id !== activeCharacterId).map(c => (
+                    {chatScopedCharacters.filter(c => c.id !== activeCharacterId).map(c => (
                         <button
                             key={c.id}
                             onClick={() => handleForwardToCharacter(c.id)}
@@ -1871,7 +1890,7 @@ const Chat: React.FC = () => {
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-300"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
                         </button>
                     ))}
-                    {characters.filter(c => c.id !== activeCharacterId).length === 0 && (
+                    {chatScopedCharacters.filter(c => c.id !== activeCharacterId).length === 0 && (
                         <div className="text-center text-xs text-slate-400 py-8">没有其他角色可以转发</div>
                     )}
                 </div>

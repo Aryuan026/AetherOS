@@ -9,6 +9,7 @@ import {
     inferLegacySocialPostScope,
     socialPostMatchesScope,
 } from '../utils/socialScope.ts';
+import { buildSocialProfileMetrics, visibleMomentLikes } from '../utils/socialMetrics.ts';
 
 const now = Date.now();
 const scopeA: SocialRelationshipScope = {
@@ -143,12 +144,24 @@ await DB.deleteSocialPost(stored.id);
 assert.equal((await DB.getSocialPosts()).some(item => item.id === stored.id), false, 'awaited delete must be observable immediately');
 
 const socialSource = readFileSync(new URL('../apps/SocialApp.tsx', import.meta.url), 'utf8');
-assert.match(socialSource, /fallbackToAllWhenEmpty:\s*false/);
 assert.match(socialSource, /socialScopedCharacters\.map/);
 assert.match(socialSource, /socialScopedCharacters\.slice\(0, 8\)/);
 assert.match(socialSource, /socialPostMatchesScope\(post, activeSocialScope\)/);
-assert.match(socialSource, /删除这条内容/);
+assert.match(socialSource, /编辑我的动态/);
+assert.match(socialSource, /从当前生活圈移除/);
+assert.match(socialSource, /我收藏的/);
+assert.doesNotMatch(socialSource, />142<|>12\.5k<|>8902</);
 assert.doesNotMatch(socialSource, /demo-moment|placeholderFeed|characters\.slice\(0, 1\)/);
+
+const socialRows = [
+    post('own', { sourceType: 'user', charId: null, authorName: '面具 A', likes: 99 }),
+    post('char', { sourceType: 'character', charId: 'custom-char-a', authorName: '角色小号' }),
+    post('npc', { sourceType: 'npc', charId: null, authorName: '邻居 C' }),
+    post('news', { kind: 'news', sourceType: 'news', charId: null, authorName: '媒体号' }),
+];
+const metrics = buildSocialProfileMetrics(socialRows, ['custom-char-a', 'shared-char'], '面具 A');
+assert.deepEqual(metrics, { audience: 3, ownPosts: 1, receivedLikes: 3 });
+assert.equal(visibleMomentLikes(socialRows[0], metrics.audience), 3);
 
 const inputSource = readFileSync(new URL('../components/chat/ChatInputArea.tsx', import.meta.url), 'utf8');
 const chatSource = readFileSync(new URL('../apps/Chat.tsx', import.meta.url), 'utf8');

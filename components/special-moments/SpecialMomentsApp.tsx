@@ -29,7 +29,6 @@ export const SpecialMomentsApp: React.FC = () => {
     const visibleCharacters = useMemo(() => (
         filterCharactersForPersonaSurface(characters, personaScope, {
             surface: 'special_moments',
-            fallbackToAllWhenEmpty: false,
         })
     ), [characters, personaScope]);
 
