@@ -277,6 +277,8 @@ for (const required of [
     'readUndatedDailyArchiveMessagePage',
     'searchDailyArchiveMessages',
     'openSearchHit',
+    'curateDailyArchiveMessages',
+    'setCurationDialog',
 ]) {
     assert.ok(appSource.includes(required));
 }
@@ -290,6 +292,9 @@ for (const required of [
     '当天对话',
     'MAX_CACHED_PAGES',
     'data-focus-message',
+    'onStartCuration',
+    '整理对话记录',
+    '说话人',
     "message.role === 'system' ? '来源说明' : '原文片段'",
 ]) {
     assert.ok(readerSource.includes(required));
@@ -339,3 +344,4 @@ for (const required of [
 
 console.log(`daily archive contract OK: days=1 undated=1 messages=${backup.manifest.messageCount} chunks=${chunkedLongDay.manifest.chunkCount} files=${backup.manifest.files.length}`);
 await import('./verify-daily-archive-db.ts');
+await import('./verify-daily-archive-curation.ts');

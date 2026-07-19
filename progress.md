@@ -1,5 +1,37 @@
 # AetherOS Progress
 
+## 2026-07-19 Post-import Archive Curation Seal
+
+- done:
+  - Fixed paid Word/WPS exports whose one `user:` or `assistant:` turn spans
+    several paragraphs. Continuation paragraphs now stay inside that turn until
+    the trailing `timestamp:`; prose such as `【朋友圈】2025.8.29` remains body
+    text instead of becoming a false date or extra speaker.
+  - Opened Daily Archive correction for dated, undated, and unattributed rows:
+    long-press/organizer selection, edit, merge, export-channel attribution,
+    date assignment, tombstone deletion, clipping, and confirmation locking.
+  - Kept corrections inside the canonical chunked archive revision stream.
+    Date moves leave higher-revision tombstones in the old bucket and retain raw
+    source ids, so later history sync cannot restore a corrected mistake.
+  - Kept `human_confirmed` as historical transcript authority only. It does not
+    advance emotion, care, current life, narrative receipts, or memory.
+  - Integrated the already-reviewed launcher visibility/order release and
+    Worldbook folding/reusable custom groups into one testable main candidate.
+- verified:
+  - `npm run verify:history-import`, `npm run verify:daily-archive`,
+    `npm run typecheck`, and `git diff --check` pass.
+  - New fake-IndexedDB integration covers role/date/edit/merge, confirmation
+    lock/unlock, revision tombstones, and resistance to a later raw revision-1
+    sync.
+  - In-app Chromium at 430 x 932 imported a fictional three-row TXT, rendered
+    the wrapped朋友圈 turn as one user bubble, opened an unattributed undated row,
+    changed it to the character channel, moved it into a day, and confirmed a
+    dated record. The calendar/reader updated without reload and console errors
+    remained zero.
+- boundary:
+  - Confirmation verifies the local transcript projection, not world truth or
+    current state. Calendar semantic analysis/model execution remains HOLD.
+
 ## 2026-07-19 Desktop App Visibility And Ordering
 
 - done:

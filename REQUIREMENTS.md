@@ -1,5 +1,27 @@
 # SullyOS Requirements
 
+## Post-import Daily Archive Curation
+
+- History intake must stay one high-tolerance flow. Speaker/date correction,
+  merging, deletion, and confirmation belong in Dialogue Calendar after import.
+- Word/WPS paragraphs following one explicit `user:` / `assistant:` / `char:`
+  marker must remain in that turn until a real `timestamp:` or next explicit
+  role marker. Dates written inside prose must remain prose.
+- Dated, undated, and unattributed archive rows must all be selectable. Long
+  press and an explicit organizer control must reach the same mobile selection
+  mode.
+- A user may edit one row, change one or many export-channel roles, move one or
+  many rows to a date, merge selected rows in source order, tombstone selected
+  rows, and mark selected rows confirmed/unconfirmed.
+- Moving or deleting must be revision-safe: later source synchronization cannot
+  revive the old projection. Every merged row must retain all represented
+  source message ids.
+- Confirmation is a transcript lock and future evidence-strength signal only.
+  Confirmed historical rows stay excluded from current emotion, care, open
+  threads, Character Life, NarrativeRun, ExperienceReceipt, and direct memory.
+- The archive reader must continue to page/virtualize chat-heavy days; curation
+  may not load or render the entire day in one DOM tree.
+
 ## Global Software Shell And Virtual-City Time
 
 - The default web shell must not simulate the host device's real clock,

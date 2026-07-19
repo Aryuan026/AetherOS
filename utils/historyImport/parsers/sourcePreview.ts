@@ -341,6 +341,8 @@ export const buildHistoryImportPreview = async (
     let pendingPaidExportRow: HistoryPreviewRow | undefined;
 
     logicalUnits.forEach(unit => {
+        const strongRoleBlock = parseStrongRoleBlock(unit.text);
+        const parsedUnit = parseTurn(unit.text);
         const paidExportTimestamp = parsePaidExportTimestamp(unit.text);
         if (paidExportTimestamp && pendingPaidExportRow) {
             pendingPaidExportRow.sourceTime = parseSourceTime(paidExportTimestamp);
@@ -348,6 +350,30 @@ export const buildHistoryImportPreview = async (
             extendLocatorThroughMetadata(pendingPaidExportRow, unit);
             pendingPaidExportRow = undefined;
             return;
+        }
+
+        // Paid Word/WPS exports often wrap one speaker turn across several
+        // paragraphs before the trailing timestamp paragraph. Keep those
+        // paragraphs inside the active turn instead of materialising them as
+        // unrelated fragments (or accidentally treating a date in the prose as
+        // archive metadata). A new explicit role marker is the only boundary.
+        if (
+            pendingPaidExportRow
+            && !strongRoleBlock
+            && !parsedUnit.authorChannel
+            && !/^\s*[\[【<]/u.test(unit.text)
+        ) {
+            const continuation = unit.text.trim();
+            if (continuation && SEPARATOR_ONLY.test(continuation)) {
+                pendingPaidExportRow = undefined;
+            } else {
+                pendingPaidExportRow.content = [pendingPaidExportRow.content, continuation]
+                    .filter(Boolean)
+                    .join('\n');
+                pendingPaidExportRow.originalText = `${pendingPaidExportRow.originalText}\n${unit.text}`;
+                extendLocatorThroughMetadata(pendingPaidExportRow, unit);
+                return;
+            }
         }
 
         const row = normalizeUnit(unit, fileSha256.slice(0, 16), input.bindingDraft);
@@ -360,11 +386,9 @@ export const buildHistoryImportPreview = async (
             pendingPaidExportRow = undefined;
             return;
         }
-        if (row.status !== 'skipped') {
-            pendingPaidExportRow = row.authorChannel && Boolean(row.content)
-                ? row
-                : undefined;
-        }
+        pendingPaidExportRow = strongRoleBlock && row.status !== 'skipped' && row.authorChannel && Boolean(row.content)
+            ? row
+            : undefined;
     });
 
     const counts = {

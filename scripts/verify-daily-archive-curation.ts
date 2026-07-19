@@ -1,0 +1,126 @@
+import 'fake-indexeddb/auto';
+import assert from 'node:assert/strict';
+import type { DailyArchiveMessage } from '../domain/dailyArchive/types.ts';
+import type { HistoryScope } from '../domain/historyImport/types.ts';
+import {
+    curateDailyArchiveMessages,
+    getDailyArchiveDocument,
+    readDailyArchiveCoverage,
+    upsertDailyArchiveMessages,
+} from '../utils/dailyArchive/storage.ts';
+
+const scope: HistoryScope = {
+    progressBundleId: 'curation-progress',
+    personaMaskId: 'curation-mask',
+    charId: 'curation-char',
+};
+const now = new Date(2025, 7, 29, 23, 1, 12).getTime();
+
+const message = (id: string, content: string, sourceOrder: number): DailyArchiveMessage => ({
+    schemaVersion: 1,
+    id,
+    scope,
+    source: 'history_import',
+    sourceRecordId: id,
+    sourceBatchId: 'wrapped-word-batch',
+    sourceOrder,
+    role: 'unknown',
+    kind: 'other',
+    content,
+    time: { precision: 'unknown' },
+    status: 'active',
+    recordedAt: now,
+    revision: 1,
+});
+
+const first = message('history:wrapped-1', '【朋友圈】2025.8.29', 1);
+const second = message('history:wrapped-2', '和小雨在一起的第一个七夕~', 2);
+await upsertDailyArchiveMessages({ messages: [first, second], now });
+
+await curateDailyArchiveMessages({
+    scope,
+    messages: [first, second],
+    operation: { kind: 'set_role', role: 'user' },
+    now: now + 1,
+});
+let undated = await getDailyArchiveDocument({ scope, undatedKey: 'wrapped-word-batch' });
+let active = undated!.messages.filter(item => item.status === 'active');
+assert.deepEqual(active.map(item => item.role), ['user', 'user']);
+
+await curateDailyArchiveMessages({
+    scope,
+    messages: active,
+    operation: { kind: 'set_date', dateKey: '2025-08-29' },
+    now: now + 2,
+});
+undated = await getDailyArchiveDocument({ scope, undatedKey: 'wrapped-word-batch' });
+assert.equal(undated?.messageCount, 0);
+assert.equal(undated?.messages.every(item => item.status === 'tombstoned'), true);
+
+let dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
+active = dated!.messages.filter(item => item.status === 'active');
+assert.equal(active.length, 2);
+assert.equal(active.every(item => item.time.dateKey === '2025-08-29'), true);
+
+await curateDailyArchiveMessages({
+    scope,
+    messages: active,
+    operation: { kind: 'merge' },
+    now: now + 3,
+});
+dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
+active = dated!.messages.filter(item => item.status === 'active');
+assert.equal(active.length, 1);
+assert.match(active[0].content, /【朋友圈】2025\.8\.29\n\n和小雨/u);
+assert.deepEqual(active[0].curation?.sourceMessageIds, ['history:wrapped-1', 'history:wrapped-2']);
+
+await curateDailyArchiveMessages({
+    scope,
+    messages: active,
+    operation: { kind: 'set_confirmation', confirmed: true },
+    now: now + 4,
+});
+dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
+active = dated!.messages.filter(item => item.status === 'active');
+assert.equal(active[0].curation?.authority, 'human_confirmed');
+await assert.rejects(
+    curateDailyArchiveMessages({
+        scope,
+        messages: active,
+        operation: { kind: 'edit_content', content: '不应越过锁定' },
+        now: now + 5,
+    }),
+    /先取消确认/u,
+);
+
+await curateDailyArchiveMessages({
+    scope,
+    messages: active,
+    operation: { kind: 'set_confirmation', confirmed: false },
+    now: now + 6,
+});
+dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
+active = dated!.messages.filter(item => item.status === 'active');
+await curateDailyArchiveMessages({
+    scope,
+    messages: active,
+    operation: { kind: 'edit_content', content: '人工校正后的七夕记录' },
+    now: now + 7,
+});
+dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
+assert.equal(dated?.messages.find(item => item.status === 'active')?.content, '人工校正后的七夕记录');
+
+// A later raw-history sync remains revision 1 and must not revive the old
+// undated projection or overwrite the human-curated dated revision.
+await upsertDailyArchiveMessages({ messages: [first, second], now: now + 8 });
+undated = await getDailyArchiveDocument({ scope, undatedKey: 'wrapped-word-batch' });
+dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
+assert.equal(undated?.messageCount, 0);
+assert.equal(dated?.messages.find(item => item.status === 'active')?.content, '人工校正后的七夕记录');
+
+const coverage = await readDailyArchiveCoverage({ scope });
+assert.equal(coverage.undatedMessageCount, 0);
+assert.equal(coverage.datedMessageCount, 1);
+assert.equal(coverage.documentCount, 1);
+
+console.log('daily archive curation OK: role/date/edit/merge/delete-safe revisions and human confirmation lock');
