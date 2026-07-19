@@ -12,6 +12,7 @@ import {
   createDefaultVirtualWorldClockConfig,
 } from '../utils/virtualWorldClock';
 import { resolveShellChromeMode } from '../utils/shellChrome';
+import LauncherLayoutEditor from '../components/appearance/LauncherLayoutEditor';
 
 const TwemojiImg: React.FC<{ code: string; alt?: string; className?: string }> = ({ code, alt, className = 'w-4 h-4 inline-block' }) => (
   <img src={`https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/${code}.png`} alt={alt || ''} className={className} draggable={false} />
@@ -141,7 +142,7 @@ const PresetManager: React.FC<PresetManagerProps> = ({ presets, onSave, onApply,
             <section className={APPEARANCE_CARD_CLASS}>
                 <AppearanceSectionHeader
                   title="保存当前外观"
-                  description="把当前顶部样式、主题色、字体、壁纸、图标和装饰收成一套。"
+                  description="把当前顶部样式、桌面布局、主题色、字体、壁纸、图标和装饰收成一套。"
                 />
                 <div className="flex gap-2">
                     <input
@@ -510,7 +511,7 @@ const Appearance: React.FC = () => {
     <div className="h-full w-full bg-slate-50 flex flex-col font-normal text-slate-700">
       <AppHeader
         title="外观"
-        subtitle="界面、图标与预设"
+        subtitle="界面、桌面与美化预设"
         onBack={closeApp}
         titleClassName="truncate text-[16px] font-semibold tracking-[0.02em] text-slate-800"
         subtitleClassName="mt-0.5 truncate text-[9px] font-medium tracking-[0.08em] text-slate-400"
@@ -519,7 +520,7 @@ const Appearance: React.FC = () => {
       <div className="z-20 flex shrink-0 border-b border-slate-200/80 bg-white px-3">
           <button onClick={() => setActiveTab('theme')} className={`flex-1 border-b-2 py-2.5 text-[12px] font-medium transition-colors ${activeTab === 'theme' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>界面外观</button>
           <button onClick={() => setActiveTab('icons')} className={`flex-1 border-b-2 py-2.5 text-[12px] font-medium transition-colors ${activeTab === 'icons' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>应用图标</button>
-          <button onClick={() => setActiveTab('presets')} className={`flex-1 border-b-2 py-2.5 text-[12px] font-medium transition-colors ${activeTab === 'presets' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>预设管理</button>
+          <button onClick={() => setActiveTab('presets')} className={`flex-1 border-b-2 py-2.5 text-[12px] font-medium transition-colors ${activeTab === 'presets' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>美化预设</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 no-scrollbar">
@@ -1195,6 +1196,13 @@ const Appearance: React.FC = () => {
                 </section>
             </div>
         ) : activeTab === 'icons' ? (
+          <div className="space-y-4">
+            <LauncherLayoutEditor
+              theme={theme}
+              customIcons={customIcons}
+              updateTheme={updateTheme}
+              addToast={addToast}
+            />
             <section className={APPEARANCE_CARD_CLASS}>
                 <AppearanceSectionHeader
                   title="应用图标"
@@ -1233,6 +1241,7 @@ const Appearance: React.FC = () => {
                     <input type="file" ref={iconInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleIconUpload(e.target.files[0])} />
                 </div>
             </section>
+          </div>
         ) : activeTab === 'presets' ? (
             <PresetManager
                 presets={appearancePresets}

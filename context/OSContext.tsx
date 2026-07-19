@@ -19,6 +19,7 @@ import { DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, DEEPSPACE_USER_CIRCLE_WORLDBOOK_I
 import { mergeUserProfileWithMaskUpdate, normalizeUserPersonaProfile } from '../utils/userPersonaMasks';
 import { migrateStoredShellChromeTheme } from '../utils/shellChrome';
 import { parseAppearancePreset, serializeAppearancePreset } from '../utils/appearancePresets';
+import { normalizeLauncherLayout } from '../utils/launcherLayout';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { COMPANION_WAKEUP_USER_COOLDOWN_MS } from '../utils/companionWakeups';
@@ -1521,6 +1522,9 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         loadedTheme = normalizeStoredThemeAssets(
             migrateStoredShellChromeTheme(loadedTheme) as OSTheme,
         );
+        if (loadedTheme.launcherLayout !== undefined) {
+            loadedTheme.launcherLayout = normalizeLauncherLayout(loadedTheme.launcherLayout);
+        }
         setTheme(loadedTheme);
         // Apply font
         applyCustomFont(loadedTheme.customFont);
@@ -1936,6 +1940,9 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const updateTheme = async (updates: Partial<OSTheme>) => {
     const { wallpaper, launcherWidgetImage, launcherWidgets, desktopDecorations, avatarFramePresets, customFont, chatBackgroundImage } = updates;
     const newTheme = migrateStoredShellChromeTheme({ ...theme, ...updates }) as OSTheme;
+    if (updates.launcherLayout !== undefined) {
+        newTheme.launcherLayout = normalizeLauncherLayout(updates.launcherLayout);
+    }
     setTheme(newTheme);
 
     // Persist large assets to IndexedDB
@@ -2314,7 +2321,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           id: `ap_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           name,
           createdAt: Date.now(),
-          theme: { ...theme },
+          theme: { ...theme, launcherLayout: normalizeLauncherLayout(theme.launcherLayout) },
           customIcons: Object.keys(customIcons).length > 0 ? { ...customIcons } : undefined,
           chatThemes: customThemes.length > 0 ? [...customThemes] : undefined,
       };

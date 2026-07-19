@@ -1,5 +1,42 @@
 # AetherOS Progress
 
+## 2026-07-19 Desktop App Visibility And Ordering
+
+- done:
+  - Added a versioned `launcherLayout` field to `OSTheme` for launcher order,
+    Dock order, and hidden AppIDs; no launcher-only storage key was introduced.
+  - Added one normalization boundary that removes unknown/duplicate ids, keeps
+    Settings visible and in Dock, and appends newly installed apps visibly.
+  - Replaced Launcher product-group projection with visible user-order chunking
+    in pages of eight. Existing groups now seed defaults only.
+  - Added a mobile-first layout manager before the app-icon grid in Appearance:
+    hide/restore, explicit up/down controls, Dock ordering, full default reset,
+    and visible `第 1 页 / 第 2 页` boundaries shared with Launcher's 8-App
+    pagination. Hidden rows remain editable and do not delete app data.
+  - Renamed the third Appearance tab to `美化预设` so it cannot be confused with
+    conversation presets. Layout, page preview, and icon editing all project
+    from `INSTALLED_APPS`; a future-App fixture proves registry-only additions
+    require no separate Appearance adaptation.
+  - Added an always-reachable Settings recovery card. Appearance itself can be
+    hidden and recovered without locking the user out.
+  - Added launcher layout to the appearance preset allowlist. Old shared JSON
+    without the field preserves current local layout; modern presets and full
+    backup themes round-trip the field.
+- verified:
+  - `npm run verify:launcher-layout`, `npm run verify:appearance-presets`, and
+    `npm run verify:shell-chrome` pass.
+  - `npm run verify:history-import`, `npm run verify:daily-archive`,
+    `npm run verify:narrative`, and `npm run verify:health` pass.
+  - Playwright 390 x 844: reordered Dock, hid Appearance, confirmed Launcher
+    removed it, then recovered it and default ordering through Settings.
+  - Playwright 430 x 932: hid a Dock app and restored the full layout through
+    Appearance. Both widths had document width equal to viewport width and zero
+    console errors; visual screenshots kept row controls aligned.
+- boundary:
+  - Worldbook grouping, history import, Daily Archive, chat, retrieval,
+    continuation, current story state, tasks, memories, server deployment,
+    commit, and GitHub push were not changed or performed.
+
 ## 2026-07-19 Startup Asset Hardening
 
 - done:
@@ -257,7 +294,7 @@
 - done:
   - Removed the redundant `原样` badge from the classic-phone choice while
     keeping the choice itself in the same three-card top-style control.
-  - Reframed the page as `界面外观 / 应用图标 / 预设管理`, then divided the
+  - Reframed the page as `界面外观 / 应用图标 / 美化预设`, then divided the
     first tab into `屏幕观感` and `桌面布置` so the page follows the user's
     decision order instead of a flat implementation checklist.
   - Moved top style ahead of theme color and global font, with wallpaper,

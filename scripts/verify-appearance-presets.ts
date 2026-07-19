@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AppearancePreset, OSTheme } from '../types';
+import { AppID, AppearancePreset, OSTheme } from '../types';
 import {
     APPEARANCE_PRESET_FILE_TYPE,
     parseAppearancePreset,
     serializeAppearancePreset,
 } from '../utils/appearancePresets';
 import { migrateStoredShellChromeTheme } from '../utils/shellChrome';
+import { normalizeLauncherLayout } from '../utils/launcherLayout';
 
 const modernTheme: OSTheme = {
     hue: 212,
@@ -16,6 +17,12 @@ const modernTheme: OSTheme = {
     darkMode: false,
     contentColor: '#334155',
     shellChromeMode: 'virtual_city',
+    launcherLayout: normalizeLauncherLayout({
+        version: 1,
+        appOrder: [AppID.FAQ, AppID.Appearance],
+        dockAppIds: [AppID.Settings, AppID.Chat, AppID.Call, AppID.Gallery],
+        hiddenAppIds: [AppID.Appearance],
+    }),
     launcherWidgetImage: 'data:image/png;base64,wide',
     launcherWidgets: { tl: 'data:image/png;base64,left', wide: 'data:image/png;base64,wide' },
     desktopDecorations: [{
@@ -131,6 +138,7 @@ assert.equal(parsedLegacy.theme.chatAvatarSize, 'small');
 assert.equal(parsedLegacy.theme.chatMessageSpacing, 'compact');
 assert.equal(parsedLegacy.theme.chatShowTimestamp, 'never');
 assert.equal(parsedLegacy.theme.chatBubbleThemeId, 'legacy-bubble');
+assert.equal(parsedLegacy.theme.launcherLayout, undefined, 'old presets must preserve the current local launcher layout');
 assert.equal((parsedLegacy.theme as unknown as Record<string, unknown>).injectedField, undefined);
 assert.equal(migrateStoredShellChromeTheme(parsedLegacy.theme).shellChromeMode, 'simulated_phone');
 const chatConstantsSource = readFileSync(new URL('../components/chat/ChatConstants.ts', import.meta.url), 'utf8');
