@@ -6,13 +6,29 @@ Make AetherOS usable as a small public static web app while keeping personal dat
 
 ## Active Block
 
+Desktop application visibility and ordering:
+
+- Keep launcher order, hidden ids, and Dock order in the versioned `OSTheme`
+  appearance contract instead of a launcher-only localStorage key.
+- Let Appearance hide/restore apps and reorder both launcher pages and Dock with
+  explicit mobile-safe move controls; provide one full default reset.
+- Project visible apps in user order and repaginate in groups of eight. Use
+  `LAUNCHER_APP_GROUPS` only to seed defaults, never to overwrite saved order.
+- Keep Settings visible and present in Dock after every normalization, with a
+  second recovery action inside Settings so Appearance may be hidden safely.
+- Ignore unknown imported AppIDs, append newly installed apps visibly, and let
+  old appearance JSON without layout data preserve the recipient's current
+  desktop.
+- Keep Worldbook grouping, history import, chat, narrative state, and server
+  deployment outside this block.
+
 Global software shell and virtual-city time:
 
 - Keep three explicit top appearances in `Appearance`: classic simulated phone,
   pure software, and scoped virtual city. Pure software remains the new-config
   default; classic restores the product's original phone-simulation posture when
   the user chooses it.
-- Keep Appearance organized by user intent: `界面外观 / 应用图标 / 预设管理`,
+- Keep Appearance organized by user intent: `界面外观 / 应用图标 / 美化预设`,
   with screen appearance before desktop assets. Use the local type scale
   `16 / 12 / 13 / 11 / 10 / 9` for page title, tabs, section title, controls,
   helpers, and metadata.

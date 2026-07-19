@@ -35,6 +35,7 @@ import {
   saveWorldlineMemoryReceiptSettings,
 } from '../utils/memoryCore';
 import type { AutoMemoryLedgerEntry, MemoryDMSettings, WorldlineMemoryReceipt } from '../utils/memoryCore';
+import { createDefaultLauncherLayout } from '../utils/launcherLayout';
 
 const memoryReceiptModeLabel = (mode: WorldlineMemoryReceipt['mode']): string => {
   if (mode === 'remote_chat') return '聊天';
@@ -120,7 +121,7 @@ const Settings: React.FC = () => {
       apiPresets, addApiPreset, removeApiPreset,
       sysOperation, // Get progress state
       realtimeConfig, updateRealtimeConfig, // 实时感知配置
-      characters, userProfile
+      characters, userProfile, updateTheme
   } = useOS();
   
   const [localKey, setLocalKey] = useState(apiConfig.apiKey);
@@ -415,6 +416,11 @@ const Settings: React.FC = () => {
       setShowResetConfirm(false);
   };
 
+  const restoreDefaultLauncherLayout = () => {
+      updateTheme({ launcherLayout: createDefaultLauncherLayout() });
+      addToast('桌面 App 已全部恢复，并回到默认顺序', 'success');
+  };
+
   // 保存实时感知配置
   const handleSaveRealtimeConfig = () => {
       updateRealtimeConfig({
@@ -477,6 +483,24 @@ const Settings: React.FC = () => {
       <AppHeader title="系统设置" onBack={closeApp} />
 
       <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6 no-scrollbar pb-20">
+
+        {/* Settings is normalization-locked into the Dock, so this recovery
+            action remains reachable even if Appearance or other apps are hidden. */}
+        <section data-launcher-layout-recovery className="order-first rounded-3xl border border-violet-100 bg-violet-50/70 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <h2 className="text-[13px] font-semibold text-slate-600">桌面 App</h2>
+                    <p className="mt-1 text-[10px] leading-relaxed text-slate-400">如果隐藏后找不到入口，可以在这里恢复全部 App 与默认顺序。</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={restoreDefaultLauncherLayout}
+                    className="shrink-0 rounded-xl border border-violet-200 bg-white px-3 py-2 text-[10px] font-semibold text-violet-600 transition active:scale-95"
+                >
+                    恢复默认布局
+                </button>
+            </div>
+        </section>
         
         {/* 数据备份区域 */}
         <section className="order-10 bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50">

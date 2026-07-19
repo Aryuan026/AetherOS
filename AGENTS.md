@@ -16,6 +16,26 @@ This is the maintained AetherOS work copy for A-Yuan.
 - Per-character pack enablement stays local to each browser via `EmojiCategory.allowedCharacterIds`.
 - A public pack should default to `visibilityDefault: "disabled"` when it must not be readable/selectable until the user enables it for a character.
 
+## App Registry And Appearance Contract
+
+- `INSTALLED_APPS` in `constants.tsx` is the single catalog for Launcher layout
+  projection and Appearance icon/layout management. After a feature completes
+  its normal AppID, config, lazy route, and `INSTALLED_APPS` registration, do not
+  add a second per-App list or conditional inside Appearance or Launcher.
+- `LAUNCHER_APP_GROUPS` and `DOCK_APPS` seed defaults only. Saved user order,
+  visibility, and Dock order belong to the versioned `OSTheme.launcherLayout`
+  contract and must pass through `normalizeLauncherLayout`.
+- Keep Launcher and Appearance page boundaries on the shared
+  `paginateLauncherAppIds` projection. App pages hold eight visible Apps; the
+  fixed final Widgets/calendar page is outside App ordering.
+- Existing users must receive newly registered Apps visibly. Ignore unknown
+  shared AppIDs, preserve the recipient's current layout when old Appearance
+  JSON omits `launcherLayout`, and never create a Launcher-only storage key.
+- Settings must remain visible in Dock with its independent default-layout
+  recovery action. Any launcher/layout change must keep
+  `verify:launcher-layout`, `verify:appearance-presets`, `verify:shell-chrome`,
+  and `verify:health` Green.
+
 ## Verification
 
 - Prefer `npm run build` for deploy readiness.

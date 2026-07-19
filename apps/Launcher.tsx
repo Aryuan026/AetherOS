@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { useOS } from '../context/OSContext';
-import { INSTALLED_APPS, DOCK_APPS, LAUNCHER_APP_GROUPS } from '../constants';
+import { INSTALLED_APPS } from '../constants';
 import AppIcon from '../components/os/AppIcon';
 import { DB } from '../utils/db';
 import { CharacterProfile, Anniversary, AppID } from '../types';
@@ -16,6 +16,7 @@ import {
 } from '../utils/characterWidgets';
 import { resolveShellChromeMode } from '../utils/shellChrome';
 import { useVirtualWorldClock } from '../hooks/useVirtualWorldClock';
+import { normalizeLauncherLayout, paginateLauncherAppIds } from '../utils/launcherLayout';
 
 const DESKTOP_SIGNAL_LABEL = 'SIGNAL RECEIVED';
 const DESKTOP_SLOGAN = 'I am a part of all that I have met.';
@@ -209,42 +210,43 @@ const Launcher: React.FC = () => {
   const scrollLeftRef = useRef(0);
   const dragMoved = useRef(0);
 
-  // Pagination Logic
-  const gridApps = useMemo(() => 
-    INSTALLED_APPS.filter(app => !DOCK_APPS.includes(app.id)), 
-    []
+  // The saved layout owns projection order. Product-intent groups only seed the
+  // default layout in utils/launcherLayout and never overwrite user ordering.
+  const launcherLayout = useMemo(
+    () => normalizeLauncherLayout(theme.launcherLayout),
+    [theme.launcherLayout],
   );
-
-  const dockAppsConfig = useMemo(() => 
-    DOCK_APPS.map(id => INSTALLED_APPS.find(app => app.id === id)).filter(Boolean) as typeof INSTALLED_APPS,
-    []
+  const appById = useMemo(() => new Map(INSTALLED_APPS.map(app => [app.id, app])), []);
+  const hiddenAppIds = useMemo(
+    () => new Set(launcherLayout.hiddenAppIds),
+    [launcherLayout.hiddenAppIds],
   );
+  const dockAppsConfig = useMemo(() => launcherLayout.dockAppIds
+    .filter(appId => !hiddenAppIds.has(appId))
+    .map(appId => appById.get(appId))
+    .filter(Boolean) as typeof INSTALLED_APPS,
+  [appById, hiddenAppIds, launcherLayout.dockAppIds]);
 
-  // Group the launcher by product intent instead of raw feature chronology.
-  const APPS_PER_PAGE = 8;
   const appPages = useMemo(() => {
-      const appById = new Map(gridApps.map(app => [app.id, app]));
-      const groupedIds = new Set<AppID>();
-      const pages = LAUNCHER_APP_GROUPS
-          .map(group => {
-              const apps = group.appIds
-                  .map(id => appById.get(id))
-                  .filter(Boolean) as typeof INSTALLED_APPS;
-              apps.forEach(app => groupedIds.add(app.id));
-              return { title: group.title, apps };
-          })
-          .filter(page => page.apps.length > 0);
-
-      const remainingApps = gridApps.filter(app => !groupedIds.has(app.id));
-      for (let i = 0; i < remainingApps.length; i += APPS_PER_PAGE) {
-          pages.push({ title: '更多', apps: remainingApps.slice(i, i + APPS_PER_PAGE) });
-      }
-      if (pages.length === 0) pages.push({ title: '日常陪伴', apps: [] });
-      return pages;
-  }, [gridApps]);
+      return paginateLauncherAppIds(launcherLayout).map((pageIds, index) => ({
+          title: `桌面 ${index + 1}`,
+          apps: pageIds.map(appId => appById.get(appId)).filter(Boolean) as typeof INSTALLED_APPS,
+      }));
+  }, [appById, launcherLayout]);
 
   // Total pages = App Pages + 1 Widget Page
   const totalPages = appPages.length + 1;
+
+  useEffect(() => {
+      if (_lastPageIndex < totalPages) return;
+      const nextPage = Math.max(0, totalPages - 1);
+      _lastPageIndex = nextPage;
+      setActivePageIndex(nextPage);
+      requestAnimationFrame(() => {
+          const el = scrollContainerRef.current;
+          if (el) el.scrollLeft = el.clientWidth * nextPage;
+      });
+  }, [totalPages]);
 
   useEffect(() => {
       const loadData = async () => {

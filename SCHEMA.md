@@ -109,6 +109,46 @@ the existing explicit `应用` action owns that local state change. The legacy
 `hideStatusBar` input remains migration-only and is normalized by the shell
 chrome migration when the preset is applied.
 
+## Launcher Layout
+
+Desktop projection is a small versioned field inside `OSTheme`, so appearance
+presets and full backups use the same source of truth:
+
+```ts
+interface LauncherLayoutV1 {
+  version: 1;
+  appOrder: AppID[];      // non-Dock launcher order
+  dockAppIds: AppID[];    // Dock order
+  hiddenAppIds: AppID[];  // installed but not projected
+}
+
+interface OSTheme {
+  launcherLayout?: LauncherLayoutV1;
+}
+```
+
+Normalization resolves all ids against current `INSTALLED_APPS`. Unknown and
+duplicate ids are discarded. Missing current grid/Dock ids are appended from
+the current defaults, which makes newly shipped apps visible even when the
+saved layout predates them. `settings` is removed from `hiddenAppIds` and added
+back to the Dock when absent.
+
+`LAUNCHER_APP_GROUPS` contributes only the default `appOrder`. Runtime pages
+chunk the normalized visible order directly and do not reconstruct product
+groups. Missing `launcherLayout` means current defaults for normal rendering;
+when an old appearance preset omits the field, partial theme application keeps
+the recipient's existing layout.
+
+Launcher and Appearance consume the same `paginateLauncherAppIds` projection
+(`8` visible Apps per page). The current catalog is derived from
+`INSTALLED_APPS`; ids added there but absent from an older saved layout are
+appended visibly without changing the Appearance component.
+The final `WidgetsPage` remains fixed outside this App-page projection.
+
+Imported appearance JSON accepts only nested layout version `1`, sanitizes it
+through the same normalizer, and ignores invalid/unknown nested contracts. No
+separate launcher localStorage key exists.
+
 ## User DeepSpace Identity
 
 `UserProfile` may persist a structured DeepSpace identity mode in addition to

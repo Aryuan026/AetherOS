@@ -20,7 +20,7 @@
   real-record boundary before showing the relationship-specific city editor.
   That editor should expand only while `virtual_city` is selected.
 - Appearance must use three task-oriented tabs: `界面外观`, `应用图标`, and
-  `预设管理`. The first tab must follow the user decision path: top mode first,
+  `美化预设`. The first tab must follow the user decision path: top mode first,
   then theme color and global font, followed by wallpaper, widgets, and desktop
   decoration.
 - The first tab must visibly group those controls as `屏幕观感` and `桌面布置`,
@@ -77,6 +77,38 @@
   expanded/immersive states for Chat, HistoryImport, DailyArchive, Appearance,
   Settings, Date, Call, Social, Room, and Schedule, including suspended-call,
   toast, and error overlays.
+
+## Desktop App Visibility And Ordering
+
+- Appearance must expose one desktop-layout manager before the existing app-icon
+  editor. It must hide, restore, reorder, and reset apps without uninstalling an
+  app or deleting its data.
+- Ordering must be reliable at 390px and 430px phone widths. Explicit up/down
+  controls are the required mobile and keyboard fallback; HTML5 drag alone is
+  not sufficient acceptance.
+- Launcher pages must contain only visible non-Dock apps, preserve the user's
+  order, and repaginate by that order. `LAUNCHER_APP_GROUPS` may define the
+  default order but must never regroup a saved user layout.
+- Appearance must show the same 8-app page boundaries consumed by Launcher;
+  moving across a boundary must visibly move the App to the adjacent page.
+- The fixed final Widgets/calendar page is outside App ordering; Appearance must
+  label its App-page count separately so the two page concepts are not confused.
+- Layout, pagination, and icon customization must project from the shared
+  `INSTALLED_APPS` registry. Registering a new App must not require a separate
+  Appearance adaptation; normalization appends it visibly for existing users.
+- Dock order and visibility must use the same layout contract. Settings is never
+  hidden and must always be normalized back into the Dock.
+- Settings must contain an always-reachable `恢复默认布局` action. Appearance may
+  therefore be hidden, but the user must never be locked out of layout recovery.
+- A missing launcher-layout field in an old appearance preset must preserve the
+  current local desktop when that preset is applied. Unknown AppIDs are ignored,
+  duplicates are removed, and apps introduced by a newer version are appended
+  visibly in default order.
+- Launcher layout must round-trip through the existing versioned appearance JSON
+  and full backup/restore path. It must not create a second launcher-only storage
+  contract.
+- This block must not change Worldbook groups, history import, Daily Archive,
+  chat, retrieval, continuation, current story state, tasks, or memories.
 
 ## Timebook And Study Naming
 

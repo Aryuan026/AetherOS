@@ -112,6 +112,16 @@ export interface AvatarFramePreset {
 
 export type ShellChromeMode = 'simulated_phone' | 'software' | 'virtual_city';
 
+export interface LauncherLayoutV1 {
+  version: 1;
+  /** App order for launcher pages. Dock apps are stored separately. */
+  appOrder: AppID[];
+  /** Ordered Dock apps. Settings is always restored here by normalization. */
+  dockAppIds: AppID[];
+  /** Hidden apps remain installed and can be restored from Appearance or Settings. */
+  hiddenAppIds: AppID[];
+}
+
 export interface OSTheme {
   hue: number;
   saturation: number;
@@ -125,6 +135,7 @@ export interface OSTheme {
   avatarFramePresets?: AvatarFramePreset[];
   customFont?: string;
   shellChromeMode?: ShellChromeMode;
+  launcherLayout?: LauncherLayoutV1;
   /** @deprecated Read only during the software-shell migration. */
   hideStatusBar?: boolean;
   // Chat UI customization (global)

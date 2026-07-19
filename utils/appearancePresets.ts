@@ -1,4 +1,5 @@
 import { AppearancePreset, AvatarFramePreset, ChatLayoutPreset, ChatTheme, DesktopDecoration, OSTheme } from '../types';
+import { sanitizeImportedLauncherLayout } from './launcherLayout';
 
 export const APPEARANCE_PRESET_FILE_TYPE = 'aether_appearance_preset';
 export const APPEARANCE_PRESET_FILE_VERSION = 1;
@@ -200,6 +201,8 @@ export const sanitizeImportedAppearanceTheme = (value: unknown, legacyLayout?: C
     if (decorations) theme.desktopDecorations = decorations;
     const avatarFramePresets = sanitizeAvatarFramePresets(value.avatarFramePresets);
     if (avatarFramePresets) theme.avatarFramePresets = avatarFramePresets;
+    const launcherLayout = sanitizeImportedLauncherLayout(value.launcherLayout);
+    if (launcherLayout) theme.launcherLayout = launcherLayout;
 
     return applyLegacyChatLayout(theme, legacyLayout);
 };
