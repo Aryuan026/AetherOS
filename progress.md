@@ -1,5 +1,48 @@
 # AetherOS Progress
 
+## 2026-07-20 Existing-App Memory Projection And Correction
+
+- done:
+  - Projected fresh exact-scope promoted relationship memories into the existing
+    Contacts memory tab and promoted milestones into the existing Timebook.
+    No standalone historical-memory App or second truth store was added.
+  - Added an independent `memory_projection_corrections_v1` overlay for
+    `edit / hide / restore`. The immutable Promotion target stays the durable
+    fact; every correction is append-only, exact-scope, revisioned, and returns
+    a `truthEffect: none` receipt.
+  - Revalidated source evidence and revision before every correction and read.
+    Stale or cross-mask material fails closed instead of being reassigned to the
+    currently active mask.
+  - Kept relationship-memory dates immutable. Timebook may change its displayed
+    title, summary, or date through the correction overlay without changing the
+    evidence date or raw archive.
+  - Added source navigation from both Apps into the actual Daily Archive day.
+    A display-date correction never redirects the source link away from its
+    evidence date.
+  - Made Daily Archive consume the exact-scope pending navigation only once per
+    mounted scope, avoiding React development StrictMode closing the reader
+    after it opens.
+- verified:
+  - Focused fixtures cover cross-mask isolation, edit/hide/restore revision
+    behavior, relationship-date rejection, Timebook date editing, retry
+    idempotency, stale-source rejection, source-date navigation, foreign-scope
+    audit, and absence of legacy memory/anniversary writes.
+  - Browser acceptance at 430x932 covered Contacts edit and source jump,
+    Timebook expand/hide/restore, the corrected action layout, and zero console
+    errors.
+  - `npm run verify:history-import`, `npm run verify:daily-archive`, `npm run
+    verify:narrative`, and `npm run verify:health` pass. Health includes the new
+    Memory Projection fixture, typecheck, and production build; only the
+    existing Browserslist-age and large-chunk warnings remain.
+- boundary:
+  - Projection edits never rewrite Daily Archive evidence, Promotion targets,
+    legacy `char.memories`, anniversaries, current state, Narrative, Scheduler,
+    emotion, or Character Life.
+  - Source navigation currently opens the containing evidence day; exact-row
+    focus metadata is carried for a later focused reader enhancement.
+  - No GitHub push, main merge, server deployment, or role-prompt change belongs
+    to this checkpoint.
+
 ## 2026-07-20 Exact-Scope Memory Promotion Gate
 
 - done:

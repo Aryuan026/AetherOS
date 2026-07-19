@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useOS } from '../context/OSContext';
 import { AppID, AvatarFramePreset, CharacterProfile, CharacterExportData, UserImpression, MemoryFragment } from '../types';
 import { SlidersHorizontal, SpeakerHigh, Books, BookOpen, CaretDown, Heart } from '@phosphor-icons/react';
@@ -26,6 +26,14 @@ import { resolveAvatarFramePreset } from '../utils/avatarFrames';
 import { getDeepSpaceWorldbookIdentityNotice } from '../utils/deepspaceIdentity';
 import { resolvePersonaRouteScope } from '../utils/personaRouteScope';
 import { normalizeUserPersonaProfile } from '../utils/userPersonaMasks';
+import { strictRelationshipScopeForProfile } from '../utils/messageContext';
+import type { MemoryProjectionPatch, MemoryProjectionView } from '../domain/memoryProjection';
+import {
+    listMemoryProjectionViews,
+    resolveMemoryProjectionSourceDate,
+    reviseMemoryProjectionView,
+} from '../utils/memoryCore/memoryProjection';
+import { queueDailyArchiveNavigation } from '../utils/dailyArchive/navigation';
 
 const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
@@ -193,6 +201,7 @@ const Character: React.FC = () => {
       voice_generation: [],
   });
   const [bondTimeLabels, setBondTimeLabels] = useState<Record<string, string>>({});
+  const [promotedMemoryViews, setPromotedMemoryViews] = useState<MemoryProjectionView[]>([]);
   const builtInCharacterIdsKey = characters.filter(char => char.isBuiltIn).map(char => char.id).join('|');
   const personaScope = useMemo(() => (
       resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
@@ -208,6 +217,61 @@ const Character: React.FC = () => {
           return a.name.localeCompare(b.name, 'zh-CN');
       })
   ), [characters, linkedCharacterIdSet, activeCharacterId]);
+  const promotedMemoryScope = useMemo(() => {
+      if (!formData || !linkedCharacterIdSet.has(formData.id)) return undefined;
+      return strictRelationshipScopeForProfile(formData.id, userProfile);
+  }, [formData?.id, linkedCharacterIdSet, userProfile]);
+
+  const loadPromotedMemoryViews = useCallback(async () => {
+      if (!promotedMemoryScope) {
+          setPromotedMemoryViews([]);
+          return;
+      }
+      try {
+          const result = await listMemoryProjectionViews({
+              scope: promotedMemoryScope,
+              target: 'relationship_memory',
+          });
+          setPromotedMemoryViews(result.views);
+      } catch (error) {
+          console.warn('[Character] failed to load promoted relationship memories', error);
+          setPromotedMemoryViews([]);
+      }
+  }, [promotedMemoryScope?.progressBundleId, promotedMemoryScope?.personaMaskId, promotedMemoryScope?.charId]);
+
+  useEffect(() => {
+      void loadPromotedMemoryViews();
+  }, [loadPromotedMemoryViews]);
+
+  const applyPromotedMemoryChange = async (
+      view: MemoryProjectionView,
+      action: 'edit' | 'hide' | 'restore',
+      patch?: MemoryProjectionPatch,
+  ): Promise<boolean> => {
+      const result = await reviseMemoryProjectionView({ view, action, patch });
+      if (result.outcome === 'rejected') {
+          addToast('这条整理结果的来源已经变化，请回到日历重新整理。', 'error');
+          return false;
+      }
+      await loadPromotedMemoryViews();
+      return true;
+  };
+
+  const openPromotedMemorySource = async (view: MemoryProjectionView) => {
+      const dateKey = await resolveMemoryProjectionSourceDate({ view });
+      if (!dateKey) {
+          addToast('这条记录暂时找不到可打开的原文日期。', 'info');
+          return;
+      }
+      queueDailyArchiveNavigation({
+          scope: { ...view.record.scope },
+          dateKey,
+          sourceEvidenceIds: [...view.record.source.sourceEvidenceIds],
+          createdAt: Date.now(),
+      });
+      setActiveCharacterId(view.record.scope.charId);
+      openApp(AppID.DailyArchive);
+  };
 
   const handleLinkCharacterToActiveMask = (char: CharacterProfile, e?: React.MouseEvent) => {
       e?.stopPropagation();
@@ -1157,7 +1221,7 @@ ${isInitialGeneration ? `
                <div className="shrink-0 z-30 bg-white/58 backdrop-blur-md px-5 pt-1 border-b border-white/40">
                    <div className="flex gap-6 text-sm font-medium text-slate-400 pl-1">
                        <button onClick={() => setDetailTab('identity')} className={`pb-2 transition-colors relative ${detailTab === 'identity' ? 'text-slate-800' : ''}`}>设定{detailTab === 'identity' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
-                       <button onClick={() => setDetailTab('memory')} className={`pb-2 transition-colors relative ${detailTab === 'memory' ? 'text-slate-800' : ''}`}>记忆 ({(formData.memories || []).length}){detailTab === 'memory' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
+                       <button onClick={() => setDetailTab('memory')} className={`pb-2 transition-colors relative ${detailTab === 'memory' ? 'text-slate-800' : ''}`}>记忆 ({(formData.memories || []).length + promotedMemoryViews.filter(item => !item.hidden).length}){detailTab === 'memory' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
                        <button onClick={() => setDetailTab('impression')} className={`pb-2 transition-colors relative ${detailTab === 'impression' ? 'text-slate-800' : ''}`}>关系印象{detailTab === 'impression' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
                    </div>
                </div>
@@ -1394,6 +1458,17 @@ ${isInitialGeneration ? `
                                onToggleActiveMonth={handleToggleActiveMonth}
                                onUpdateRefinedMemory={handleUpdateRefinedMemory}
                                onDeleteRefinedMemory={handleDeleteRefinedMemory}
+                               promotedMemories={promotedMemoryViews}
+                               onUpdatePromotedMemory={async (memory, patch) => {
+                                   if (await applyPromotedMemoryChange(memory, 'edit', patch)) addToast('旧日整理已经改好了。', 'success');
+                               }}
+                               onHidePromotedMemory={async memory => {
+                                   if (await applyPromotedMemoryChange(memory, 'hide')) addToast('已从角色记忆中移出，原对话仍留在日历。', 'success');
+                               }}
+                               onRestorePromotedMemory={async memory => {
+                                   if (await applyPromotedMemoryChange(memory, 'restore')) addToast('这条旧日记忆已经恢复。', 'success');
+                               }}
+                               onOpenPromotedSource={openPromotedMemorySource}
                            />
                        </div>
                    )}

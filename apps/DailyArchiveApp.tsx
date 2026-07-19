@@ -57,6 +57,10 @@ import DailyArchiveReader, {
   type DailyArchiveSelectionPurpose,
 } from '../components/daily-archive/DailyArchiveReader';
 import ConversationClippingLibrary from '../components/daily-archive/ConversationClippingLibrary';
+import {
+  consumeDailyArchiveNavigation,
+  type DailyArchiveNavigationTarget,
+} from '../utils/dailyArchive/navigation';
 
 const PAGE_SIZE = 80;
 
@@ -122,6 +126,8 @@ const DailyArchiveApp: React.FC = () => {
   const [showScopePicker, setShowScopePicker] = useState(false);
   const [pickerMaskId, setPickerMaskId] = useState(activeMask?.id || '');
   const initialMonthChosenRef = useRef(false);
+  const pendingNavigationRef = useRef<DailyArchiveNavigationTarget | undefined>(undefined);
+  const initializedScopeKeyRef = useRef('');
 
   const pickerMask = personaMasks.find(mask => mask.id === pickerMaskId) || activeMask || personaMasks[0];
   const pickerLinkedCharacterIds = useMemo(
@@ -155,6 +161,11 @@ const DailyArchiveApp: React.FC = () => {
   };
 
   useEffect(() => {
+    const scopeKey = scope
+      ? `${scope.progressBundleId}::${scope.personaMaskId}::${scope.charId}`
+      : 'no-scope';
+    if (initializedScopeKeyRef.current === scopeKey) return;
+    initializedScopeKeyRef.current = scopeKey;
     initialMonthChosenRef.current = false;
     setCoverage(undefined);
     setDays([]);
@@ -167,6 +178,16 @@ const DailyArchiveApp: React.FC = () => {
     setSelectionPurpose(undefined);
     setSelectedMessages(new Map());
     setShowClippingLibrary(false);
+    if (scope) {
+      const pending = consumeDailyArchiveNavigation(scope);
+      pendingNavigationRef.current = pending;
+      if (pending) {
+        initialMonthChosenRef.current = true;
+        setMonthKey(pending.dateKey.slice(0, 7));
+      }
+    } else {
+      pendingNavigationRef.current = undefined;
+    }
   }, [scope?.progressBundleId, scope?.personaMaskId, scope?.charId]);
 
   useEffect(() => {
@@ -232,10 +253,24 @@ const DailyArchiveApp: React.FC = () => {
         if (cancelled) return;
         setDays(summary.days);
         setShowUndated(false);
-        const nextSelected = summary.days.some(day => day.dateKey === selectedDateKey)
+        const pending = pendingNavigationRef.current;
+        const pendingDate = pending?.dateKey.slice(0, 7) === monthKey
+          && summary.days.some(day => day.dateKey === pending.dateKey)
+            ? pending.dateKey
+            : undefined;
+        const nextSelected = pendingDate || (summary.days.some(day => day.dateKey === selectedDateKey)
           ? selectedDateKey
-          : summary.days[summary.days.length - 1]?.dateKey;
+          : summary.days[summary.days.length - 1]?.dateKey);
         setSelectedDateKey(nextSelected);
+        if (pendingDate) {
+          pendingNavigationRef.current = undefined;
+          setSelectedUndatedKey(undefined);
+          setSelectedSource(undefined);
+          setReaderFocus(undefined);
+          setSelectionPurpose(undefined);
+          setSelectedMessages(new Map());
+          setReaderOpen(true);
+        }
       })
       .catch(error => {
         if (!cancelled) setErrorMessage(error instanceof Error ? error.message : '暂时打不开这个月份。');

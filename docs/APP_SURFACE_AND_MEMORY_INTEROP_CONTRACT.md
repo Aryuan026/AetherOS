@@ -2,7 +2,7 @@
 
 Status: cross-thread reviewed product direction; staged implementation contract
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 This document defines how AetherOS virtual Apps share relationship, memory,
 time, location, narrative, and appearance information without becoming one
@@ -565,8 +565,10 @@ Current implementation checkpoint:
   byte equivalent; this is bounded schema enrichment, not a content rewrite.
 - MemoryDM extraction is now migrated onto exact-scope active evidence and
   appends immutable interpretation passes plus `truthEffect: none` receipts.
-  Memory Promotion remains the next box; no relationship-memory, Timebook,
-  wakeup, Narrative, or Character Life target write is authorized yet.
+  Memory Promotion now writes only new exact-scope relationship-memory or
+  Timebook targets with atomic receipts. Fresh targets are projected into the
+  existing Contacts and Timebook Apps through a separate correction overlay;
+  wakeup, Narrative, current state, and Character Life remain unauthorized.
 
 The waves order risk; they do not make Chat or Date the exclusive sources of
 memory.
@@ -815,6 +817,25 @@ promotion receipt and never rewrites raw evidence or an interpretation pass.
 MemoryDM proposes; the promotion service decides and writes. This separation is
 required before a new App may create durable relationship memory.
 
+### Memory Projection And Correction
+
+Contacts and Timebook render read models of fresh Promotion targets. They do
+not copy those targets into App-local truth and do not fall back to legacy
+character-wide stores when the exact bundle + mask + character scope is absent.
+
+Player corrections are a separate append-only overlay. `edit`, `hide`, and
+`restore` commands must name the exact relationship scope, target id, expected
+source fingerprint, and expected correction revision. Every result is a
+`truthEffect: none` receipt. A correction may change presentation and retrieval
+eligibility, but it cannot rewrite the Promotion target, interpretation pass,
+or raw interaction evidence.
+
+Relationship-memory corrections cannot move the remembered event in time.
+Timebook may present a corrected date because its player verb includes
+organizing milestones, but source navigation must still resolve the immutable
+evidence date. A stale or superseded source fails closed at both command and
+read time.
+
 ### Character Life
 
 Owns current state and append-only life events. It may accept bounded proposals
@@ -910,6 +931,8 @@ The following current code should be extended instead of duplicated:
   formatting/delivery seams while legacy char-scoped inputs are migrated;
 - `NarrativeDirectorContext` for frozen historical/current narrative context;
 - Daily Archive stable ids, revisions, curation receipts, and backup contract;
+- `listMemoryProjectionViews` and the correction command port for exact-scope
+  Contacts/Timebook read models without legacy truth duplication;
 - Narrative directive/run/scene/receipt lifecycle.
 
 ## Known Gaps Before Full Enforcement
@@ -917,9 +940,10 @@ The following current code should be extended instead of duplicated:
 - `INSTALLED_APPS` describes launcher metadata, not behavior capabilities.
 - Many App components still call shared DB/OSContext methods directly; migration
   should happen block by block, not as one dangerous rewrite.
-- MemoryDM direct target writes are retired. Memory Promotion is declared but
-  not implemented, so candidates cannot yet become durable relationship memory
-  or Timebook facts through this new path.
+- MemoryDM direct target writes are retired. Memory Promotion plus the
+  Contacts/Timebook projection-and-correction path are implemented locally;
+  automatic execution policy and model-driven historical extraction remain
+  separate gates rather than UI authority.
 - `char.memories` and anniversaries are still primarily character-scoped legacy
   stores. They cannot represent two masks' separate relationship continuity;
   new durable relationship memory must use the exact triple scope, with legacy

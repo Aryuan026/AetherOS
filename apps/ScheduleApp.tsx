@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { CaretLeft, CaretRight, PencilSimple, Sparkle, Trash } from '@phosphor-icons/react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { Anniversary } from '../types';
+import { Anniversary, AppID } from '../types';
 import Modal from '../components/os/Modal';
 import AppHeader, { AppHeaderAddButton } from '../components/shell/AppHeader';
 import { ContextBuilder } from '../utils/context';
@@ -15,12 +15,21 @@ import {
 } from '../utils/timebook';
 import { publicAsset } from '../utils/publicAssets';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import { strictRelationshipScopeForProfile } from '../utils/messageContext';
+import type { MemoryProjectionPatch, MemoryProjectionView } from '../domain/memoryProjection';
+import {
+    listMemoryProjectionViews,
+    resolveMemoryProjectionSourceDate,
+    reviseMemoryProjectionView,
+} from '../utils/memoryCore/memoryProjection';
+import { queueDailyArchiveNavigation } from '../utils/dailyArchive/navigation';
 
 const TIMEBOOK_BACKGROUND = publicAsset('assets/aetheros/timebook-desk-bg.jpg');
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type TimebookMemoryRow = Anniversary & {
     isDefaultFirstMemory?: boolean;
+    projectionView?: MemoryProjectionView;
 };
 
 type FirstContactSetting = {
@@ -104,8 +113,9 @@ const getTogetherDays = (startDate: string): number => {
 };
 
 const ScheduleApp: React.FC = () => {
-    const { closeApp, characters, activeCharacterId, apiConfig, addToast, userProfile } = useOS();
+    const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, apiConfig, addToast, userProfile } = useOS();
     const [anniversaries, setAnniversaries] = useState<Anniversary[]>([]);
+    const [promotedTimebookViews, setPromotedTimebookViews] = useState<MemoryProjectionView[]>([]);
     const [firstContact, setFirstContact] = useState<FirstContactSetting>(() => ({
         ...getFirstMemoryCopy(),
         date: toLocalDateInput(new Date()),
@@ -115,7 +125,8 @@ const ScheduleApp: React.FC = () => {
 
     const [showAnniModal, setShowAnniModal] = useState(false);
     const [showFirstContactModal, setShowFirstContactModal] = useState(false);
-    const [editingMemory, setEditingMemory] = useState<Anniversary | null>(null);
+    const [editingMemory, setEditingMemory] = useState<TimebookMemoryRow | null>(null);
+    const [showHiddenPromoted, setShowHiddenPromoted] = useState(false);
     const [isGeneratingFirstContactNote, setIsGeneratingFirstContactNote] = useState(false);
     const [draftFirstContactTitle, setDraftFirstContactTitle] = useState('');
     const [draftFirstContactDate, setDraftFirstContactDate] = useState('');
@@ -139,10 +150,14 @@ const ScheduleApp: React.FC = () => {
         [activeCharacterId, timebookCharacters]
     );
     const activeTimebookCharId = activeCharacter?.id || '';
+    const timebookScope = useMemo(() => {
+        if (!activeTimebookCharId || !personaScope.linkedCharacterIds.includes(activeTimebookCharId)) return undefined;
+        return strictRelationshipScopeForProfile(activeTimebookCharId, userProfile);
+    }, [activeTimebookCharId, personaScope.linkedCharacterIds, userProfile]);
 
     useEffect(() => {
-        loadData();
-    }, [activeTimebookCharId]);
+        void loadData();
+    }, [activeTimebookCharId, timebookScope?.progressBundleId, timebookScope?.personaMaskId]);
 
     useEffect(() => {
         if (activeTimebookCharId) {
@@ -153,6 +168,17 @@ const ScheduleApp: React.FC = () => {
     const loadData = async () => {
         const savedAnniversaries = await DB.getAllAnniversaries();
         setAnniversaries(sortTimebookAnniversaries(savedAnniversaries));
+        if (timebookScope) {
+            try {
+                const promoted = await listMemoryProjectionViews({ scope: timebookScope, target: 'timebook' });
+                setPromotedTimebookViews(promoted.views);
+            } catch (error) {
+                console.warn('[Timebook] failed to load promoted entries', error);
+                setPromotedTimebookViews([]);
+            }
+        } else {
+            setPromotedTimebookViews([]);
+        }
 
         if (!activeTimebookCharId) {
             const fallbackCopy = getFirstMemoryCopy(activeCharacter?.name);
@@ -190,7 +216,17 @@ const ScheduleApp: React.FC = () => {
     ), [activeTimebookCharId, anniversaries]);
 
     const sortedMemories = useMemo<TimebookMemoryRow[]>(() => {
-        const sorted = sortTimebookAnniversaries(characterMemories).reverse();
+        const promotedRows: TimebookMemoryRow[] = promotedTimebookViews
+            .filter(view => !view.hidden && view.display.happenedAt)
+            .map(view => ({
+                id: view.record.id,
+                title: view.display.title,
+                date: view.display.happenedAt!.slice(0, 10),
+                charId: view.record.scope.charId,
+                aiThought: view.display.summary,
+                projectionView: view,
+            }));
+        const sorted = sortTimebookAnniversaries([...characterMemories, ...promotedRows]).reverse();
         const firstRow: TimebookMemoryRow = {
             id: `default-first-memory-${activeTimebookCharId || 'character'}`,
             title: firstContact.title,
@@ -200,7 +236,42 @@ const ScheduleApp: React.FC = () => {
             isDefaultFirstMemory: true,
         };
         return [firstRow, ...sorted];
-    }, [activeTimebookCharId, characterMemories, firstContact]);
+    }, [activeTimebookCharId, characterMemories, firstContact, promotedTimebookViews]);
+
+    const hiddenPromotedTimebookViews = useMemo(
+        () => promotedTimebookViews.filter(view => view.hidden),
+        [promotedTimebookViews],
+    );
+
+    const applyPromotedTimebookChange = useCallback(async (
+        view: MemoryProjectionView,
+        action: 'edit' | 'hide' | 'restore',
+        patch?: MemoryProjectionPatch,
+    ): Promise<boolean> => {
+        const result = await reviseMemoryProjectionView({ view, action, patch });
+        if (result.outcome === 'rejected') {
+            addToast('这一页的来源已经变化，请回到日历重新整理。', 'error');
+            return false;
+        }
+        await loadData();
+        return true;
+    }, [timebookScope?.progressBundleId, timebookScope?.personaMaskId, activeTimebookCharId]);
+
+    const openPromotedTimebookSource = async (view: MemoryProjectionView) => {
+        const dateKey = await resolveMemoryProjectionSourceDate({ view });
+        if (!dateKey) {
+            addToast('这一页暂时找不到可打开的原文日期。', 'info');
+            return;
+        }
+        queueDailyArchiveNavigation({
+            scope: { ...view.record.scope },
+            dateKey,
+            sourceEvidenceIds: [...view.record.source.sourceEvidenceIds],
+            createdAt: Date.now(),
+        });
+        setActiveCharacterId(view.record.scope.charId);
+        openApp(AppID.DailyArchive);
+    };
 
     const togetherDays = useMemo(
         () => getTogetherDays(firstContact.date),
@@ -310,7 +381,7 @@ const ScheduleApp: React.FC = () => {
 
         setIsGeneratingFirstContactNote(true);
         try {
-            const memoryHints = sortTimebookAnniversaries(characterMemories)
+            const memoryHints = sortTimebookAnniversaries(sortedMemories.filter(memory => !memory.isDefaultFirstMemory))
                 .slice(0, 10)
                 .map(memory => `- ${memory.date}: ${memory.title}${memory.aiThought ? `｜${memory.aiThought}` : ''}`)
                 .join('\n') || '- 暂时没有导入的旧纪念日。';
@@ -352,13 +423,18 @@ const ScheduleApp: React.FC = () => {
         }
     };
 
-    const handleDeleteAnni = async (id: string) => {
-        await DB.deleteAnniversary(id);
-        setAnniversaries(prev => prev.filter(a => a.id !== id));
-        if (expandedId === id) setExpandedId(null);
+    const handleDeleteAnni = async (memory: TimebookMemoryRow) => {
+        if (memory.projectionView) {
+            const changed = await applyPromotedTimebookChange(memory.projectionView, 'hide');
+            if (changed) addToast('已从时光簿移出，原对话仍留在日历。', 'success');
+        } else {
+            await DB.deleteAnniversary(memory.id);
+            setAnniversaries(prev => prev.filter(a => a.id !== memory.id));
+        }
+        if (expandedId === memory.id) setExpandedId(null);
     };
 
-    const openMemoryEditor = (memory: Anniversary) => {
+    const openMemoryEditor = (memory: TimebookMemoryRow) => {
         setEditingMemory(memory);
         setDraftMemoryTitle(memory.title);
         setDraftMemoryDate(memory.date);
@@ -367,6 +443,19 @@ const ScheduleApp: React.FC = () => {
 
     const handleSaveMemoryEdit = async () => {
         if (!editingMemory || !draftMemoryTitle.trim() || !draftMemoryDate) return;
+
+        if (editingMemory.projectionView) {
+            const changed = await applyPromotedTimebookChange(editingMemory.projectionView, 'edit', {
+                title: draftMemoryTitle.trim(),
+                happenedAt: draftMemoryDate,
+                summary: draftMemoryThought.trim() || editingMemory.projectionView.display.summary,
+            });
+            if (changed) {
+                setEditingMemory(null);
+                addToast('旧日整理出的这一页已经改好了。', 'success');
+            }
+            return;
+        }
 
         const updated: Anniversary = {
             ...editingMemory,
@@ -469,6 +558,7 @@ const ScheduleApp: React.FC = () => {
                                                 <span className="mt-1 block truncate text-[15px] font-semibold leading-6 text-[#514640]">
                                                     {memory.title}
                                                 </span>
+                                                {memory.projectionView && <span className="mt-1 inline-flex rounded-full bg-[#f5e7dc]/80 px-2 py-0.5 text-[9px] font-semibold text-[#a06b64]">旧日整理</span>}
                                             </span>
                                             <CaretRight
                                                 size={17}
@@ -482,8 +572,8 @@ const ScheduleApp: React.FC = () => {
                                                 <p className="whitespace-pre-wrap text-[12px] leading-6 text-[#6d5d54]">
                                                     {memory.aiThought || `${writerName}还没有把这一页写完，但这一天已经先被他夹在纸里。`}
                                                 </p>
-                                                <div className="mt-2.5 flex items-center justify-between text-[10px] text-[#a68c7f]">
-                                                    <span>{writerName}写下的页边注</span>
+                                                <div className="mt-2.5 flex flex-col items-start gap-1.5 text-[10px] text-[#a68c7f]">
+                                                    <span>{memory.projectionView ? '旧日整理 · 原文仍在日历' : `${writerName}写下的页边注`}</span>
                                                     {memory.isDefaultFirstMemory ? (
                                                         <button
                                                             type="button"
@@ -494,22 +584,31 @@ const ScheduleApp: React.FC = () => {
                                                             修改初识
                                                         </button>
                                                     ) : (
-                                                        <span className="flex items-center gap-1.5">
+                                                        <span className="flex w-full items-center justify-end gap-1">
+                                                            {memory.projectionView && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void openPromotedTimebookSource(memory.projectionView!)}
+                                                                    className="flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[#a06b64] transition hover:bg-white/50 active:scale-95"
+                                                                >
+                                                                    看原文
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 type="button"
                                                                 onClick={() => openMemoryEditor(memory)}
-                                                                className="flex items-center gap-1 rounded-full px-2 py-1 text-[#a06b64] transition hover:bg-white/50 active:scale-95"
+                                                                className="flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[#a06b64] transition hover:bg-white/50 active:scale-95"
                                                             >
                                                                 <PencilSimple size={12} weight="bold" />
                                                                 修改
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleDeleteAnni(memory.id)}
-                                                                className="flex items-center gap-1 rounded-full px-2 py-1 text-[#a06b64] transition hover:bg-white/50 active:scale-95"
+                                                                onClick={() => void handleDeleteAnni(memory)}
+                                                                className="flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[#a06b64] transition hover:bg-white/50 active:scale-95"
                                                             >
                                                                 <Trash size={12} weight="bold" />
-                                                                删除
+                                                                {memory.projectionView ? '移出' : '删除'}
                                                             </button>
                                                         </span>
                                                     )}
@@ -519,6 +618,26 @@ const ScheduleApp: React.FC = () => {
                                     </article>
                                 );
                             })}
+                            {hiddenPromotedTimebookViews.length > 0 && (
+                                <div className="pt-2">
+                                    <button type="button" onClick={() => setShowHiddenPromoted(value => !value)} className="text-[10px] font-semibold text-[#9d8175]">
+                                        {showHiddenPromoted ? '收起' : '查看'}已移出的 {hiddenPromotedTimebookViews.length} 页
+                                    </button>
+                                    {showHiddenPromoted && (
+                                        <div className="mt-2 space-y-1.5 rounded-2xl border border-white/50 bg-white/32 p-2.5">
+                                            {hiddenPromotedTimebookViews.map(view => (
+                                                <div key={view.record.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/35 px-3 py-2">
+                                                    <span className="truncate text-[10px] text-[#917a70]">{view.display.title}</span>
+                                                    <button type="button" onClick={async () => {
+                                                        const changed = await applyPromotedTimebookChange(view, 'restore');
+                                                        if (changed) addToast('这一页已经放回时光簿。', 'success');
+                                                    }} className="shrink-0 text-[10px] font-bold text-[#a25f59]">恢复</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </section>

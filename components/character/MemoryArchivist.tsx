@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { MemoryFragment } from '../../types';
+import type { MemoryProjectionPatch, MemoryProjectionView } from '../../domain/memoryProjection';
 import Modal from '../../components/os/Modal';
 import { DEFAULT_REFINE_PROMPTS } from '../../components/chat/ChatConstants';
 
@@ -16,9 +17,14 @@ interface MemoryArchivistProps {
     onToggleActiveMonth: (year: string, month: string) => void;
     onUpdateRefinedMemory: (year: string, month: string, newContent: string) => void;
     onDeleteRefinedMemory: (year: string, month: string) => void;
+    promotedMemories?: MemoryProjectionView[];
+    onUpdatePromotedMemory?: (view: MemoryProjectionView, patch: MemoryProjectionPatch) => Promise<void>;
+    onHidePromotedMemory?: (view: MemoryProjectionView) => Promise<void>;
+    onRestorePromotedMemory?: (view: MemoryProjectionView) => Promise<void>;
+    onOpenPromotedSource?: (view: MemoryProjectionView) => Promise<void>;
 }
 
-const MemoryArchivist: React.FC<MemoryArchivistProps> = ({ memories, refinedMemories, activeMemoryMonths, charName, userName, onRefine, onDeleteMemories, onUpdateMemory, onToggleActiveMonth, onUpdateRefinedMemory, onDeleteRefinedMemory }) => {
+const MemoryArchivist: React.FC<MemoryArchivistProps> = ({ memories, refinedMemories, activeMemoryMonths, charName, userName, onRefine, onDeleteMemories, onUpdateMemory, onToggleActiveMonth, onUpdateRefinedMemory, onDeleteRefinedMemory, promotedMemories = [], onUpdatePromotedMemory, onHidePromotedMemory, onRestorePromotedMemory, onOpenPromotedSource }) => {
     const [viewState, setViewState] = useState<{
         level: 'root' | 'year' | 'month';
         selectedYear: string | null;
@@ -30,6 +36,10 @@ const MemoryArchivist: React.FC<MemoryArchivistProps> = ({ memories, refinedMemo
     const [editMemory, setEditMemory] = useState<MemoryFragment | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [expandedMemoryIds, setExpandedMemoryIds] = useState<Set<string>>(new Set());
+    const [editingPromoted, setEditingPromoted] = useState<MemoryProjectionView | null>(null);
+    const [promotedDraftTitle, setPromotedDraftTitle] = useState('');
+    const [promotedDraftSummary, setPromotedDraftSummary] = useState('');
+    const [showHiddenPromoted, setShowHiddenPromoted] = useState(false);
 
     // Core Memory Edit State
     const [editingCore, setEditingCore] = useState<{year: string, month: string, content: string} | null>(null);
@@ -161,7 +171,87 @@ const MemoryArchivist: React.FC<MemoryArchivistProps> = ({ memories, refinedMemo
         }
     };
 
-    if (!memories || memories.length === 0) return <div className="flex flex-col items-center justify-center h-48 text-slate-400"><p className="text-xs">暂无记忆档案</p></div>;
+    const visiblePromoted = promotedMemories.filter(view => !view.hidden);
+    const hiddenPromoted = promotedMemories.filter(view => view.hidden);
+    const hasLegacyMemories = Array.isArray(memories) && memories.length > 0;
+
+    const openPromotedEditor = (view: MemoryProjectionView) => {
+        setEditingPromoted(view);
+        setPromotedDraftTitle(view.display.title);
+        setPromotedDraftSummary(view.display.summary);
+    };
+
+    const savePromotedEdit = async () => {
+        if (!editingPromoted || !onUpdatePromotedMemory || !promotedDraftTitle.trim() || !promotedDraftSummary.trim()) return;
+        await onUpdatePromotedMemory(editingPromoted, {
+            title: promotedDraftTitle.trim(),
+            summary: promotedDraftSummary.trim(),
+        });
+        setEditingPromoted(null);
+    };
+
+    const renderPromotedMemories = () => {
+        if (!visiblePromoted.length && !hiddenPromoted.length) return null;
+        return (
+            <section className="mb-6 rounded-[28px] border border-violet-100/80 bg-white/58 p-4 shadow-sm backdrop-blur-sm">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-700">从旧日里整理出的</h3>
+                        <p className="mt-1 text-[10px] leading-5 text-slate-400">这里改的是整理结果；日历里的原对话不会被覆盖。</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold text-violet-500">{visiblePromoted.length} 条</span>
+                </div>
+                <div className="space-y-2.5">
+                    {visiblePromoted.map(view => (
+                        <article key={view.record.id} className="rounded-2xl border border-white/80 bg-white/78 px-3.5 py-3 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <h4 className="text-[13px] font-bold text-slate-700">{view.display.title}</h4>
+                                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-600">
+                                            {view.record.temporalClass === 'live' ? '相处记录' : '旧日记录'}
+                                        </span>
+                                        {view.revision > 0 && <span className="text-[9px] text-slate-300">已修订 {view.revision} 次</span>}
+                                    </div>
+                                    <p className="mt-2 whitespace-pre-wrap text-xs leading-6 text-slate-600">{view.display.summary}</p>
+                                </div>
+                            </div>
+                            <div className="mt-2 flex items-center justify-end gap-1 text-[10px] font-semibold">
+                                {onOpenPromotedSource && <button type="button" onClick={() => void onOpenPromotedSource(view)} className="rounded-full px-2.5 py-1.5 text-violet-500 transition active:bg-violet-50">看原文</button>}
+                                {onUpdatePromotedMemory && <button type="button" onClick={() => openPromotedEditor(view)} className="rounded-full px-2.5 py-1.5 text-slate-500 transition active:bg-slate-50">修改整理</button>}
+                                {onHidePromotedMemory && <button type="button" onClick={() => void onHidePromotedMemory(view)} className="rounded-full px-2.5 py-1.5 text-rose-400 transition active:bg-rose-50">移出记忆</button>}
+                            </div>
+                        </article>
+                    ))}
+                </div>
+                {hiddenPromoted.length > 0 && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                        <button type="button" onClick={() => setShowHiddenPromoted(value => !value)} className="text-[10px] font-semibold text-slate-400">
+                            {showHiddenPromoted ? '收起' : '查看'}已移出的 {hiddenPromoted.length} 条
+                        </button>
+                        {showHiddenPromoted && (
+                            <div className="mt-2 space-y-2">
+                                {hiddenPromoted.map(view => (
+                                    <div key={view.record.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50/80 px-3 py-2">
+                                        <span className="truncate text-[11px] text-slate-400">{view.display.title}</span>
+                                        {onRestorePromotedMemory && <button type="button" onClick={() => void onRestorePromotedMemory(view)} className="shrink-0 text-[10px] font-bold text-violet-500">恢复</button>}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </section>
+        );
+    };
+
+    if (!hasLegacyMemories && !promotedMemories.length) return <div className="flex flex-col items-center justify-center h-48 text-slate-400"><p className="text-xs">暂无记忆档案</p></div>;
+
+    const promotedCharCount = visiblePromoted.reduce((total, view) => total + view.display.summary.length, 0);
+    const combinedStats = {
+        totalChars: stats.totalChars + promotedCharCount,
+        count: stats.count + visiblePromoted.length,
+    };
 
     const renderYears = () => (
         <div className="grid grid-cols-2 gap-3 animate-fade-in">
@@ -306,8 +396,8 @@ const MemoryArchivist: React.FC<MemoryArchivistProps> = ({ memories, refinedMemo
         <div className="flex flex-col h-full relative">
             <div className="flex justify-between items-center mb-6 px-1">
                 <div className="flex gap-4">
-                    <div><span className="block text-[10px] text-slate-400 uppercase tracking-widest">总字数</span><span className="text-lg font-medium text-slate-700 font-mono">{stats.totalChars.toLocaleString()}</span></div>
-                    <div><span className="block text-[10px] text-slate-400 uppercase tracking-widest">总条目</span><span className="text-lg font-medium text-slate-700 font-mono">{stats.count}</span></div>
+                    <div><span className="block text-[10px] text-slate-400 uppercase tracking-widest">总字数</span><span className="text-lg font-medium text-slate-700 font-mono">{combinedStats.totalChars.toLocaleString()}</span></div>
+                    <div><span className="block text-[10px] text-slate-400 uppercase tracking-widest">总条目</span><span className="text-lg font-medium text-slate-700 font-mono">{combinedStats.count}</span></div>
                 </div>
                 <div className="flex items-center gap-1 text-xs font-medium text-slate-500 bg-white/50 px-3 py-1.5 rounded-full border border-white/50 shadow-sm">
                     {viewState.level === 'root' ? <span>档案室</span> : (
@@ -318,12 +408,20 @@ const MemoryArchivist: React.FC<MemoryArchivistProps> = ({ memories, refinedMemo
                     )}
                 </div>
             </div>
-            {viewState.level === 'root' && renderYears()}
+            {viewState.level === 'root' && <>{renderPromotedMemories()}{hasLegacyMemories ? renderYears() : <div className="py-5 text-center text-[11px] text-slate-300">还没有其他记忆碎片</div>}</>}
             {viewState.level === 'year' && <><div className="mb-4 flex items-center gap-2"><button onClick={handleBack} className="p-1.5 bg-white rounded-full text-slate-400 hover:text-slate-600 shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" /></svg></button><h3 className="text-sm font-medium text-slate-600">选择月份</h3></div>{renderMonths()}</>}
             {viewState.level === 'month' && <><div className="mb-4 flex items-center gap-2"><button onClick={handleBack} className="p-1.5 bg-white rounded-full text-slate-400 hover:text-slate-600 shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" /></svg></button><h3 className="text-sm font-medium text-slate-600">本月记忆</h3></div>{renderMemories()}</>}
 
             <Modal isOpen={!!editMemory} title="编辑记忆碎片" onClose={() => setEditMemory(null)} footer={<button onClick={() => { if(editMemory) onUpdateMemory(editMemory.id, editMemory.summary); setEditMemory(null); }} className="w-full py-3 bg-primary text-white font-bold rounded-2xl">保存修改</button>}>
                 {editMemory && <div className="space-y-3"><div className="text-xs text-slate-400">日期: {editMemory.date}</div><textarea value={editMemory.summary} onChange={e => setEditMemory({...editMemory, summary: e.target.value})} className="w-full h-40 bg-slate-100 rounded-xl p-3 text-sm resize-none focus:outline-primary"/></div>}
+            </Modal>
+
+            <Modal isOpen={!!editingPromoted} title="修改旧日整理" onClose={() => setEditingPromoted(null)} footer={<button onClick={() => void savePromotedEdit()} className="w-full py-3 bg-primary text-white font-bold rounded-2xl">保存修改</button>}>
+                <div className="space-y-3">
+                    <input value={promotedDraftTitle} onChange={event => setPromotedDraftTitle(event.target.value)} className="w-full rounded-xl bg-slate-100 px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+                    <textarea value={promotedDraftSummary} onChange={event => setPromotedDraftSummary(event.target.value)} className="h-40 w-full resize-none rounded-xl bg-slate-100 p-3 text-sm leading-6 outline-none focus:ring-2 focus:ring-primary/20" />
+                    <p className="text-[10px] leading-5 text-slate-400">这里只修正整理后的标题和摘要；原聊天仍保留在对话日历。</p>
+                </div>
             </Modal>
             
             <Modal isOpen={showDeleteConfirm} title="确认删除" onClose={() => setShowDeleteConfirm(false)} footer={<div className="flex gap-2 w-full"><button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-2xl">取消</button><button onClick={performDelete} className="flex-1 py-3 bg-red-500 text-white font-bold rounded-2xl shadow-lg shadow-red-200">确认删除</button></div>}>
