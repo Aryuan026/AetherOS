@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { CharacterProfile, Message, DateState } from '../types';
+import type { HistoryScope } from '../domain/historyImport/types';
 import { ContextBuilder } from '../utils/context';
 import { safeResponseJson } from '../utils/safeApi';
 import { selectWorldlineMemoryContext } from '../utils/memoryCore';
@@ -18,7 +19,13 @@ import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../
 import { DATE_EXPERIENCE_BOUNDARY, getBuiltInDateBackgroundForHour, getDateFallbackMood, resolveDateDefaultPortrait } from '../utils/dateExperience';
 import { DateCharacterSelectCard } from '../components/date/DateCharacterSelectCard';
 import { DatePersonaScopeNotice, DateSelectIntro } from '../components/date/DateSelectIntro';
-import { relationshipScopeForProfile } from '../utils/messageContext';
+import {
+    messageMatchesRelationshipScope,
+    normalizeMessageRelationshipScope,
+    relationshipScopeFromMessage,
+    sameMessageRelationshipScope,
+    strictRelationshipScopeForProfile,
+} from '../utils/messageContext';
 
 type DateHistorySession = {
     id: string;
@@ -97,6 +104,11 @@ const pickDatePeekLine = (lines: string[], seed: string) => {
     return lines[hash % lines.length];
 };
 
+const createDateSessionId = (): string => (
+    globalThis.crypto?.randomUUID?.()
+    ?? `date-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+);
+
 const DateApp: React.FC = () => {
     const { closeApp, characters, activeCharacterId, setActiveCharacterId, apiConfig, addToast, updateCharacter, virtualTime, userProfile, theme, setShellStatusBarVariantOverride } = useOS();
     const virtualWorld = useVirtualWorldClock(userProfile);
@@ -124,6 +136,8 @@ const DateApp: React.FC = () => {
     // --- NEW: Editing State lifted to here for DB sync ---
     const [dateMessages, setDateMessages] = useState<Message[]>([]);
     const [hasSavedOpening, setHasSavedOpening] = useState(false);
+    const dateSessionIdRef = useRef<string | null>(null);
+    const dateRelationshipScopeRef = useRef<HistoryScope | null>(null);
 
     // Edit Modal State
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -162,8 +176,15 @@ const DateApp: React.FC = () => {
     const loadDateMessages = async () => {
         if (char) {
             const msgs = await DB.getMessagesByCharId(char.id);
+            const scope = dateRelationshipScopeRef.current
+                || strictRelationshipScopeForProfile(char.id, userProfile);
             // 只筛选 source='date' 的消息用于小说模式显示
-            const filtered = msgs.filter(m => m.metadata?.source === 'date').sort((a,b) => a.timestamp - b.timestamp);
+            const filtered = scope
+                ? msgs.filter(m => (
+                    m.metadata?.source === 'date'
+                    && messageMatchesRelationshipScope(m, scope)
+                )).sort((a,b) => a.timestamp - b.timestamp)
+                : [];
             setDateMessages(filtered);
             
             // 检查数据库中是否已经包含当前的 peekStatus（通过内容比对），避免重复保存
@@ -227,6 +248,17 @@ const DateApp: React.FC = () => {
 
     const handleResumeSession = () => {
         if (!pendingSessionChar) return;
+        const savedScope = normalizeMessageRelationshipScope(
+            pendingSessionChar.savedDateState?.relationshipScope,
+        );
+        const activeScope = strictRelationshipScopeForProfile(pendingSessionChar.id, userProfile);
+        const savedSessionId = pendingSessionChar.savedDateState?.sessionId;
+        if (!savedScope || !activeScope || !sameMessageRelationshipScope(savedScope, activeScope) || !savedSessionId) {
+            addToast('这份旧存档没有可靠的关系归属，请从新见面开始。', 'info');
+            return;
+        }
+        dateRelationshipScopeRef.current = savedScope;
+        dateSessionIdRef.current = savedSessionId;
         setActiveCharacterId(pendingSessionChar.id);
         setMode('session');
         setPendingSessionChar(null);
@@ -243,6 +275,12 @@ const DateApp: React.FC = () => {
     // --- 关键修复: 进入 Session 时立即归档开场白 ---
     const handleEnterSession = async () => {
         if (!char) return;
+        const relationshipScope = dateRelationshipScopeRef.current;
+        const dateSessionId = dateSessionIdRef.current;
+        if (!relationshipScope || !dateSessionId) {
+            addToast('这次见面还没有绑定关系，请重新进入。', 'info');
+            return;
+        }
         const usablePeekStatus = peekStatus && !peekStatus.startsWith('(无法感知状态:') ? peekStatus : '';
 
         // 1. 如果有开场白且未保存，立即保存到数据库
@@ -255,7 +293,15 @@ const DateApp: React.FC = () => {
                     role: 'assistant',
                     type: 'text',
                     content: usablePeekStatus,
-                    metadata: { source: 'date', isOpening: true } // Added Flag
+                    metadata: {
+                        source: 'date',
+                        isOpening: true,
+                        temporalClass: 'live',
+                        relationshipScope,
+                        dateSessionId,
+                        interactionId: `date:${dateSessionId}`,
+                        turnId: `date-opening:${dateSessionId}`,
+                    }
                 });
                 setHasSavedOpening(true);
             } catch (e) {
@@ -270,6 +316,13 @@ const DateApp: React.FC = () => {
 
     // --- Peek (Generation) Logic ---
     const startPeek = async (c: CharacterProfile) => {
+        const relationshipScope = strictRelationshipScopeForProfile(c.id, userProfile);
+        if (!relationshipScope) {
+            addToast('请先把当前面具与角色关系连接好。', 'info');
+            return;
+        }
+        dateRelationshipScopeRef.current = relationshipScope;
+        dateSessionIdRef.current = createDateSessionId();
         setActiveCharacterId(c.id);
         setMode('peek');
         setPeekLoading(true);
@@ -278,7 +331,8 @@ const DateApp: React.FC = () => {
         setHasSavedOpening(false); 
 
         try {
-            const msgs = await DB.getMessagesByCharId(c.id);
+            const msgs = (await DB.getMessagesByCharId(c.id))
+                .filter(message => messageMatchesRelationshipScope(message, relationshipScope));
             const limit = c.contextLimit || 500; 
             const peekLimit = Math.min(limit, 50); 
             const lastMsg = msgs[msgs.length - 1];
@@ -295,7 +349,7 @@ const DateApp: React.FC = () => {
                 user: userProfile,
                 mode: 'meet_scene',
                 surface: 'date',
-                relationshipScope: relationshipScopeForProfile(c.id, userProfile)!,
+                relationshipScope,
                 currentMessages: msgs,
                 query: '用户正在进入见面场景，生成角色此刻状态。',
                 budgetChars: 900,
@@ -350,14 +404,32 @@ ${DATE_EXPERIENCE_BOUNDARY}
     // --- Session API Logic ---
     const handleSendMessage = async (text: string): Promise<string> => {
         if (!char) throw new Error("No char");
+        const relationshipScope = dateRelationshipScopeRef.current;
+        const dateSessionId = dateSessionIdRef.current;
+        if (!relationshipScope || !dateSessionId) throw new Error('Date session scope missing');
         
         // 1. Save User Msg
-        await DB.saveMessage({ charId: char.id, role: 'user', type: 'text', content: text, metadata: { source: 'date' } });
+        await DB.saveMessage({
+            charId: char.id,
+            role: 'user',
+            type: 'text',
+            content: text,
+            metadata: {
+                source: 'date',
+                temporalClass: 'live',
+                relationshipScope,
+                dateSessionId,
+                interactionId: `date:${dateSessionId}`,
+            },
+        });
         
         // 2. Prepare Context
         // Re-fetch messages. Since we saved the opening in handleEnterSession, 
         // 'allMsgs' will now correctly contain: [History..., Opening, UserMsg]
-        const allMsgs = await DB.getMessagesByCharId(char.id);
+        const allCharMsgs = await DB.getMessagesByCharId(char.id);
+        const allMsgs = allCharMsgs.filter(message => (
+            messageMatchesRelationshipScope(message, relationshipScope)
+        ));
         
         // Update local state for display
         const dateFiltered = allMsgs.filter(m => m.metadata?.source === 'date').sort((a,b) => a.timestamp - b.timestamp);
@@ -383,7 +455,7 @@ ${DATE_EXPERIENCE_BOUNDARY}
             user: userProfile,
             mode: 'date_scene',
             surface: 'date',
-            relationshipScope: relationshipScopeForProfile(char.id, userProfile)!,
+            relationshipScope,
             currentMessages: allMsgs,
             query: text,
             budgetChars: 1200,
@@ -448,11 +520,27 @@ ${DATE_EXPERIENCE_BOUNDARY}
         const content = data.choices[0].message.content;
 
         // 3. Save AI Response
-        await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: content, metadata: { source: 'date' } });
+        await DB.saveMessage({
+            charId: char.id,
+            role: 'assistant',
+            type: 'text',
+            content,
+            metadata: {
+                source: 'date',
+                temporalClass: 'live',
+                relationshipScope,
+                dateSessionId,
+                interactionId: `date:${dateSessionId}`,
+                assistantResponseId: `date-response-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            },
+        });
         
         // Refresh local state
         const freshMsgs = await DB.getMessagesByCharId(char.id);
-        setDateMessages(freshMsgs.filter(m => m.metadata?.source === 'date').sort((a,b) => a.timestamp - b.timestamp));
+        setDateMessages(freshMsgs.filter(m => (
+            m.metadata?.source === 'date'
+            && messageMatchesRelationshipScope(m, relationshipScope)
+        )).sort((a,b) => a.timestamp - b.timestamp));
 
         return content;
     };
@@ -462,13 +550,21 @@ ${DATE_EXPERIENCE_BOUNDARY}
         
         const lastMsg = dateMessages[dateMessages.length - 1];
         if (lastMsg.role !== 'assistant') throw new Error("Cannot reroll user message");
+        const initiatingScope = relationshipScopeFromMessage(lastMsg);
+        const dateSessionId = typeof lastMsg.metadata?.dateSessionId === 'string'
+            ? lastMsg.metadata.dateSessionId
+            : undefined;
+        if (!initiatingScope || !dateSessionId) throw new Error('Date reroll scope missing');
 
         // 1. Delete last AI message
         await DB.deleteMessage(lastMsg.id);
         
         // 2. Find the user input that triggered it
         const allMsgs = await DB.getMessagesByCharId(char.id);
-        const validMsgs = allMsgs.filter(m => m.id !== lastMsg.id);
+        const validMsgs = allMsgs.filter(m => (
+            m.id !== lastMsg.id
+            && messageMatchesRelationshipScope(m, initiatingScope)
+        ));
         const lastUserMsg = validMsgs[validMsgs.length - 1];
         
         if (!lastUserMsg || lastUserMsg.role !== 'user') throw new Error("Context lost");
@@ -485,7 +581,7 @@ ${DATE_EXPERIENCE_BOUNDARY}
             user: userProfile,
             mode: 'date_scene',
             surface: 'date',
-            relationshipScope: relationshipScopeForProfile(char.id, userProfile)!,
+            relationshipScope: initiatingScope,
             currentMessages: validMsgs,
             query: String(lastUserMsg.content || ''),
             budgetChars: 1200,
@@ -526,11 +622,28 @@ ${DATE_EXPERIENCE_BOUNDARY}
         const data = await safeResponseJson(response);
         const content = data.choices[0].message.content;
 
-        await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: content, metadata: { source: 'date' } });
+        await DB.saveMessage({
+            charId: char.id,
+            role: 'assistant',
+            type: 'text',
+            content,
+            metadata: {
+                source: 'date',
+                temporalClass: 'live',
+                relationshipScope: initiatingScope,
+                dateSessionId,
+                interactionId: `date:${dateSessionId}`,
+                assistantResponseId: `date-response-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                rerollOfMessageId: lastMsg.id,
+            },
+        });
         
         // Sync
         const freshMsgs = await DB.getMessagesByCharId(char.id);
-        setDateMessages(freshMsgs.filter(m => m.metadata?.source === 'date').sort((a,b) => a.timestamp - b.timestamp));
+        setDateMessages(freshMsgs.filter(m => (
+            m.metadata?.source === 'date'
+            && messageMatchesRelationshipScope(m, initiatingScope)
+        )).sort((a,b) => a.timestamp - b.timestamp));
 
         return content;
     };
@@ -563,7 +676,13 @@ ${DATE_EXPERIENCE_BOUNDARY}
 
     const onExitSession = (finalState: DateState) => {
         if (char) {
-            updateCharacter(char.id, { savedDateState: finalState });
+            updateCharacter(char.id, {
+                savedDateState: {
+                    ...finalState,
+                    sessionId: dateSessionIdRef.current || undefined,
+                    relationshipScope: dateRelationshipScopeRef.current || undefined,
+                },
+            });
             addToast('进度已保存', 'success');
         }
         setMode('select');
@@ -576,8 +695,17 @@ ${DATE_EXPERIENCE_BOUNDARY}
         setSelectedHistorySessionId(null);
         setDeleteTargetSession(null);
         const msgs = await DB.getMessagesByCharId(c.id);
+        const relationshipScope = strictRelationshipScopeForProfile(c.id, userProfile);
+        if (!relationshipScope) {
+            setHistorySessions([]);
+            setMode('history');
+            return;
+        }
         // dateMsgs sorted DESCENDING (newest first)
-        const dateMsgs = msgs.filter(m => m.metadata?.source === 'date').sort((a, b) => b.timestamp - a.timestamp);
+        const dateMsgs = msgs.filter(m => (
+            m.metadata?.source === 'date'
+            && messageMatchesRelationshipScope(m, relationshipScope)
+        )).sort((a, b) => b.timestamp - a.timestamp);
         
         const sessions: DateHistorySession[] = [];
         const pushSession = (rawSession: Message[]) => {
@@ -586,7 +714,7 @@ ${DATE_EXPERIENCE_BOUNDARY}
             const sessionEndMsg = chrono[chrono.length - 1] || sessionStartMsg;
             const anchorMsg = chrono.find(m => m.metadata?.isOpening === true) || sessionStartMsg;
             sessions.push({
-                id: `${anchorMsg?.id || sessionStartMsg?.id || Date.now()}-${sessionEndMsg?.id || ''}`,
+                id: String(anchorMsg?.metadata?.dateSessionId || `${anchorMsg?.id || sessionStartMsg?.id || Date.now()}-${sessionEndMsg?.id || ''}`),
                 date: new Date(sessionStartMsg.timestamp).toLocaleString('zh-CN'),
                 timestamp: sessionStartMsg.timestamp,
                 msgs: chrono,
@@ -611,8 +739,12 @@ ${DATE_EXPERIENCE_BOUNDARY}
                 //     So 'curr' must belong to an older, different session.)
                 const isTimeBreak = Math.abs(prev.timestamp - curr.timestamp) > 30 * 60 * 1000;
                 const splitSincePrevWasOpening = prev.metadata?.isOpening === true;
+                const previousSessionId = prev.metadata?.dateSessionId;
+                const currentSessionId = curr.metadata?.dateSessionId;
+                const splitBySessionId = previousSessionId !== currentSessionId
+                    && Boolean(previousSessionId || currentSessionId);
 
-                if (isTimeBreak || splitSincePrevWasOpening) {
+                if (splitBySessionId || isTimeBreak || splitSincePrevWasOpening) {
                     // This session ends. Convert from DESC accumulation to chronological display data.
                     pushSession(currentSession);
                     currentSession = [curr];
@@ -986,6 +1118,8 @@ ${DATE_EXPERIENCE_BOUNDARY}
                     messages={dateMessages}
                     peekStatus={peekStatus.startsWith('(无法感知状态:') ? '' : peekStatus}
                     initialState={char.savedDateState}
+                    sessionId={dateSessionIdRef.current || undefined}
+                    relationshipScope={dateRelationshipScopeRef.current || undefined}
                     onSendMessage={handleSendMessage}
                     onReroll={handleReroll}
                     onExit={onExitSession}

@@ -126,7 +126,7 @@ await curateDailyArchiveMessages({
     now: now + 7,
 });
 dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
-assert.equal(dated?.messages.find(item => item.status === 'active')?.content, '人工校正后的七夕记录');
+assert.equal(dated?.messages.find(item => item.id === first.id && item.status === 'active')?.content, '人工校正后的七夕记录');
 
 // A later raw-history sync remains revision 1 and must not revive the old
 // undated projection or overwrite the human-curated dated revision.
@@ -134,7 +134,7 @@ await upsertDailyArchiveMessages({ messages: [first, second], now: now + 8 });
 undated = await getDailyArchiveDocument({ scope, undatedKey: 'wrapped-word-batch' });
 dated = await getDailyArchiveDocument({ scope, dateKey: '2025-08-29' });
 assert.equal(undated?.messageCount, 0);
-assert.equal(dated?.messages.find(item => item.status === 'active')?.content, '人工校正后的七夕记录');
+assert.equal(dated?.messages.find(item => item.id === first.id && item.status === 'active')?.content, '人工校正后的七夕记录');
 
 const coverage = await readDailyArchiveCoverage({ scope });
 assert.equal(coverage.undatedMessageCount, 0);

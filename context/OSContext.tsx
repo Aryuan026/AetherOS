@@ -33,11 +33,12 @@ import {
     deleteDailyArchiveDatabase,
     listAllConversationClippings,
     listAllDailyArchiveDocuments,
+    listAllDailyArchiveMessageRevisions,
     replaceConversationClippings,
     replaceDailyArchiveDocuments,
     verifyDailyArchiveBackupFiles,
 } from '../utils/dailyArchive/storage';
-import type { ConversationClipping, DailyArchiveDocument } from '../domain/dailyArchive/types';
+import type { ConversationClipping, DailyArchiveDocument, DailyArchiveMessageRevision } from '../domain/dailyArchive/types';
 import { apiConfigForActivatedPreset } from '../utils/apiPresets';
 
 
@@ -2715,6 +2716,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
               const dailyDocuments = await listAllDailyArchiveDocuments();
               const dailyBackup = await buildDailyArchiveBackupFiles({ documents: dailyDocuments });
               backupData.dailyArchiveManifest = dailyBackup.manifest;
+              backupData.dailyArchiveMessageRevisions = await listAllDailyArchiveMessageRevisions();
               backupData.conversationClippings = await listAllConversationClippings();
               dailyBackup.files.forEach(file => zip.file(file.path, file.json));
           }
@@ -2743,6 +2745,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           let data: FullBackupData;
           let zip: JSZipLike | null = null;
           let dailyArchiveDocumentsToRestore: DailyArchiveDocument[] | undefined;
+          let dailyArchiveRevisionsToRestore: DailyArchiveMessageRevision[] | undefined;
           let conversationClippingsToRestore: ConversationClipping[] | undefined;
 
           if (typeof fileOrJson === 'string') {
@@ -2781,6 +2784,9 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }
           if (Array.isArray(data.conversationClippings)) {
               conversationClippingsToRestore = data.conversationClippings;
+          }
+          if (Array.isArray(data.dailyArchiveMessageRevisions)) {
+              dailyArchiveRevisionsToRestore = data.dailyArchiveMessageRevisions;
           }
 
           const restoreAssets = async (obj: any): Promise<any> => {
@@ -2832,7 +2838,10 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
           await DB.importFullData(data);
           if (dailyArchiveDocumentsToRestore) {
-              await replaceDailyArchiveDocuments({ documents: dailyArchiveDocumentsToRestore });
+              await replaceDailyArchiveDocuments({
+                  documents: dailyArchiveDocumentsToRestore,
+                  revisions: dailyArchiveRevisionsToRestore || [],
+              });
           }
           if (conversationClippingsToRestore) {
               await replaceConversationClippings({ clippings: conversationClippingsToRestore });

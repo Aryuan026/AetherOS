@@ -12,9 +12,10 @@ import { loadMemoryDMSettings, runMemoryDMPass, selectWorldlineMemoryContext } f
 import {
     filterCurrentStateMessages,
     isHistoricalContextMessage,
+    messageMatchesRelationshipScope,
     relationshipScopeFromMessage,
-    relationshipScopeForProfile,
     selectEmotionEvaluationMessages,
+    strictRelationshipScopeForProfile,
 } from '../utils/messageContext';
 import { createAssistantResponseId, splitChatReplyText } from '../utils/chatReplyMode';
 
@@ -319,6 +320,15 @@ export const useChatAI = ({
         const initiatingRelationshipScope = initiatingUserMessage
             ? relationshipScopeFromMessage(initiatingUserMessage)
             : undefined;
+        const selectorRelationshipScope = initiatingRelationshipScope
+            || strictRelationshipScopeForProfile(char.id, userProfile);
+        const readScopedRecentMessages = async (limit: number): Promise<Message[]> => {
+            if (!selectorRelationshipScope) return [];
+            const allMessages = await DB.getMessagesByCharId(char.id);
+            return allMessages
+                .filter(message => messageMatchesRelationshipScope(message, selectorRelationshipScope))
+                .slice(-limit);
+        };
         const assistantResponseId = createAssistantResponseId();
         const historyTailBatchIds = [...new Set(importedHistoryMessages
             .map(message => message.metadata?.historyBatchId)
@@ -347,17 +357,16 @@ export const useChatAI = ({
 
             // 1. Build System Prompt (包含实时世界信息)
             const lastUserMessage = [...filterCurrentStateMessages(currentMsgs)].reverse().find(m => m.role === 'user' && !m.metadata?.proactiveHint);
-            const worldlineMemory = await selectWorldlineMemoryContext({
+            const worldlineMemory = selectorRelationshipScope ? await selectWorldlineMemoryContext({
                 char,
                 user: userProfile,
                 mode: 'remote_chat',
                 surface: 'chat',
-                relationshipScope: initiatingRelationshipScope
-                    || relationshipScopeForProfile(char.id, userProfile)!,
+                relationshipScope: selectorRelationshipScope,
                 currentMessages: currentMsgs,
                 query: typeof lastUserMessage?.content === 'string' ? lastUserMessage.content : '',
                 budgetChars: 1200,
-            });
+            }) : { markdown: '' };
             let systemPrompt = await ChatPrompts.buildSystemPrompt(
                 char,
                 userProfile,
@@ -413,7 +422,7 @@ export const useChatAI = ({
             ));
             if (limit > providedLiveMessages.length && char.id) {
                 try {
-                    const fullHistory = await DB.getRecentMessagesByCharId(char.id, limit);
+                    const fullHistory = await readScopedRecentMessages(limit);
                     if (fullHistory.length > providedLiveMessages.length) {
                         console.log(`📊 [Context] Loaded ${fullHistory.length} live msgs from DB (React state had ${providedLiveMessages.length}, imported tail=${importedHistoryTail.length}, contextLimit=${limit})`);
                         contextMsgs = [...importedHistoryTail, ...fullHistory];
@@ -618,7 +627,7 @@ export const useChatAI = ({
                         if (preservedContent) {
                             await new Promise(r => setTimeout(r, Math.min(Math.max(preservedContent.length * 30, 400), 2000)));
                             await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: preservedContent, replyTo: aiReplyTarget });
-                            setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                            setMessages(await readScopedRecentMessages(200));
                             globalMsgIndex++;
                         }
                     } else while ((tagMatch = tagPattern.exec(aiContent)) !== null) {
@@ -633,7 +642,7 @@ export const useChatAI = ({
                                     const replyData = globalMsgIndex === 0 ? aiReplyTarget : undefined;
                                     await new Promise(r => setTimeout(r, Math.min(Math.max(chunk.length * 50, 500), 2000)));
                                     await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: chunk, replyTo: replyData });
-                                    setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                                    setMessages(await readScopedRecentMessages(200));
                                     globalMsgIndex++;
                                 }
                             }
@@ -649,7 +658,7 @@ export const useChatAI = ({
                             const replyData = globalMsgIndex === 0 ? aiReplyTarget : undefined;
                             await new Promise(r => setTimeout(r, Math.min(Math.max(biContent.length * 30, 400), 2000)));
                             await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: biContent, replyTo: replyData });
-                            setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                            setMessages(await readScopedRecentMessages(200));
                             globalMsgIndex++;
                         }
 
@@ -669,7 +678,7 @@ export const useChatAI = ({
                                     const replyData = globalMsgIndex === 0 ? aiReplyTarget : undefined;
                                     await new Promise(r => setTimeout(r, Math.min(Math.max(chunk.length * 50, 500), 2000)));
                                     await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: chunk, replyTo: replyData });
-                                    setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                                    setMessages(await readScopedRecentMessages(200));
                                     globalMsgIndex++;
                                 }
                             }
@@ -682,7 +691,7 @@ export const useChatAI = ({
                         if (foundEmoji) {
                             await new Promise(r => setTimeout(r, Math.random() * 500 + 300));
                             await saveAiMessage({ charId: char.id, role: 'assistant', type: 'emoji', content: foundEmoji.url });
-                            setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                            setMessages(await readScopedRecentMessages(200));
                         }
                     }
                 } else {
@@ -697,7 +706,7 @@ export const useChatAI = ({
                             if (foundEmoji) {
                                 await new Promise(r => setTimeout(r, Math.random() * 500 + 300));
                                 await saveAiMessage({ charId: char.id, role: 'assistant', type: 'emoji', content: foundEmoji.url });
-                                setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                                setMessages(await readScopedRecentMessages(200));
                             }
                         } else {
                             const allChunks = splitChatReplyText(part.content, chatReplyMode);
@@ -728,7 +737,7 @@ export const useChatAI = ({
                                     const cleanChunk = ChatParser.sanitize(chunk);
                                     if (cleanChunk) {
                                         await saveAiMessage({ charId: char.id, role: 'assistant', type: 'text', content: cleanChunk, replyTo: replyData });
-                                        setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                                        setMessages(await readScopedRecentMessages(200));
                                         globalMsgIndex++;
                                     }
                                 }
@@ -739,7 +748,7 @@ export const useChatAI = ({
 
             } else {
                 // If content was empty (e.g. only actions), just refresh
-                setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+                setMessages(await readScopedRecentMessages(200));
             }
 
             aiCompleted = true;
@@ -754,7 +763,7 @@ export const useChatAI = ({
                     relationshipScope: initiatingRelationshipScope || null,
                 },
             });
-            setMessages(await DB.getRecentMessagesByCharId(char.id, 200));
+            setMessages(await readScopedRecentMessages(200));
         } finally {
             KeepAlive.stop();
             setIsTyping(false);

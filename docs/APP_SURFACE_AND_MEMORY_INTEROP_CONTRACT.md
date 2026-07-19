@@ -554,6 +554,19 @@ Suggested migration waves inside the same phase are:
 - Wave 4: already accepted supporting Apps, one capability manifest and focused
   regression fixture at a time.
 
+Current implementation checkpoint:
+
+- Wave 1 source custody is implemented for History Import, Chat, and Date:
+  typed atomic evidence projections, exact captured scope, Date session ids,
+  source origin/medium/producer metadata, superseded revision storage, and
+  full-device revision backup/restore are present.
+- Same-revision payload conflicts fail closed. A pre-checkpoint archive row may
+  receive only missing origin metadata when every other source field is byte-for-
+  byte equivalent; this is bounded schema enrichment, not a content rewrite.
+- MemoryDM/Promotion remains the next box. Until it migrates, the new evidence
+  contract does not authorize legacy direct memory, anniversary, wakeup,
+  Narrative, or Character Life writes.
+
 The waves order risk; they do not make Chat or Date the exclusive sources of
 memory.
 

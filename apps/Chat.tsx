@@ -36,6 +36,8 @@ import {
 } from '../utils/historyImport/archive/chatTimeline';
 import {
     hasSuccessfulHistoryTailContinuation,
+    messageMatchesRelationshipScope,
+    strictRelationshipScopeForProfile,
     withRelationshipScope,
 } from '../utils/messageContext';
 import { DEFAULT_CHAT_REPLY_MODE } from '../utils/chatReplyMode';
@@ -221,16 +223,14 @@ const Chat: React.FC = () => {
 
     charRef.current = char; // Keep ref in sync for async callbacks
     const importedHistoryScope = useMemo<HistoryScope | undefined>(() => {
-        if (!char || !userProfile.activePersonaMaskId || !userProfile.activeProgressBundleId) return undefined;
-        return {
-            progressBundleId: userProfile.activeProgressBundleId,
-            personaMaskId: userProfile.activePersonaMaskId,
-            charId: char.id,
-        };
+        if (!char) return undefined;
+        return strictRelationshipScopeForProfile(char.id, userProfile);
     }, [
         char?.id,
         userProfile.activePersonaMaskId,
         userProfile.activeProgressBundleId,
+        userProfile.personaMasks,
+        userProfile.progressBundles,
     ]);
     const charAvatarFramePreset = useMemo(
         () => char ? resolveAvatarFramePreset(rawOsTheme, char.avatarFramePresetId) : undefined,
@@ -461,6 +461,11 @@ const Chat: React.FC = () => {
             timestamp: now,
             metadata: {
                 source: 'companion_wakeup',
+                temporalClass: 'live',
+                relationshipScope: importedHistoryScope || null,
+                interactionId: importedHistoryScope
+                    ? `proactive:${importedHistoryScope.progressBundleId}:${importedHistoryScope.personaMaskId}:${char.id}`
+                    : undefined,
                 wakeupRuleId: effectiveRule.id,
                 wakeupKind: effectiveRule.kind,
                 wakeupMode: 'probe',
@@ -667,10 +672,11 @@ const Chat: React.FC = () => {
 
             // Use ref to always get the CURRENT char (avoids stale closure)
             const currentChar = charRef.current;
-            const chatScopeMsgs = dedupeStarterMessages(allMsgs
+            const chatScopeMsgs = importedHistoryScope ? dedupeStarterMessages(allMsgs
+                .filter(message => messageMatchesRelationshipScope(message, importedHistoryScope))
                 .filter(m => m.metadata?.source !== 'date' && m.metadata?.source !== 'call')
                 .filter(m => !currentChar?.hideBeforeMessageId || m.id >= currentChar.hideBeforeMessageId)
-                .filter(m => !(currentChar?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card')));
+                .filter(m => !(currentChar?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card'))) : [];
 
             setTotalMsgCount(chatScopeMsgs.length);
             setMessages(chatScopeMsgs.slice(-requestedVisibleCount));
@@ -683,15 +689,16 @@ const Chat: React.FC = () => {
                 const retryMsgs = await DB.getMessagesByCharId(activeCharacterId);
                 if (activeCharIdRef.current !== charIdAtStart) return;
                 const currentChar = charRef.current;
-                const chatScopeMsgs = dedupeStarterMessages(retryMsgs
+                const chatScopeMsgs = importedHistoryScope ? dedupeStarterMessages(retryMsgs
+                    .filter(message => messageMatchesRelationshipScope(message, importedHistoryScope))
                     .filter(m => m.metadata?.source !== 'date' && m.metadata?.source !== 'call')
                     .filter(m => !currentChar?.hideBeforeMessageId || m.id >= currentChar.hideBeforeMessageId)
-                    .filter(m => !(currentChar?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card')));
+                    .filter(m => !(currentChar?.hideSystemLogs && m.role === 'system' && m.type !== 'score_card'))) : [];
                 setTotalMsgCount(chatScopeMsgs.length);
                 setMessages(chatScopeMsgs.slice(-requestedVisibleCount));
             } catch { /* give up silently */ }
         }
-    }, [activeCharacterId]);
+    }, [activeCharacterId, importedHistoryScope]);
 
     useEffect(() => {
         if (activeCharacterId) {
@@ -901,7 +908,11 @@ const Chat: React.FC = () => {
         setShowPanel('none');
 
         if (apiConfig.baseUrl && !isTyping && autoReplyEnabled) {
-            const updatedMessages = await DB.getRecentMessagesByCharId(char.id, visibleCountRef.current);
+            const updatedMessages = (await DB.getMessagesByCharId(char.id))
+                .filter(message => importedHistoryScope
+                    ? messageMatchesRelationshipScope(message, importedHistoryScope)
+                    : false)
+                .slice(-visibleCountRef.current);
             const contextMessages = await withImportedHistoryContext(updatedMessages);
             void triggerAI(contextMessages);
         }
@@ -1427,6 +1438,11 @@ const Chat: React.FC = () => {
             role: 'user',
             type: 'chat_forward' as MessageType,
             content: JSON.stringify(forwardData),
+            metadata: {
+                source: 'chat',
+                temporalClass: 'live',
+                relationshipScope: strictRelationshipScopeForProfile(targetCharId, userProfile) || null,
+            },
         });
 
         // Also save a copy in the current chat so the user can see what they forwarded
@@ -1437,6 +1453,11 @@ const Chat: React.FC = () => {
                 role: 'system',
                 type: 'text' as MessageType,
                 content: `[转发了 ${selectedMsgs.length} 条聊天记录给 ${targetChar?.name || ''}]`,
+                metadata: {
+                    source: 'chat',
+                    temporalClass: 'live',
+                    relationshipScope: importedHistoryScope || null,
+                },
             });
             // Refresh messages to show the forwarding system message
             reloadMessages(visibleCountRef.current);

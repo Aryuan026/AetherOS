@@ -1,5 +1,5 @@
 import type { NarrativeDirective, NovelNarrativeState } from './domain/narrative/types';
-import type { ConversationClipping, DailyArchiveBackupManifest, DailyArchiveDocument } from './domain/dailyArchive/types';
+import type { ConversationClipping, DailyArchiveBackupManifest, DailyArchiveDocument, DailyArchiveMessageRevision } from './domain/dailyArchive/types';
 
 export type {
     NarrativeBeat,
@@ -593,7 +593,10 @@ export interface DateState {
     currentSprite: string;
     isNovelMode: boolean;
     timestamp: number;
-    peekStatus: string; 
+    peekStatus: string;
+    /** Captured when the embodied session starts; never re-derived on delayed writes. */
+    sessionId?: string;
+    relationshipScope?: MessageRelationshipScope;
 }
 
 
@@ -1239,8 +1242,15 @@ export interface MessageRelationshipScope {
 }
 
 export interface MessageMetadata extends Record<string, any> {
+    source?: string;
     temporalClass?: MessageTemporalClass;
     relationshipScope?: MessageRelationshipScope | null;
+    interactionId?: string;
+    turnId?: string;
+    sessionId?: string;
+    dateSessionId?: string;
+    callSessionId?: string;
+    dailyArchiveRevision?: number;
     historyTailContinuation?: boolean;
     historyTailBatchIds?: string[];
     assistantResponseId?: string;
@@ -1294,6 +1304,7 @@ export interface FullBackupData {
     version: number;
     dailyArchiveManifest?: DailyArchiveBackupManifest;
     dailyArchiveDocuments?: DailyArchiveDocument[];
+    dailyArchiveMessageRevisions?: DailyArchiveMessageRevision[];
     conversationClippings?: ConversationClipping[];
     theme?: OSTheme;
     apiConfig?: APIConfig;

@@ -1,9 +1,17 @@
 import type { Message } from '../../types.ts';
 import type { HistoryScope, HistorySourceMessage } from '../historyImport/types.ts';
 import {
+    createInteractionEvidenceId,
+    type InteractionEvidence,
+    type InteractionMedium,
+    type InteractionProducer,
+    type InteractionSurface,
+} from '../interactionEvidence/index.ts';
+import {
     DAILY_ARCHIVE_SCHEMA_VERSION,
     type DailyArchiveDocument,
     type DailyArchiveMessage,
+    type DailyArchiveMessageRevision,
 } from './types.ts';
 
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/u;
@@ -72,6 +80,14 @@ export const dailyArchiveMessageFromHistory = (
         sourceRecordId: message.id,
         sourceBatchId: message.batchId,
         sourceOrder: message.sourceOrder,
+        origin: {
+            surface: 'history_import',
+            medium: 'other',
+            producer: 'import',
+            interactionId: `history:${message.batchId}`,
+            turnId: message.id,
+            sequence: message.sourceOrder,
+        },
         role: message.authorChannel === 'user'
             ? 'user'
             : message.authorChannel === 'char' ? 'character' : 'unknown',
@@ -88,6 +104,67 @@ export const dailyArchiveMessageFromHistory = (
         status: message.status === 'active' ? 'active' : 'tombstoned',
         recordedAt: message.importedAt,
         revision: message.revision,
+    };
+};
+
+const stringMetadata = (value: unknown): string | undefined => (
+    typeof value === 'string' && value.trim() ? value.trim() : undefined
+);
+
+const liveOrigin = (
+    message: Omit<Message, 'id'> & { id: number },
+    scope: HistoryScope,
+): NonNullable<DailyArchiveMessage['origin']> => {
+    const source = stringMetadata(message.metadata?.source);
+    let surface: InteractionSurface = 'chat';
+    let medium: InteractionMedium = 'mixed_text';
+    if (source === 'date') {
+        surface = 'date';
+        medium = 'embodied_scene';
+    } else if (source === 'call') {
+        surface = 'call';
+        medium = 'voice_call';
+    } else if (source === 'social' || source === 'social_card') {
+        surface = 'social';
+        medium = 'social';
+    } else if (source === 'group_chat') {
+        surface = 'group_chat';
+        medium = 'remote_text';
+    } else if (source === 'journal') {
+        surface = 'journal';
+        medium = 'diary';
+    } else if (source === 'companion_wakeup' || source === 'proactive') {
+        surface = 'proactive';
+        medium = 'remote_text';
+    }
+    const explicitInteractionId = stringMetadata(message.metadata?.interactionId)
+        || stringMetadata(message.metadata?.dateSessionId)
+        || stringMetadata(message.metadata?.callSessionId)
+        || stringMetadata(message.metadata?.sessionId);
+    const relationThreadId = [
+        scope.progressBundleId,
+        scope.personaMaskId,
+        scope.charId,
+    ].map(value => encodeURIComponent(value)).join('::');
+    const producer: InteractionProducer = message.role === 'user'
+        ? 'user'
+        : message.role === 'assistant' ? 'model' : 'system';
+    const parentRecordIds = [
+        ...(Array.isArray(message.metadata?.presentationSourceMessageIds)
+            ? message.metadata.presentationSourceMessageIds
+            : []),
+        message.replyTo?.id,
+    ].filter((value): value is number => Number.isSafeInteger(value)).map(String);
+    const responseId = stringMetadata(message.metadata?.assistantResponseId);
+    return {
+        surface,
+        medium,
+        producer,
+        interactionId: explicitInteractionId || `${surface}:${relationThreadId}`,
+        turnId: stringMetadata(message.metadata?.turnId) || String(message.id),
+        ...(responseId ? { responseId } : {}),
+        ...(parentRecordIds.length ? { parentRecordIds: Array.from(new Set(parentRecordIds)) } : {}),
+        sequence: message.id,
     };
 };
 
@@ -119,6 +196,7 @@ export const dailyArchiveMessageFromLive = (input: {
         scope: { ...input.scope },
         source: 'live_chat',
         sourceRecordId: String(input.message.id),
+        origin: liveOrigin(input.message, input.scope),
         role: input.message.role === 'assistant' ? 'character' : input.message.role,
         kind: liveKind(input.message),
         content: portableLiveContent(input.message),
@@ -133,6 +211,109 @@ export const dailyArchiveMessageFromLive = (input: {
         revision: Number.isSafeInteger(metadataRevision) && metadataRevision > 0
             ? metadataRevision
             : 1,
+    };
+};
+
+const inferredOrigin = (message: DailyArchiveMessage): NonNullable<DailyArchiveMessage['origin']> => {
+    if (message.origin) return message.origin;
+    if (message.source === 'history_import') return {
+        surface: 'history_import',
+        medium: 'other',
+        producer: 'import',
+        interactionId: `history:${message.sourceBatchId || message.sourceRecordId}`,
+        turnId: message.sourceRecordId,
+        sequence: message.sourceOrder ?? 0,
+    };
+    if (message.source === 'manual_entry') return {
+        surface: 'other',
+        medium: 'other',
+        producer: 'manual',
+        interactionId: `manual:${message.time.dateKey || message.sourceRecordId}`,
+        turnId: message.sourceRecordId,
+        sequence: message.sourceOrder ?? 0,
+    };
+    return {
+        surface: 'chat',
+        medium: 'mixed_text',
+        producer: message.role === 'user' ? 'user' : message.role === 'character' ? 'model' : 'system',
+        interactionId: `chat:${createDailyArchiveScopeKey(message.scope)}`,
+        turnId: message.sourceRecordId,
+        sequence: message.sourceOrder ?? 0,
+    };
+};
+
+const evidenceContentKind = (
+    message: DailyArchiveMessage,
+): InteractionEvidence['content']['kind'] => {
+    if (message.kind === 'image' || message.kind === 'emoji') return 'image';
+    if (message.kind === 'text' || message.kind === 'system_note') return 'text';
+    return 'mixed';
+};
+
+/** Typed projection. Daily Archive remains the sole text custodian. */
+export const dailyArchiveMessageToInteractionEvidence = (
+    message: DailyArchiveMessage,
+): InteractionEvidence => {
+    const origin = inferredOrigin(message);
+    const sourceRef = {
+        storeFamily: 'daily_archive',
+        recordId: message.id,
+        revision: message.revision,
+    };
+    const evidenceId = createInteractionEvidenceId({ scope: message.scope, source: sourceRef });
+    const occurredAt = message.time.iso
+        || (Number.isFinite(message.time.epochMs)
+            ? new Date(message.time.epochMs!).toISOString()
+            : undefined);
+    return {
+        schemaVersion: 1,
+        evidenceId,
+        scope: { ...message.scope },
+        temporalClass: message.source === 'live_chat' ? 'live' : 'historical',
+        source: {
+            surface: origin.surface,
+            medium: origin.medium,
+            ...sourceRef,
+            status: message.status === 'tombstoned' ? 'tombstoned' : 'active',
+            previousRevisionRef: message.revision > 1 ? {
+                ...sourceRef,
+                revision: message.revision - 1,
+            } : undefined,
+        },
+        transportRole: message.role === 'user'
+            ? 'user_channel'
+            : message.role === 'character'
+                ? 'assistant_channel'
+                : message.role === 'system' ? 'system_channel' : 'unknown',
+        producer: origin.producer,
+        content: {
+            kind: evidenceContentKind(message),
+            ref: sourceRef,
+            charCount: message.content.length,
+        },
+        time: {
+            recordedAt: new Date(message.recordedAt).toISOString(),
+            occurredAt,
+        },
+        correlation: {
+            interactionId: origin.interactionId,
+            turnId: origin.turnId,
+            responseId: origin.responseId,
+            sequence: origin.sequence ?? message.sourceOrder ?? 0,
+        },
+    };
+};
+
+export const dailyArchiveRevisionToInteractionEvidence = (
+    revision: DailyArchiveMessageRevision,
+): InteractionEvidence => {
+    const evidence = dailyArchiveMessageToInteractionEvidence(revision.message);
+    return {
+        ...evidence,
+        source: {
+            ...evidence.source,
+            status: 'superseded',
+        },
     };
 };
 

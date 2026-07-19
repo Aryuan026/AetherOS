@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { CharacterProfile, Message, DateState, DialogueItem, UserProfile } from '../../types';
+import { CharacterProfile, Message, DateState, DialogueItem, UserProfile, MessageRelationshipScope } from '../../types';
 import Modal from '../../components/os/Modal';
 import { useOS } from '../../context/OSContext';
 import { DB } from '../../utils/db';
@@ -88,6 +88,8 @@ interface DateSessionProps {
     messages: Message[]; // The DB messages for history/novel mode
     peekStatus: string;  // Initial text from the Peek phase
     initialState?: DateState; // Resume state
+    sessionId?: string;
+    relationshipScope?: MessageRelationshipScope;
     onSendMessage: (text: string) => Promise<string>; // Returns AI content
     onReroll: () => Promise<string>;
     onExit: (currentState: DateState) => void;
@@ -104,6 +106,8 @@ const DateSession: React.FC<DateSessionProps> = ({
     messages, 
     peekStatus, 
     initialState,
+    sessionId,
+    relationshipScope,
     onSendMessage, 
     onReroll, 
     onExit,
@@ -481,7 +485,9 @@ const DateSession: React.FC<DateSessionProps> = ({
         currentSprite,
         isNovelMode,
         timestamp: Date.now(),
-        peekStatus
+        peekStatus,
+        sessionId,
+        relationshipScope,
     });
 
     const handleExitClick = () => {

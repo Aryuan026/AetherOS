@@ -1,5 +1,44 @@
 # AetherOS Progress
 
+## 2026-07-19 Evidence Foundation — Source Identity And Revision Ledger
+
+- done:
+  - Added typed `InteractionEvidence` and `EvidenceSpan` contracts. One evidence
+    id now means one source record in one exact relationship scope at one
+    revision; a multi-turn scene remains a span instead of a synthetic speaker
+    blob.
+  - Extended Daily Archive rows with source surface, medium, producer,
+    interaction/session correlation, response id, and sequence while retaining
+    the archive as the only full-text custodian.
+  - Added a queryable superseded-message ledger. Chat/Date edits, deletion,
+    rerolls, manual-entry confirmation, and archive curation retain the prior
+    source snapshot rather than silently overwriting it.
+  - Removed save-time active-mask inference from the shared message DB. Chat and
+    Date now capture exact bundle/mask/character scope when interaction begins;
+    delayed AI replies and Date rerolls reuse that captured scope.
+  - Gave Date a durable session id and scoped its display, history grouping,
+    model context, saved progress, edits, and rerolls to the same relationship.
+  - Added superseded revision records to full-device backup and restore. Old
+    current archive rows can receive origin-only schema enrichment, but no
+    same-revision content rewrite is accepted.
+- verified:
+  - `npm run verify:interaction-evidence`, `npm run verify:daily-archive`,
+    `npm run verify:history-import`, `npm run verify:chat-reply-mode`,
+    `npm run verify:narrative`, `npm run typecheck`, and production build pass.
+  - Fake IndexedDB proves cross-mask isolation, delayed-response ownership,
+    revision-1/2 custody, delete tombstones, clear/batch behavior, unscoped
+    fail-closed handling, and revision-ledger backup/restore.
+  - In-app browser smoke check opened the accepted Date flow, saved a scoped
+    Date session, returned to the desktop, and opened Chat with its imported
+    history tail; the browser console reported no errors.
+- boundary:
+  - This is the source/evidence half of Wave 1. MemoryDM still writes legacy
+    character-scoped outputs and remains the next migration block. No prompt,
+    accepted UI, narrative truth, Character Life state, or token policy changed.
+  - Call/Social/Group/Journal and other legacy message producers are not yet
+    evidence-enabled. Their unscoped writes remain operational records but fail
+    closed from Daily Archive and memory until their focused migration wave.
+
 ## 2026-07-19 App Surface And Shared-Truth Contract
 
 - done:

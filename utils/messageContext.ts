@@ -99,6 +99,15 @@ export const isHistoricalContextMessage = (
     || message.metadata?.source === 'history_import_tail'
 );
 
+export const sameMessageRelationshipScope = (
+    left: MessageRelationshipScope,
+    right: MessageRelationshipScope,
+): boolean => (
+    left.progressBundleId === right.progressBundleId
+    && left.personaMaskId === right.personaMaskId
+    && left.charId === right.charId
+);
+
 export const filterCurrentStateMessages = <T extends Pick<Message, 'metadata'>>(
     messages: T[],
 ): T[] => messages.filter(message => !isHistoricalContextMessage(message));

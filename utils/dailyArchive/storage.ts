@@ -1,5 +1,6 @@
 import {
     DAILY_ARCHIVE_SCHEMA_VERSION,
+    DAILY_ARCHIVE_MESSAGE_REVISION_SCHEMA_VERSION,
     buildDailyArchiveDocument,
     buildDailyArchiveChunk,
     buildDailyArchiveManifest,
@@ -25,6 +26,7 @@ import {
     type DailyArchiveDocumentSummary,
     type DailyArchiveManifest,
     type DailyArchiveMessage,
+    type DailyArchiveMessageRevision,
     type DailyArchiveMessagePage,
     type DailyArchiveMonthSummary,
     type DailyArchiveSearchHit,
@@ -33,13 +35,14 @@ import {
 import type { HistoryScope } from '../../domain/historyImport/types.ts';
 
 export const DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive:v3';
-export const DAILY_ARCHIVE_DB_VERSION = 1;
+export const DAILY_ARCHIVE_DB_VERSION = 2;
 export const DAILY_ARCHIVE_SUMMARY_STORE = 'daily_archive_summaries';
 export const DAILY_ARCHIVE_META_STORE = 'daily_archive_meta';
 export const CONVERSATION_CLIPPING_STORE = 'conversation_clippings';
 export const DAILY_ARCHIVE_MANIFEST_STORE = 'daily_archive_manifests';
 export const DAILY_ARCHIVE_CHUNK_STORE = 'daily_archive_chunks';
 export const DAILY_ARCHIVE_MESSAGE_INDEX_STORE = 'daily_archive_message_index';
+export const DAILY_ARCHIVE_MESSAGE_REVISION_STORE = 'daily_archive_message_revisions';
 
 export type DailyArchiveCurationOperation =
     | { kind: 'edit_content'; content: string }
@@ -73,6 +76,33 @@ interface DailyArchiveMessageIndexEntry {
 const dailyArchiveMessageIndexId = (documentId: string, messageId: string): string => (
     `${documentId}:message:${messageId}`
 );
+
+const dailyArchiveMessageRevisionId = (messageId: string, revision: number): string => (
+    `${messageId}:revision:${revision}`
+);
+
+const supersededRevision = (input: {
+    documentId: string;
+    message: DailyArchiveMessage;
+    replacedByRevision: number;
+    archivedAt: number;
+}): DailyArchiveMessageRevision => ({
+    schemaVersion: DAILY_ARCHIVE_MESSAGE_REVISION_SCHEMA_VERSION,
+    id: dailyArchiveMessageRevisionId(input.message.id, input.message.revision),
+    messageId: input.message.id,
+    documentId: input.documentId,
+    scope: { ...input.message.scope },
+    revision: input.message.revision,
+    message: input.message,
+    archivedAt: input.archivedAt,
+    replacedByRevision: input.replacedByRevision,
+});
+
+const dedupeRevisions = (
+    revisions: DailyArchiveMessageRevision[],
+): DailyArchiveMessageRevision[] => Array.from(new Map(
+    revisions.map(revision => [revision.id, revision]),
+).values());
 
 const getFactory = (factory?: IDBFactory): IDBFactory => {
     const resolved = factory ?? globalThis.indexedDB;
@@ -147,6 +177,16 @@ export const openDailyArchiveDatabase = async (factory?: IDBFactory): Promise<ID
         if (!database.objectStoreNames.contains(DAILY_ARCHIVE_MESSAGE_INDEX_STORE)) {
             const messageIndexStore = database.createObjectStore(DAILY_ARCHIVE_MESSAGE_INDEX_STORE, { keyPath: 'id' });
             messageIndexStore.createIndex('document_id', 'documentId', { unique: false });
+        }
+        if (!database.objectStoreNames.contains(DAILY_ARCHIVE_MESSAGE_REVISION_STORE)) {
+            const revisionStore = database.createObjectStore(DAILY_ARCHIVE_MESSAGE_REVISION_STORE, { keyPath: 'id' });
+            revisionStore.createIndex('message_id', 'messageId', { unique: false });
+            revisionStore.createIndex('document_id', 'documentId', { unique: false });
+            revisionStore.createIndex('scope', [
+                'scope.progressBundleId',
+                'scope.personaMaskId',
+                'scope.charId',
+            ], { unique: false });
         }
     };
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -296,6 +336,7 @@ const loadManifestChunks = async (
 const persistChunkedDocument = async (input: {
     database: IDBDatabase;
     document: DailyArchiveDocument;
+    supersededRevisions?: DailyArchiveMessageRevision[];
 }): Promise<DailyArchiveManifest> => {
     const { manifest, chunks } = chunkDailyArchiveDocument(input.document);
     const lookupTransaction = input.database.transaction([
@@ -317,12 +358,14 @@ const persistChunkedDocument = async (input: {
         DAILY_ARCHIVE_CHUNK_STORE,
         DAILY_ARCHIVE_MESSAGE_INDEX_STORE,
         DAILY_ARCHIVE_SUMMARY_STORE,
+        DAILY_ARCHIVE_MESSAGE_REVISION_STORE,
     ], 'readwrite');
     const settled = transactionAsPromise(transaction);
     const manifestStore = transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE);
     const chunkStore = transaction.objectStore(DAILY_ARCHIVE_CHUNK_STORE);
     const messageIndexStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_INDEX_STORE);
     const summaryStore = transaction.objectStore(DAILY_ARCHIVE_SUMMARY_STORE);
+    const revisionStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_REVISION_STORE);
     oldChunkKeys.forEach(key => chunkStore.delete(key));
     oldMessageKeys.forEach(key => messageIndexStore.delete(key));
     chunks.forEach(chunk => {
@@ -337,6 +380,7 @@ const persistChunkedDocument = async (input: {
     });
     manifestStore.put(manifest);
     summaryStore.put(summaryForManifest(manifest));
+    dedupeRevisions(input.supersededRevisions || []).forEach(revision => revisionStore.put(revision));
     await settled;
     return manifest;
 };
@@ -344,6 +388,7 @@ const persistChunkedDocument = async (input: {
 const persistChunkedDocuments = async (input: {
     database: IDBDatabase;
     documents: DailyArchiveDocument[];
+    supersededRevisions?: DailyArchiveMessageRevision[];
 }): Promise<void> => {
     const chunked = input.documents.map(document => ({
         document,
@@ -371,12 +416,14 @@ const persistChunkedDocuments = async (input: {
         DAILY_ARCHIVE_CHUNK_STORE,
         DAILY_ARCHIVE_MESSAGE_INDEX_STORE,
         DAILY_ARCHIVE_SUMMARY_STORE,
+        DAILY_ARCHIVE_MESSAGE_REVISION_STORE,
     ], 'readwrite');
     const settled = transactionAsPromise(transaction);
     const manifestStore = transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE);
     const chunkStore = transaction.objectStore(DAILY_ARCHIVE_CHUNK_STORE);
     const messageIndexStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_INDEX_STORE);
     const summaryStore = transaction.objectStore(DAILY_ARCHIVE_SUMMARY_STORE);
+    const revisionStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_REVISION_STORE);
     staleKeys.forEach(({ chunkKeys, messageKeys }) => {
         chunkKeys.forEach(key => chunkStore.delete(key));
         messageKeys.forEach(key => messageIndexStore.delete(key));
@@ -395,6 +442,7 @@ const persistChunkedDocuments = async (input: {
             } satisfies DailyArchiveMessageIndexEntry));
         });
     });
+    dedupeRevisions(input.supersededRevisions || []).forEach(revision => revisionStore.put(revision));
     await settled;
 };
 
@@ -427,9 +475,19 @@ const messageStateFingerprint = (message: DailyArchiveMessage): string => JSON.s
     message.kind,
     message.content,
     message.time,
+    message.origin ?? null,
     message.curation ?? null,
     message.manualEntry ?? null,
 ]);
+
+const isOriginOnlySchemaEnrichment = (
+    previous: DailyArchiveMessage,
+    incoming: DailyArchiveMessage,
+): boolean => (
+    !previous.origin
+    && Boolean(incoming.origin)
+    && messageStateFingerprint({ ...previous, origin: incoming.origin }) === messageStateFingerprint(incoming)
+);
 
 const compareDailyArchiveMessage = (
     left: DailyArchiveMessage,
@@ -452,12 +510,14 @@ const persistIncrementalChunks = async (input: {
     database: IDBDatabase;
     manifest: DailyArchiveManifest;
     chunks: DailyArchiveChunk[];
+    supersededRevisions?: DailyArchiveMessageRevision[];
 }): Promise<void> => {
     const transaction = input.database.transaction([
         DAILY_ARCHIVE_MANIFEST_STORE,
         DAILY_ARCHIVE_CHUNK_STORE,
         DAILY_ARCHIVE_MESSAGE_INDEX_STORE,
         DAILY_ARCHIVE_SUMMARY_STORE,
+        DAILY_ARCHIVE_MESSAGE_REVISION_STORE,
     ], 'readwrite');
     const settled = transactionAsPromise(transaction);
     const chunkStore = transaction.objectStore(DAILY_ARCHIVE_CHUNK_STORE);
@@ -474,6 +534,8 @@ const persistIncrementalChunks = async (input: {
     });
     transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE).put(input.manifest);
     transaction.objectStore(DAILY_ARCHIVE_SUMMARY_STORE).put(summaryForManifest(input.manifest));
+    const revisionStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_REVISION_STORE);
+    dedupeRevisions(input.supersededRevisions || []).forEach(revision => revisionStore.put(revision));
     await settled;
 };
 
@@ -515,6 +577,7 @@ const upsertMessageGroup = async (input: {
     if (loadedChunks.some(chunk => !chunk)) throw new Error('日档增量写入时缺少正文分块。');
     const chunkById = new Map((loadedChunks as DailyArchiveChunk[]).map(chunk => [chunk.id, chunk]));
     const newMessages: DailyArchiveMessage[] = [];
+    const supersededRevisions: DailyArchiveMessageRevision[] = [];
     let requiresRebuild = false;
     let visibleMutation = false;
 
@@ -533,6 +596,19 @@ const upsertMessageGroup = async (input: {
             return;
         }
         if (message.revision < previous.revision) return;
+        if (
+            message.revision === previous.revision
+            && messageStateFingerprint(message) !== messageStateFingerprint(previous)
+            && !isOriginOnlySchemaEnrichment(previous, message)
+        ) throw new Error('同一日档消息版本出现了不同内容，已拒绝覆盖。');
+        if (message.revision > previous.revision) {
+            supersededRevisions.push(supersededRevision({
+                documentId: manifest!.id,
+                message: previous,
+                replacedByRevision: message.revision,
+                archivedAt: input.now,
+            }));
+        }
         if (messageStateFingerprint(message) !== messageStateFingerprint(previous)) visibleMutation = true;
         if (messageOrderFingerprint(message) !== messageOrderFingerprint(previous)) {
             requiresRebuild = true;
@@ -566,7 +642,11 @@ const upsertMessageGroup = async (input: {
             previous,
             now: input.now,
         });
-        await persistChunkedDocument({ database: input.database, document });
+        await persistChunkedDocument({
+            database: input.database,
+            document,
+            supersededRevisions,
+        });
         return;
     }
 
@@ -641,6 +721,7 @@ const upsertMessageGroup = async (input: {
         database: input.database,
         manifest,
         chunks: Array.from(chunkById.values()),
+        supersededRevisions,
     });
 };
 
@@ -818,11 +899,12 @@ export const curateDailyArchiveMessages = async (input: {
                     throw new Error('目标日期已经锁定，请先解锁再归档。');
                 }
                 const targetPrevious = targetDocument?.messages.find(message => message.id === primary.id);
-                const primaryRevision = Math.max(primary.revision, targetPrevious?.revision ?? 0) + 1;
+                const primaryTombstoneRevision = Math.max(primary.revision, targetPrevious?.revision ?? 0) + 1;
+                const primaryActiveRevision = primaryTombstoneRevision + 1;
                 ordered.forEach(message => addPatch(archiveBucketForMessage(message), {
                     ...message,
                     status: 'tombstoned',
-                    revision: message.id === primary.id ? primaryRevision : message.revision + 1,
+                    revision: message.id === primary.id ? primaryTombstoneRevision : message.revision + 1,
                     curation,
                 }));
                 addPatch(targetBucket, {
@@ -831,7 +913,7 @@ export const curateDailyArchiveMessages = async (input: {
                     content: ordered.map(message => message.content.trim()).filter(Boolean).join('\n\n'),
                     time: timeMovedToDate(primary, destinationDateKey),
                     status: 'active',
-                    revision: primaryRevision,
+                    revision: primaryActiveRevision,
                     curation,
                 });
             }
@@ -861,18 +943,19 @@ export const curateDailyArchiveMessages = async (input: {
                         throw new Error('目标日期已经锁定，请先解锁再归档。');
                     }
                     const targetPrevious = targetDocument?.messages.find(item => item.id === message.id);
-                    const nextRevision = Math.max(message.revision, targetPrevious?.revision ?? 0) + 1;
+                    const tombstoneRevision = Math.max(message.revision, targetPrevious?.revision ?? 0) + 1;
+                    const activeRevision = tombstoneRevision + 1;
                     addPatch(sourceBucket, {
                         ...message,
                         status: 'tombstoned',
-                        revision: nextRevision,
+                        revision: tombstoneRevision,
                         curation: correctedCuration(message, now),
                     });
                     addPatch(targetBucket, {
                         ...message,
                         time: targetTime,
                         status: 'active',
-                        revision: nextRevision,
+                        revision: activeRevision,
                         curation: correctedCuration(message, now),
                     });
                     destinationDateKey = input.operation.dateKey;
@@ -892,7 +975,26 @@ export const curateDailyArchiveMessages = async (input: {
                 now,
             }));
         }
-        await persistChunkedDocuments({ database, documents });
+        const revisions: DailyArchiveMessageRevision[] = [];
+        documents.forEach(document => {
+            const previous = documentById.get(document.id);
+            if (!previous) return;
+            document.messages.forEach(message => {
+                const previousMessage = previous.messages.find(item => item.id === message.id);
+                if (!previousMessage || message.revision <= previousMessage.revision) return;
+                revisions.push(supersededRevision({
+                    documentId: document.id,
+                    message: previousMessage,
+                    replacedByRevision: message.revision,
+                    archivedAt: now,
+                }));
+            });
+        });
+        await persistChunkedDocuments({
+            database,
+            documents,
+            supersededRevisions: revisions,
+        });
         const destinationDocument = destinationDateKey
             ? documents.find(document => document.dateKey === destinationDateKey)
             : undefined;
@@ -954,6 +1056,15 @@ export const addManualDailyArchiveMessages = async (input: {
                 scope: { ...input.scope },
                 source: 'manual_entry',
                 sourceRecordId: id,
+                sourceOrder: index,
+                origin: {
+                    surface: 'other',
+                    medium: 'other',
+                    producer: 'manual',
+                    interactionId: `manual:${createDailyArchiveDocumentId({ scope: input.scope, dateKey: input.dateKey })}`,
+                    turnId: id,
+                    sequence: index,
+                },
                 role: entry.role,
                 kind: 'text',
                 content: entry.content,
@@ -1041,7 +1152,19 @@ const setDailyArchiveDayConfirmation = async (input: {
                 message.status === 'active' && message.source === 'manual_entry'
             )).length,
         };
-        await persistChunkedDocument({ database, document });
+        await persistChunkedDocument({
+            database,
+            document,
+            supersededRevisions: manualPatches.map(message => {
+                const previousMessage = previous.messages.find(item => item.id === message.id)!;
+                return supersededRevision({
+                    documentId,
+                    message: previousMessage,
+                    replacedByRevision: message.revision,
+                    archivedAt: now,
+                });
+            }),
+        });
         return document;
     } finally {
         database.close();
@@ -1522,9 +1645,22 @@ const validateDocument = (document: DailyArchiveDocument): void => {
 
 export const replaceDailyArchiveDocuments = async (input: {
     documents: DailyArchiveDocument[];
+    revisions?: DailyArchiveMessageRevision[];
     factory?: IDBFactory;
 }): Promise<void> => {
     input.documents.forEach(validateDocument);
+    (input.revisions || []).forEach(revision => {
+        if (revision.schemaVersion !== DAILY_ARCHIVE_MESSAGE_REVISION_SCHEMA_VERSION) {
+            throw new Error('日档消息版本账本格式不受支持。');
+        }
+        if (
+            revision.id !== dailyArchiveMessageRevisionId(revision.messageId, revision.revision)
+            || revision.message.id !== revision.messageId
+            || revision.message.revision !== revision.revision
+            || !sameScope(revision.scope, revision.message.scope)
+            || revision.replacedByRevision <= revision.revision
+        ) throw new Error('日档消息版本账本与来源不一致。');
+    });
     const chunked = input.documents.map(chunkDailyArchiveDocument);
     const database = await openDailyArchiveDatabase(input.factory);
     try {
@@ -1533,16 +1669,19 @@ export const replaceDailyArchiveDocuments = async (input: {
             DAILY_ARCHIVE_CHUNK_STORE,
             DAILY_ARCHIVE_MESSAGE_INDEX_STORE,
             DAILY_ARCHIVE_SUMMARY_STORE,
+            DAILY_ARCHIVE_MESSAGE_REVISION_STORE,
         ], 'readwrite');
         const settled = transactionAsPromise(transaction);
         const manifestStore = transaction.objectStore(DAILY_ARCHIVE_MANIFEST_STORE);
         const chunkStore = transaction.objectStore(DAILY_ARCHIVE_CHUNK_STORE);
         const messageIndexStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_INDEX_STORE);
         const summaryStore = transaction.objectStore(DAILY_ARCHIVE_SUMMARY_STORE);
+        const revisionStore = transaction.objectStore(DAILY_ARCHIVE_MESSAGE_REVISION_STORE);
         manifestStore.clear();
         chunkStore.clear();
         messageIndexStore.clear();
         summaryStore.clear();
+        revisionStore.clear();
         chunked.forEach(({ manifest, chunks }) => {
             manifestStore.put(manifest);
             summaryStore.put(summaryForManifest(manifest));
@@ -1557,7 +1696,42 @@ export const replaceDailyArchiveDocuments = async (input: {
                 } satisfies DailyArchiveMessageIndexEntry));
             });
         });
+        dedupeRevisions(input.revisions || []).forEach(revision => revisionStore.put(revision));
         await settled;
+    } finally {
+        database.close();
+    }
+};
+
+export const listAllDailyArchiveMessageRevisions = async (
+    factory?: IDBFactory,
+): Promise<DailyArchiveMessageRevision[]> => {
+    const database = await openDailyArchiveDatabase(factory);
+    try {
+        const transaction = database.transaction(DAILY_ARCHIVE_MESSAGE_REVISION_STORE, 'readonly');
+        const revisions = await requestAsPromise(
+            transaction.objectStore(DAILY_ARCHIVE_MESSAGE_REVISION_STORE).getAll(),
+        ) as DailyArchiveMessageRevision[];
+        return revisions.sort((left, right) => (
+            left.messageId.localeCompare(right.messageId) || left.revision - right.revision
+        ));
+    } finally {
+        database.close();
+    }
+};
+
+export const listDailyArchiveMessageRevisions = async (input: {
+    messageId: string;
+    factory?: IDBFactory;
+}): Promise<DailyArchiveMessageRevision[]> => {
+    const database = await openDailyArchiveDatabase(input.factory);
+    try {
+        const transaction = database.transaction(DAILY_ARCHIVE_MESSAGE_REVISION_STORE, 'readonly');
+        const revisions = await requestAsPromise(
+            transaction.objectStore(DAILY_ARCHIVE_MESSAGE_REVISION_STORE)
+                .index('message_id').getAll(IDBKeyRange.only(input.messageId)),
+        ) as DailyArchiveMessageRevision[];
+        return revisions.sort((left, right) => left.revision - right.revision);
     } finally {
         database.close();
     }

@@ -329,6 +329,7 @@ for (const required of [
     'deleteDailyArchiveDatabase',
     'listAllConversationClippings',
     'replaceConversationClippings',
+    'listAllDailyArchiveMessageRevisions',
     'version: 5',
 ]) {
     assert.ok(backupSource.includes(required));
@@ -336,10 +337,11 @@ for (const required of [
 const dailyStorageSource = readFileSync(new URL('../utils/dailyArchive/storage.ts', import.meta.url), 'utf8');
 for (const required of [
     "DAILY_ARCHIVE_DB_NAME = 'AetherOS_DailyArchive:v3'",
-    'DAILY_ARCHIVE_DB_VERSION = 1',
+    'DAILY_ARCHIVE_DB_VERSION = 2',
     'daily_archive_manifests',
     'daily_archive_chunks',
     'daily_archive_message_index',
+    'daily_archive_message_revisions',
     'dailyArchiveMessageIndexId',
     'ensureChunkedManifest',
     'persistIncrementalChunks',

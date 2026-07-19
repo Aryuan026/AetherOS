@@ -1,8 +1,15 @@
 import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
 import assert from 'node:assert/strict';
 import type { MessageRelationshipScope, UserProfile } from '../types.ts';
 import { DB } from '../utils/db.ts';
-import { getDailyArchiveDocument } from '../utils/dailyArchive/storage.ts';
+import {
+    getDailyArchiveDocument,
+    listAllDailyArchiveDocuments,
+    listAllDailyArchiveMessageRevisions,
+    listDailyArchiveMessageRevisions,
+    replaceDailyArchiveDocuments,
+} from '../utils/dailyArchive/storage.ts';
 
 const runId = `db-scope-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const timestamp = new Date(2025, 6, 18, 9, 30, 0).getTime();
@@ -58,6 +65,7 @@ const editId = await DB.saveMessage({
     type: 'text',
     content: '面具 A 的原句',
     timestamp,
+    metadata: scopedMetadata(editScopeA),
 });
 const storedEditMessage = (await DB.getMessagesByCharId(editChar)).find(message => message.id === editId);
 assert.deepEqual(storedEditMessage?.metadata?.relationshipScope, editScopeA);
@@ -77,6 +85,10 @@ const deletedA = await documentFor(editScopeA);
 assert.equal(deletedA?.messages.find(message => message.sourceRecordId === String(editId))?.status, 'tombstoned');
 assert.equal(deletedA?.messageCount, 0);
 assert.equal(await documentFor(editScopeB), null, 'switching masks must not mirror a tombstone into the active mask');
+const editRevisions = await listDailyArchiveMessageRevisions({ messageId: `live:${editChar}:${editId}` });
+assert.deepEqual(editRevisions.map(revision => revision.revision), [1, 2]);
+assert.equal(editRevisions[0].message.content, '面具 A 的原句');
+assert.equal(editRevisions[1].message.content, '面具 A 编辑后的原句');
 
 const delayedChar = `${runId}-delayed-char`;
 const delayedScopeA = scopeFor('A', delayedChar);
@@ -88,6 +100,7 @@ await DB.saveMessage({
     type: 'text',
     content: '从 A 发起这一轮',
     timestamp: timestamp + 10,
+    metadata: scopedMetadata(delayedScopeA),
 });
 await activate(delayedScopeB);
 const delayedReplyId = await DB.saveMessage({
@@ -112,6 +125,7 @@ const isolatedAId = await DB.saveMessage({
     type: 'text',
     content: 'A 关系里的话',
     timestamp: timestamp + 30,
+    metadata: scopedMetadata(isolatedScopeA),
 });
 await activate(isolatedScopeB);
 const isolatedBId = await DB.saveMessage({
@@ -120,6 +134,7 @@ const isolatedBId = await DB.saveMessage({
     type: 'text',
     content: 'B 关系里的话',
     timestamp: timestamp + 40,
+    metadata: scopedMetadata(isolatedScopeB),
 });
 const isolatedA = await documentFor(isolatedScopeA);
 const isolatedB = await documentFor(isolatedScopeB);
@@ -136,6 +151,7 @@ const batchAId = await DB.saveMessage({
     type: 'text',
     content: '批量删除里的 A',
     timestamp: timestamp + 42,
+    metadata: scopedMetadata(batchScopeA),
 });
 await activate(batchScopeB);
 const batchBId = await DB.saveMessage({
@@ -144,6 +160,7 @@ const batchBId = await DB.saveMessage({
     type: 'text',
     content: '批量删除里的 B',
     timestamp: timestamp + 44,
+    metadata: scopedMetadata(batchScopeB),
 });
 await DB.deleteMessages([batchAId, batchBId]);
 assert.equal((await documentFor(batchScopeA))?.messages.find(message => message.sourceRecordId === String(batchAId))?.status, 'tombstoned');
@@ -160,26 +177,31 @@ assert.equal(clearedB?.messageCount, 0);
 const unscopedChar = `${runId}-unscoped-char`;
 const unscopedScopeB = scopeFor('B', unscopedChar);
 await activate(unscopedScopeB);
-const unscopedId = await new Promise<number>((resolve, reject) => {
-    const request = indexedDB.open('AetherOS_Data', 40);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-        const database = request.result;
-        const transaction = database.transaction('messages', 'readwrite');
-        const add = transaction.objectStore('messages').add({
-            charId: unscopedChar,
-            role: 'user',
-            type: 'text',
-            content: '没有关系归属的旧消息',
-            timestamp: timestamp + 50,
-        });
-        add.onsuccess = () => resolve(add.result as number);
-        add.onerror = () => reject(add.error);
-        transaction.oncomplete = () => database.close();
-    };
+const unscopedId = await DB.saveMessage({
+    charId: unscopedChar,
+    role: 'user',
+    type: 'text',
+    content: '没有关系归属的旧消息',
+    timestamp: timestamp + 50,
 });
+const unscopedStored = (await DB.getMessagesByCharId(unscopedChar)).find(message => message.id === unscopedId);
+assert.equal(unscopedStored?.metadata?.relationshipScope, null, 'saveMessage must not infer the active mask');
 await DB.updateMessage(unscopedId, '没有关系归属的消息被编辑');
 await DB.deleteMessage(unscopedId);
 assert.equal(await documentFor(unscopedScopeB), null, 'messages without scope must fail closed');
 
-console.log('daily archive DB integration OK: immutable scopes, delayed replies, batch/clear tombstones and unscoped fail-closed');
+const backupDocuments = await listAllDailyArchiveDocuments();
+const backupRevisions = await listAllDailyArchiveMessageRevisions();
+const restoreFactory = new IDBFactory();
+await replaceDailyArchiveDocuments({
+    documents: backupDocuments,
+    revisions: backupRevisions,
+    factory: restoreFactory,
+});
+assert.deepEqual(
+    (await listAllDailyArchiveMessageRevisions(restoreFactory)).map(revision => revision.id),
+    backupRevisions.map(revision => revision.id),
+    'full-device restore must retain superseded source revisions',
+);
+
+console.log('daily archive DB integration OK: immutable scopes, revision backup, delayed replies, batch/clear tombstones and unscoped fail-closed');

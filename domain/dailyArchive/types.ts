@@ -1,8 +1,14 @@
 import type { HistoryScope, HistoryTimePrecision } from '../historyImport/types.ts';
+import type {
+    InteractionMedium,
+    InteractionProducer,
+    InteractionSurface,
+} from '../interactionEvidence/types.ts';
 
 export const DAILY_ARCHIVE_SCHEMA_VERSION = 2 as const;
 export const DAILY_ARCHIVE_CHUNK_SCHEMA_VERSION = 1 as const;
 export const CONVERSATION_CLIPPING_SCHEMA_VERSION = 1 as const;
+export const DAILY_ARCHIVE_MESSAGE_REVISION_SCHEMA_VERSION = 1 as const;
 
 export type DailyArchiveSource = 'history_import' | 'live_chat' | 'manual_entry';
 export type DailyArchiveMessageStatus = 'active' | 'tombstoned';
@@ -39,6 +45,18 @@ export interface DailyArchiveMessageTime {
     precision: HistoryTimePrecision;
 }
 
+/** Source-level transport facts only; interpretation must not be stored here. */
+export interface DailyArchiveMessageOrigin {
+    surface: InteractionSurface;
+    medium: InteractionMedium;
+    producer: InteractionProducer;
+    interactionId: string;
+    turnId?: string;
+    responseId?: string;
+    parentRecordIds?: string[];
+    sequence?: number;
+}
+
 export interface DailyArchiveMessage {
     schemaVersion: typeof DAILY_ARCHIVE_SCHEMA_VERSION;
     id: string;
@@ -47,6 +65,7 @@ export interface DailyArchiveMessage {
     sourceRecordId: string;
     sourceBatchId?: string;
     sourceOrder?: number;
+    origin?: DailyArchiveMessageOrigin;
     role: 'user' | 'character' | 'system' | 'unknown';
     kind: 'text' | 'image' | 'emoji' | 'attachment' | 'system_note' | 'other';
     content: string;
@@ -58,6 +77,19 @@ export interface DailyArchiveMessage {
     curation?: DailyArchiveHumanCuration;
     /** Human-authored supplement. It becomes confirmed historical evidence only with a day lock. */
     manualEntry?: DailyArchiveManualEntry;
+}
+
+/** Superseded source snapshot retained for provenance and stale-result checks. */
+export interface DailyArchiveMessageRevision {
+    schemaVersion: typeof DAILY_ARCHIVE_MESSAGE_REVISION_SCHEMA_VERSION;
+    id: string;
+    messageId: string;
+    documentId: string;
+    scope: HistoryScope;
+    revision: number;
+    message: DailyArchiveMessage;
+    archivedAt: number;
+    replacedByRevision: number;
 }
 
 export interface DailyArchiveDocument {

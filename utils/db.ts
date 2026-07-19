@@ -10,7 +10,6 @@ import {
 } from '../types';
 import { normalizeUserPersonaProfile } from './userPersonaMasks';
 import { archiveLiveMessage } from './dailyArchive/liveSync';
-import { relationshipScopeForProfile } from './messageContext';
 
 const DB_NAME = 'AetherOS_Data';
 const DB_VERSION = 40; // Bumped for companion wakeups (主动来信)
@@ -258,18 +257,6 @@ const openDB = (): Promise<IDBDatabase> => {
   });
 };
 
-const readUserProfileForDailyArchive = async (): Promise<UserProfile | null> => {
-    const db = await openDB();
-    return new Promise((resolve) => {
-        const transaction = db.transaction(STORE_USER, 'readonly');
-        const request = transaction.objectStore(STORE_USER).get('me');
-        request.onsuccess = () => resolve(
-            request.result ? normalizeUserPersonaProfile(request.result as UserProfile) : null,
-        );
-        request.onerror = () => resolve(null);
-    });
-};
-
 const nextDailyArchiveRevision = (message: Message): Message => ({
     ...message,
     metadata: {
@@ -429,14 +416,14 @@ export const DB = {
         'relationshipScope',
     );
     if (!inputPayload.groupId && !hasDeclaredRelationshipScope) {
-        const userProfile = await readUserProfileForDailyArchive();
-        const relationshipScope = relationshipScopeForProfile(inputPayload.charId, userProfile);
         payload = {
             ...inputPayload,
             metadata: {
                 ...(inputPayload.metadata || {}),
                 temporalClass: inputPayload.metadata?.temporalClass || 'live',
-                relationshipScope: relationshipScope || null,
+                // Fail closed. The caller that starts an interaction owns scope
+                // capture; save-time active-profile lookup can cross masks.
+                relationshipScope: null,
             },
         };
     }
