@@ -1,5 +1,24 @@
 # AetherOS Progress
 
+## 2026-07-19 Startup Asset Hardening
+
+- done:
+  - Replaced the runtime Tailwind Play CDN with a local Tailwind 3 + PostCSS
+    production build while preserving the existing theme tokens and animations.
+  - Bundled the Quicksand Latin font subset locally and removed unused KaTeX,
+    import-map, Google Fonts, unpkg, and esm.sh startup dependencies.
+  - Added a dependency-free boot fallback so a failed JavaScript start reports
+    a refresh instruction instead of leaving a silent black screen.
+- verified:
+  - `npm run verify:health` passes and the built HTML contains no first-screen
+    CDN dependencies.
+  - Playwright at 390 x 844 rendered the lock screen, disclaimer, launcher,
+    widgets, icon grids, pager, and dock with no console error.
+- boundary:
+  - This changes startup packaging only. User data schemas, imported history,
+    prompts, feature behavior, and the future Capacitor storage boundary remain
+    untouched.
+
 ## 2026-07-18 Whole-Phone Historical Delivery Boundary
 
 - done:

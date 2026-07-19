@@ -87,6 +87,22 @@ const packageManifest = JSON.parse(read('package.json')) as { version?: string }
 assert.equal(packageManifest.version, '2.0.0', 'first device-test release must carry the 2.0.0 major version');
 assert.match(read('README.md'), /第一次实机测试/, 'README must record the first real-device test milestone');
 
+const startupHtml = read('index.html');
+for (const forbiddenStartupDependency of [
+    'cdn.tailwindcss.com',
+    'fonts.googleapis.com',
+    'unpkg.com/katex',
+    'type="importmap"',
+]) {
+    assert.equal(
+        startupHtml.includes(forbiddenStartupDependency),
+        false,
+        `startup HTML must not depend on ${forbiddenStartupDependency}`,
+    );
+}
+assert.match(read('styles.css'), /@tailwind utilities;/, 'Tailwind must be compiled into the release CSS');
+assert.match(startupHtml, /id="aetheros-boot"/, 'startup HTML must retain a visible failure fallback');
+
 const optimizedAssets = [
     ['public/brand/aetheros-starcore.jpg', 400_000],
     ['public/icons/icon-512.png', 500_000],

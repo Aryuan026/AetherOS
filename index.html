@@ -22,85 +22,6 @@
     <link rel="icon" type="image/png" sizes="64x64" href="./icons/favicon-soft-64.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
 
-    <!-- KaTeX CSS for Math Rendering -->
-    <link rel="stylesheet" href="https://unpkg.com/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
-
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['var(--app-font)', 'sans-serif'],
-            },
-            colors: {
-              primary: 'hsl(var(--primary-hue), var(--primary-sat), var(--primary-lightness))', 
-              'primary-focus': 'hsl(var(--primary-hue), var(--primary-sat), calc(var(--primary-lightness) - 10%))',
-              'primary-light': 'hsl(var(--primary-hue), var(--primary-sat), 92%)',
-              surface: 'rgba(255, 255, 255, 0.75)',
-              'surface-glass': 'rgba(255, 255, 255, 0.35)',
-            },
-            animation: {
-              'fade-in': 'fadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-              'slide-up': 'slideUp 0.35s cubic-bezier(0.25, 1, 0.5, 1)',
-              'slide-down': 'slideDown 0.35s cubic-bezier(0.25, 1, 0.5, 1)',
-              'pop-in': 'popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-              'float-up': 'floatUp 3s ease-out forwards',
-              'wiggle': 'wiggle 0.5s ease-in-out infinite',
-              'bounce-slow': 'bounceSlow 2s ease-in-out infinite',
-              'float': 'floatDrift 4s ease-in-out infinite alternate',
-              'glow-pulse': 'glowPulse 3s ease-in-out infinite',
-              'shimmer': 'shimmer 2.5s ease-in-out infinite',
-            },
-            keyframes: {
-              fadeIn: {
-                '0%': { opacity: '0', transform: 'scale(0.97) translateY(4px)' },
-                '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
-              },
-              slideUp: {
-                '0%': { transform: 'translateY(100%)', opacity: '0' },
-                '100%': { transform: 'translateY(0)', opacity: '1' },
-              },
-              slideDown: {
-                '0%': { transform: 'translateY(-100%)', opacity: '0' },
-                '100%': { transform: 'translateY(0)', opacity: '1' },
-              },
-              popIn: {
-                '0%': { opacity: '0', transform: 'scale(0.5)' },
-                '60%': { transform: 'scale(1.05)' },
-                '100%': { opacity: '1', transform: 'scale(1)' },
-              },
-              floatUp: {
-                '0%': { opacity: '1', transform: 'translateY(100vh) scale(1)' },
-                '50%': { opacity: '1' },
-                '100%': { opacity: '0', transform: 'translateY(-50px) scale(1.5)' },
-              },
-              wiggle: {
-                '0%, 100%': { transform: 'translate(-50%, -100%) rotate(-3deg)' },
-                '50%': { transform: 'translate(-50%, -100%) rotate(3deg)' },
-              },
-              bounceSlow: {
-                '0%, 100%': { transform: 'translateY(0)' },
-                '50%': { transform: 'translateY(-10px)' },
-              },
-              floatDrift: {
-                '0%': { transform: 'translateY(0) scale(1)', opacity: '0.3' },
-                '100%': { transform: 'translateY(-30px) scale(1.1)', opacity: '0.6' },
-              },
-              glowPulse: {
-                '0%, 100%': { boxShadow: '0 0 15px rgba(139, 92, 246, 0.15)' },
-                '50%': { boxShadow: '0 0 25px rgba(139, 92, 246, 0.3)' },
-              },
-              shimmer: {
-                '0%': { backgroundPosition: '-200% 0' },
-                '100%': { backgroundPosition: '200% 0' },
-              },
-            }
-          }
-        }
-      }
-    </script>
     <style>
       :root {
         --primary-hue: 245; 
@@ -175,29 +96,55 @@
       .date-presence-flow {
         animation: datePresenceFlow 1.45s ease-in-out infinite;
       }
+      #aetheros-boot {
+        box-sizing: border-box;
+        min-height: var(--app-height, 100lvh);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.55rem;
+        color: rgba(255, 255, 255, 0.92);
+        font-family: var(--app-font);
+        letter-spacing: 0.08em;
+      }
+      #aetheros-boot strong {
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      #aetheros-boot span {
+        color: rgba(255, 255, 255, 0.58);
+        font-size: 0.78rem;
+        letter-spacing: 0.02em;
+      }
+      #aetheros-boot[data-state='failed'] span {
+        color: #fecaca;
+      }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "vite": "https://esm.sh/vite@^7.3.0",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "@capacitor/app": "https://esm.sh/@capacitor/app@^8.0.0",
-    "@capacitor/status-bar": "https://esm.sh/@capacitor/status-bar@^8.0.0",
-    "@capacitor/core": "https://esm.sh/@capacitor/core@^8.0.0",
-    "@capacitor/share": "https://esm.sh/@capacitor/share@^8.0.0",
-    "@capacitor/filesystem": "https://esm.sh/@capacitor/filesystem@^8.0.0",
-    "@capacitor/local-notifications": "https://esm.sh/@capacitor/local-notifications@^6.0.0",
-    "pdfjs-dist": "https://esm.sh/pdfjs-dist@3.11.174",
-    "katex": "https://esm.sh/katex@0.16.9"
-  }
-}
-</script>
 </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="aetheros-boot" role="status" aria-live="polite">
+        <strong>AetherOS</strong>
+        <span>正在打开本机世界…</span>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const boot = document.getElementById('aetheros-boot');
+
+        const showFailure = () => {
+          if (!boot || !boot.isConnected) return;
+          const text = boot.querySelector('span');
+          if (text) text.textContent = '没有顺利打开，请刷新页面再试一次';
+          boot.setAttribute('data-state', 'failed');
+        };
+
+        window.addEventListener('error', showFailure, { once: true });
+        window.addEventListener('unhandledrejection', showFailure, { once: true });
+        window.setTimeout(showFailure, 12000);
+      })();
+    </script>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

@@ -1,0 +1,8 @@
+@import '@fontsource/quicksand/latin-300.css';
+@import '@fontsource/quicksand/latin-400.css';
+@import '@fontsource/quicksand/latin-500.css';
+@import '@fontsource/quicksand/latin-600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
