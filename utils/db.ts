@@ -169,7 +169,11 @@ const openDB = (): Promise<IDBDatabase> => {
         reject(request.error);
     };
     
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => db.close();
+        resolve(db);
+    };
     
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -285,7 +289,7 @@ export const DB = {
           const req = indexedDB.deleteDatabase(DB_NAME);
           req.onsuccess = () => resolve();
           req.onerror = () => reject(req.error);
-          req.onblocked = () => console.warn('Delete blocked');
+          req.onblocked = () => reject(new Error('Database reset is blocked by an older open connection'));
       });
   },
 

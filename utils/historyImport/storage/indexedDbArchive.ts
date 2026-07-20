@@ -119,7 +119,7 @@ export interface HistoryArchiveActivationRecord {
     archiveId: string;
     manifestChecksum: string;
     recordCounts: Record<HistoryRescueStoreName, number>;
-    activationKind?: 'import_commit' | 'verified_restore';
+    activationKind?: 'import_commit' | 'verified_restore' | 'system_backup_restore';
     lastVerifiedBackupReceipt?: HistoryBackupReceipt;
     activatedAt: number;
     revision: number;
@@ -729,21 +729,25 @@ const verifyHistoryArchiveStoreCounts = async (input: {
     }
 };
 
-export const activateImportedHistoryArchive = async (input: {
-    candidateDatabaseId: string;
+const activateHistoryArchiveSlot = async (input: {
+    databaseId: string;
+    sourceCandidateDatabaseId: string;
     expectedActiveDatabaseId?: string;
     archiveId: string;
     manifestChecksum: string;
     recordCounts: Record<HistoryRescueStoreName, number>;
+    activationKind: NonNullable<HistoryArchiveActivationRecord['activationKind']>;
+    lastVerifiedBackupReceipt?: HistoryBackupReceipt;
     activatedAt: number;
     factory?: IDBFactory;
 }): Promise<HistoryArchiveActivationRecord> => {
-    assertArchiveDatabaseId(input.candidateDatabaseId);
+    assertArchiveDatabaseId(input.databaseId);
+    assertArchiveDatabaseId(input.sourceCandidateDatabaseId);
     if (!input.archiveId.trim() || !input.manifestChecksum.trim()) {
-        throw new Error('history import activation requires stable archive identity');
+        throw new Error('history archive activation requires stable archive identity');
     }
     await verifyHistoryArchiveStoreCounts({
-        databaseId: input.candidateDatabaseId,
+        databaseId: input.databaseId,
         expected: input.recordCounts,
         factory: input.factory,
     });
@@ -757,21 +761,22 @@ export const activateImportedHistoryArchive = async (input: {
             const value = await requestAsPromise(store.get(HISTORY_ARCHIVE_ACTIVE_RECORD_ID));
             const current = value === undefined ? null : value as HistoryArchiveActivationRecord;
             if ((current?.activeDatabaseId || undefined) !== input.expectedActiveDatabaseId) {
-                throw new Error('active history archive changed while the import was being prepared');
+                throw new Error('active history archive changed while the replacement was being prepared');
             }
             const retainedPreviousDatabaseIds = Array.from(new Set([
                 ...(current ? [current.activeDatabaseId, ...current.retainedPreviousDatabaseIds] : []),
-            ])).filter(databaseId => databaseId !== input.candidateDatabaseId);
+            ])).filter(databaseId => databaseId !== input.databaseId);
             const next: HistoryArchiveActivationRecord = {
                 schemaVersion: 1,
                 id: HISTORY_ARCHIVE_ACTIVE_RECORD_ID,
-                activeDatabaseId: input.candidateDatabaseId,
+                activeDatabaseId: input.databaseId,
                 retainedPreviousDatabaseIds,
-                sourceCandidateDatabaseId: input.candidateDatabaseId,
+                sourceCandidateDatabaseId: input.sourceCandidateDatabaseId,
                 archiveId: input.archiveId,
                 manifestChecksum: input.manifestChecksum,
                 recordCounts: { ...input.recordCounts },
-                activationKind: 'import_commit',
+                activationKind: input.activationKind,
+                lastVerifiedBackupReceipt: input.lastVerifiedBackupReceipt,
                 activatedAt: input.activatedAt,
                 revision: (current?.revision || 0) + 1,
             };
@@ -786,6 +791,40 @@ export const activateImportedHistoryArchive = async (input: {
         control.close();
     }
 };
+
+export const activateImportedHistoryArchive = async (input: {
+    candidateDatabaseId: string;
+    expectedActiveDatabaseId?: string;
+    archiveId: string;
+    manifestChecksum: string;
+    recordCounts: Record<HistoryRescueStoreName, number>;
+    activatedAt: number;
+    factory?: IDBFactory;
+}): Promise<HistoryArchiveActivationRecord> => activateHistoryArchiveSlot({
+    databaseId: input.candidateDatabaseId,
+    sourceCandidateDatabaseId: input.candidateDatabaseId,
+    expectedActiveDatabaseId: input.expectedActiveDatabaseId,
+    archiveId: input.archiveId,
+    manifestChecksum: input.manifestChecksum,
+    recordCounts: input.recordCounts,
+    activationKind: 'import_commit',
+    activatedAt: input.activatedAt,
+    factory: input.factory,
+});
+
+export const activateSystemBackupHistoryArchive = async (input: {
+    databaseId: string;
+    expectedActiveDatabaseId?: string;
+    archiveId: string;
+    manifestChecksum: string;
+    recordCounts: Record<HistoryRescueStoreName, number>;
+    activatedAt: number;
+    factory?: IDBFactory;
+}): Promise<HistoryArchiveActivationRecord> => activateHistoryArchiveSlot({
+    ...input,
+    sourceCandidateDatabaseId: input.databaseId,
+    activationKind: 'system_backup_restore',
+});
 
 export const activateVerifiedHistoryArchive = async (input: {
     verification: HistoryTemporaryRestoreVerification;
@@ -819,54 +858,22 @@ export const activateVerifiedHistoryArchive = async (input: {
         throw new Error('verified external rescue receipt does not match the restored archive');
     }
 
-    await verifyHistoryArchiveStoreCounts({
+    return activateHistoryArchiveSlot({
         databaseId: verification.temporaryDatabaseId,
-        expected: verification.recordCounts,
+        sourceCandidateDatabaseId: input.sourceCandidateDatabaseId,
+        expectedActiveDatabaseId: input.expectedActiveDatabaseId,
+        archiveId: verification.archiveId,
+        manifestChecksum: verification.manifestChecksum,
+        recordCounts: verification.recordCounts,
+        activationKind: 'verified_restore',
+        lastVerifiedBackupReceipt: {
+            ...receipt,
+            recordCounts: { ...receipt.recordCounts },
+            lastDeliveryAttempt: receipt.lastDeliveryAttempt
+                ? { ...receipt.lastDeliveryAttempt }
+                : undefined,
+        },
+        activatedAt: input.activatedAt,
         factory: input.factory,
     });
-
-    const control = await openHistoryArchiveControlDatabase(input.factory);
-    try {
-        const transaction = control.transaction(HISTORY_ARCHIVE_CONTROL_STORE, 'readwrite', { durability: 'strict' });
-        const settled = transactionAsPromise(transaction);
-        const store = transaction.objectStore(HISTORY_ARCHIVE_CONTROL_STORE);
-        try {
-            const value = await requestAsPromise(store.get(HISTORY_ARCHIVE_ACTIVE_RECORD_ID));
-            const current = value === undefined ? null : value as HistoryArchiveActivationRecord;
-            if ((current?.activeDatabaseId || undefined) !== input.expectedActiveDatabaseId) {
-                throw new Error('active history archive changed while the rescue was being verified');
-            }
-            const retainedPreviousDatabaseIds = Array.from(new Set([
-                ...(current ? [current.activeDatabaseId, ...current.retainedPreviousDatabaseIds] : []),
-            ])).filter(databaseId => databaseId !== verification.temporaryDatabaseId);
-            const next: HistoryArchiveActivationRecord = {
-                schemaVersion: 1,
-                id: HISTORY_ARCHIVE_ACTIVE_RECORD_ID,
-                activeDatabaseId: verification.temporaryDatabaseId,
-                retainedPreviousDatabaseIds,
-                sourceCandidateDatabaseId: input.sourceCandidateDatabaseId,
-                archiveId: verification.archiveId,
-                manifestChecksum: verification.manifestChecksum,
-                recordCounts: { ...verification.recordCounts },
-                activationKind: 'verified_restore',
-                lastVerifiedBackupReceipt: {
-                    ...receipt,
-                    recordCounts: { ...receipt.recordCounts },
-                    lastDeliveryAttempt: receipt.lastDeliveryAttempt
-                        ? { ...receipt.lastDeliveryAttempt }
-                        : undefined,
-                },
-                activatedAt: input.activatedAt,
-                revision: (current?.revision || 0) + 1,
-            };
-            await requestAsPromise(store.put(next));
-            await settled;
-            return next;
-        } catch (error) {
-            await abortAndSettle(transaction, settled);
-            throw error;
-        }
-    } finally {
-        control.close();
-    }
 };

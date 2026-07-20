@@ -39,8 +39,15 @@ import {
     verifyDailyArchiveBackupFiles,
 } from '../utils/dailyArchive/storage';
 import type { ConversationClipping, DailyArchiveDocument, DailyArchiveMessageRevision } from '../domain/dailyArchive/types';
+import type { PreparedHistoryArchiveSystemRestore } from '../utils/systemBackup/historyArchiveSnapshot';
 import { apiConfigForActivatedPreset } from '../utils/apiPresets';
 import { strictRelationshipScopeForProfile } from '../utils/messageContext';
+import {
+    activatePreparedHistoryArchiveSystemRestore,
+    buildHistoryArchiveSystemBackupFiles,
+    discardPreparedHistoryArchiveSystemRestore,
+    prepareHistoryArchiveSystemRestore,
+} from '../utils/systemBackup/historyArchiveSnapshot';
 
 
 type JSZipLike = {
@@ -2713,6 +2720,11 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           setSysOperation({ status: 'processing', message: '正在生成压缩包...', progress: 95 });
 
           if (mode === 'text_only' || mode === 'full') {
+              const historyBackup = await buildHistoryArchiveSystemBackupFiles();
+              if (historyBackup) {
+                  backupData.historyArchiveManifest = historyBackup.manifest;
+                  historyBackup.files.forEach(file => zip.file(file.path, file.json));
+              }
               const dailyDocuments = await listAllDailyArchiveDocuments();
               const dailyBackup = await buildDailyArchiveBackupFiles({ documents: dailyDocuments });
               backupData.dailyArchiveManifest = dailyBackup.manifest;
@@ -2740,6 +2752,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   };
 
   const importSystem = async (fileOrJson: File | string): Promise<void> => {
+      let preparedHistoryArchiveRestore: PreparedHistoryArchiveSystemRestore | undefined;
       try {
           setSysOperation({ status: 'processing', message: '正在解析备份文件...', progress: 0 });
           let data: FullBackupData;
@@ -2787,6 +2800,18 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }
           if (Array.isArray(data.dailyArchiveMessageRevisions)) {
               dailyArchiveRevisionsToRestore = data.dailyArchiveMessageRevisions;
+          }
+          if (data.historyArchiveManifest) {
+              if (!zip) throw new Error('损坏的备份包: 历史源档案缺少分块文件');
+              const files = await Promise.all(data.historyArchiveManifest.files.map(async expected => {
+                  const file = zip!.file(expected.path);
+                  if (!file) throw new Error(`损坏的备份包: 缺少 ${expected.path}`);
+                  return { path: expected.path, json: await file.async('string') };
+              }));
+              preparedHistoryArchiveRestore = await prepareHistoryArchiveSystemRestore({
+                  manifest: data.historyArchiveManifest,
+                  files,
+              });
           }
 
           const restoreAssets = async (obj: any): Promise<any> => {
@@ -2845,6 +2870,12 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }
           if (conversationClippingsToRestore) {
               await replaceConversationClippings({ clippings: conversationClippingsToRestore });
+          }
+          if (preparedHistoryArchiveRestore) {
+              await activatePreparedHistoryArchiveSystemRestore({
+                  prepared: preparedHistoryArchiveRestore,
+              });
+              preparedHistoryArchiveRestore = undefined;
           }
           
           if (data.theme) {
@@ -2946,6 +2977,11 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           setTimeout(() => window.location.reload(), 1500);
 
       } catch (e: any) {
+          if (preparedHistoryArchiveRestore) {
+              await discardPreparedHistoryArchiveSystemRestore({
+                  prepared: preparedHistoryArchiveRestore,
+              }).catch(() => undefined);
+          }
           console.error("Import Error:", e);
           setSysOperation({ status: 'idle', message: '', progress: 0 });
           const msg = e instanceof SyntaxError ? 'JSON 格式错误' : (e.message || '未知错误');

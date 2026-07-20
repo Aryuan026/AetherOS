@@ -1403,6 +1403,16 @@ embedding stores in v2. The archive database uses the
 `AetherOS_HistoryArchive:v2:` namespace; the intake workspace and daily archive
 likewise use v2 namespaces and do not read pre-product review databases.
 
+Whole-device text/full backup carries the active raw History Archive as chunked
+`history-archive/*.json` files plus
+`FullBackupData.historyArchiveManifest`. The manifest reuses the credential-
+excluding rescue payload checksums, but does not require a separate recovery
+secret: optional encryption belongs to the outer whole-device package. Restore
+validates every chunk and all cross-store references into a new temporary
+archive slot before atomically switching the active History Archive pointer.
+The original source rows remain immutable; Daily Archive corrections and
+superseded revisions travel through their own backup records.
+
 Daily archive search renders source fragments as `原文片段`. Voice clipping is
 limited to explicit user/char export channels.
 

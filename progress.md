@@ -1,5 +1,35 @@
 # AetherOS Progress
 
+## 2026-07-20 Golden Memory And Whole-Device Restore Chain
+
+- done:
+  - Added the active raw History Archive to text/full whole-device backup as
+    verified, credential-sanitized chunk files. Restore writes and validates a
+    fresh inactive slot before switching the active archive pointer; the raw
+    Word/TXT source is no longer implicitly represented by a Daily Archive copy.
+  - Preserved the separation between immutable imported source and versioned
+    Calendar curation. Corrected/locked day documents, superseded revisions,
+    live Chat/Date evidence, MemoryDM passes, promotions, visible projection
+    edits, and raw source identity now survive one fresh-profile round trip.
+  - Made the main IndexedDB connection close on `versionchange` and fail loudly
+    on a genuinely blocked reset instead of leaving reset/restore hanging.
+- verified:
+  - A fictional TXT import reaches a dated Calendar document; a human content
+    correction and lock stay visible while the raw source remains unchanged.
+  - Imported history, new Chat, and new Date rows share the typed evidence lane
+    while retaining `history_import / chat / date` provenance.
+  - A synthetic historical analyzer result and the operating live MemoryDM path
+    both persist; manually promoted historical relationship/Timebook records
+    render through existing projections and retain a player edit after backup.
+  - Whole-device export, destructive local reset, temporary-slot verification,
+    core/daily restore, and raw-history activation reproduce the same source,
+    revisions, candidates, receipts, and visible projections.
+- boundary:
+  - The historical analyzer result is a deterministic API fixture at this gate;
+    real provider prose quality is reserved for the final synthetic canary.
+    Worldbook and preset redesign remain HOLD, and nothing has been pushed or
+    deployed from this checkpoint.
+
 ## 2026-07-20 Critical Verification Gate Repair
 
 - done:

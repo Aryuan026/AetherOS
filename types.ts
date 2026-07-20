@@ -1,5 +1,6 @@
 import type { NarrativeDirective, NovelNarrativeState } from './domain/narrative/types';
 import type { ConversationClipping, DailyArchiveBackupManifest, DailyArchiveDocument, DailyArchiveMessageRevision } from './domain/dailyArchive/types';
+import type { HistoryArchiveSystemBackupManifest } from './domain/systemBackup/types';
 
 export type {
     NarrativeBeat,
@@ -1302,6 +1303,7 @@ export interface Emoji {
 export interface FullBackupData {
     timestamp: number;
     version: number;
+    historyArchiveManifest?: HistoryArchiveSystemBackupManifest;
     dailyArchiveManifest?: DailyArchiveBackupManifest;
     dailyArchiveDocuments?: DailyArchiveDocument[];
     dailyArchiveMessageRevisions?: DailyArchiveMessageRevision[];
