@@ -69,6 +69,30 @@
     full health gate is Green; Worldbook and provider-preset UI are not part of
     this release block.
 
+- published:
+  - Public `Aryuan026/AetherOS` main advanced to `ffd7eb2` after the complete
+    `verify:health` gate passed.
+  - The `GITHUB_PAGES=1` build produced 349 files including 91 gzip sidecars.
+    Local, staging, server and public-lab `index.html` share SHA-256
+    `402293c5c2658be752a8056d85b19dfde17127c629bac4069626965f8763d75b`;
+    the live Information Station bundle hash is
+    `35a2368634a459542a757bd844661e4df07aa23509171b660dd395fd16d97199`.
+  - Atomically replaced only `/srv/asherie/sites/science-demos/aetheros`.
+    Rollback is `/srv/asherie/backups/aetheros-information-station-ffd7eb2-20260720T081506Z/aetheros-static.previous`.
+  - Public shell, manifest and Information Station bundle return `200`; hashed
+    assets are gzip-served with immutable cache, POST remains `403`, and the
+    retired `/sullyos/` route remains `410`.
+  - A clean public browser passed lock screen -> desktop -> Social ->
+    Information Station empty state with the explicit refresh action and zero
+    application errors or warnings. One warm long-lived Chrome tab briefly
+    showed the designed startup fallback while its Service Worker changed
+    generations, then recovered to the current lock screen.
+  - Home stayed active at PID `17708`, `NRestarts=0`. Bridge independently
+    restarted during staging upload (`17689` -> `20279`, `NRestarts=0`); its
+    journal shows a separate runtime-alignment recovery at 16:16 CST. This
+    static deployment did not invoke systemctl, reload Nginx, or modify any
+    Home/Bridge file.
+
 ## 2026-07-20 Remaining Life-Surface Evidence Chain
 
 - done:
