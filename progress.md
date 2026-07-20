@@ -1,5 +1,30 @@
 # AetherOS Progress
 
+## 2026-07-20 Critical Verification Gate Repair
+
+- done:
+  - Reconciled the History Import placeholder-header acceptance contract with
+    the shared Chat header projection. History identity materialization still
+    owns `旧日记录已接回。`; the generic header now proves it displays that
+    seeded signature without reintroducing a placeholder-id branch.
+  - Expanded `verify:health` to include every critical specialty suite that had
+    previously required separate manual invocation: Appearance presets, shell
+    chrome, virtual-world clock, Chat reply mode, History Import, Daily Archive,
+    and Narrative.
+- verified:
+  - `npm run verify:history-import` passes through parsing, 50,000-row jobs,
+    rescue/restore, identity materialization, Word/TXT preview, intake/archive,
+    Chat bridge, historical analysis, selector isolation, and Daily Archive.
+  - The expanded `npm run verify:health` passes all public/persona/API/Social/
+    launcher/Worldbook/appearance/shell/time/Chat/history/archive/narrative/
+    evidence/memory/projection checks, typecheck, and production build.
+  - Remaining output is limited to the known Browserslist-age and large-entry-
+    chunk warnings; neither is treated as a functional failure.
+- boundary:
+  - This checkpoint repairs verification truth only. It does not alter import
+    UI, character prompts, worldbook/preset behavior, memory authority, public
+    GitHub, or the server deployment.
+
 ## 2026-07-20 Chat Header Status Projection And Mobile Entry Diagnosis
 
 - done:

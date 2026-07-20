@@ -12,6 +12,7 @@ import {
     selectEmotionEvaluationMessages,
 } from '../utils/messageContext.ts';
 import { selectWorldlineMemoryContext } from '../utils/memoryCore/selector.ts';
+import { resolveChatHeaderStatus } from '../utils/chatHeaderStatus.ts';
 
 const source = {
     scope: {
@@ -41,6 +42,11 @@ assert.equal(plan.character.id, source.scope.charId);
 assert.equal(plan.character.name, '糯米');
 assert.equal(plan.character.chatSignature, '旧日记录已接回。');
 assert.equal(plan.character.chatSignatureAiEditable, true);
+assert.deepEqual(
+    resolveChatHeaderStatus(plan.character),
+    { kind: 'signature', text: '旧日记录已接回。' },
+    'a newly materialized history placeholder must keep its import handoff signature',
+);
 const createdMask = plan.profilePatch.personaMasks?.[
     (plan.profilePatch.personaMasks?.length || 1) - 1
 ];
@@ -210,8 +216,7 @@ assert.ok(hookSource.includes('initiatingRelationshipScope'));
 assert.ok(hookSource.includes('historyTailContinuation'));
 assert.ok(hookSource.includes('if (currentStateMessages.length === 0) return'));
 const chatHeaderSource = readFileSync(new URL('../components/chat/ChatHeaderShell.tsx', import.meta.url), 'utf8');
-assert.ok(chatHeaderSource.includes("activeCharacter.id.startsWith('history-placeholder-char-')"));
-assert.ok(chatHeaderSource.includes('旧日记录已接回。'));
+assert.ok(chatHeaderSource.includes('resolveChatHeaderStatus(activeCharacter)'));
 
 const dateSource = readFileSync(new URL('../apps/DateApp.tsx', import.meta.url), 'utf8');
 for (const forbidden of ['readActiveHistoryChatTail', 'history_import_tail', 'HistorySourceMessage']) {

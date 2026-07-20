@@ -29,7 +29,7 @@
     "verify:api-presets": "tsx scripts/verify-api-presets.ts",
     "verify:worldbook-groups": "tsx scripts/verify-worldbook-groups.ts",
     "verify:public-release": "node --experimental-strip-types scripts/verify-public-release.ts",
-    "verify:health": "npm run verify:public-release && npm run verify:persona-scope && npm run verify:api-presets && npm run verify:social-scope && npm run verify:launcher-layout && npm run verify:worldbook-groups && npm run verify:interaction-evidence && npm run verify:memory-dm-evidence && npm run verify:memory-promotion && npm run verify:memory-projection && npm run verify:chat-header-status && npm run typecheck && npm run build:quiet",
+    "verify:health": "npm run verify:public-release && npm run verify:persona-scope && npm run verify:api-presets && npm run verify:social-scope && npm run verify:launcher-layout && npm run verify:worldbook-groups && npm run verify:appearance-presets && npm run verify:shell-chrome && npm run verify:virtual-world-clock && npm run verify:chat-reply-mode && npm run verify:history-import && npm run verify:daily-archive && npm run verify:narrative && npm run verify:interaction-evidence && npm run verify:memory-dm-evidence && npm run verify:memory-promotion && npm run verify:memory-projection && npm run verify:chat-header-status && npm run typecheck && npm run build:quiet",
     "preview": "vite preview",
     "mock:api": "node scripts/mock-openai-server.mjs",
     "cap:sync": "cap sync",
