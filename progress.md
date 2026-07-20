@@ -1,5 +1,40 @@
 # AetherOS Progress
 
+## 2026-07-20 Chat Header Status Projection And Mobile Entry Diagnosis
+
+- done:
+  - Replaced the Chat header's disconnected presentation choice with a pure
+    projection over the existing character data. The strongest valid current
+    emotion Buff now appears as `心情 · …`; when no Buff exists, the header
+    falls back to the character signature and then the neutral online label.
+  - Kept the projection read-only. It does not let the emotion evaluator rewrite
+    `chatSignature`, does not create another current-state store, and leaves the
+    existing tappable Buff details intact.
+  - Confirmed that built-in and imported signatures were durable but mostly
+    seeded copy, while `chatSignatureAiEditable` has no active writer. The new
+    projection therefore uses the already operating `activeBuffs` path rather
+    than activating that unused flag.
+- verified:
+  - Focused fixtures cover strongest-intensity selection, stable tie ordering,
+    blank-Buff rejection, signature fallback, and online fallback.
+  - Typecheck and production build pass. A 393x873 browser fixture displayed
+    `心情 · ☁️ 悄悄松了口气`, preserved the detail chip, and reported zero
+    console errors.
+  - Public read-only checks show `https://lab.asherie.cloud/aetheros/` and its
+    current assets returning 200. Server access evidence includes Android 10,
+    Android 12 WeChat WebView, and Android 6 mobile clients receiving the shell
+    and assets; one Android client continued into History Import, Chat, and
+    Contacts.
+- diagnosis boundary:
+  - The retired `https://lab.asherie.cloud/sullyos/` route intentionally returns
+    `410 Gone`; it cannot open on Xiaomi or any other device. The current test
+    URL is `/aetheros/` and README already points there.
+  - This does not prove the reporting player's exact device is healthy. If the
+    player used `/aetheros/` and still sees a browser-level failure, the next
+    evidence is the full address bar plus browser error code/screenshot. No
+    speculative WebView downgrade, Nginx redirect, deployment, or server
+    mutation was made in this checkpoint.
+
 ## 2026-07-20 Existing-App Memory Projection And Correction
 
 - done:

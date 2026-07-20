@@ -4,6 +4,7 @@ import { CaretLeft, Lightning, SlidersHorizontal } from '@phosphor-icons/react';
 import { AvatarFramePreset, CharacterBuff, CharacterProfile } from '../../types';
 import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_TOP_INSET } from '../shell/shellLayout';
 import AvatarWithFrame from '../common/AvatarWithFrame';
+import { resolveChatHeaderStatus } from '../../utils/chatHeaderStatus';
 
 interface TokenBreakdown {
     prompt: number;
@@ -191,8 +192,8 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     const isPixelHeader = headerStyle === 'pixel';
     const useCenteredLayout = headerAlign === 'center' || headerStyle === 'minimal';
     const avatarRadiusClass = avatarShape === 'square' ? 'rounded-sm' : avatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full';
-    const signatureText = activeCharacter.chatSignature?.trim()
-        || (activeCharacter.id.startsWith('history-placeholder-char-') ? '旧日记录已接回。' : '');
+    const headerStatus = resolveChatHeaderStatus(activeCharacter);
+    const signatureText = headerStatus.kind === 'online' ? '' : headerStatus.text;
 
     const headerToneClass =
         headerStyle === 'minimal'
@@ -333,6 +334,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
             <div className={`${signatureText ? 'text-[18px] leading-none' : 'text-[16px] leading-none'} font-bold ${primaryTextClass}`}>{activeCharacter.name}</div>
             {signatureText ? (
                 <div
+                    data-chat-header-status={headerStatus.kind}
                     className={`mt-1 max-w-[min(74vw,460px)] truncate text-[11px] leading-[1.2] font-semibold ${isPixelHeader ? 'text-[#f3ddc7]' : 'text-[#8fa0b4]'}`}
                 >
                     {signatureText}
@@ -365,6 +367,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
                 <div className="flex items-center gap-2 flex-wrap min-w-0 max-w-full">
                     {signatureText ? (
                         <span
+                            data-chat-header-status={headerStatus.kind}
                             className={`mt-1 text-[13px] leading-[1.25] font-semibold ${secondaryTextClass}`}
                             style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
                         >
