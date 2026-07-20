@@ -1,5 +1,74 @@
 # AetherOS Progress
 
+## 2026-07-20 Information Station Editorial Boundary And Preference Loop
+
+- done:
+  - Split Information Station generation from publication: every generated
+    batch now receives a second API editorial pass before any row is saved.
+    The editor must classify public knowledge, named-character support and
+    relevance; unresolved secret leaks, OOC/extreme claims, forced minor
+    details and repeated-cast writing are dropped locally.
+  - Treat all character cards, Worldbook text, private impressions, memories
+    and recent chats as private creative reference unless the source explicitly
+    says the fact is public. Rumor wording no longer grants a bystander access
+    to private truth.
+  - Allowed ordinary peripheral NPCs and city-life observations, while limiting
+    direct named-character focus to at most two items per batch. Zero direct
+    character mentions is a valid result.
+  - Replaced the old optional short-longform repair with the single mandatory
+    editorial pass, so Information Station uses at most two generation calls
+    per refresh instead of stacking a third review call.
+  - Added local `合胃口 / 不想再刷到` feedback with lightweight reason chips
+    and an optional note. Only a bounded summary of the current relationship
+    scope's feedback is injected into later Information Station batches; full
+    article bodies are not resent as preference history.
+  - Added one explicit `刷一批资讯` empty-state action alongside pull-to-refresh,
+    so desktop web, accessibility tooling and the future APK share a clear
+    first-generation entry without creating a second refresh implementation.
+  - Added the same visible refresh control after a feed already exists, raised
+    the bounded Information Station request window for slower compatible
+    providers, and turned aborts into a human-readable retry message.
+  - Changed asynchronous comment completion to patch only comment fields. A
+    late comment response can no longer overwrite a rating or note that the
+    player saved while comments were still generating.
+  - Tightened Information Station comments so virtual bystanders may respond
+    only to visible article text and cannot fill in secret identities, private
+    relationships, internal thoughts or unanimous “everyone knows” guesses.
+  - Stored editorial audit and preference signals on the scoped Social news
+    row, so existing whole-device backup/restore carries them without creating
+    a second profile store.
+
+- verified:
+  - `npm run verify:social-news-policy` proves preference summaries are bounded,
+    secret/OOC/field-mismatch fixtures fail the local gate, explicitly public
+    use and peripheral NPC material can pass, and news candidates still emit
+    zero ordinary live-memory evidence.
+  - `npm run typecheck`
+  - `npm run build:quiet`
+  - Canonical `http://127.0.0.1:5174/` real-provider canary used one isolated
+    fictional relationship with an unpublished secret identity, a strict
+    no-self-harm/OOC boundary and one intentionally trivial appearance detail.
+    The published five-item batch mentioned none of the secret identity,
+    character name, self-harm claim or appearance detail, while naturally
+    introducing patrol staff, shop workers, residents and customers as
+    peripheral NPCs. Opening a story generated seven comments that remained
+    inside the article's visible knowledge.
+  - Real UI feedback (`不想再刷到` + `太像报告` + optional note) persisted.
+    This canary exposed and then verified the fix for the late-comment response
+    race described above. A second refresh whose editorial result was not
+    publishable left the existing feed intact instead of saving a partial or
+    unaudited batch.
+
+- boundary:
+  - Rating a story changes future Information Station selection/style only. It
+    cannot rewrite character canon, current Life state, memory, or Narrative.
+  - Adopting a story remains an explicit local candidate mark; it still does
+    not auto-write long-term memory or activate a route.
+  - Worldbook and provider-preset UI remain owner-confirmed HOLD.
+  - GitHub and the isolated AetherOS test deployment may advance only after the
+    full health gate is Green; Worldbook and provider-preset UI are not part of
+    this release block.
+
 ## 2026-07-20 Remaining Life-Surface Evidence Chain
 
 - done:

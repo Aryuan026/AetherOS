@@ -2,12 +2,22 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { CharacterProfile, SocialPost, SocialComment, SubAccount, SocialAppProfile, SocialNewsCategory, SocialRelationshipScope } from '../types';
+import {
+    CharacterProfile,
+    SocialPost,
+    SocialComment,
+    SubAccount,
+    SocialAppProfile,
+    SocialNewsCategory,
+    SocialNewsFeedbackReason,
+    SocialNewsFeedbackSentiment,
+    SocialRelationshipScope,
+} from '../types';
 import { ContextBuilder } from '../utils/context';
 import { processImage } from '../utils/file';
 import Modal from '../components/os/Modal';
 import { safeResponseJson } from '../utils/safeApi';
-import { DotsThreeVertical, House, Package, PencilSimple, ShareNetwork, TrashSimple, User, Warning } from '@phosphor-icons/react';
+import { ArrowClockwise, DotsThreeVertical, House, Package, PencilSimple, ShareNetwork, ThumbsDown, ThumbsUp, TrashSimple, User, Warning } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 import { Capacitor } from '@capacitor/core';
@@ -23,6 +33,14 @@ import {
     socialScopesMatch,
 } from '../utils/socialScope';
 import { buildSocialProfileMetrics, visibleMomentLikes } from '../utils/socialMetrics';
+import {
+    acceptReviewedSocialNewsItems,
+    buildSocialNewsPreferencePrompt,
+    SOCIAL_NEWS_FEEDBACK_REASON_LABELS,
+    SOCIAL_NEWS_FEEDBACK_REASONS,
+    SOCIAL_NEWS_POLICY_VERSION,
+    socialNewsBoundaryPolicyPrompt,
+} from '../utils/socialNewsPolicy';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -299,6 +317,7 @@ const SocialApp: React.FC = () => {
     const [showPostActions, setShowPostActions] = useState(false);
     const [showDeletePostConfirm, setShowDeletePostConfirm] = useState(false);
     const [editingPostDraft, setEditingPostDraft] = useState<{ id: string; title: string; content: string } | null>(null);
+    const [newsFeedbackNote, setNewsFeedbackNote] = useState('');
     const [characterHandles, setCharacterHandles] = useState<Record<string, SubAccount[]>>({});
 
     // Sharing State
@@ -580,6 +599,10 @@ const SocialApp: React.FC = () => {
         }
     }, [activeSocialScope, selectedPost]);
 
+    useEffect(() => {
+        setNewsFeedbackNote(selectedPost?.newsFeedback?.note || '');
+    }, [selectedPost?.id]);
+
     // Save Handles to LocalStorage whenever updated
     useEffect(() => {
         if (Object.keys(characterHandles).length > 0) {
@@ -698,6 +721,19 @@ const SocialApp: React.FC = () => {
         setSelectedPost(current => (current?.id === post.id ? post : current));
     };
 
+    const patchPostInFeed = (postId: string, patch: Partial<SocialPost>) => {
+        if (deletedPostIdsRef.current.has(postId)) return;
+        setFeed(prev => prev.map(current => {
+            if (current.id !== postId) return current;
+            const next = { ...current, ...patch };
+            void DB.saveSocialPost(next).catch(error => console.error('Failed to save Social post:', error));
+            return next;
+        }));
+        setSelectedPost(current => (
+            current?.id === postId ? { ...current, ...patch } : current
+        ));
+    };
+
     const socialCircleBudget = () => socialMetrics.audience;
 
     const simulatedLikes = (kind: 'moment' | 'news', sourceType: SocialPost['sourceType'], category?: SocialNewsCategory, rawLikes?: unknown) => {
@@ -780,6 +816,14 @@ const SocialApp: React.FC = () => {
             tags,
             newsCategory,
             newsChannel,
+            newsEditorialAudit: kind === 'news' ? {
+                policyVersion: SOCIAL_NEWS_POLICY_VERSION,
+                reviewedAt: Date.now(),
+                knowledgeBasis: item.knowledgeBasis,
+                namedCharacterIds: Array.isArray(item.namedCharacterIds) ? item.namedCharacterIds.map(String) : [],
+                namedCharacterBasis: item.namedCharacterBasis,
+                relevanceReason: String(item.relevanceReason || '').trim(),
+            } : undefined,
             storyLineStatus: kind === 'news' ? 'candidate' : undefined,
             bgStyle: getRandomStyle().bg,
             storySeedStatus: kind === 'news' ? 'candidate' : 'none',
@@ -810,7 +854,9 @@ const SocialApp: React.FC = () => {
             if (!Array.isArray(json) || json.length === 0) throw new Error('模型没有返回可用的 JSON 数组');
             return json;
         } catch (error: any) {
-            if (error?.name === 'AbortError') throw new Error('生成请求超时');
+            if (controller.signal.aborted || error?.name === 'AbortError') {
+                throw new Error('生成请求超时，请稍后重试');
+            }
             throw error;
         } finally {
             window.clearTimeout(timer);
@@ -831,6 +877,7 @@ const SocialApp: React.FC = () => {
             const shuffledChars = [...participantPool].sort(() => 0.5 - Math.random());
             const selectedChars = shuffledChars.slice(0, Math.min(3, Math.max(1, participantPool.length)));
             const kind = targetTab === 'news' ? 'news' : 'moment';
+            const newsPreferencePrompt = kind === 'news' ? buildSocialNewsPreferencePrompt(scopedFeed) : '';
             
             // Build Character Map with Multiple Handles Info
             let charContexts = "";
@@ -878,6 +925,11 @@ ${newsChannelStyleTable()}
 3. 生成内容只是候选剧情引导，必须等用户采纳后，后续才可以进入剧情上下文。
 4. 可参考当前角色和最近私聊状态，但不要把未发生的关系写成既成事实。
 5. 标题要像会被点开的资讯流，不要像任务报告。正文不要复述标题后立刻收尾。
+
+${socialNewsBoundaryPolicyPrompt()}
+
+### 玩家已经留下的偏好
+${newsPreferencePrompt}
 
 ### 关联角色参考
 ${selectedChars.map(c => c.name).join('、')}
@@ -940,67 +992,66 @@ ${charContexts}
   },
   ...
 ]`;
-            let generatedItems = await requestSocialJsonArray(prompt, kind === 'news' ? 14_000 : 8_000);
+            let generatedItems = await requestSocialJsonArray(
+                prompt,
+                kind === 'news' ? 9_000 : 8_000,
+                kind === 'news' ? 150_000 : 75_000,
+            );
             let rejectedLongformCount = 0;
 
             if (kind === 'news') {
-                let normalizedItems = generatedItems.map(normalizeGeneratedNewsItem);
-                const shortLongformItems = normalizedItems
-                    .map((item, index) => ({ item, index }))
-                    .filter(({ item }) => isLongformNewsChannel(item.newsChannel) && countNewsContentChars(item.content) < NEWS_LONGFORM_MIN_CHARS);
+                const normalizedItems = generatedItems.map(normalizeGeneratedNewsItem);
+                const editorialPrompt = `### 任务: AetherOS 资讯站发布前编辑审查
+你不是续写作者，而是发布前的事实边界编辑。逐条检查下面的候选稿件；能在不改变媒体类型的前提下修好就重写，无法安全修正才丢弃。
 
-                if (shortLongformItems.length > 0) {
-                    const repairPrompt = `### 任务: 修复 AetherOS 资讯站过短长文
-下面这些长篇媒体稿件没有达到正文最低 ${NEWS_LONGFORM_MIN_CHARS} 字。请只重写 content，不改变 repairIndex、category、sourceName 和核心主题。
+${socialNewsBoundaryPolicyPrompt()}
 
-### 媒体写法
+### 玩家偏好
+${newsPreferencePrompt}
+
+### 当前可引用角色（其完整档案仍默认是私密资料）
+${selectedChars.map(character => `- id="${character.id}"，name="${character.name}"`).join('\n') || '- 无'}
+
+### 私密创作参考
+下面内容可以帮助判断角色是否 OOC，但不能据此宣称媒体或路人知道其中的秘密、私聊、内心或私人习惯：
+${charContexts}
+
+### 稿件格式与长度
+${newsPromptTable()}
 ${newsChannelStyleTable()}
+- 长篇媒体正文去掉空白后至少 ${NEWS_LONGFORM_MIN_CHARS} 个中文字符，并保留 5-9 个自然段。
+- 优先把越权或 OOC 稿改写成城市现象、职业切片或合理周边 NPC 的经历，不要为了保数量继续硬提具名角色。
+- 同一批至多两条直接提具名角色；微小设定在本批重复出现时，只保留真正有因果意义的一处。
 
-### 硬约束
-- 每条 content 去掉空白后至少 ${NEWS_LONGFORM_MIN_CHARS} 个中文字符，使用 5-9 个自然段，并以 \\n\\n 分段。
-- 不是扩写报告摘要，而是根据对应媒体形态补成完整故事/小报长文。
-- 保留传闻边界，不把候选素材盖章为事实。
-- 只输出 JSON 数组，不要解释。
-
-### 待修稿件
-${JSON.stringify(shortLongformItems.map(({ item, index }) => ({
-    repairIndex: index,
-    category: item.newsCategory,
-    sourceName: item.newsChannel,
-    title: item.title,
-    currentContent: item.content,
-})), null, 2)}
+### 待审稿件
+${JSON.stringify(normalizedItems, null, 2)}
 
 ### 输出格式
-[
-  {
-    "repairIndex": 0,
-    "content": "达到对应媒体规则的完整分段长文"
-  }
-]`;
+只输出 JSON 数组。保留 category、sourceName、authorName、title、content、tags、likes，并给每条补齐：
+- editorDecision: "keep" | "rewrite" | "drop"
+- riskFlags: 通过时必须是 []；仍有秘密泄露、越权知情、OOC、极端无依据行为、硬套微小设定或重复抓人时写出风险并设为 drop
+- knowledgeBasis: "ambient" | "explicit-public" | "peripheral-fiction"
+- namedCharacterIds: 正文实际点名的角色 id 数组；没有点名就是 []
+- namedCharacterBasis: 没点名为 "none"；点名时只有资料明确标注为公开事实才能是 "explicit-public"
+- relevanceReason: 一句说明这条为什么值得出现在本批，而不是因为输入里碰巧有某个关键词
 
-                    try {
-                        const repairedItems = await requestSocialJsonArray(repairPrompt, 10_000);
-                        const repairsByIndex = new Map<number, any>();
-                        repairedItems.forEach(item => {
-                            const repairIndex = Number(item?.repairIndex);
-                            if (Number.isInteger(repairIndex)) repairsByIndex.set(repairIndex, item);
-                        });
-                        normalizedItems = normalizedItems.map((item, index) => {
-                            const repair = repairsByIndex.get(index);
-                            return repair?.content ? { ...item, content: String(repair.content).trim() } : item;
-                        });
-                    } catch (repairError) {
-                        console.warn('Long-form news repair skipped:', repairError);
-                    }
-                }
+被 drop 的条目也要返回以便计数，但不得偷偷删掉审查字段。`;
 
-                const acceptedItems = normalizedItems.filter(item => {
+                const reviewedItems = await requestSocialJsonArray(editorialPrompt, 9_000, 150_000);
+                const boundaryAccepted = acceptReviewedSocialNewsItems(reviewedItems, selectedChars.map(character => ({
+                    id: character.id,
+                    name: character.name,
+                })));
+                const reviewedNormalizedItems = boundaryAccepted.map(normalizeGeneratedNewsItem);
+                const acceptedItems = reviewedNormalizedItems.filter(item => {
                     if (!item.content) return false;
                     if (!isLongformNewsChannel(item.newsChannel)) return true;
                     return countNewsContentChars(item.content) >= NEWS_LONGFORM_MIN_CHARS;
                 });
                 rejectedLongformCount = normalizedItems.length - acceptedItems.length;
+                if (acceptedItems.length < 4) {
+                    throw new Error('边界审查后可发布资讯不足 4 条，请重新刷新');
+                }
                 generatedItems = acceptedItems;
             }
 
@@ -1143,6 +1194,8 @@ ${JSON.stringify(shortLongformItems.map(({ item, index }) => ({
 - 像小报/种草号下面的评论区：有人不信、有人蹲后续、有人开玩笑、有人说自己也遇到过。
 - 不要把传闻盖章为事实；评论可以互相怀疑、补充、跑题。
 - 约会/吃喝类可以更轻松，诡秘/小道类可以更像投稿楼。
+- 只能回应帖子里公开可见的内容。不得补出角色身份、私人关系、内心、私聊或未公开真相，也不得声称自己认识具名角色。
+- 不要让所有评论者异口同声确认同一个猜测；至少保留质疑、误读、玩笑或无关生活经验，让评论区像真实人群。
 
 ### 禁令
 - 禁止署名为 "${socialProfile.name}"。
@@ -1210,7 +1263,10 @@ ${contextPrompt}
                         const commentLikeCap = isNewsPost ? 18 : socialCircleBudget();
                         return { id: `cmt-${Math.random()}`, authorName: authorName, authorAvatar: avatar, charId: char?.id, content: c.content || '...', likes: Math.floor(Math.random() * (commentLikeCap + 1)), isCharacter: !!char };
                     });
-                    updatePostInFeed({ ...post, comments, replyState: post.replyState === 'pending' ? 'generated' : post.replyState });
+                    patchPostInFeed(post.id, {
+                        comments,
+                        replyState: post.replyState === 'pending' ? 'generated' : post.replyState,
+                    });
                     generated = true;
                 }
             }
@@ -1220,7 +1276,7 @@ ${contextPrompt}
             window.clearTimeout(requestTimer);
             pendingReplyRef.current.delete(post.id);
             if (!generated && options.replyToUserPost && !deletedPostIdsRef.current.has(post.id)) {
-                updatePostInFeed({ ...post, replyDueAt: Date.now() + 5 * 60_000 });
+                patchPostInFeed(post.id, { replyDueAt: Date.now() + 5 * 60_000 });
             }
             setLoadingComments(false);
         }
@@ -1511,6 +1567,46 @@ ${identityMap}
         updatePostInFeed({ ...post, storySeedStatus: 'adopted', adoptedAt: Date.now() });
         addToast('已标记为剧情引导，不会自动写入记忆', 'success');
     };
+    const handleNewsFeedbackSentiment = (post: SocialPost, sentiment: SocialNewsFeedbackSentiment) => {
+        if (getPostKind(post) !== 'news') return;
+        const previous = post.newsFeedback;
+        const sameSentiment = previous?.sentiment === sentiment;
+        const nextPost: SocialPost = {
+            ...post,
+            newsFeedback: {
+                sentiment,
+                reason: sameSentiment ? previous.reason : undefined,
+                note: sameSentiment ? previous.note : undefined,
+                updatedAt: Date.now(),
+            },
+        };
+        setNewsFeedbackNote(nextPost.newsFeedback?.note || '');
+        updatePostInFeed(nextPost);
+        addToast('记下了，下一批资讯会参考', 'success');
+    };
+    const handleNewsFeedbackReason = (post: SocialPost, reason: SocialNewsFeedbackReason) => {
+        if (getPostKind(post) !== 'news' || !post.newsFeedback) return;
+        updatePostInFeed({
+            ...post,
+            newsFeedback: {
+                ...post.newsFeedback,
+                reason,
+                updatedAt: Date.now(),
+            },
+        });
+    };
+    const handleSaveNewsFeedbackNote = (post: SocialPost) => {
+        if (getPostKind(post) !== 'news' || !post.newsFeedback) return;
+        updatePostInFeed({
+            ...post,
+            newsFeedback: {
+                ...post.newsFeedback,
+                note: newsFeedbackNote.trim().slice(0, 240) || undefined,
+                updatedAt: Date.now(),
+            },
+        });
+        addToast('原因也记下了', 'success');
+    };
     
     const handleSendComment = async () => { 
         if (!selectedPost || !commentInput.trim() || !socialPostMatchesScope(selectedPost, activeSocialScope)) return;
@@ -1754,6 +1850,10 @@ ${identityMap}
         const selectedTags = selectedPost.tags || [];
         const detailImage = selectedPost.images?.find(isImageAsset);
         const detailSticker = selectedPost.images?.find(token => token && !isImageAsset(token));
+        const selectedNewsFeedback = selectedPost.newsFeedback;
+        const selectedNewsFeedbackReasons = selectedNewsFeedback
+            ? SOCIAL_NEWS_FEEDBACK_REASONS[selectedNewsFeedback.sentiment]
+            : [];
         return (
             <div 
                 className="absolute inset-0 z-[60] h-full w-full bg-white/90 backdrop-blur-xl flex flex-col"
@@ -1805,16 +1905,82 @@ ${identityMap}
                                 </div>
                             )}
                             {getPostKind(selectedPost) === 'news' && (
-                                <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
-                                    <button
-                                        onClick={() => handleAdoptStorySeed(selectedPost)}
-                                        disabled={selectedPost.storySeedStatus === 'adopted'}
-                                        className={`w-full rounded-xl py-2 text-xs font-bold transition-all ${selectedPost.storySeedStatus === 'adopted' ? 'bg-emerald-100 text-emerald-700' : 'bg-[#ff2442] text-white shadow-sm active:scale-[0.98]'}`}
-                                    >
-                                        {selectedPost.storySeedStatus === 'adopted' ? '已采纳为剧情引导' : '采纳为剧情引导'}
-                                    </button>
-                                    <p className="mt-2 text-[10px] leading-relaxed text-slate-400">只做本地标记，不会自动写入长期记忆。</p>
-                                </div>
+                                <>
+                                    <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
+                                        <button
+                                            onClick={() => handleAdoptStorySeed(selectedPost)}
+                                            disabled={selectedPost.storySeedStatus === 'adopted'}
+                                            className={`w-full rounded-xl py-2 text-xs font-bold transition-all ${selectedPost.storySeedStatus === 'adopted' ? 'bg-emerald-100 text-emerald-700' : 'bg-[#ff2442] text-white shadow-sm active:scale-[0.98]'}`}
+                                        >
+                                            {selectedPost.storySeedStatus === 'adopted' ? '已采纳为剧情引导' : '采纳为剧情引导'}
+                                        </button>
+                                        <p className="mt-2 text-[10px] leading-relaxed text-slate-400">只做本地标记，不会自动写入长期记忆。</p>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-violet-100 bg-violet-50/65 p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-[13px] font-black text-slate-700">以后想多刷到这种吗？</div>
+                                                <p className="mt-1 text-[10px] leading-4 text-slate-400">只影响当前面具的资讯偏好，不会改角色设定。</p>
+                                            </div>
+                                            {selectedNewsFeedback && (
+                                                <span className="shrink-0 rounded-full bg-white/80 px-2 py-1 text-[9px] font-bold text-violet-500">
+                                                    已记下
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleNewsFeedbackSentiment(selectedPost, 'like')}
+                                                className={`flex items-center justify-center gap-2 rounded-xl border py-2.5 text-[12px] font-bold transition-all active:scale-[0.98] ${selectedNewsFeedback?.sentiment === 'like' ? 'border-violet-400 bg-violet-500 text-white shadow-sm' : 'border-white bg-white/80 text-slate-600'}`}
+                                            >
+                                                <ThumbsUp size={16} weight={selectedNewsFeedback?.sentiment === 'like' ? 'fill' : 'bold'} />
+                                                合胃口
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleNewsFeedbackSentiment(selectedPost, 'dislike')}
+                                                className={`flex items-center justify-center gap-2 rounded-xl border py-2.5 text-[12px] font-bold transition-all active:scale-[0.98] ${selectedNewsFeedback?.sentiment === 'dislike' ? 'border-rose-400 bg-rose-500 text-white shadow-sm' : 'border-white bg-white/80 text-slate-600'}`}
+                                            >
+                                                <ThumbsDown size={16} weight={selectedNewsFeedback?.sentiment === 'dislike' ? 'fill' : 'bold'} />
+                                                不想再刷到
+                                            </button>
+                                        </div>
+                                        {selectedNewsFeedback && (
+                                            <div className="mt-3 space-y-3">
+                                                <div className="flex flex-wrap gap-2">
+                                                    {selectedNewsFeedbackReasons.map(reason => (
+                                                        <button
+                                                            key={reason}
+                                                            type="button"
+                                                            onClick={() => handleNewsFeedbackReason(selectedPost, reason)}
+                                                            className={`rounded-full border px-2.5 py-1.5 text-[10px] font-bold transition-all ${selectedNewsFeedback.reason === reason ? 'border-violet-300 bg-violet-100 text-violet-700' : 'border-white bg-white/75 text-slate-500'}`}
+                                                        >
+                                                            {SOCIAL_NEWS_FEEDBACK_REASON_LABELS[reason]}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="flex items-end gap-2">
+                                                    <textarea
+                                                        value={newsFeedbackNote}
+                                                        onChange={event => setNewsFeedbackNote(event.target.value.slice(0, 240))}
+                                                        rows={2}
+                                                        placeholder="也可以补一句原因（可选）"
+                                                        className="min-h-[56px] flex-1 resize-none rounded-xl border border-white bg-white/80 px-3 py-2 text-[11px] leading-5 text-slate-600 outline-none focus:border-violet-200"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSaveNewsFeedbackNote(selectedPost)}
+                                                        className="shrink-0 rounded-xl bg-slate-700 px-3 py-2.5 text-[10px] font-bold text-white active:scale-95"
+                                                    >
+                                                        记下原因
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
                             )}
                             
                             <div className="flex gap-2 flex-wrap pt-2">
@@ -2132,14 +2298,28 @@ ${identityMap}
                         <button className={`${activeTab === 'news' ? 'text-slate-800 border-b-2 border-[#ff2442] pb-0.5' : 'hover:text-slate-500'} transition-all focus:outline-none`} onClick={() => setActiveTab('news')}>资讯站</button>
                     </div>
                     )}
-                    right={activeTab === 'news' && visibleFeed.length > 0 ? (
-                        <button
-                            type="button"
-                            onClick={() => setShowClearNewsConfirm(true)}
-                            className="rounded-full border border-rose-100 bg-white/75 px-3 py-1.5 text-[11px] font-bold text-rose-500 shadow-sm active:scale-95"
-                        >
-                            清空
-                        </button>
+                    right={(activeTab === 'moments' || activeTab === 'news') && visibleFeed.length > 0 ? (
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                aria-label={activeTab === 'news' ? '再刷一批资讯' : '再刷一批朋友圈'}
+                                title={activeTab === 'news' ? '再刷一批资讯' : '再刷一批朋友圈'}
+                                disabled={isRefreshing}
+                                onClick={() => void handleRefresh(activeTab)}
+                                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-100 bg-white/75 text-slate-500 shadow-sm active:scale-95 disabled:opacity-40"
+                            >
+                                <ArrowClockwise size={15} weight="bold" className={isRefreshing ? 'animate-spin' : ''} />
+                            </button>
+                            {activeTab === 'news' && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowClearNewsConfirm(true)}
+                                    className="rounded-full border border-rose-100 bg-white/75 px-2.5 py-1.5 text-[10px] font-bold text-rose-500 shadow-sm active:scale-95"
+                                >
+                                    清空
+                                </button>
+                            )}
+                        </div>
                     ) : undefined}
                     className="bg-white/70 border-white/40"
                 />
@@ -2172,6 +2352,18 @@ ${identityMap}
                                                 ? '先在面具中链接角色；这里只有当前面具关系网里的动态。'
                                                 : '下拉刷新时会新增一批内容，旧批次不会自己回来。'}
                                         </p>
+                                        {(activeTab === 'news' || socialParticipants.length > 0) && (
+                                            <button
+                                                type="button"
+                                                disabled={isRefreshing}
+                                                onClick={() => void handleRefresh(activeTab)}
+                                                className="mt-3 rounded-full border border-white/90 bg-white/85 px-5 py-2 text-xs font-bold text-slate-600 shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                                            >
+                                                {isRefreshing
+                                                    ? '正在整理…'
+                                                    : activeTab === 'news' ? '刷一批资讯' : '刷一批朋友圈'}
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>

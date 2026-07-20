@@ -1085,6 +1085,34 @@ export interface SocialComment {
 
 export type SocialNewsCategory = 'mainline' | 'sidequest' | 'date' | 'daily';
 export type SocialStoryLineStatus = 'candidate' | 'active' | 'closed' | 'archived';
+export type SocialNewsFeedbackSentiment = 'like' | 'dislike';
+export type SocialNewsFeedbackReason =
+    | 'natural'
+    | 'interesting-peripheral'
+    | 'useful-story-hook'
+    | 'liked-style'
+    | 'forced-setting'
+    | 'secret-leak'
+    | 'out-of-character'
+    | 'repeated-cast'
+    | 'report-like'
+    | 'other';
+
+export interface SocialNewsFeedback {
+    sentiment: SocialNewsFeedbackSentiment;
+    reason?: SocialNewsFeedbackReason;
+    note?: string;
+    updatedAt: number;
+}
+
+export interface SocialNewsEditorialAudit {
+    policyVersion: string;
+    reviewedAt: number;
+    knowledgeBasis: 'ambient' | 'explicit-public' | 'peripheral-fiction';
+    namedCharacterIds: string[];
+    namedCharacterBasis: 'none' | 'explicit-public';
+    relevanceReason: string;
+}
 
 export interface SocialRelationshipScope {
     progressBundleId: string;
@@ -1109,6 +1137,10 @@ export interface SocialPost {
     tags: string[];
     newsCategory?: SocialNewsCategory;
     newsChannel?: string;
+    /** Local preference signal used only to tune later Information Station batches. */
+    newsFeedback?: SocialNewsFeedback;
+    /** Evidence left by the pre-save editorial boundary pass. */
+    newsEditorialAudit?: SocialNewsEditorialAudit;
     storyLineStatus?: SocialStoryLineStatus;
     bgStyle?: string; 
     storySeedStatus?: 'none' | 'candidate' | 'adopted';

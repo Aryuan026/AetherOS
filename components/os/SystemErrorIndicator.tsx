@@ -29,8 +29,9 @@ const SystemErrorIndicator: React.FC = () => {
         onClose={() => setShowLogModal(false)}
         footer={(
           <div className="flex w-full gap-2">
-            <button onClick={() => navigator.clipboard.writeText(JSON.stringify(systemLogs, null, 2))} className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600">复制 JSON</button>
-            <button onClick={clearLogs} className="flex-1 rounded-xl bg-red-500 py-3 font-bold text-white shadow-lg shadow-red-200">清空日志</button>
+            <button onClick={() => setShowLogModal(false)} className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600">关闭</button>
+            <button onClick={() => navigator.clipboard.writeText(JSON.stringify(systemLogs, null, 2))} className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600">复制</button>
+            <button onClick={clearLogs} className="flex-1 rounded-xl bg-red-500 py-3 font-bold text-white shadow-lg shadow-red-200">清空</button>
           </div>
         )}
       >
