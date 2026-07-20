@@ -1,4 +1,4 @@
-import type { CharacterProfile, CompanionWakeupRule } from '../types';
+import type { CharacterProfile, CompanionWakeupRule, MessageRelationshipScope } from '../types';
 import { DB } from './db';
 import {
     DEFAULT_CARE_WINDOWS,
@@ -77,13 +77,22 @@ export const isDuplicateBuiltInCareRule = (
     ));
 };
 
-export const defaultHeartbeatRuleIdsForChar = (charId: string): Set<string> => (
-    new Set(DEFAULT_HEARTBEAT_WINDOWS.map((_, index) => `wake-heartbeat-${charId}-${index + 1}`))
+const wakeupScopeSuffix = (scope?: MessageRelationshipScope): string => scope
+    ? [scope.progressBundleId, scope.personaMaskId].map(encodeURIComponent).join('-')
+    : 'unscoped';
+
+export const defaultHeartbeatRuleIdsForChar = (
+    charId: string,
+    relationshipScope?: MessageRelationshipScope,
+): Set<string> => (
+    new Set(DEFAULT_HEARTBEAT_WINDOWS.map((_, index) => (
+        `wake-heartbeat-${charId}-${index + 1}-${wakeupScopeSuffix(relationshipScope)}`
+    )))
 );
 
 export const isObsoleteHeartbeatRule = (char: CharacterProfile, rule: CompanionWakeupRule): boolean => (
     rule.kind === 'heartbeat'
-    && !defaultHeartbeatRuleIdsForChar(char.id).has(rule.id)
+    && !defaultHeartbeatRuleIdsForChar(char.id, rule.relationshipScope).has(rule.id)
     && rule.source !== 'user'
 );
 
@@ -92,9 +101,10 @@ export const mergeDefaultHeartbeatRules = (
     existingRules: CompanionWakeupRule[],
     settings: CompanionWakeupSettings = loadCompanionWakeupSettings(),
     now = Date.now(),
+    relationshipScope?: MessageRelationshipScope,
 ): CompanionWakeupRule[] => {
     const mode = resolveCompanionWakeupMode(settings, { lines: DEFAULT_DIRECT_LINES });
-    const defaults = createDefaultHeartbeatRules(char, mode);
+    const defaults = createDefaultHeartbeatRules(char, mode, relationshipScope);
     const defaultIds = new Set(defaults.map(rule => rule.id));
     const existingById = new Map(existingRules.map(rule => [rule.id, rule]));
     const mergedDefaults = defaults.map(defaultRule => {
@@ -145,11 +155,12 @@ export const syncBuiltInCareWakeupRules = async (
     enabled: boolean,
     settings: CompanionWakeupSettings = loadCompanionWakeupSettings(),
     existingRules?: CompanionWakeupRule[],
+    relationshipScope?: MessageRelationshipScope,
 ): Promise<CompanionWakeupRule[]> => {
     const now = Date.now();
     const rules = existingRules || await DB.getCompanionWakeupRulesByCharId(char.id);
     const mode = resolveCompanionWakeupMode(settings, { lines: ['提醒用户照顾自己'] });
-    const defaults = createDefaultCareWindowRules(char, mode);
+    const defaults = createDefaultCareWindowRules(char, mode, relationshipScope);
     const existingById = new Map(rules.map(rule => [rule.id, rule]));
     const saved: CompanionWakeupRule[] = [];
 
@@ -206,12 +217,24 @@ export const syncBuiltInCareForActiveCharacters = async (
     let touched = 0;
     for (const char of characters) {
         const rules = await DB.getCompanionWakeupRulesByCharId(char.id);
-        const hasActiveHeartbeat = rules.some(rule => rule.kind === 'heartbeat' && rule.enabled);
-        const hasBuiltInCare = rules.some(rule => rule.id.startsWith(`wake-care-built-in-${char.id}-`));
-        if (!enabled && !hasBuiltInCare) continue;
-        if (enabled && !hasActiveHeartbeat) continue;
-        await syncBuiltInCareWakeupRules(char, enabled, settings, rules);
-        touched += 1;
+        const byScope = new Map<string, CompanionWakeupRule[]>();
+        rules.forEach(rule => {
+            const scope = rule.relationshipScope;
+            if (!scope) return;
+            const key = [scope.progressBundleId, scope.personaMaskId, scope.charId].join('\u0000');
+            const group = byScope.get(key) || [];
+            group.push(rule);
+            byScope.set(key, group);
+        });
+        for (const scopedRules of byScope.values()) {
+            const relationshipScope = scopedRules[0]?.relationshipScope;
+            const hasActiveHeartbeat = scopedRules.some(rule => rule.kind === 'heartbeat' && rule.enabled);
+            const hasBuiltInCare = scopedRules.some(rule => rule.id.startsWith(`wake-care-built-in-${char.id}-`));
+            if (!enabled && !hasBuiltInCare) continue;
+            if (enabled && !hasActiveHeartbeat) continue;
+            await syncBuiltInCareWakeupRules(char, enabled, settings, scopedRules, relationshipScope);
+            touched += 1;
+        }
     }
     return touched;
 };

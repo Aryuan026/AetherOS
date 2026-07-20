@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { Message, GroupProfile, CharacterProfile, MessageType, ChatTheme, MemoryFragment, Emoji, EmojiCategory } from '../types';
+import { Message, GroupProfile, CharacterProfile, MessageType, ChatTheme, MemoryFragment, Emoji, EmojiCategory, MessageRelationshipScope } from '../types';
 import { safeResponseJson } from '../utils/safeApi';
 import Modal from '../components/os/Modal';
 import { ContextBuilder } from '../utils/context';
@@ -15,7 +15,10 @@ import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../compon
 import { selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { DIALOG_VISUAL_RULES } from '../components/chat/dialogVisualRules';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
-import { relationshipScopeForProfile } from '../utils/messageContext';
+import {
+    relationshipScopeForProfile,
+    strictRelationshipScopeForProfile,
+} from '../utils/messageContext';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -237,6 +240,28 @@ const GroupChat: React.FC = () => {
         const memberIds = new Set(activeGroup.members);
         return groupScopedCharacters.filter(char => memberIds.has(char.id));
     }, [activeGroup, groupScopedCharacters]);
+
+    const captureGroupRelationshipScopes = (group: GroupProfile) => (
+        group.members
+            .map(charId => strictRelationshipScopeForProfile(charId, userProfile))
+            .filter((scope): scope is MessageRelationshipScope => Boolean(scope))
+    );
+
+    const groupEvidenceMetadata = (
+        group: GroupProfile,
+        scopes: ReturnType<typeof captureGroupRelationshipScopes>,
+        speakerId: string,
+        speakerName: string,
+        metadata: Record<string, any> = {},
+    ) => ({
+        ...metadata,
+        source: 'group_chat',
+        temporalClass: 'live' as const,
+        relationshipScopes: scopes,
+        interactionId: `group:${group.id}`,
+        groupSpeakerCharId: speakerId,
+        groupSpeakerName: speakerName,
+    });
 
     // Load shared archive prompts from localStorage (same key as Chat app)
     useEffect(() => {
@@ -616,6 +641,11 @@ ${logText.substring(0, 10000)}
 
     const handleSendMessage = async (content: string, type: MessageType = 'text', metadata?: any) => {
         if (!activeGroup) return;
+        const initiatingScopes = captureGroupRelationshipScopes(activeGroup);
+        if (initiatingScopes.length !== activeGroup.members.length) {
+            addToast('群聊成员与当前面具的关系归属不完整', 'error');
+            return;
+        }
         
         const newMessage = {
             charId: 'user',
@@ -623,7 +653,13 @@ ${logText.substring(0, 10000)}
             role: 'user' as const,
             type,
             content,
-            metadata
+            metadata: groupEvidenceMetadata(
+                activeGroup,
+                initiatingScopes,
+                'user',
+                userProfile.name || 'User',
+                metadata,
+            ),
         };
 
         await DB.saveMessage(newMessage);
@@ -657,6 +693,11 @@ ${logText.substring(0, 10000)}
 
     const triggerDirector = async (currentMsgs: Message[]) => {
         if (!activeGroup || !apiConfig.apiKey) return;
+        const initiatingScopes = captureGroupRelationshipScopes(activeGroup);
+        if (initiatingScopes.length !== activeGroup.members.length) {
+            addToast('群聊成员与当前面具的关系归属不完整', 'error');
+            return;
+        }
         setIsTyping(true);
 
         try {
@@ -864,7 +905,15 @@ ${recentGroupMsgs}
                                 charId: targetId,
                                 role: 'assistant',
                                 type: 'text',
-                                content: privateContent
+                                content: privateContent,
+                                metadata: {
+                                    source: 'group_chat',
+                                    temporalClass: 'live',
+                                    relationshipScope: initiatingScopes.find(scope => scope.charId === targetId) || null,
+                                    interactionId: `group:${activeGroup.id}:private`,
+                                    groupSpeakerCharId: targetId,
+                                    groupSpeakerName: charName,
+                                },
                             });
                             addToast(`${charName} 悄悄对你说: ${privateContent.substring(0, 15)}...`, 'info');
                         }
@@ -891,7 +940,13 @@ ${recentGroupMsgs}
                             groupId: activeGroup.id,
                             role: 'assistant',
                             type: 'emoji',
-                            content: foundEmoji.url
+                            content: foundEmoji.url,
+                            metadata: groupEvidenceMetadata(
+                                activeGroup,
+                                initiatingScopes,
+                                targetId,
+                                charName,
+                            ),
                         });
                         setMessages(await DB.getGroupMessages(activeGroup.id));
                         await new Promise(r => setTimeout(r, 800)); // Delay after emoji
@@ -927,7 +982,13 @@ ${recentGroupMsgs}
                             groupId: activeGroup.id,
                             role: 'assistant',
                             type: 'text',
-                            content: chunk
+                            content: chunk,
+                            metadata: groupEvidenceMetadata(
+                                activeGroup,
+                                initiatingScopes,
+                                targetId,
+                                charName,
+                            ),
                         });
                         setMessages(await DB.getGroupMessages(activeGroup.id));
                     }

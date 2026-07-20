@@ -9,7 +9,7 @@ import { DB } from '../utils/db';
 import { ChatPrompts } from '../utils/chatPrompts';
 import { selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { buildRealitySyncContext } from '../utils/realitySync';
-import { Message, ChatTheme, CharacterProfile, VirtualTime } from '../types';
+import { Message, ChatTheme, CharacterProfile, VirtualTime, MessageRelationshipScope } from '../types';
 import { PRESET_THEMES } from '../components/chat/ChatConstants';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
@@ -21,7 +21,12 @@ import {
   summarizeCallKeepsakeLine,
 } from '../utils/callTranscript';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
-import { relationshipScopeForProfile } from '../utils/messageContext';
+import {
+  messageMatchesRelationshipScope,
+  normalizeMessageRelationshipScope,
+  sameMessageRelationshipScope,
+  strictRelationshipScopeForProfile,
+} from '../utils/messageContext';
 type CallState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'ended' | 'error';
 type ViewMode = 'role-select' | 'in-call' | 'history' | 'record-detail';
 type CallBubble = { id: string; dbId?: number; role: 'user' | 'assistant'; text: string; time: string; audioUrl?: string; timestamp: number };
@@ -508,7 +513,19 @@ const CallApp: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentBlobUrlRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
+  const callRelationshipScopeRef = useRef<MessageRelationshipScope | null>(null);
   const callTouchStartPos = useRef({ x: 0, y: 0 });
+  const callEvidenceMetadata = (extra: Record<string, any> = {}) => {
+    const relationshipScope = callRelationshipScopeRef.current;
+    return {
+      ...extra,
+      source: 'call',
+      temporalClass: 'live' as const,
+      relationshipScope,
+      interactionId: relationshipScope ? `call:${currentSessionId}` : undefined,
+      callSessionId: currentSessionId,
+    };
+  };
   const personaScope = useMemo(() => (
     resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
   ), [userProfile, characters, activeCharacterId]);
@@ -577,6 +594,13 @@ const CallApp: React.FC = () => {
   // Resume from suspended call — restore bubbles & session state
   useEffect(() => {
     if (suspendedCall && viewMode === 'role-select' && callScopedCharacters.some(char => char.id === suspendedCall.charId)) {
+      const suspendedScope = normalizeMessageRelationshipScope(suspendedCall.relationshipScope);
+      const activeScope = strictRelationshipScopeForProfile(suspendedCall.charId, userProfile);
+      if (!suspendedScope || !activeScope || !sameMessageRelationshipScope(suspendedScope, activeScope)) {
+        clearSuspendedCall();
+        return;
+      }
+      callRelationshipScopeRef.current = suspendedScope;
       setSelectedCharId(suspendedCall.charId);
       setCallStartedAt(suspendedCall.startedAt);
       if (suspendedCall.bubbles?.length) setBubbles(suspendedCall.bubbles);
@@ -624,7 +648,7 @@ const CallApp: React.FC = () => {
         setBubbles([greetingBubble]);
         let greetingDbId: number | undefined;
         if (selectedChar?.id) {
-          greetingDbId = await DB.saveMessage({ charId: selectedChar.id, role: 'assistant', type: 'text', content: greetingText, timestamp: nowTs, metadata: { source: 'call', callSessionId: currentSessionId } });
+          greetingDbId = await DB.saveMessage({ charId: selectedChar.id, role: 'assistant', type: 'text', content: greetingText, timestamp: nowTs, metadata: callEvidenceMetadata() });
           setBubbles(prev => prev.map(b => b.id === greetingBubble.id ? { ...b, dbId: greetingDbId } : b));
         }
         // 尝试语音合成开场白
@@ -695,11 +719,15 @@ const CallApp: React.FC = () => {
   };
   const loadCallRecords = async (charId?: string) => {
     if (!charId) return setCallRecords([]);
+    const relationshipScope = strictRelationshipScopeForProfile(charId, userProfile);
+    if (!relationshipScope) return setCallRecords([]);
     const all = await DB.getMessagesByCharId(charId);
     const callMsgs = all
+      .filter(m => messageMatchesRelationshipScope(m, relationshipScope))
       .filter(m => m.metadata?.source === 'call' && m.metadata?.callSessionId)
       .sort((a, b) => a.timestamp - b.timestamp);
     const endMsgs = all
+      .filter(m => messageMatchesRelationshipScope(m, relationshipScope))
       .filter(m => m.metadata?.source === 'call-end-popup' && m.metadata?.callSessionId)
       .sort((a, b) => a.timestamp - b.timestamp);
     const grouped = new Map<string, Message[]>();
@@ -764,6 +792,7 @@ const CallApp: React.FC = () => {
     setShowCallTranscript(false);
     setShowCallTools(false);
     setCallScene('');
+    callRelationshipScopeRef.current = null;
     setCurrentSessionId(`call-${Date.now()}`);
   };
 
@@ -773,8 +802,14 @@ const CallApp: React.FC = () => {
       addToast('这个角色还没有进入当前面具的生活圈', 'info');
       return;
     }
+    const relationshipScope = strictRelationshipScopeForProfile(charId, userProfile);
+    if (!relationshipScope) {
+      addToast('当前面具与角色的关系归属不完整', 'error');
+      return;
+    }
     setSelectedCharId(charId);
     resetCurrentCall();
+    callRelationshipScopeRef.current = relationshipScope;
     setCallScene(buildCallOpeningScene(nextChar || null, virtualTime, Date.now()));
     setViewMode('in-call');
   };
@@ -798,7 +833,10 @@ const CallApp: React.FC = () => {
         role: 'system',
         type: 'system',
         content: `通话结束 · ${selectedChar.name}｜${formatDuration(elapsedSeconds)}｜${userTurns}轮对话`,
-        metadata: { source: 'call-end-popup', callSessionId: currentSessionId, ...payload },
+        metadata: {
+          ...callEvidenceMetadata(payload),
+          source: 'call-end-popup',
+        },
       });
       await loadCallRecords(selectedChar.id);
     }
@@ -813,9 +851,13 @@ const CallApp: React.FC = () => {
   };
   const buildHistoryMessages = async (input: string, skipDbId?: number) => {
     if (!selectedChar?.id) return [{ role: 'user', content: input }];
+    const relationshipScope = callRelationshipScopeRef.current;
+    if (!relationshipScope) return [{ role: 'user', content: input }];
     const limit = selectedChar.contextLimit || 500;
     const allMsgs = await DB.getRecentMessagesByCharId(selectedChar.id, limit);
-    const filtered = allMsgs.filter(m => !(skipDbId && m.id === skipDbId) && m.metadata?.source !== 'call-end-popup');
+    const filtered = allMsgs
+      .filter(message => messageMatchesRelationshipScope(message, relationshipScope))
+      .filter(m => !(skipDbId && m.id === skipDbId) && m.metadata?.source !== 'call-end-popup');
     const history = filtered.map(m => {
       const rawContent = m.type === 'image'
         ? '[用户发送了一张图片]'
@@ -837,7 +879,8 @@ const CallApp: React.FC = () => {
     if (!baseUrl) throw new Error('请先在设置里配置聊天 API URL');
     const userName = userProfile?.name?.trim() || '用户';
     let callCoreContext = selectedChar ? ContextBuilder.buildCoreContext(selectedChar, userProfile, true) : undefined;
-    if (selectedChar) {
+    const relationshipScope = callRelationshipScopeRef.current;
+    if (selectedChar && relationshipScope) {
       try {
         const recentForMemory = await DB.getRecentMessagesByCharId(selectedChar.id, selectedChar.contextLimit || 500);
         const worldlineMemory = await selectWorldlineMemoryContext({
@@ -845,7 +888,7 @@ const CallApp: React.FC = () => {
           user: userProfile,
           mode: 'call',
           surface: 'call',
-          relationshipScope: relationshipScopeForProfile(selectedChar.id, userProfile)!,
+          relationshipScope,
           currentMessages: recentForMemory,
           query: input,
           budgetChars: 1000,
@@ -908,7 +951,7 @@ const CallApp: React.FC = () => {
     setDraftInput('');
     let userDbId: number | undefined;
     if (selectedChar?.id) {
-      userDbId = await DB.saveMessage({ charId: selectedChar.id, role: 'user', type: 'text', content: input, timestamp: nowTs, metadata: { source: 'call', callSessionId: currentSessionId } });
+      userDbId = await DB.saveMessage({ charId: selectedChar.id, role: 'user', type: 'text', content: input, timestamp: nowTs, metadata: callEvidenceMetadata() });
       setBubbles(prev => prev.map(b => (b.id === userBubble.id ? { ...b, dbId: userDbId } : b)));
     }
     if (!callStartedAt) setCallStartedAt(Date.now());
@@ -930,7 +973,7 @@ const CallApp: React.FC = () => {
     setBubbles(prev => [...prev, assistantBubble]);
     let assistantDbId: number | undefined;
     if (selectedChar?.id) {
-      assistantDbId = await DB.saveMessage({ charId: selectedChar.id, role: 'assistant', type: 'text', content: assistantText, timestamp: assistantTs, metadata: { source: 'call', callSessionId: currentSessionId } });
+      assistantDbId = await DB.saveMessage({ charId: selectedChar.id, role: 'assistant', type: 'text', content: assistantText, timestamp: assistantTs, metadata: callEvidenceMetadata() });
       setBubbles(prev => prev.map(b => {
         if (b.id === assistantBubbleId) return { ...b, dbId: assistantDbId };
         return b;
@@ -1676,7 +1719,7 @@ const CallApp: React.FC = () => {
               <button onClick={() => {
                 setShowHangupConfirm(false);
                 if (selectedChar) {
-                  suspendCall({ charId: selectedChar.id, charName: selectedChar.name, charAvatar: selectedChar.avatar, startedAt: callStartedAt || Date.now(), bubbles, sessionId: currentSessionId, elapsedSeconds, voiceLang, callScene });
+                  suspendCall({ charId: selectedChar.id, charName: selectedChar.name, charAvatar: selectedChar.avatar, startedAt: callStartedAt || Date.now(), bubbles, sessionId: currentSessionId, elapsedSeconds, voiceLang, callScene, relationshipScope: callRelationshipScopeRef.current || undefined });
                   addToast('通话已挂起，点击顶部绿色条可随时回来', 'success');
                 }
               }} className="w-full py-2.5 rounded-2xl bg-emerald-100 text-emerald-700 font-semibold transition active:scale-[0.97] flex items-center justify-center gap-2">

@@ -11,6 +11,11 @@ import { Sparkle } from '@phosphor-icons/react';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import {
+    normalizeMessageRelationshipScope,
+    sameMessageRelationshipScope,
+    strictRelationshipScopeForProfile,
+} from '../utils/messageContext';
 
 const TWEMOJI_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72';
 const twemojiUrl = (codepoint: string) => `${TWEMOJI_BASE}/${codepoint}.png`;
@@ -97,8 +102,18 @@ const JournalApp: React.FC = () => {
     }, [activeCharacterId, journalCharacters]);
 
     const loadDiaries = async (charId: string) => {
+        const relationshipScope = strictRelationshipScopeForProfile(charId, userProfile);
+        if (!relationshipScope) {
+            setDiaries([]);
+            return;
+        }
         const list = await DB.getDiariesByCharId(charId);
-        setDiaries(list.sort((a, b) => b.date.localeCompare(a.date)));
+        setDiaries(list
+            .filter(entry => {
+                const entryScope = normalizeMessageRelationshipScope(entry.relationshipScope);
+                return Boolean(entryScope && sameMessageRelationshipScope(entryScope, relationshipScope));
+            })
+            .sort((a, b) => b.date.localeCompare(a.date)));
     };
 
     const handleCharSelect = (char: CharacterProfile) => {
@@ -118,6 +133,7 @@ const JournalApp: React.FC = () => {
             setCurrentEntry({
                 id: `diary-${Date.now()}`,
                 charId: selectedChar!.id,
+                relationshipScope: strictRelationshipScopeForProfile(selectedChar!.id, userProfile),
                 date: date,
                 userPage: { text: '', paperStyle: 'grid', stickers: [] },
                 timestamp: Date.now(),

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { APIConfig, CharacterProfile, CompanionWakeupRule, GroupProfile, RealtimeConfig, Toast, UserProfile } from '../types';
+import { APIConfig, CharacterProfile, CompanionWakeupRule, GroupProfile, RealtimeConfig, Toast, UserProfile, MessageRelationshipScope } from '../types';
 import { DB } from '../utils/db';
 import { ChatParser } from '../utils/chatParser';
 import { ContextBuilder } from '../utils/context';
@@ -19,7 +19,11 @@ import {
 } from '../utils/companionWakeups';
 import { pickVoiceDirectWakeupLine, selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule } from '../utils/companionWakeupRules';
-import { relationshipScopeForProfile } from '../utils/messageContext';
+import {
+    normalizeMessageRelationshipScope,
+    sameMessageRelationshipScope,
+    strictRelationshipScopeForProfile,
+} from '../utils/messageContext';
 
 const TICK_INTERVAL_MS = 60 * 1000;
 const SENT_WAKEUP_HISTORY_LIMIT = 500;
@@ -159,6 +163,7 @@ const renderWakeupWithAI = async (
     apiConfig: APIConfig,
     groups: GroupProfile[],
     realtimeConfig: RealtimeConfig,
+    relationshipScope: MessageRelationshipScope,
 ): Promise<string> => {
     if (!apiConfig.baseUrl) return '';
 
@@ -174,7 +179,7 @@ const renderWakeupWithAI = async (
         user: userProfile,
         mode: 'proactive_letter',
         surface: 'proactive_letter',
-        relationshipScope: relationshipScopeForProfile(char.id, userProfile)!,
+        relationshipScope,
         currentMessages: recent,
         query: `${rule.title} ${rule.value || ''}`,
         budgetChars: 1000,
@@ -227,6 +232,7 @@ const saveWakeupMessage = async (
     rule: CompanionWakeupRule,
     char: CharacterProfile,
     message: string,
+    relationshipScope: MessageRelationshipScope,
 ): Promise<string> => {
     const parts = ChatParser.splitResponse(message);
     const previewChunks: string[] = [];
@@ -244,6 +250,9 @@ const saveWakeupMessage = async (
                 timestamp: baseTimestamp + offset,
                 metadata: {
                     source: 'companion_wakeup',
+                    temporalClass: 'live',
+                    relationshipScope,
+                    interactionId: `proactive:${relationshipScope.progressBundleId}:${relationshipScope.personaMaskId}:${char.id}`,
                     wakeupRuleId: rule.id,
                     wakeupKind: rule.kind,
                     wakeupMode: rule.mode,
@@ -269,6 +278,9 @@ const saveWakeupMessage = async (
                 timestamp: baseTimestamp + offset,
                 metadata: {
                     source: 'companion_wakeup',
+                    temporalClass: 'live',
+                    relationshipScope,
+                    interactionId: `proactive:${relationshipScope.progressBundleId}:${relationshipScope.personaMaskId}:${char.id}`,
                     wakeupRuleId: rule.id,
                     wakeupKind: rule.kind,
                     wakeupMode: rule.mode,
@@ -342,6 +354,27 @@ export const useCompanionWakeupRuntime = ({
             const { characters: currentCharacters, userProfile: currentUser, apiConfig: currentApi, groups: currentGroups, realtimeConfig: currentRealtime } = refs.current;
             const char = currentCharacters.find(item => item.id === rule.charId);
             if (!char) return;
+            const ruleScope = normalizeMessageRelationshipScope(rule.relationshipScope);
+            const activeScope = strictRelationshipScopeForProfile(rule.charId, currentUser);
+            if (!ruleScope || !activeScope || !sameMessageRelationshipScope(ruleScope, activeScope)) {
+                const now = Date.now();
+                await DB.saveCompanionWakeupRule({
+                    ...rule,
+                    nextTriggerAt: scheduleNextCompanionWakeup(rule, now + TICK_INTERVAL_MS),
+                    updatedAt: now,
+                });
+                await DB.saveCompanionWakeupLog({
+                    id: `wake-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    ruleId: rule.id,
+                    charId: rule.charId,
+                    triggeredAt: now,
+                    status: 'skipped',
+                    mode: rule.mode,
+                    kind: rule.kind,
+                    reason: ruleScope ? 'relationship_scope_inactive' : 'relationship_scope_missing',
+                });
+                return;
+            }
             const wakeupSettings = loadCompanionWakeupSettings();
             if (rule.kind === 'heartbeat' && !naturalWakeupEnabled(wakeupSettings)) {
                 const now = Date.now();
@@ -410,7 +443,7 @@ export const useCompanionWakeupRuntime = ({
             let message = '';
             try {
                 if (effectiveRule.mode === 'render') {
-                    message = await renderWakeupWithAI(effectiveRule, char, currentUser, currentApi, currentGroups, currentRealtime);
+                    message = await renderWakeupWithAI(effectiveRule, char, currentUser, currentApi, currentGroups, currentRealtime, ruleScope);
                 }
                 const usedLines = await sentWakeupComparableSet(char.id);
                 if (!message && wakeupSettings.hiddenWordsEnabled) {
@@ -445,7 +478,7 @@ export const useCompanionWakeupRuntime = ({
                     }
                 }
 
-                const preview = await saveWakeupMessage(effectiveRule, char, message);
+                const preview = await saveWakeupMessage(effectiveRule, char, message, ruleScope);
                 const nextTriggerAt = effectiveRule.repeat === 'daily'
                     ? scheduleNextCompanionWakeup(effectiveRule, now + TICK_INTERVAL_MS)
                     : undefined;

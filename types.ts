@@ -987,6 +987,10 @@ export interface DiaryPage {
 export interface DiaryEntry {
     id: string;
     charId: string;
+    /** Captured when the diary is first created; never inferred on save. */
+    relationshipScope?: MessageRelationshipScope;
+    /** Storage-owned source revision used by the shared evidence projection. */
+    evidenceRevision?: number;
     date: string;
     userPage: DiaryPage;
     charPage?: DiaryPage;
@@ -1049,6 +1053,8 @@ export interface CompanionWakeupRule {
     lines?: string[];    // direct mode line pool
     priority?: CompanionWakeupPriority;
     source?: 'user' | 'built_in' | 'ai_calendar' | 'migration';
+    /** Exact relationship captured when this delayed rule is enabled. */
+    relationshipScope?: MessageRelationshipScope;
     nextTriggerAt?: number;
     lastTriggeredAt?: number;
     createdAt: number;
@@ -1111,8 +1117,12 @@ export interface SocialPost {
     replyDueAt?: number;
     replyAudienceCharIds?: string[];
     replyRemainingCharIds?: string[];
+    /** Exact linked circle captured when the post is created; not a reply scheduler. */
+    evidenceAudienceCharIds?: string[];
     replyLastGeneratedAt?: number;
     socialScope?: SocialRelationshipScope;
+    /** Storage-owned source revision used by the shared evidence projection. */
+    evidenceRevision?: number;
 }
 
 export interface SubAccount {
@@ -1246,6 +1256,8 @@ export interface MessageMetadata extends Record<string, any> {
     source?: string;
     temporalClass?: MessageTemporalClass;
     relationshipScope?: MessageRelationshipScope | null;
+    /** Group records are projected once per participant, never into one merged scope. */
+    relationshipScopes?: MessageRelationshipScope[];
     interactionId?: string;
     turnId?: string;
     sessionId?: string;

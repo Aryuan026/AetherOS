@@ -1,5 +1,47 @@
 # AetherOS Progress
 
+## 2026-07-20 Remaining Life-Surface Evidence Chain
+
+- done:
+  - Call now captures the exact relationship scope at session start, carries it
+    through suspend/resume, filters call history by that scope, and projects
+    call turns into Daily Archive evidence.
+  - Group Chat now captures one immutable scope per participant. The same
+    shared group record is projected separately into each participant scope,
+    while the source speaker label remains visible to later interpretation.
+  - Journal and Social keep their own source stores. Storage-owned revisions
+    project diary pages and scoped Moments records into Daily Archive without
+    disguising either surface as Chat; edit/delete produces superseded rows and
+    tombstones.
+  - Information Station/news records remain candidates and are deliberately
+    excluded from ordinary live-memory evidence until a later narrative gate.
+  - Companion wakeup and scheduled-message writes now require the exact scope
+    captured when the rule/action was created. The same character under two
+    masks receives different rule ids; missing or inactive scope fails closed.
+  - Added `verify:life-surface-evidence` to the critical health gate.
+
+- verified:
+  - The integration fixture writes Call, Group, Journal, Social, and proactive
+    records through the real IndexedDB adapters and reads their typed evidence.
+  - A two-character Group/Social fixture exposes only shared evidence to the
+    second character; private Call/Journal/proactive evidence does not leak.
+  - Group edit retains one superseded revision per participant, and group,
+    diary, and Social deletion leave scoped tombstones.
+  - Same-character wakeup rules in two masks receive distinct ids.
+  - `npm run typecheck`
+  - `npm run verify:interaction-evidence`
+  - `npm run verify:life-surface-evidence`
+  - `npm run verify:social-scope`
+  - `npm run verify:persona-scope`
+
+- boundary:
+  - Worldbook and provider presets remain owner-confirmed HOLD for this round.
+  - Journal's legacy one-click direct `char.memories` archive is not used by
+    the new evidence path and remains compatibility debt for a later UI/policy
+    decision; this block does not silently redesign that accepted interaction.
+  - No GitHub push or server deployment occurs before Information Station and
+    the final synthetic real-provider canary are Green.
+
 ## 2026-07-20 Golden Memory And Whole-Device Restore Chain
 
 - done:

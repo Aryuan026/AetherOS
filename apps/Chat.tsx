@@ -37,6 +37,8 @@ import {
 import {
     hasSuccessfulHistoryTailContinuation,
     messageMatchesRelationshipScope,
+    normalizeMessageRelationshipScope,
+    sameMessageRelationshipScope,
     strictRelationshipScopeForProfile,
     withRelationshipScope,
 } from '../utils/messageContext';
@@ -232,6 +234,13 @@ const Chat: React.FC = () => {
         userProfile.personaMasks,
         userProfile.progressBundles,
     ]);
+    const currentWakeupRules = useCallback((rules: CompanionWakeupRule[]) => {
+        if (!importedHistoryScope) return [];
+        return rules.filter(rule => {
+            const scope = normalizeMessageRelationshipScope(rule.relationshipScope);
+            return Boolean(scope && sameMessageRelationshipScope(scope, importedHistoryScope));
+        });
+    }, [importedHistoryScope]);
     const charAvatarFramePreset = useMemo(
         () => char ? resolveAvatarFramePreset(rawOsTheme, char.avatarFramePresetId) : undefined,
         [rawOsTheme.avatarFramePresets, char?.avatarFramePresetId]
@@ -311,7 +320,7 @@ const Chat: React.FC = () => {
             setCompanionWakeupStatus(emptyCompanionWakeupStatus);
             return;
         }
-        let rules = await DB.getCompanionWakeupRulesByCharId(char.id);
+        let rules = currentWakeupRules(await DB.getCompanionWakeupRulesByCharId(char.id));
         const rulesToPause = rules.filter(rule => (
             rule.enabled
             && (
@@ -329,11 +338,11 @@ const Chat: React.FC = () => {
         if (rules.some(rule => rule.kind === 'heartbeat' && rule.enabled)) {
             const settings = loadCompanionWakeupSettings();
             const now = Date.now();
-            const heartbeats = mergeDefaultHeartbeatRules(char, rules.filter(rule => rule.kind === 'heartbeat'), settings, now);
+            const heartbeats = mergeDefaultHeartbeatRules(char, rules.filter(rule => rule.kind === 'heartbeat'), settings, now, importedHistoryScope);
             for (const rule of heartbeats) {
                 await DB.saveCompanionWakeupRule(rule);
             }
-            const careRules = await syncBuiltInCareWakeupRules(char, settings.aiCareWindowsEnabled, settings, rules);
+            const careRules = await syncBuiltInCareWakeupRules(char, settings.aiCareWindowsEnabled, settings, rules, importedHistoryScope);
             rules = [
                 ...rules.filter(rule => (
                     rule.kind !== 'heartbeat'
@@ -348,7 +357,7 @@ const Chat: React.FC = () => {
         const status = buildCompanionWakeupStatus(rules, Date.now(), recent);
         setCompanionWakeupActive(status.active);
         setCompanionWakeupStatus(status);
-    }, [char]);
+    }, [char, currentWakeupRules, importedHistoryScope]);
 
     useEffect(() => {
         void refreshCompanionWakeupActive();
@@ -358,9 +367,9 @@ const Chat: React.FC = () => {
         if (!char?.id) return;
         const settings = loadCompanionWakeupSettings();
         const now = Date.now();
-        const existing = await DB.getCompanionWakeupRulesByCharId(char.id);
+        const existing = currentWakeupRules(await DB.getCompanionWakeupRulesByCharId(char.id));
         const heartbeatRules = existing.filter(rule => rule.kind === 'heartbeat');
-        const rulesToSave: CompanionWakeupRule[] = mergeDefaultHeartbeatRules(char, heartbeatRules, settings, now);
+        const rulesToSave: CompanionWakeupRule[] = mergeDefaultHeartbeatRules(char, heartbeatRules, settings, now, importedHistoryScope);
         const nextIds = new Set(rulesToSave.map(rule => rule.id));
 
         for (const rule of rulesToSave) {
@@ -370,7 +379,7 @@ const Chat: React.FC = () => {
             await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
         }
         const careRules = settings.aiCareWindowsEnabled
-            ? await syncBuiltInCareWakeupRules(char, true, settings, existing)
+            ? await syncBuiltInCareWakeupRules(char, true, settings, existing, importedHistoryScope)
             : [];
         const mergedRules = [
             ...existing,
@@ -399,12 +408,12 @@ const Chat: React.FC = () => {
                 : `${char.name} 偶尔会自然来信`,
             'success',
         );
-    }, [addToast, char]);
+    }, [addToast, char, currentWakeupRules, importedHistoryScope]);
 
     const disableCompanionWakeup = useCallback(async (options?: { silent?: boolean }) => {
         if (!char?.id) return;
         const now = Date.now();
-        const rules = await DB.getCompanionWakeupRulesByCharId(char.id);
+        const rules = currentWakeupRules(await DB.getCompanionWakeupRulesByCharId(char.id));
         for (const rule of rules.filter(item => item.kind === 'heartbeat' || item.kind === 'window')) {
             await DB.saveCompanionWakeupRule({ ...rule, enabled: false, updatedAt: now });
         }
@@ -413,7 +422,7 @@ const Chat: React.FC = () => {
         if (!options?.silent) {
             addToast(`${char.name} 暂时不会主动打扰`, 'info');
         }
-    }, [addToast, char]);
+    }, [addToast, char, currentWakeupRules]);
 
     const handleToggleCompanionWakeup = useCallback(async () => {
         if (companionWakeupActive) {
@@ -429,11 +438,11 @@ const Chat: React.FC = () => {
 
         const now = Date.now();
         const settings = loadCompanionWakeupSettings();
-        let rules = await DB.getCompanionWakeupRulesByCharId(char.id);
+        let rules = currentWakeupRules(await DB.getCompanionWakeupRulesByCharId(char.id));
         let heartbeatRules = rules.filter(rule => rule.kind === 'heartbeat');
 
         if (heartbeatRules.length === 0) {
-            heartbeatRules = mergeDefaultHeartbeatRules(char, [], settings, now);
+            heartbeatRules = mergeDefaultHeartbeatRules(char, [], settings, now, importedHistoryScope);
             for (const rule of heartbeatRules) {
                 await DB.saveCompanionWakeupRule(rule);
             }
@@ -492,7 +501,7 @@ const Chat: React.FC = () => {
             detail: { charId: char.id, charName: char.name, body: content.slice(0, 120), ruleId: effectiveRule.id },
         }));
         addToast('已试亮一封主动来信', 'success');
-    }, [addToast, char, userProfile]);
+    }, [addToast, char, currentWakeupRules, importedHistoryScope, userProfile]);
 
     // --- Voice TTS for chat messages ---
     interface VoiceData { url: string; originalText: string; spokenText?: string; lang?: string; }

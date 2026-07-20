@@ -10,6 +10,10 @@ import {
 } from '../types';
 import { normalizeUserPersonaProfile } from './userPersonaMasks';
 import { archiveLiveMessage } from './dailyArchive/liveSync';
+import {
+    archiveDiaryEvidence,
+    archiveSocialPostEvidence,
+} from './dailyArchive/lifeSurfaceSync';
 
 const DB_NAME = 'AetherOS_Data';
 const DB_VERSION = 40; // Bumped for companion wakeups (主动来信)
@@ -666,24 +670,60 @@ export const DB = {
 
   saveSocialPost: async (post: SocialPost): Promise<void> => {
       const db = await openDB();
+      let storedPost: SocialPost | undefined;
       await new Promise<void>((resolve, reject) => {
           const transaction = db.transaction(STORE_SOCIAL_POSTS, 'readwrite');
-          transaction.objectStore(STORE_SOCIAL_POSTS).put(post);
+          const store = transaction.objectStore(STORE_SOCIAL_POSTS);
+          const request = store.get(post.id);
+          request.onsuccess = () => {
+              const previous = request.result as SocialPost | undefined;
+              storedPost = {
+                  ...post,
+                  evidenceRevision: Math.max(0, previous?.evidenceRevision || 0) + 1,
+              };
+              store.put(storedPost);
+          };
+          request.onerror = () => reject(request.error);
           transaction.oncomplete = () => resolve();
           transaction.onerror = () => reject(transaction.error);
           transaction.onabort = () => reject(transaction.error ?? new Error('Social post save aborted'));
       });
+      if (storedPost) {
+          try {
+              await archiveSocialPostEvidence({ post: storedPost });
+          } catch (error) {
+              console.warn('Social evidence projection failed; source post remains saved', error);
+          }
+      }
   },
 
   deleteSocialPost: async (id: string): Promise<void> => {
       const db = await openDB();
+      let deletedPost: SocialPost | undefined;
       await new Promise<void>((resolve, reject) => {
           const transaction = db.transaction(STORE_SOCIAL_POSTS, 'readwrite');
-          transaction.objectStore(STORE_SOCIAL_POSTS).delete(id);
+          const store = transaction.objectStore(STORE_SOCIAL_POSTS);
+          const request = store.get(id);
+          request.onsuccess = () => {
+              const previous = request.result as SocialPost | undefined;
+              deletedPost = previous ? {
+                  ...previous,
+                  evidenceRevision: Math.max(0, previous.evidenceRevision || 0) + 1,
+              } : undefined;
+              store.delete(id);
+          };
+          request.onerror = () => reject(request.error);
           transaction.oncomplete = () => resolve();
           transaction.onerror = () => reject(transaction.error);
           transaction.onabort = () => reject(transaction.error ?? new Error('Social post delete aborted'));
       });
+      if (deletedPost) {
+          try {
+              await archiveSocialPostEvidence({ post: deletedPost, status: 'tombstoned' });
+          } catch (error) {
+              console.warn('Social evidence tombstone failed; source post remains deleted', error);
+          }
+      }
   },
 
   clearSocialPosts: async (): Promise<void> => {
@@ -1201,14 +1241,60 @@ export const DB = {
 
   saveDiary: async (diary: DiaryEntry): Promise<void> => {
       const db = await openDB();
-      const transaction = db.transaction(STORE_DIARIES, 'readwrite');
-      transaction.objectStore(STORE_DIARIES).put(diary);
+      let storedDiary: DiaryEntry | undefined;
+      await new Promise<void>((resolve, reject) => {
+          const transaction = db.transaction(STORE_DIARIES, 'readwrite');
+          const store = transaction.objectStore(STORE_DIARIES);
+          const request = store.get(diary.id);
+          request.onsuccess = () => {
+              const previous = request.result as DiaryEntry | undefined;
+              storedDiary = {
+                  ...diary,
+                  evidenceRevision: Math.max(0, previous?.evidenceRevision || 0) + 1,
+              };
+              store.put(storedDiary);
+          };
+          request.onerror = () => reject(request.error);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error ?? new Error('Diary save aborted'));
+      });
+      if (storedDiary) {
+          try {
+              await archiveDiaryEvidence({ diary: storedDiary });
+          } catch (error) {
+              console.warn('Diary evidence projection failed; source diary remains saved', error);
+          }
+      }
   },
 
   deleteDiary: async (id: string): Promise<void> => {
       const db = await openDB();
-      const transaction = db.transaction(STORE_DIARIES, 'readwrite');
-      transaction.objectStore(STORE_DIARIES).delete(id);
+      let deletedDiary: DiaryEntry | undefined;
+      await new Promise<void>((resolve, reject) => {
+          const transaction = db.transaction(STORE_DIARIES, 'readwrite');
+          const store = transaction.objectStore(STORE_DIARIES);
+          const request = store.get(id);
+          request.onsuccess = () => {
+              const previous = request.result as DiaryEntry | undefined;
+              deletedDiary = previous ? {
+                  ...previous,
+                  evidenceRevision: Math.max(0, previous.evidenceRevision || 0) + 1,
+              } : undefined;
+              store.delete(id);
+          };
+          request.onerror = () => reject(request.error);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error ?? new Error('Diary delete aborted'));
+      });
+      if (deletedDiary) {
+          try {
+              await archiveDiaryEvidence({ diary: deletedDiary, status: 'tombstoned' });
+          } catch (error) {
+              console.warn('Diary evidence tombstone failed; source diary remains deleted', error);
+          }
+      }
   },
 
   getAllTasks: async (): Promise<Task[]> => {

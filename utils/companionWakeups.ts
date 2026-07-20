@@ -1,4 +1,4 @@
-import { CharacterProfile, CompanionWakeupMode, CompanionWakeupRule, UserProfile } from '../types';
+import { CharacterProfile, CompanionWakeupMode, CompanionWakeupRule, UserProfile, MessageRelationshipScope } from '../types';
 
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
@@ -216,11 +216,15 @@ export const scheduleNextCompanionWakeup = (rule: CompanionWakeupRule, from = Da
 export const createDefaultHeartbeatRules = (
     char: CharacterProfile,
     mode: CompanionWakeupMode = resolveCompanionWakeupMode(loadCompanionWakeupSettings(), { lines: DEFAULT_DIRECT_LINES }),
+    relationshipScope?: MessageRelationshipScope,
 ): CompanionWakeupRule[] => {
     const now = Date.now();
+    const scopeSuffix = relationshipScope
+        ? [relationshipScope.progressBundleId, relationshipScope.personaMaskId].map(encodeURIComponent).join('-')
+        : 'unscoped';
     return DEFAULT_HEARTBEAT_WINDOWS.map((item, index) => {
         const rule: CompanionWakeupRule = {
-            id: `wake-heartbeat-${char.id}-${index + 1}`,
+            id: `wake-heartbeat-${char.id}-${index + 1}-${scopeSuffix}`,
             charId: char.id,
             title: item.title,
             enabled: false,
@@ -233,6 +237,7 @@ export const createDefaultHeartbeatRules = (
             lines: mode === 'direct' ? DEFAULT_DIRECT_LINES : undefined,
             priority: 'heartbeat',
             source: 'built_in',
+            relationshipScope,
             createdAt: now,
             updatedAt: now,
         };
@@ -244,10 +249,14 @@ export const createCareWindowRule = (
     charId: string,
     template: { title: string; windowStart: string; windowEnd: string; value: string },
     mode: CompanionWakeupMode = resolveCompanionWakeupMode(loadCompanionWakeupSettings(), { lines: CARE_DIRECT_LINES[template.title] || [template.value] }),
+    relationshipScope?: MessageRelationshipScope,
 ): CompanionWakeupRule => {
     const now = Date.now();
+    const scopeSuffix = relationshipScope
+        ? [relationshipScope.progressBundleId, relationshipScope.personaMaskId].map(encodeURIComponent).join('-')
+        : 'unscoped';
     const rule: CompanionWakeupRule = {
-        id: `wake-care-${charId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: `wake-care-${charId}-${scopeSuffix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         charId,
         title: template.title,
         enabled: true,
@@ -260,6 +269,7 @@ export const createCareWindowRule = (
         lines: mode === 'direct' ? (CARE_DIRECT_LINES[template.title] || [template.value]) : undefined,
         priority: 'care',
         source: 'user',
+        relationshipScope,
         createdAt: now,
         updatedAt: now,
     };
@@ -269,12 +279,16 @@ export const createCareWindowRule = (
 export const createDefaultCareWindowRules = (
     char: CharacterProfile,
     mode: CompanionWakeupMode = resolveCompanionWakeupMode(loadCompanionWakeupSettings(), { lines: DEFAULT_CARE_WINDOWS.map(item => item.value) }),
+    relationshipScope?: MessageRelationshipScope,
 ): CompanionWakeupRule[] => {
     const now = Date.now();
+    const scopeSuffix = relationshipScope
+        ? [relationshipScope.progressBundleId, relationshipScope.personaMaskId].map(encodeURIComponent).join('-')
+        : 'unscoped';
     return DEFAULT_CARE_WINDOWS.map((item, index) => {
         const lines = CARE_DIRECT_LINES[item.title] || [item.value];
         const rule: CompanionWakeupRule = {
-            id: `wake-care-built-in-${char.id}-${index + 1}`,
+            id: `wake-care-built-in-${char.id}-${index + 1}-${scopeSuffix}`,
             charId: char.id,
             title: item.title,
             enabled: true,
@@ -287,6 +301,7 @@ export const createDefaultCareWindowRules = (
             lines: mode === 'direct' ? lines : undefined,
             priority: 'care',
             source: 'built_in',
+            relationshipScope,
             createdAt: now,
             updatedAt: now,
         };

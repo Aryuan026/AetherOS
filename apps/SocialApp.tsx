@@ -785,6 +785,7 @@ const SocialApp: React.FC = () => {
             storySeedStatus: kind === 'news' ? 'candidate' : 'none',
             replyState: 'none',
             socialScope: activeSocialScope,
+            evidenceAudienceCharIds: charId ? [charId] : [],
         };
     };
 
@@ -1454,6 +1455,7 @@ ${identityMap}
             replyDueAt: shouldScheduleReplies ? Date.now() + USER_POST_FIRST_REPLY_DELAY_MS : undefined,
             replyAudienceCharIds: replyQueue,
             replyRemainingCharIds: replyQueue,
+            evidenceAudienceCharIds: socialParticipants.map(char => char.id),
             socialScope: activeSocialScope,
         };
         persistFeed([post, ...feed]);

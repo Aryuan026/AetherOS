@@ -70,6 +70,23 @@ export const relationshipScopeFromMessage = (
     return scope;
 };
 
+export const relationshipScopesFromMessage = (
+    message: Pick<Message, 'metadata'>,
+): MessageRelationshipScope[] => {
+    if (!Array.isArray(message.metadata?.relationshipScopes)) return [];
+    const unique = new Map<string, MessageRelationshipScope>();
+    message.metadata.relationshipScopes.forEach(value => {
+        const scope = normalizeMessageRelationshipScope(value);
+        if (!scope) return;
+        unique.set([
+            scope.progressBundleId,
+            scope.personaMaskId,
+            scope.charId,
+        ].join('\u0000'), scope);
+    });
+    return Array.from(unique.values());
+};
+
 export const messageMatchesRelationshipScope = (
     message: Pick<Message, 'charId' | 'metadata'>,
     scope: MessageRelationshipScope,

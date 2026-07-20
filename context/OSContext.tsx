@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { APIConfig, AppID, OSTheme, VirtualTime, CharacterProfile, ChatTheme, Toast, FullBackupData, UserProfile, ApiPreset, GroupProfile, SystemLog, Worldbook, NovelBook, SongSheet, Message, RealtimeConfig, AppearancePreset } from '../types';
+import { APIConfig, AppID, OSTheme, VirtualTime, CharacterProfile, ChatTheme, Toast, FullBackupData, UserProfile, ApiPreset, GroupProfile, SystemLog, Worldbook, NovelBook, SongSheet, Message, RealtimeConfig, AppearancePreset, MessageRelationshipScope } from '../types';
 import { DB } from '../utils/db';
 import { normalizeCharacterImpression } from '../utils/impression';
 import { loadAutoMemorySettings, loadMemoryDMSettings, runAutoMemoryPass, runMemoryDMPass } from '../utils/memoryCore';
@@ -41,7 +41,7 @@ import {
 import type { ConversationClipping, DailyArchiveDocument, DailyArchiveMessageRevision } from '../domain/dailyArchive/types';
 import type { PreparedHistoryArchiveSystemRestore } from '../utils/systemBackup/historyArchiveSnapshot';
 import { apiConfigForActivatedPreset } from '../utils/apiPresets';
-import { strictRelationshipScopeForProfile } from '../utils/messageContext';
+import { normalizeMessageRelationshipScope, strictRelationshipScopeForProfile } from '../utils/messageContext';
 import {
     activatePreparedHistoryArchiveSystemRestore,
     buildHistoryArchiveSystemBackupFiles,
@@ -253,8 +253,8 @@ interface OSContextType {
   handleBack: () => void;
 
   // Call Suspend
-  suspendedCall: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string } | null;
-  suspendCall: (info: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string }) => void;
+  suspendedCall: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string; relationshipScope?: MessageRelationshipScope } | null;
+  suspendCall: (info: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string; relationshipScope?: MessageRelationshipScope }) => void;
   resumeCall: () => void;
   clearSuspendedCall: () => void;
 }
@@ -1259,7 +1259,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const backHandlerRef = useRef<(() => boolean) | null>(null);
 
   // Call Suspend
-  const [suspendedCall, setSuspendedCall] = useState<{ charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string } | null>(null);
+  const [suspendedCall, setSuspendedCall] = useState<{ charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string; relationshipScope?: MessageRelationshipScope } | null>(null);
 
   const sendProactiveNativeNotification = useCallback(async (charId: string, charName: string, body: string) => {
       if (!Capacitor.isNativePlatform()) return;
@@ -1762,6 +1762,11 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                               ?.timestamp || null;
                       }
                       for (const msg of dueMessages) {
+                          const scheduledScope = normalizeMessageRelationshipScope(msg.metadata?.relationshipScope);
+                          if (!scheduledScope || scheduledScope.charId !== msg.charId) {
+                              await DB.deleteScheduledMessage(msg.id);
+                              continue;
+                          }
                           if (
                               msg.deliveryPolicy === 'quiet_today'
                               && latestUserMessageAt
@@ -3010,7 +3015,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   };
   const unlock = () => setIsLocked(false);
 
-  const suspendCall = (info: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string }) => {
+  const suspendCall = (info: { charId: string; charName: string; charAvatar?: string; startedAt: number; bubbles?: any[]; sessionId?: string; elapsedSeconds?: number; voiceLang?: string; callScene?: string; relationshipScope?: MessageRelationshipScope }) => {
     setSuspendedCall(info);
     setActiveApp(AppID.Launcher);
   };

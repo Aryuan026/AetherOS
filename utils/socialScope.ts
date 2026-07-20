@@ -81,7 +81,7 @@ export const socialPostMatchesScope = (
  * not leak into whichever mask happens to be active.
  */
 export const inferLegacySocialPostScope = (
-    post: Pick<SocialPost, 'socialScope' | 'charId' | 'comments' | 'replyAudienceCharIds' | 'replyRemainingCharIds'>,
+    post: Pick<SocialPost, 'socialScope' | 'charId' | 'comments' | 'replyAudienceCharIds' | 'replyRemainingCharIds' | 'evidenceAudienceCharIds'>,
     profile: UserProfile,
 ): SocialRelationshipScope | undefined => {
     const existing = normalizeSocialRelationshipScope(post.socialScope);
@@ -100,6 +100,7 @@ export const inferLegacySocialPostScope = (
         ...(post.comments || []).map(comment => comment.charId || ''),
         ...(post.replyAudienceCharIds || []),
         ...(post.replyRemainingCharIds || []),
+        ...(post.evidenceAudienceCharIds || []),
     ].filter(Boolean))];
     if (referencedIds.length === 0) return undefined;
 

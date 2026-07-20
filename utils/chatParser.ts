@@ -2,6 +2,7 @@
 import { DB } from './db';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { loadCompanionWakeupSettings, resolveCompanionWakeupMode, scheduleNextCompanionWakeup } from './companionWakeups';
+import type { MessageRelationshipScope } from '../types';
 
 export const ChatParser = {
     // Return cleaned content and perform side effects
@@ -9,20 +10,27 @@ export const ChatParser = {
         aiContent: string,
         charId: string,
         charName: string,
-        addToast: (msg: string, type: 'info'|'success'|'error') => void
+        addToast: (msg: string, type: 'info'|'success'|'error') => void,
+        relationshipScope?: MessageRelationshipScope,
     ) => {
         let content = aiContent;
+        const liveMetadata = (extra: Record<string, unknown> = {}) => ({
+            ...extra,
+            source: 'chat',
+            temporalClass: 'live' as const,
+            relationshipScope: relationshipScope || null,
+        });
 
         // POKE
         if (content.includes('[[ACTION:POKE]]')) {
-            await DB.saveMessage({ charId, role: 'assistant', type: 'interaction', content: '[戳一戳]' });
+            await DB.saveMessage({ charId, role: 'assistant', type: 'interaction', content: '[戳一戳]', metadata: liveMetadata() });
             content = content.replace('[[ACTION:POKE]]', '').trim();
         }
 
         // TRANSFER
         const transferMatch = content.match(/\[\[ACTION:TRANSFER:(\d+)\]\]/);
         if (transferMatch) {
-            await DB.saveMessage({ charId, role: 'assistant', type: 'transfer', content: '[转账]', metadata: { amount: transferMatch[1] } });
+            await DB.saveMessage({ charId, role: 'assistant', type: 'transfer', content: '[转账]', metadata: liveMetadata({ amount: transferMatch[1] }) });
             content = content.replace(transferMatch[0], '').trim();
         }
 
@@ -35,7 +43,7 @@ export const ChatParser = {
                 const anni: any = { id: `anni-${Date.now()}`, title: title, date: date, charId };
                 await DB.saveAnniversary(anni);
                 addToast(`${charName} 添加了新日程: ${title}`, 'success');
-                await DB.saveMessage({ charId, role: 'system', type: 'text', content: `[系统: ${charName} 新增了日程 "${title}" (${date})]` });
+                await DB.saveMessage({ charId, role: 'system', type: 'text', content: `[系统: ${charName} 新增了日程 "${title}" (${date})]`, metadata: liveMetadata() });
             }
             content = content.replace(eventMatch[0], '').trim();
         }
@@ -48,7 +56,19 @@ export const ChatParser = {
             const msgContent = match[2].trim();
             const dueTime = new Date(timeStr).getTime();
             if (!isNaN(dueTime) && dueTime > Date.now()) {
-                await DB.saveScheduledMessage({ id: `sched-${Date.now()}-${Math.random()}`, charId, content: msgContent, dueAt: dueTime, createdAt: Date.now() });
+                await DB.saveScheduledMessage({
+                    id: `sched-${Date.now()}-${Math.random()}`,
+                    charId,
+                    content: msgContent,
+                    dueAt: dueTime,
+                    createdAt: Date.now(),
+                    metadata: {
+                        source: 'proactive',
+                        temporalClass: 'live',
+                        relationshipScope: relationshipScope || null,
+                        interactionId: relationshipScope ? `proactive:${relationshipScope.progressBundleId}:${relationshipScope.personaMaskId}:${charId}` : undefined,
+                    },
+                });
                 try {
                     const hasPerm = await LocalNotifications.checkPermissions();
                     if (hasPerm.display === 'granted') {
@@ -88,6 +108,7 @@ export const ChatParser = {
                     lines: mode === 'direct' ? [value] : undefined,
                     priority: 'care' as const,
                     source: 'ai_calendar' as const,
+                    relationshipScope,
                     createdAt: now,
                     updatedAt: now,
                 };
@@ -101,7 +122,7 @@ export const ChatParser = {
                     role: 'system',
                     type: 'text',
                     content: `[系统: ${charName} 新增了主动来信 "${title}" (${windowStart}-${windowEnd})]`,
-                    metadata: { hidden: true, source: 'companion_wakeup_rule' },
+                    metadata: liveMetadata({ hidden: true, source: 'companion_wakeup_rule' }),
                 });
             }
         }

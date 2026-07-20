@@ -649,10 +649,11 @@ Phase 1 HOLD boundaries:
   historical-route continuation;
 - defer the full Character Life state machine, but block all legacy paths from
   bypassing it to write current truth;
-- audit Call/Social/Group/Journal/proactive in Phase 1 and migrate them in later
-  waves; keep deep NPC merge/DM hosting UI later while ensuring the
-  interpretation schema can already preserve Chat-borne NPC/event/route/open
-  thread candidates.
+- Call/Social/Group/Journal/proactive now emit exact-scope, revisioned source
+  evidence without changing their accepted UI. Keep their deeper semantic
+  extraction, NPC merge, DM hosting UI, and direct legacy memory actions for
+  later policy waves; the shared interpretation schema can already preserve
+  Chat-borne NPC/event/route/open-thread candidates.
 
 ### Phase 2: Token-balanced information delivery
 

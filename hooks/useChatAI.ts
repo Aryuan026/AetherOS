@@ -544,7 +544,13 @@ export const useChatAI = ({
                 .trim();
 
             // 6. Parse Actions (Poke, Transfer, Schedule, etc.)
-            aiContent = await ChatParser.parseAndExecuteActions(aiContent, char.id, char.name, addToast);
+            aiContent = await ChatParser.parseAndExecuteActions(
+                aiContent,
+                char.id,
+                char.name,
+                addToast,
+                initiatingRelationshipScope,
+            );
 
             // 7. Handle Quote/Reply Logic (Robust: handles [[QUOTE:...]], [QUOTE:...], typos like QUATE/QOUTE, Chinese 引用, and [回复 "..."] format)
             const QUOTE_RE_DOUBLE = /\[\[(?:QU[OA]TE|引用)[：:]\s*([\s\S]*?)\]\]/;
