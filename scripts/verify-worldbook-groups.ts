@@ -7,6 +7,7 @@ import {
     listCustomWorldbookCategories,
     normalizeWorldbookCategory,
 } from '../utils/worldbookGroups.ts';
+import { synchronizeMountedWorldbooks } from '../utils/worldbookMounts.ts';
 
 const now = Date.now();
 const book = (id: string, patch: Partial<Worldbook> = {}): Worldbook => ({
@@ -56,6 +57,30 @@ assert.deepEqual(listCustomWorldbookCategories(fixture), ['深空世界书', '�
 assert.equal(normalizeWorldbookCategory('  自建分组  '), '自建分组');
 assert.equal(normalizeWorldbookCategory('   '), DEFAULT_WORLDBOOK_CATEGORY);
 
+const staleMount = {
+    id: 'custom-z',
+    title: '旧标题',
+    content: '旧正文',
+    category: '旧分组',
+};
+const synchronizedMount = synchronizeMountedWorldbooks([staleMount], fixture);
+assert.equal(synchronizedMount.changed, true);
+assert.deepEqual(synchronizedMount.mountedWorldbooks[0], {
+    id: 'custom-z',
+    title: '住处',
+    content: 'custom-z content',
+    category: '生活资料',
+});
+
+const missingLibraryMount = synchronizeMountedWorldbooks([{
+    id: 'portable-only',
+    title: '随角色卡导入的资料',
+    content: '没有单独资料库记录时仍需保留',
+    category: '导入',
+}], fixture);
+assert.equal(missingLibraryMount.changed, false);
+assert.equal(missingLibraryMount.mountedWorldbooks[0].content, '没有单独资料库记录时仍需保留');
+
 const appSource = readFileSync(new URL('../apps/WorldbookApp.tsx', import.meta.url), 'utf8');
 assert.match(appSource, /data-worldbook-built-in-drawer/);
 assert.match(appSource, /data-worldbook-custom-groups/);
@@ -67,5 +92,10 @@ assert.doesNotMatch(appSource, /<datalist|list="category-suggestions"/);
 const characterSource = readFileSync(new URL('../apps/Character.tsx', import.meta.url), 'utf8');
 assert.match(characterSource, /expandedWorldbookCategories/);
 assert.match(characterSource, /aria-expanded=\{expandedWorldbookCategories\.has\(category\)\}/);
+assert.match(characterSource, /currentMountedWorldbooks\(formData\.mountedWorldbooks, worldbooks\)/);
 
-console.log('worldbook folding and custom group contract: OK');
+const contextSource = readFileSync(new URL('../context/OSContext.tsx', import.meta.url), 'utf8');
+assert.match(contextSource, /synchronizeMountedWorldbooks\(char\.mountedWorldbooks, nextLibrary\)/);
+assert.doesNotMatch(contextSource, /let fullUpdatedWb: Worldbook \| undefined/);
+
+console.log('worldbook folding, custom group, and live mount contract: OK');

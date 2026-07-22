@@ -42,6 +42,7 @@ import type { ConversationClipping, DailyArchiveDocument, DailyArchiveMessageRev
 import type { PreparedHistoryArchiveSystemRestore } from '../utils/systemBackup/historyArchiveSnapshot';
 import { apiConfigForActivatedPreset } from '../utils/apiPresets';
 import { normalizeMessageRelationshipScope, strictRelationshipScopeForProfile } from '../utils/messageContext';
+import { synchronizeMountedWorldbooks } from '../utils/worldbookMounts';
 import {
     activatePreparedHistoryArchiveSystemRestore,
     buildHistoryArchiveSystemBackupFiles,
@@ -1649,34 +1650,13 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             }
         }
 
-        const builtInWorldbookById = new Map(
-            DEEPSPACE_BUILT_IN_LIBRARY_WORLDBOOKS.map(wb => [wb.id, wb])
-        );
         finalChars = finalChars.map(char => {
             if (!char.mountedWorldbooks?.length) return char;
 
-            let changed = false;
-            const mountedWorldbooks = char.mountedWorldbooks.map(mounted => {
-                const builtInWorldbook = builtInWorldbookById.get(mounted.id);
-                if (!builtInWorldbook) return mounted;
-
-                if (
-                    mounted.title === builtInWorldbook.title &&
-                    mounted.content === builtInWorldbook.content &&
-                    mounted.category === builtInWorldbook.category
-                ) {
-                    return mounted;
-                }
-
-                changed = true;
-                return {
-                    id: builtInWorldbook.id,
-                    title: builtInWorldbook.title,
-                    content: builtInWorldbook.content,
-                    category: builtInWorldbook.category,
-                };
-            });
-
+            const { mountedWorldbooks, changed } = synchronizeMountedWorldbooks(
+                char.mountedWorldbooks,
+                finalWorldbooks,
+            );
             if (!changed) return char;
             const updatedChar = { ...char, mountedWorldbooks };
             DB.saveCharacter(updatedChar);
@@ -2231,51 +2211,32 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   };
 
   const updateWorldbook = async (id: string, updates: Partial<Worldbook>) => {
-      // 1. Optimistic Update Local State
-      let fullUpdatedWb: Worldbook | undefined;
-      setWorldbooks(prev => {
-          const next = prev.map(wb => {
-              if (wb.id === id) {
-                  fullUpdatedWb = { ...wb, ...updates, updatedAt: Date.now() };
-                  return fullUpdatedWb;
-              }
-              return wb;
-          });
-          return next;
+      const currentBook = worldbooks.find(book => book.id === id);
+      if (!currentBook) return;
+
+      const fullUpdatedWb: Worldbook = {
+          ...currentBook,
+          ...updates,
+          id: currentBook.id,
+          updatedAt: Date.now(),
+      };
+
+      await DB.saveWorldbook(fullUpdatedWb);
+      setWorldbooks(prev => prev.map(book => book.id === id ? fullUpdatedWb : book));
+
+      const nextLibrary = worldbooks.map(book => book.id === id ? fullUpdatedWb : book);
+      const updatedChars: CharacterProfile[] = [];
+      const nextCharacters = characters.map(char => {
+          const synchronized = synchronizeMountedWorldbooks(char.mountedWorldbooks, nextLibrary);
+          if (!synchronized.changed) return char;
+          const updatedChar = { ...char, mountedWorldbooks: synchronized.mountedWorldbooks };
+          updatedChars.push(updatedChar);
+          return updatedChar;
       });
 
-      // 2. Persist to DB
-      if (fullUpdatedWb) {
-          await DB.saveWorldbook(fullUpdatedWb);
-
-          // 3. AUTO-SYNC: Update Characters that have this book mounted
-          // This ensures data redundancy is kept fresh
-          const charsToSync = characters.filter(c => c.mountedWorldbooks?.some(m => m.id === id));
-          
-          if (charsToSync.length > 0) {
-              const updatedChars = characters.map(char => {
-                  if (char.mountedWorldbooks?.some(m => m.id === id)) {
-                      const newMounted = char.mountedWorldbooks.map(m => 
-                          m.id === id 
-                              // Updated to sync category as well
-                              ? { 
-                                  id: fullUpdatedWb!.id, 
-                                  title: fullUpdatedWb!.title, 
-                                  content: fullUpdatedWb!.content,
-                                  category: fullUpdatedWb!.category
-                                } 
-                              : m
-                      );
-                      // Side effect: Save individual char to DB
-                      const newChar = { ...char, mountedWorldbooks: newMounted };
-                      DB.saveCharacter(newChar); 
-                      return newChar;
-                  }
-                  return char;
-              });
-              setCharacters(normalizeCharactersForState(updatedChars));
-              addToast(`已同步更新 ${charsToSync.length} 个相关角色的缓存`, 'info');
-          }
+      if (updatedChars.length > 0) {
+          await Promise.all(updatedChars.map(char => DB.saveCharacter(char)));
+          setCharacters(normalizeCharactersForState(nextCharacters));
       }
   };
 

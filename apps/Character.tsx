@@ -34,6 +34,7 @@ import {
     reviseMemoryProjectionView,
 } from '../utils/memoryCore/memoryProjection';
 import { queueDailyArchiveNavigation } from '../utils/dailyArchive/navigation';
+import { currentMountedWorldbooks } from '../utils/worldbookMounts';
 
 const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
@@ -401,6 +402,19 @@ const Character: React.FC = () => {
         }
     }
   }, [editingId, view]); 
+
+  // Worldbook IDs are the mount relationship. Keep an open character detail
+  // view projected from the current library instead of showing a stale copy.
+  useEffect(() => {
+      if (!editingId || view !== 'detail') return;
+      setFormData(previous => {
+          if (!previous || previous.id !== editingId) return previous;
+          const mountedWorldbooks = currentMountedWorldbooks(previous.mountedWorldbooks, worldbooks);
+          const isCurrent = mountedWorldbooks.length === (previous.mountedWorldbooks?.length || 0) &&
+              mountedWorldbooks.every((book, index) => book === previous.mountedWorldbooks?.[index]);
+          return isCurrent ? previous : { ...previous, mountedWorldbooks };
+      });
+  }, [editingId, view, worldbooks]);
   
   // Auto-save Effect with Safety Guard
   useEffect(() => {
@@ -1391,8 +1405,8 @@ ${isInitialGeneration ? `
 	                                   )}
 	                                </div>
 	                                <div className="space-y-2">
-	                                   {formData.mountedWorldbooks && formData.mountedWorldbooks.length > 0 ? (
-	                                       formData.mountedWorldbooks.map(wb => {
+                                   {formData.mountedWorldbooks && formData.mountedWorldbooks.length > 0 ? (
+	                                       currentMountedWorldbooks(formData.mountedWorldbooks, worldbooks).map(wb => {
                                                const identityNotice = getDeepSpaceWorldbookIdentityNotice(wb, userProfile);
                                                return (
 	                                           <div key={wb.id} className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-indigo-50 shadow-sm group">

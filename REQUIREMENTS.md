@@ -733,6 +733,14 @@
 - Character worldbook mounting must keep the same records and mount semantics,
   while category contents start collapsed so large libraries remain usable on
   a phone.
+- A character mount is related to the library by stable worldbook ID. Editing
+  an enabled entry must update the character detail preview and every prompt
+  context that uses that character; users must not need to disable/re-enable a
+  book or its group. Persisted copied fields are portability caches, not an
+  independent editable version.
+- App startup must repair older stale mount caches from the current library.
+  A mounted record that exists only inside an imported character card may stay
+  intact until the user adds or removes it explicitly.
 - Grouping changes must not introduce a new database version, rewrite mounted
   worldbooks, or change backup/export compatibility.
 

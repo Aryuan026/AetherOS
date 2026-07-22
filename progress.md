@@ -2423,3 +2423,22 @@
     at least one entry uses its normalized category.
   - Desktop App hiding/reordering is delegated to the appearance task and is
     not implemented in this block.
+
+## 2026-07-22 Worldbook Live Mount Repair
+
+- fixed:
+  - Removed the React state-updater timing dependency that could save a new
+    library version while leaving character mount caches on an older version.
+  - Made worldbook ID the mount relationship key and projected current library
+    title/content/category into character details.
+  - Generalized startup repair from built-in entries to all library entries, so
+    already-stale custom mounts recover after reload.
+  - Kept character-card-only embedded books intact for portable import/export.
+
+- verified:
+  - `npm run verify:worldbook-groups`
+  - `npm run typecheck`
+  - Playwright on `http://127.0.0.1:5174/`: created custom group A and entry B,
+    mounted the group to a custom character, changed B from `旧版正文 001` to
+    `新版正文 002`, reopened the character and confirmed the mounted read-only
+    viewer showed the new body without remounting.

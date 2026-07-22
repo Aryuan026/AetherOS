@@ -78,6 +78,24 @@ from that label. Existing character mounts, local persistence and backup files
 continue to store ordinary `Worldbook` records, so grouping is a presentation
 and selection contract rather than a second source of truth.
 
+### Mounted Worldbook Resolution
+
+`CharacterProfile.mountedWorldbooks[].id` is the relationship key. The copied
+`title`, `content`, and `category` fields make character cards portable, but do
+not form a separately editable branch. Whenever the library contains that ID,
+the current library record wins and refreshes those cached fields:
+
+```text
+library record with same ID -> current title/content/category
+no library record           -> keep portable character-card copy
+```
+
+Worldbook edits persist the canonical library record first, then refresh every
+mounted character in IndexedDB and React state. App initialization applies the
+same resolution to repair caches left stale by older builds. Prompt builders
+therefore continue receiving ordinary mounted records while reading the latest
+library content.
+
 ## Shell Chrome And Virtual World Clock
 
 The global appearance preference is intentionally separate from relationship
