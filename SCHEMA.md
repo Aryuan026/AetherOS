@@ -31,16 +31,42 @@ An optional semantic rank is a disposable index result, not durable truth:
 
 ```ts
 interface CompanionMaterialSemanticRank {
+  manifestId: string;
+  manifestDigest: string;
   backend: 'embedding';
   modelId: string;
+  modelArtifactDigest: string;
+  dimensions: number;
+  metric: 'cosine' | 'dot_product';
+  normalized: boolean;
+  projectionVersion: string;
+  calibrationRevision: string;
+  strongThreshold: number;
   indexRevision: string;
+  scopeKey: string;
+  materialSetFingerprint: string;
   scores: { materialId: string; score: number }[];
+}
+
+interface CompanionMaterialSemanticRankAuthority {
+  authority: 'trusted_local_index_manifest';
+  // Same binding fields as CompanionMaterialSemanticRank, without scores.
 }
 ```
 
-Changing the embedding model creates/rebuilds an index revision. Exact
+This is a typed future seam, not a currently implemented local index. Changing
+the embedding model creates/rebuilds an index revision. Exact
 relationship scope, surface, continuity, knowledge, cooldown, diversity and
-budget remain code-owned gates.
+budget remain code-owned gates. Scores are usable only when every binding
+field matches a code-owned active-manifest authority; a stale scope,
+material-set, model, projection, calibration or index binding is ignored and
+falls back to the non-vector selector. Low-signal,
+tool-intent and no-advice inputs cannot be promoted by an embedding score.
+The future local producer must build this object from its active manifest;
+imports, provider output and ordinary UI parameters are not semantic-rank
+authorities. The current runtime adapter supplies no authority. Until that
+producer/store exists, handwritten scores are ignored outside contract
+fixtures and do not represent an enabled capability.
 
 ## Daily Archive Human Curation
 

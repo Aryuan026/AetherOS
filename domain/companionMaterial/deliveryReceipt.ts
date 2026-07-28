@@ -29,6 +29,7 @@ export const createCompanionMaterialDeliveryReceipt = (params: {
     if (!selected) throw new Error(`Delivery receipt references unselected material ${item.materialId}`);
     return {
       materialId: item.materialId,
+      materialRevision: selected.materialRevision,
       slot: selected.slot,
       promptCharCount: Math.max(0, Math.floor(item.promptCharCount)),
       renderedHash: item.renderedHash || hashText(`${selection.selectionId}:${item.materialId}`),
@@ -46,6 +47,7 @@ export const createCompanionMaterialDeliveryReceipt = (params: {
     surface: selection.surface,
     mode: selection.mode,
     purpose: selection.purpose,
+    routeRef: selection.routeRef ? { ...selection.routeRef } : undefined,
     sourceRevisionFingerprint: selection.sourceRevisionFingerprint,
     delivered,
     selectedMaterialIds: selection.selectedMaterialIds,

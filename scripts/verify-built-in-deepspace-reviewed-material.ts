@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import {
   BUILT_IN_DEEPSPACE_LISHEN_ID,
+  BUILT_IN_DEEPSPACE_QINCHE_ID,
   BUILT_IN_DEEPSPACE_QIYU_ID,
   BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL,
+  BUILT_IN_DEEPSPACE_SHENXINGHUI_ID,
+  BUILT_IN_DEEPSPACE_XIAYIZHOU_ID,
   BUILT_IN_LISHEN_REVIEWED_MATERIAL,
+  BUILT_IN_QINCHE_REVIEWED_MATERIAL,
   BUILT_IN_QIYU_REVIEWED_MATERIAL,
+  BUILT_IN_SHENXINGHUI_REVIEWED_MATERIAL,
+  BUILT_IN_XIAYIZHOU_REVIEWED_MATERIAL,
   reviewedBuiltInDeepspaceMaterialForCharacter,
 } from '../domain/companionMaterial/builtInDeepspaceReviewed.ts';
 import { assertValidCompanionMaterialRecord } from '../domain/companionMaterial/contract.ts';
@@ -35,7 +41,10 @@ const request = (charId: string, overrides: Partial<CompanionMaterialSelectionRe
 
 assert.equal(BUILT_IN_QIYU_REVIEWED_MATERIAL.length, 10);
 assert.equal(BUILT_IN_LISHEN_REVIEWED_MATERIAL.length, 10);
-assert.equal(BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL.length, 20);
+assert.equal(BUILT_IN_SHENXINGHUI_REVIEWED_MATERIAL.length, 1);
+assert.equal(BUILT_IN_QINCHE_REVIEWED_MATERIAL.length, 1);
+assert.equal(BUILT_IN_XIAYIZHOU_REVIEWED_MATERIAL.length, 1);
+assert.equal(BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL.length, 23);
 assert.deepEqual(slotCounts(BUILT_IN_QIYU_REVIEWED_MATERIAL), {
   stable_character_voice: 4,
   stable_base: 1,
@@ -53,6 +62,18 @@ assert.deepEqual(slotCounts(BUILT_IN_LISHEN_REVIEWED_MATERIAL), {
 assert.notDeepEqual(slotCounts(BUILT_IN_QIYU_REVIEWED_MATERIAL), slotCounts(BUILT_IN_LISHEN_REVIEWED_MATERIAL));
 assert.deepEqual(reviewedBuiltInDeepspaceMaterialForCharacter(BUILT_IN_DEEPSPACE_QIYU_ID), BUILT_IN_QIYU_REVIEWED_MATERIAL);
 assert.deepEqual(reviewedBuiltInDeepspaceMaterialForCharacter(BUILT_IN_DEEPSPACE_LISHEN_ID), BUILT_IN_LISHEN_REVIEWED_MATERIAL);
+assert.deepEqual(
+  reviewedBuiltInDeepspaceMaterialForCharacter(BUILT_IN_DEEPSPACE_SHENXINGHUI_ID),
+  BUILT_IN_SHENXINGHUI_REVIEWED_MATERIAL,
+);
+assert.deepEqual(
+  reviewedBuiltInDeepspaceMaterialForCharacter(BUILT_IN_DEEPSPACE_QINCHE_ID),
+  BUILT_IN_QINCHE_REVIEWED_MATERIAL,
+);
+assert.deepEqual(
+  reviewedBuiltInDeepspaceMaterialForCharacter(BUILT_IN_DEEPSPACE_XIAYIZHOU_ID),
+  BUILT_IN_XIAYIZHOU_REVIEWED_MATERIAL,
+);
 
 for (const record of BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL) {
   assertValidCompanionMaterialRecord(record);
@@ -68,6 +89,16 @@ for (const record of [...BUILT_IN_QIYU_REVIEWED_MATERIAL, ...BUILT_IN_LISHEN_REV
   if (record.slot === 'stable_character_voice') {
     assert.ok(record.sourceRefs.length >= 2, `${record.id} needs cross-source support`);
   }
+}
+
+for (const record of [
+  ...BUILT_IN_SHENXINGHUI_REVIEWED_MATERIAL,
+  ...BUILT_IN_QINCHE_REVIEWED_MATERIAL,
+  ...BUILT_IN_XIAYIZHOU_REVIEWED_MATERIAL,
+]) {
+  assert.equal(record.slot, 'stable_character_voice');
+  assert.ok(record.sourceRefs.length >= 3, `${record.id} needs a reviewed cross-source subset`);
+  assert.equal(record.retrievalHints, undefined, 'retrieval metadata stays in the calibration module');
 }
 
 const qiyuChat = selectCompanionMaterialFromRecords({
@@ -89,6 +120,50 @@ assert.notDeepEqual(
   lishenChat.items.map(item => item.guidance),
   'the two character paths must remain distinguishable under the same blind-test tags',
 );
+
+const otherLeadQueries = [
+  {
+    charId: BUILT_IN_DEEPSPACE_SHENXINGHUI_ID,
+    records: BUILT_IN_SHENXINGHUI_REVIEWED_MATERIAL,
+    query: '我们假装这是一个小游戏，定个奇怪规则。',
+    expectedId: 'builtin-shenxinghui-voice-even-playful-premise-v1',
+  },
+  {
+    charId: BUILT_IN_DEEPSPACE_QINCHE_ID,
+    records: BUILT_IN_QINCHE_REVIEWED_MATERIAL,
+    query: '两个方案二选一，你觉得哪个更好？',
+    expectedId: 'builtin-qinche-voice-criterion-led-reframe-v1',
+  },
+  {
+    charId: BUILT_IN_DEEPSPACE_XIAYIZHOU_ID,
+    records: BUILT_IN_XIAYIZHOU_REVIEWED_MATERIAL,
+    query: '来打个赌，输的人负责买甜点。',
+    expectedId: 'builtin-xiayizhou-voice-warm-playful-continuation-v1',
+  },
+] as const;
+otherLeadQueries.forEach(fixture => {
+  const selection = selectCompanionMaterialFromRecords({
+    request: request(fixture.charId, {
+      requestId: `other-lead:${fixture.charId}`,
+      query: fixture.query,
+      semanticTags: fixture.charId === BUILT_IN_DEEPSPACE_QINCHE_ID
+        ? ['choice_tradeoff']
+        : ['playful_premise'],
+      maxItems: 1,
+    }),
+    records: fixture.records.map(record => ({
+      ...record,
+      retrievalHints: {
+        activationPolicy: 'relevance_required',
+        positiveSignals: fixture.charId === BUILT_IN_DEEPSPACE_QINCHE_ID
+          ? ['choice_tradeoff']
+          : ['playful_premise'],
+        variationGroup: `fixture_${fixture.charId.replace(/[^a-z0-9]+/gi, '_')}`,
+      },
+    })),
+  });
+  assert.deepEqual(selection.selectedMaterialIds, [fixture.expectedId]);
+});
 
 const qiyuOpening = selectCompanionMaterialFromRecords({
   request: request(BUILT_IN_DEEPSPACE_QIYU_ID, {

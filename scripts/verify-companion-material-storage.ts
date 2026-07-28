@@ -97,6 +97,7 @@ const selection: CompanionMaterialSelection = {
   budgetChars: 200,
   items: [{
     materialId: relationshipRecord.id,
+    materialRevision: relationshipRecord.revision,
     slot: relationshipRecord.slot,
     kind: relationshipRecord.kind,
     guidance: relationshipRecord.guidance,

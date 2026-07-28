@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict';
 import {
   COMPANION_MATERIAL_SCHEMA_VERSION,
-  type CompanionMaterialDeliveryReceipt,
   type CompanionMaterialRecord,
+  type CompanionMaterialSemanticRank,
+  type CompanionMaterialSemanticRankAuthority,
   type CompanionMaterialSelectionRequest,
 } from '../domain/companionMaterial/types.ts';
-import { selectCompanionMaterialFromRecords } from '../domain/companionMaterial/selection.ts';
+import { createCompanionMaterialDeliveryReceipt } from '../domain/companionMaterial/deliveryReceipt.ts';
+import {
+  companionMaterialSetFingerprint,
+  selectCompanionMaterialFromRecords,
+} from '../domain/companionMaterial/selection.ts';
+import { createHistoryScopeKey } from '../domain/historyImport/contract.ts';
 
 const T0 = 1_800_000_000_000;
 const scope = {
@@ -69,7 +75,58 @@ const material = (
   ...overrides,
 });
 
+const semanticRankFor = (
+  records: readonly CompanionMaterialRecord[],
+  scores: CompanionMaterialSemanticRank['scores'],
+  overrides: Partial<CompanionMaterialSemanticRank> = {},
+): CompanionMaterialSemanticRank => ({
+  manifestId: 'fixture-index-manifest',
+  manifestDigest: 'sha256:fixture-index-manifest',
+  backend: 'embedding',
+  modelId: 'fixture-embedding',
+  modelArtifactDigest: 'sha256:fixture-model-artifact',
+  dimensions: 384,
+  metric: 'cosine',
+  normalized: true,
+  projectionVersion: 'fixture-guidance-v1',
+  calibrationRevision: 'fixture-calibration-v1',
+  strongThreshold: 0.5,
+  indexRevision: 'fixture-index-v1',
+  scopeKey: createHistoryScopeKey(scope),
+  materialSetFingerprint: companionMaterialSetFingerprint(records),
+  scores,
+  ...overrides,
+});
+
+const semanticAuthorityFor = (
+  records: readonly CompanionMaterialRecord[],
+  overrides: Partial<CompanionMaterialSemanticRankAuthority> = {},
+): CompanionMaterialSemanticRankAuthority => {
+  const { scores: _scores, ...binding } = semanticRankFor(records, []);
+  return {
+    ...binding,
+    authority: 'trusted_local_index_manifest',
+    ...overrides,
+  };
+};
+
 const ordinaryVoice = material('ordinary-voice');
+assert.notEqual(
+  companionMaterialSetFingerprint([ordinaryVoice]),
+  companionMaterialSetFingerprint([{ ...ordinaryVoice, status: 'disabled' }]),
+  'material activation changes must invalidate an embedding index binding',
+);
+assert.notEqual(
+  companionMaterialSetFingerprint([ordinaryVoice]),
+  companionMaterialSetFingerprint([{
+    ...ordinaryVoice,
+    retrievalHints: {
+      ...ordinaryVoice.retrievalHints!,
+      suppressSignals: ['mild_discomfort', 'refusal'],
+    },
+  }]),
+  'retrieval-policy changes must invalidate an embedding index binding',
+);
 const careVoice = material('care-voice', {
   guidance: '需要照看时，把关心落成可实行且可拒绝的一小步。',
   tags: ['care', 'practicality'],
@@ -247,30 +304,31 @@ const refusal = selectCompanionMaterialFromRecords({
 assert.ok(refusal.selectedMaterialIds.includes(refusalVoice.id));
 assert.equal(refusal.selectedMaterialIds.includes(careVoice.id), false);
 
-const recentReceipt: CompanionMaterialDeliveryReceipt = {
-  schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
-  id: 'receipt-recent-observation',
-  selectionId: 'selection-recent-observation',
+const recentSelection = selectCompanionMaterialFromRecords({
+  request: request('我又看到一片很奇怪的云', {
+    requestId: 'recent-observation-selection',
+    maxItems: 1,
+    semanticRank: semanticRankFor(
+      [ordinaryVoice, secondObservation],
+      [
+        { materialId: ordinaryVoice.id, score: 0.99 },
+        { materialId: secondObservation.id, score: 0.1 },
+      ],
+    ),
+  }),
+  records: [ordinaryVoice, secondObservation],
+  semanticRankAuthority: semanticAuthorityFor([ordinaryVoice, secondObservation]),
+});
+assert.deepEqual(recentSelection.selectedMaterialIds, [ordinaryVoice.id]);
+const recentReceipt = createCompanionMaterialDeliveryReceipt({
+  selection: recentSelection,
   consumerRef: { kind: 'prompt', id: 'prompt-recent', revision: '1' },
-  scope,
-  surface: 'chat',
-  mode: 'remote_chat',
-  purpose: 'stable_context',
-  sourceRevisionFingerprint: 'fixture',
-  delivered: [{
-    materialId: ordinaryVoice.id,
-    slot: ordinaryVoice.slot,
-    promptCharCount: ordinaryVoice.guidance.length,
-    renderedHash: 'rendered-recent',
-  }],
-  selectedMaterialIds: [ordinaryVoice.id],
-  dropped: [],
-  budgetChars: 520,
-  selectedChars: ordinaryVoice.guidance.length,
-  status: 'delivered',
-  truthEffect: 'none',
+  delivered: recentSelection.items.map(item => ({
+    materialId: item.materialId,
+    promptCharCount: item.estimatedChars,
+  })),
   occurredAt: T0 - 1000,
-};
+});
 const rotated = selectCompanionMaterialFromRecords({
   request: request('我又看到一片很奇怪的云', { requestId: 'rotation-request' }),
   records: [ordinaryVoice, secondObservation],
@@ -291,19 +349,141 @@ const wrongScope = material('wrong-scope', {
 });
 const vectorAdvisory = selectCompanionMaterialFromRecords({
   request: request('我今天遇到一件小事', {
-    semanticRank: {
-      backend: 'embedding',
-      modelId: 'fixture-embedding',
-      indexRevision: 'fixture-index-v1',
-      scores: [
+    semanticRank: semanticRankFor(
+      [wrongScope, ordinaryVoice],
+      [
         { materialId: wrongScope.id, score: 0.99 },
         { materialId: ordinaryVoice.id, score: 0.72 },
       ],
-    },
+    ),
   }),
   records: [wrongScope, ordinaryVoice],
+  semanticRankAuthority: semanticAuthorityFor([wrongScope, ordinaryVoice]),
 });
 assert.deepEqual(vectorAdvisory.selectedMaterialIds, [ordinaryVoice.id]);
 assert.ok(vectorAdvisory.warnings.includes('retrieval_backend:hybrid_embedding'));
+
+const staleVectorAdvisory = selectCompanionMaterialFromRecords({
+  request: request('我今天遇到一件小事', {
+    semanticRank: semanticRankFor(
+      [ordinaryVoice],
+      [{ materialId: ordinaryVoice.id, score: 0.99 }],
+      { materialSetFingerprint: 'material-set-v1:stale' },
+    ),
+  }),
+  records: [ordinaryVoice],
+  semanticRankAuthority: semanticAuthorityFor([ordinaryVoice]),
+});
+assert.ok(staleVectorAdvisory.warnings.includes('retrieval_backend:lexical_v1'));
+assert.ok(staleVectorAdvisory.warnings.includes('semantic_rank_ignored:untrusted_or_binding_mismatch'));
+
+const lowSignalHeavy = material('low-signal-heavy', {
+  retrievalHints: {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['agency'],
+    variationGroup: 'heavy_agency',
+  },
+});
+const untrustedVector = selectCompanionMaterialFromRecords({
+  request: request('今天想聊点别的', {
+    semanticRank: semanticRankFor(
+      [lowSignalHeavy],
+      [{ materialId: lowSignalHeavy.id, score: 0.99 }],
+    ),
+  }),
+  records: [lowSignalHeavy],
+});
+assert.deepEqual(
+  untrustedVector.selectedMaterialIds,
+  [],
+  'a self-reported semantic rank without trusted manifest authority must not influence selection',
+);
+assert.ok(untrustedVector.warnings.includes('retrieval_backend:lexical_v1'));
+assert.ok(untrustedVector.warnings.includes('semantic_rank_ignored:untrusted_or_binding_mismatch'));
+
+const lowSignalVector = selectCompanionMaterialFromRecords({
+  request: request('在吗', {
+    semanticRank: semanticRankFor(
+      [ordinaryVoice, lowSignalHeavy],
+      [
+        { materialId: lowSignalHeavy.id, score: 0.99 },
+        { materialId: ordinaryVoice.id, score: 0.1 },
+      ],
+    ),
+  }),
+  records: [ordinaryVoice, lowSignalHeavy],
+  semanticRankAuthority: semanticAuthorityFor([ordinaryVoice, lowSignalHeavy]),
+});
+assert.deepEqual(
+  lowSignalVector.selectedMaterialIds,
+  [ordinaryVoice.id],
+  'embedding score cannot wake a relevance-required agency/detail record for a low-signal greeting',
+);
+
+assert.throws(
+  () => selectCompanionMaterialFromRecords({
+    request: request('在吗', {
+      semanticRank: semanticRankFor(
+        [ordinaryVoice, lowSignalHeavy],
+        [{ materialId: lowSignalHeavy.id, score: 0.99 }],
+        { strongThreshold: 0 },
+      ),
+    }),
+    records: [ordinaryVoice, lowSignalHeavy],
+    semanticRankAuthority: semanticAuthorityFor([ordinaryVoice, lowSignalHeavy]),
+  }),
+  /strongThreshold must be greater than 0/,
+  'zero semantic threshold must be rejected instead of turning zero evidence into relevance',
+);
+
+for (const [label, rankOverrides] of [
+  ['wrong scope', { scopeKey: createHistoryScopeKey({ ...scope, personaMaskId: 'other-mask' }) }],
+  ['stale model artifact', { modelArtifactDigest: 'sha256:stale-model-artifact' }],
+  ['stale projection', { projectionVersion: 'fixture-guidance-stale' }],
+  ['stale calibration', { calibrationRevision: 'fixture-calibration-stale' }],
+  ['stale index', { indexRevision: 'fixture-index-stale' }],
+] as const) {
+  const ignoredRank = selectCompanionMaterialFromRecords({
+    request: request('在吗', {
+      requestId: `ignored-rank:${label}`,
+      semanticRank: semanticRankFor(
+        [ordinaryVoice, lowSignalHeavy],
+        [{ materialId: lowSignalHeavy.id, score: 0.99 }],
+        rankOverrides,
+      ),
+    }),
+    records: [ordinaryVoice, lowSignalHeavy],
+    semanticRankAuthority: semanticAuthorityFor([ordinaryVoice, lowSignalHeavy]),
+  });
+  assert.equal(
+    ignoredRank.selectedMaterialIds.includes(lowSignalHeavy.id),
+    false,
+    `${label} semantic rank must not wake a relevance-required record`,
+  );
+  assert.ok(ignoredRank.warnings.includes('retrieval_backend:lexical_v1'));
+  assert.ok(ignoredRank.warnings.includes('semantic_rank_ignored:untrusted_or_binding_mismatch'));
+}
+
+for (const query of [
+  '明天下午三点帮我设个提醒',
+  '我只是说说，不要建议也不要替我解决',
+]) {
+  const hardBypassWithVector = selectCompanionMaterialFromRecords({
+    request: request(query, {
+      requestId: `hard-bypass:${query}`,
+      semanticRank: semanticRankFor(
+        [ordinaryVoice, lowSignalHeavy],
+        [{ materialId: lowSignalHeavy.id, score: 0.99 }],
+      ),
+    }),
+    records: [ordinaryVoice, lowSignalHeavy],
+    semanticRankAuthority: semanticAuthorityFor([ordinaryVoice, lowSignalHeavy]),
+  });
+  assert.deepEqual(
+    hardBypassWithVector.selectedMaterialIds,
+    [],
+    'trusted semantic rank still cannot cross tool/no-advice hard bypass',
+  );
+}
 
 console.log('companion material non-vector retrieval and vector seam: green');

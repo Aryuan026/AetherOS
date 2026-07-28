@@ -24,6 +24,11 @@ import {
     sameMessageRelationshipScope,
     strictRelationshipScopeForProfile,
 } from '../utils/messageContext';
+import {
+    prepareCompanionMaterialPrompt,
+    recordPreparedCompanionMaterialPromptDelivery,
+    type PreparedCompanionMaterialPrompt,
+} from '../utils/companionMaterial';
 
 const TICK_INTERVAL_MS = 60 * 1000;
 const SENT_WAKEUP_HISTORY_LIMIT = 500;
@@ -167,6 +172,7 @@ const renderWakeupWithAI = async (
 ): Promise<string> => {
     if (!apiConfig.baseUrl) return '';
 
+    const requestTime = Date.now();
     const recent = await DB.getRecentMessagesByCharId(char.id, 80);
     const visibleRecent = recent
         .filter(message => !message.metadata?.hidden)
@@ -185,7 +191,33 @@ const renderWakeupWithAI = async (
         budgetChars: 1000,
     });
     const realityContext = await buildRealitySyncContext(realtimeConfig, 'proactive_letter');
-    const baseContext = `${ContextBuilder.buildCoreContext(char, userProfile)}${worldlineMemory.markdown ? `\n${worldlineMemory.markdown}\n` : ''}\n${realityContext}\n`;
+    let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
+    try {
+        const materialSemanticTags = rule.priority === 'care'
+            ? ['care_needed', 'proactive_care', rule.kind]
+            : ['proactive_intent', 'opening', rule.kind];
+        preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+            requestId: `wakeup-material:${rule.id}:${requestTime}`,
+            scope: relationshipScope,
+            surface: 'proactive_letter',
+            mode: 'proactive_letter',
+            purpose: 'proactive_intent',
+            query: `${rule.title} ${rule.value || ''}`.trim(),
+            semanticTags: materialSemanticTags,
+            relationshipStage: 'unknown',
+            budgetChars: 600,
+            maxItems: 2,
+            now: requestTime,
+        });
+    } catch (error) {
+        console.warn('Companion material proactive context unavailable:', error);
+    }
+    const baseContext = [
+        ContextBuilder.buildCoreContext(char, userProfile),
+        worldlineMemory.markdown,
+        realityContext,
+        preparedCompanionMaterial?.markdown,
+    ].filter(Boolean).join('\n\n');
     const now = new Date();
     const timeText = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const systemPrompt = `${baseContext}
@@ -223,9 +255,26 @@ const renderWakeupWithAI = async (
         }),
     });
 
+    const normalizedContent = normalizeWakeupText(data.choices?.[0]?.message?.content || '');
+    if (preparedCompanionMaterial?.projection.fragments.length && normalizedContent) {
+        try {
+            await recordPreparedCompanionMaterialPromptDelivery({
+                prepared: preparedCompanionMaterial,
+                consumerRef: {
+                    kind: 'prompt',
+                    id: `companion-wakeup:${rule.id}:${requestTime}`,
+                    revision: 'proactive-letter-v1',
+                },
+                occurredAt: Date.now(),
+            });
+        } catch (error) {
+            console.warn('Companion material proactive receipt unavailable:', error);
+        }
+    }
+
     const _keepDepsVisible = groups.length;
     void _keepDepsVisible;
-    return normalizeWakeupText(data.choices?.[0]?.message?.content || '');
+    return normalizedContent;
 };
 
 const saveWakeupMessage = async (

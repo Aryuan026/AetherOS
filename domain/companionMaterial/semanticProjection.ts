@@ -2,9 +2,11 @@ import type {
   CompanionMaterialDeliveryItem,
   CompanionMaterialMode,
   CompanionMaterialPurpose,
+  CompanionMaterialRouteRef,
   CompanionMaterialSelection,
   CompanionMaterialSurface,
 } from './types.ts';
+import type { HistoryScope } from '../historyImport/types.ts';
 
 /**
  * A slot-shaped view for the future Context Compiler. It is intentionally a
@@ -15,9 +17,13 @@ import type {
 export interface CompanionMaterialSemanticProjection {
   schemaVersion: CompanionMaterialSelection['schemaVersion'];
   selectionId: string;
+  requestId: string;
+  scope: HistoryScope;
   surface: CompanionMaterialSurface;
   mode: CompanionMaterialMode;
   purpose: CompanionMaterialPurpose;
+  routeRef?: CompanionMaterialRouteRef;
+  sourceRevisionFingerprint: string;
   budgetChars: number;
   stableCharacterVoice: readonly CompanionMaterialDeliveryItem[];
   stableBase: {
@@ -42,9 +48,13 @@ export const projectCompanionMaterialSelection = (
   return {
     schemaVersion: selection.schemaVersion,
     selectionId: selection.selectionId,
+    requestId: selection.requestId,
+    scope: { ...selection.scope },
     surface: selection.surface,
     mode: selection.mode,
     purpose: selection.purpose,
+    routeRef: selection.routeRef ? { ...selection.routeRef } : undefined,
+    sourceRevisionFingerprint: selection.sourceRevisionFingerprint,
     budgetChars: selection.budgetChars,
     stableCharacterVoice: selection.items.filter(item => item.slot === 'stable_character_voice'),
     stableBase: {

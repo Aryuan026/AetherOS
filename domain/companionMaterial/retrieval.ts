@@ -46,7 +46,10 @@ const SIGNAL_PATTERNS: ReadonlyArray<{
   },
   {
     signal: 'refusal',
-    patterns: [/(?:不去了|不去啦|不去吧|不想去|去不了|不了吧|下次吧|改天吧|算了吧|没空|不方便|先不约|拒绝)/i],
+    patterns: [
+      /(?:不去了|不去啦|不去吧|不想去|去不了|不了吧|下次吧|改天吧|算了吧|没空|不方便|先不约|拒绝)/i,
+      /(?:^|[，,。\s])不了(?:[，,。\s]|$)|(?:想|要).{0,4}(?:一个人|独处|自己待)/i,
+    ],
   },
   {
     signal: 'reentry',
@@ -58,11 +61,11 @@ const SIGNAL_PATTERNS: ReadonlyArray<{
   },
   {
     signal: 'character_self_share',
-    patterns: [/(?:你在干嘛|你在做什么|你今天(?:在)?忙什么|你今天(?:自己)?做了什么|说说你今天|你最近怎么样|你那边|你今天过得|讲讲你的|你有没有什么想说|你也说说)/i],
+    patterns: [/(?:你在干嘛|你在做什么|你今天(?:在)?忙什么|你今天(?:都|自己)?做了什么|说说你今天|你最近怎么样|你那边|你今天过得|讲讲你的|你有没有什么想说|你也说说)/i],
   },
   {
     signal: 'independent_life',
-    patterns: [/(?:你在干嘛|你在做什么|你今天(?:在)?忙什么|你今天(?:自己)?做了什么|说说你今天|你最近怎么样|你那边|你的生活|你的工作|你的安排)/i],
+    patterns: [/(?:你在干嘛|你在做什么|你今天(?:在)?忙什么|你今天(?:都|自己)?做了什么|说说你今天|你最近怎么样|你那边|你的生活|你的工作|你的安排)/i],
   },
   {
     signal: 'observation',
@@ -79,6 +82,14 @@ const SIGNAL_PATTERNS: ReadonlyArray<{
   {
     signal: 'practical_next_step',
     patterns: [/(?:怎么办|怎么弄|怎么处理|下一步|帮我想想|给个办法|如何)/i],
+  },
+  {
+    signal: 'playful_premise',
+    patterns: [/(?:假装|设定一个|定个规则|小游戏|比赛一下|打个赌|谁赢|输赢|挑战一下|来挑战|角色扮演)/i],
+  },
+  {
+    signal: 'choice_tradeoff',
+    patterns: [/(?:二选一|选哪个|哪个更好|哪种更好|两个方案|方案\s*[a-z甲乙一二]|取舍|代价|值不值|划不划算)/i],
   },
   {
     signal: 'emotional_weight',

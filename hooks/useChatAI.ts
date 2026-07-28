@@ -391,7 +391,7 @@ export const useChatAI = ({
                             ? previousUserMessage.content
                             : undefined,
                         relationshipStage: 'unknown',
-                        // Ordinary chat uses one sparse response operator.
+                        // Ordinary chat uses one sparse, optional role-side lens.
                         // Other surfaces may still compile 1-3 independently
                         // relevant fragments; stacking them here flattened
                         // already-strong role cards in blind prompt tests.
@@ -517,21 +517,6 @@ export const useChatAI = ({
                 method: 'POST', headers,
                 body: JSON.stringify({ model: effectiveApi.model, messages: fullMessages, temperature: 0.85, stream: false })
             });
-            if (preparedCompanionMaterial?.projection.fragments.length) {
-                try {
-                    await recordPreparedCompanionMaterialPromptDelivery({
-                        prepared: preparedCompanionMaterial,
-                        consumerRef: {
-                            kind: 'prompt',
-                            id: `chat-prompt:${assistantResponseId}`,
-                            revision: '1',
-                        },
-                        occurredAt: Date.now(),
-                    });
-                } catch (error) {
-                    console.warn('Companion material delivery receipt unavailable:', error);
-                }
-            }
             updateTokenUsage(data, historyMsgCount, 'initial');
 
             // 4. Initial Cleanup
@@ -634,6 +619,30 @@ export const useChatAI = ({
 
             // Comprehensive AI output sanitization (strips name prefixes, headers, stray backticks, residual tags, etc.)
             aiContent = ChatParser.sanitize(aiContent);
+
+            // A 200/JSON response is not yet a completed character reply. Record
+            // material delivery only after the final model output survives recall
+            // and sanitization; the local "嗯..." fallback must never consume a
+            // material cooldown.
+            if (
+                preparedCompanionMaterial?.projection.fragments.length
+                && aiContent.trim()
+                && ChatParser.hasDisplayContent(aiContent)
+            ) {
+                try {
+                    await recordPreparedCompanionMaterialPromptDelivery({
+                        prepared: preparedCompanionMaterial,
+                        consumerRef: {
+                            kind: 'prompt',
+                            id: `chat-prompt:${assistantResponseId}`,
+                            revision: '1',
+                        },
+                        occurredAt: Date.now(),
+                    });
+                } catch (error) {
+                    console.warn('Companion material delivery receipt unavailable:', error);
+                }
+            }
 
             // Fallback: if cleanup removed every displayable token, provide a minimal response.
             if (!aiContent.trim()) {

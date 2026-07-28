@@ -6,11 +6,17 @@ import {
 import {
   COMPANION_MATERIAL_SCHEMA_VERSION,
   type CompanionMaterialRecord,
+  type CompanionMaterialSemanticRank,
+  type CompanionMaterialSemanticRankAuthority,
   type CompanionMaterialSelectionRequest,
 } from '../domain/companionMaterial/types.ts';
 import { createCompanionMaterialDeliveryReceipt } from '../domain/companionMaterial/deliveryReceipt.ts';
-import { selectCompanionMaterialFromRecords } from '../domain/companionMaterial/selection.ts';
+import {
+  companionMaterialSetFingerprint,
+  selectCompanionMaterialFromRecords,
+} from '../domain/companionMaterial/selection.ts';
 import { projectCompanionMaterialSelection } from '../domain/companionMaterial/semanticProjection.ts';
+import { createHistoryScopeKey } from '../domain/historyImport/contract.ts';
 
 const T0 = 1_700_000_000_000;
 const scope = {
@@ -60,6 +66,37 @@ const material = (overrides: Partial<CompanionMaterialRecord> = {}): CompanionMa
   revision: 1,
   ...overrides,
 });
+
+const semanticRankFor = (
+  records: readonly CompanionMaterialRecord[],
+  scores: CompanionMaterialSemanticRank['scores'],
+): CompanionMaterialSemanticRank => ({
+  manifestId: 'fixture-index-manifest',
+  manifestDigest: 'sha256:fixture-index-manifest',
+  backend: 'embedding',
+  modelId: 'fixture-embedding',
+  modelArtifactDigest: 'sha256:fixture-model-artifact',
+  dimensions: 384,
+  metric: 'cosine',
+  normalized: true,
+  projectionVersion: 'fixture-guidance-v1',
+  calibrationRevision: 'fixture-calibration-v1',
+  strongThreshold: 0.5,
+  indexRevision: 'fixture-index-v1',
+  scopeKey: createHistoryScopeKey(scope),
+  materialSetFingerprint: companionMaterialSetFingerprint(records),
+  scores,
+});
+
+const semanticAuthorityFor = (
+  records: readonly CompanionMaterialRecord[],
+): CompanionMaterialSemanticRankAuthority => {
+  const { scores: _scores, ...binding } = semanticRankFor(records, []);
+  return {
+    ...binding,
+    authority: 'trusted_local_index_manifest',
+  };
+};
 
 const voice = material();
 const opening = material({
@@ -207,6 +244,15 @@ const sceneSelection = selectCompanionMaterialFromRecords({
   records: [sceneOnly],
 });
 assert.deepEqual(sceneSelection.items.map(item => item.materialId), ['material-scene']);
+assert.deepEqual(sceneSelection.routeRef, {
+  routeId: 'route-a',
+  branchId: 'branch-a',
+  sceneId: 'scene-a',
+  lane: 'mainline',
+});
+assert.equal(sceneSelection.items[0].routeId, 'route-a');
+assert.equal(sceneSelection.items[0].branchId, 'branch-a');
+assert.equal(sceneSelection.items[0].sceneId, 'scene-a');
 
 assert.throws(
   () => assertValidCompanionMaterialRecord(material({
@@ -232,6 +278,7 @@ const receipt = createCompanionMaterialDeliveryReceipt({
 assert.equal(receipt.truthEffect, 'none');
 assert.equal(receipt.status, 'delivered');
 assert.equal(receipt.delivered.length, proactiveSelection.items.length);
+assert.ok(receipt.delivered.every(item => item.materialRevision === 1));
 assert.throws(
   () => assertValidCompanionMaterialDeliveryReceipt({
     ...receipt,
@@ -247,6 +294,267 @@ assert.throws(
     occurredAt: T0 + 11,
   }),
   /unselected material/,
+);
+
+const lowSignalVoice = material({
+  id: 'material-low-signal-voice',
+  tags: ['ordinary'],
+  retrievalHints: {
+    activationPolicy: 'voice_fallback',
+    positiveSignals: ['observation'],
+    variationGroup: 'low_signal_voice',
+    fallbackPriority: 10,
+  },
+  sourceRefs: [{
+    storeFamily: 'private_review',
+    recordId: 'review-low-signal-voice',
+    revision: 1,
+    sourceFingerprint: 'low-signal-voice-fp',
+  }],
+});
+const firstLowSignalSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-low-signal-first',
+    query: '嗨。',
+    contextTags: [],
+    maxItems: 1,
+  }),
+  records: [lowSignalVoice],
+});
+assert.deepEqual(
+  firstLowSignalSelection.items.map(item => item.materialId),
+  ['material-low-signal-voice'],
+  'a fresh low-signal turn keeps a positive optional voice path',
+);
+const firstLowSignalReceipt = createCompanionMaterialDeliveryReceipt({
+  selection: firstLowSignalSelection,
+  consumerRef: { kind: 'prompt', id: 'low-signal-first', revision: '1' },
+  delivered: firstLowSignalSelection.items.map(item => ({
+    materialId: item.materialId,
+    promptCharCount: item.estimatedChars,
+  })),
+  occurredAt: T0,
+});
+const repeatedLowSignalSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-low-signal-repeat',
+    query: '在吗。',
+    contextTags: [],
+    maxItems: 1,
+    now: T0 + 60_000,
+  }),
+  records: [lowSignalVoice],
+  receipts: [firstLowSignalReceipt],
+});
+assert.deepEqual(
+  repeatedLowSignalSelection.items,
+  [],
+  'a repeated low-signal turn may rely on the role card instead of replaying the same fallback shape',
+);
+const cooledLowSignalSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-low-signal-after-cooldown',
+    query: '嗨。',
+    contextTags: [],
+    maxItems: 1,
+    now: T0 + 7 * 60 * 60 * 1000,
+  }),
+  records: [lowSignalVoice],
+  receipts: [firstLowSignalReceipt],
+});
+assert.deepEqual(
+  cooledLowSignalSelection.items.map(item => item.materialId),
+  ['material-low-signal-voice'],
+  'the low-signal positive path returns after its short anti-repetition window',
+);
+
+const priorGroupVoice = material({
+  id: 'material-prior-group-voice',
+  retrievalHints: {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['care'],
+    variationGroup: 'shared_response_shape',
+  },
+  sourceRefs: [{
+    storeFamily: 'private_review',
+    recordId: 'review-prior-group-voice',
+    revision: 1,
+    sourceFingerprint: 'prior-group-voice-fp',
+  }],
+});
+const sameGroupVoice = material({
+  id: 'material-same-group-voice',
+  retrievalHints: {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['care'],
+    variationGroup: 'shared_response_shape',
+  },
+  sourceRefs: [{
+    storeFamily: 'private_review',
+    recordId: 'review-same-group-voice',
+    revision: 1,
+    sourceFingerprint: 'same-group-voice-fp',
+  }],
+});
+const freshGroupVoice = material({
+  id: 'material-fresh-group-voice',
+  retrievalHints: {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['care'],
+    variationGroup: 'fresh_response_shape',
+  },
+  sourceRefs: [{
+    storeFamily: 'private_review',
+    recordId: 'review-fresh-group-voice',
+    revision: 1,
+    sourceFingerprint: 'fresh-group-voice-fp',
+  }],
+});
+const priorGroupSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-prior-group',
+    maxItems: 1,
+    semanticRank: semanticRankFor(
+      [priorGroupVoice, sameGroupVoice, freshGroupVoice],
+      [
+        { materialId: priorGroupVoice.id, score: 0.99 },
+        { materialId: sameGroupVoice.id, score: 0.1 },
+        { materialId: freshGroupVoice.id, score: 0.1 },
+      ],
+    ),
+  }),
+  records: [priorGroupVoice, sameGroupVoice, freshGroupVoice],
+  semanticRankAuthority: semanticAuthorityFor([priorGroupVoice, sameGroupVoice, freshGroupVoice]),
+});
+const priorGroupReceipt = createCompanionMaterialDeliveryReceipt({
+  selection: priorGroupSelection,
+  consumerRef: { kind: 'prompt', id: 'prior-group', revision: '1' },
+  delivered: priorGroupSelection.items.map(item => ({
+    materialId: item.materialId,
+    promptCharCount: item.estimatedChars,
+  })),
+  occurredAt: T0,
+});
+const rotatedGroupSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-rotate-group',
+    maxItems: 1,
+    now: T0 + 60_000,
+  }),
+  records: [priorGroupVoice, sameGroupVoice, freshGroupVoice],
+  receipts: [priorGroupReceipt],
+});
+assert.deepEqual(
+  rotatedGroupSelection.items.map(item => item.materialId),
+  ['material-fresh-group-voice'],
+  'recent delivery of a sibling material should rotate to a different response-shape group',
+);
+
+const crossSurfaceOpening = material({
+  id: 'material-cross-surface-opening',
+  kind: 'opening_recipe',
+  slot: 'opening_recipes',
+  guidance: '从当前已经出现的一处细节落第一拍，再留下开放的回应空间。',
+  renderPolicy: 'transform_required',
+  eligibleModes: ['call', 'date_scene'],
+  eligiblePurposes: ['opening'],
+  tags: ['opening'],
+  retrievalHints: {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['opening', 'observation'],
+    variationGroup: 'cross_surface_opening',
+  },
+  cooldownMs: 48 * 60 * 60 * 1000,
+  sourceRefs: [{
+    storeFamily: 'private_review',
+    recordId: 'review-cross-surface-opening',
+    revision: 1,
+    sourceFingerprint: 'cross-surface-opening-fp-v1',
+  }],
+});
+const firstCallOpeningSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-call-opening',
+    surface: 'call',
+    mode: 'call',
+    purpose: 'opening',
+    semanticTags: ['opening', 'observation'],
+    maxItems: 1,
+  }),
+  records: [crossSurfaceOpening],
+});
+const firstCallOpeningReceipt = createCompanionMaterialDeliveryReceipt({
+  selection: firstCallOpeningSelection,
+  consumerRef: { kind: 'prompt', id: 'call-opening', revision: '1' },
+  delivered: firstCallOpeningSelection.items.map(item => ({
+    materialId: item.materialId,
+    promptCharCount: item.estimatedChars,
+  })),
+  occurredAt: T0,
+});
+const repeatedCallOpeningSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-call-opening-repeat',
+    surface: 'call',
+    mode: 'call',
+    purpose: 'opening',
+    semanticTags: ['opening', 'observation'],
+    maxItems: 1,
+    now: T0 + 60_000,
+  }),
+  records: [crossSurfaceOpening],
+  receipts: [firstCallOpeningReceipt],
+});
+assert.deepEqual(
+  repeatedCallOpeningSelection.items,
+  [],
+  'the same material revision stays on cooldown inside one usage class',
+);
+const dateOpeningAfterCallSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-date-opening-after-call',
+    surface: 'date',
+    mode: 'date_scene',
+    purpose: 'opening',
+    semanticTags: ['opening', 'observation'],
+    maxItems: 1,
+    now: T0 + 60_000,
+  }),
+  records: [crossSurfaceOpening],
+  receipts: [firstCallOpeningReceipt],
+});
+assert.deepEqual(
+  dateOpeningAfterCallSelection.selectedMaterialIds,
+  [crossSurfaceOpening.id],
+  'a Call opening must not consume the independent Date opening cooldown',
+);
+const revisedCrossSurfaceOpening: CompanionMaterialRecord = {
+  ...crossSurfaceOpening,
+  revision: 2,
+  updatedAt: T0 + 1,
+  sourceRefs: [{
+    ...crossSurfaceOpening.sourceRefs[0],
+    revision: 2,
+    sourceFingerprint: 'cross-surface-opening-fp-v2',
+  }],
+};
+const revisedCallOpeningSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-revised-call-opening',
+    surface: 'call',
+    mode: 'call',
+    purpose: 'opening',
+    semanticTags: ['opening', 'observation'],
+    maxItems: 1,
+    now: T0 + 60_000,
+  }),
+  records: [revisedCrossSurfaceOpening],
+  receipts: [firstCallOpeningReceipt],
+});
+assert.deepEqual(
+  revisedCallOpeningSelection.selectedMaterialIds,
+  [revisedCrossSurfaceOpening.id],
+  'a new material-set revision must not inherit stale cooldown from the old revision',
 );
 
 console.log('companion material contract: green');

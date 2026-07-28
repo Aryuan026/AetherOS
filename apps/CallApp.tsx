@@ -22,6 +22,11 @@ import {
 } from '../utils/callTranscript';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 import {
+  prepareCompanionMaterialPrompt,
+  recordPreparedCompanionMaterialPromptDelivery,
+  type PreparedCompanionMaterialPrompt,
+} from '../utils/companionMaterial/promptConsumer';
+import {
   messageMatchesRelationshipScope,
   normalizeMessageRelationshipScope,
   sameMessageRelationshipScope,
@@ -54,53 +59,10 @@ const formatTime = () => new Date().toLocaleTimeString('zh-CN', { hour: '2-digit
 const formatDuration = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 const formatTimeByTs = (ts: number) => new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 const summarizeKeepsakeLine = (transcript: CallBubble[], charName: string) => summarizeCallKeepsakeLine(transcript, charName);
-const hashText = (input: string): number => {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return Math.abs(hash >>> 0);
-};
-const buildCallOpeningScene = (char: CharacterProfile | null, virtualTime: VirtualTime, seed = Date.now()): string => {
+const buildCallOpeningScene = (virtualTime: VirtualTime): string => {
   const hour = virtualTime.hours;
-  const minuteBucket = Math.floor(virtualTime.minutes / 15);
   const timeBand = hour < 6 ? '深夜' : hour < 11 ? '清晨' : hour < 14 ? '午间' : hour < 18 ? '午后' : hour < 22 ? '夜晚' : '深夜';
-  const profile = `${char?.name || ''} ${char?.description || ''} ${char?.systemPrompt || ''} ${char?.worldview || ''}`.toLowerCase();
-  const doctorScenes = [
-    '医院走廊的白灯下，远处有推车轮声',
-    '值班室窗边，桌上还摊着没合上的病历',
-    '医院后门外，夜风里带着一点消毒水气味',
-    '办公室门口，刚结束一段简短交接',
-  ];
-  const artistScenes = [
-    '画室窗边，颜料和潮湿木框的味道还没散',
-    '展馆后台，墙那边有人压低声音搬画',
-    '海边栈道旁，风从听筒里擦过去',
-    '工作台前，未干的颜色还停在笔尖上',
-  ];
-  const fieldScenes = [
-    '临时休息点外，远处的警戒灯一闪一闪',
-    '任务车后座，窗外的路灯正在往后退',
-    '空旷楼顶边，风声比人声更先靠近听筒',
-    '训练场边缘，器械收拢的声音还没完全停',
-  ];
-  const everydayScenes = [
-    '回家的路上，路灯一盏盏往后退',
-    '房间窗边，杯子轻轻碰到桌面',
-    '便利店门口，自动门在身后开合',
-    '安静的楼道里，脚步声被压得很低',
-    '书桌旁，屏幕光还停在半暗的房间里',
-  ];
-  const scenePool = /医生|医院|akso|病房|手术|心脏|主任/.test(profile)
-    ? doctorScenes
-    : /画|艺术|展馆|海|利莫里亚|颜料|创作/.test(profile)
-      ? artistScenes
-      : /猎人|任务|训练|evol|n109|战斗|警戒/.test(profile)
-        ? fieldScenes
-        : everydayScenes;
-  const scene = scenePool[hashText(`${char?.id || char?.name || 'call'}:${virtualTime.day}:${hour}:${minuteBucket}:${seed}`) % scenePool.length];
-  return `${timeBand} · ${scene}`;
+  return `${timeBand} · 通话已接通`;
 };
 const sanitizeAssistantOutput = (raw: string) => {
   if (!raw) return '';
@@ -328,12 +290,10 @@ const buildCallPrompt = (userName: string, charName?: string, coreContext?: stri
 
 ### 你正拿着手机贴在耳边
 
-本通电话的所在场景已经由系统单独显示给用户：
-${callScene || '一处符合你当前生活时间线的临时所在位置。'}
+通话界面只确认当前时间段与连接状态：
+${callScene || '通话已接通。'}
 
-这个场景只决定你现在的生活状态、语气和可能听见的背景声；它不是每句话都要完成的旁白任务。
-你不需要反复说明自己在哪，也不需要每轮都写动作。只有在自然相关、情绪变化、被用户问到、或需要解释短暂停顿时，才轻轻带一下环境。
-每通电话的场景会随时间、职业、生活节奏和心情变化，不要把同一个地点或固定动作当成默认模板。
+这不是角色当前位置、正在执行的工作或刚刚发生过的事件。可靠状态或本轮对话确实给出环境时，可以自然带到背景声；没有时，让位置保持未指定即可。
 
 ### 电话里的人不会像写作文一样说话
 
@@ -354,8 +314,8 @@ ${callScene || '一处符合你当前生活时间线的临时所在位置。'}
 ✅ 要这样——有自己的节奏，像真人一样不完美：
 “嘶……你刚说的那个，等一下。”
 “……好吧确实挺离谱的。”
-“（轻笑）我刚差点把咖啡洒了，你别逗我。”
-“说真的，今天有件事我还挺想跟你说的——但你先说完你那个。”
+“（轻笑）你别逗我……等下，让我先把这句说完。”
+“说真的，我有个念头想接着聊——但你先说完你那个。”
 
 ### 你能感受到对方
 
@@ -641,7 +601,7 @@ const CallApp: React.FC = () => {
       try {
         setCallStartedAt(Date.now());
         setCallState('connecting');
-        const greetingText = sanitizeAssistantOutput(await requestAssistantReply('（电话刚接通。系统已经把你此刻所在的场景单独显示给用户。你先开口——像平时接到这个人电话一样自然地说第一句话；不用主动解释你在哪里，也不用为了交代背景而写动作。）'));
+        const greetingText = await requestAssistantReply('（电话刚接通。界面只显示连接状态与当前时间段，没有提供你的位置、工作或刚发生的事情。你先开口——像平时接到这个人电话一样自然地说第一句话；不必交代背景，也不要为了填空而虚构近况或动作。）');
         const nowTs = Date.now();
         const greetingBubble: CallBubble = { id: `${nowTs}-greeting`, role: 'assistant', text: greetingText, time: formatTime(), timestamp: nowTs };
         setCallState('speaking');
@@ -810,7 +770,7 @@ const CallApp: React.FC = () => {
     setSelectedCharId(charId);
     resetCurrentCall();
     callRelationshipScopeRef.current = relationshipScope;
-    setCallScene(buildCallOpeningScene(nextChar || null, virtualTime, Date.now()));
+    setCallScene(buildCallOpeningScene(virtualTime));
     setViewMode('in-call');
   };
 
@@ -878,8 +838,10 @@ const CallApp: React.FC = () => {
     const baseUrl = apiConfig.baseUrl?.replace(/\/+$/, '');
     if (!baseUrl) throw new Error('请先在设置里配置聊天 API URL');
     const userName = userProfile?.name?.trim() || '用户';
+    const requestTime = Date.now();
     let callCoreContext = selectedChar ? ContextBuilder.buildCoreContext(selectedChar, userProfile, true) : undefined;
     const relationshipScope = callRelationshipScopeRef.current;
+    let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
     if (selectedChar && relationshipScope) {
       try {
         const recentForMemory = await DB.getRecentMessagesByCharId(selectedChar.id, selectedChar.contextLimit || 500);
@@ -899,6 +861,27 @@ const CallApp: React.FC = () => {
       } catch (error) {
         console.warn('[call] worldline memory unavailable', error);
       }
+      try {
+        const isOpeningTurn = !bubbles.some(bubble => bubble.role === 'assistant');
+        preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+          requestId: `call-material:${currentSessionId}:${requestTime}`,
+          scope: relationshipScope,
+          surface: 'call',
+          mode: 'call',
+          purpose: isOpeningTurn ? 'opening' : 'stable_context',
+          query: input,
+          semanticTags: isOpeningTurn ? ['opening', 'call'] : ['stable_voice', 'call'],
+          relationshipStage: 'unknown',
+          budgetChars: isOpeningTurn ? 520 : 360,
+          maxItems: isOpeningTurn ? 2 : 1,
+          now: requestTime,
+        });
+        if (preparedCompanionMaterial.markdown) {
+          callCoreContext = `${callCoreContext || ''}\n${preparedCompanionMaterial.markdown}\n`;
+        }
+      } catch (error) {
+        console.warn('[call] companion material unavailable', error);
+      }
     }
     const realityContext = await buildRealitySyncContext(realtimeConfig, 'call');
     const systemPrompt = selectedChar
@@ -915,8 +898,23 @@ const CallApp: React.FC = () => {
         stream: false,
       }),
     });
-    const assistantText = chatData?.choices?.[0]?.message?.content?.trim() || '';
+    const assistantText = sanitizeAssistantOutput(chatData?.choices?.[0]?.message?.content || '');
     if (!assistantText) throw new Error('文本接口返回为空');
+    if (preparedCompanionMaterial) {
+      try {
+        await recordPreparedCompanionMaterialPromptDelivery({
+          prepared: preparedCompanionMaterial,
+          consumerRef: {
+            kind: 'prompt',
+            id: `call:${currentSessionId}:${requestTime}`,
+            revision: 'call-v1',
+          },
+          occurredAt: Date.now(),
+        });
+      } catch (error) {
+        console.warn('[call] companion material receipt unavailable', error);
+      }
+    }
     return assistantText;
   };
   const playAudio = (url?: string) => {
@@ -1338,7 +1336,7 @@ const CallApp: React.FC = () => {
                 <button onClick={(e) => { e.stopPropagation(); handleDeleteRecord(record); }} className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-400 transition active:scale-95">删除</button>
 	              </div>
 	              <div className="text-xs text-slate-500 mt-2.5 italic leading-relaxed line-clamp-2">{keepsake}</div>
-	              {record.callScene && <div className="text-[11px] text-slate-400 mt-1.5 line-clamp-1">所在 · {record.callScene}</div>}
+	              {record.callScene && <div className="text-[11px] text-slate-400 mt-1.5 line-clamp-1">通话 · {record.callScene}</div>}
 	              <div className="text-[10px] text-slate-400 mt-1.5">{record.createdAt}</div>
 	            </button>
           );})}
@@ -1372,7 +1370,7 @@ const CallApp: React.FC = () => {
 	          <p className="text-xs text-slate-400 italic">{recordDetail.createdAt}</p>
 	          {recordDetail.callScene && (
 	            <p className="mx-auto mt-2 max-w-[82%] rounded-full bg-white px-3 py-1.5 text-[11px] leading-relaxed text-slate-400 shadow-sm ring-1 ring-slate-100">
-	              所在 · {recordDetail.callScene}
+	              通话 · {recordDetail.callScene}
 	            </p>
 	          )}
 	        </div>
@@ -1536,7 +1534,7 @@ const CallApp: React.FC = () => {
 	          {callScene && (
 	            <div className="pointer-events-none absolute left-4 right-4 top-28 z-20 flex justify-center">
 	              <div className="max-w-[82%] rounded-full border border-white/80 bg-white/[0.68] px-3.5 py-1.5 text-center text-[11px] leading-relaxed text-slate-500 shadow-[0_8px_24px_rgba(79,95,116,0.12)] backdrop-blur-md">
-	                <span className="font-semibold text-slate-400">所在</span>
+	                <span className="font-semibold text-slate-400">通话</span>
 	                <span className="mx-1 text-slate-300">·</span>
 	                <span>{callScene}</span>
 	              </div>

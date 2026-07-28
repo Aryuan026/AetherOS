@@ -40,6 +40,7 @@ const item = (
     }],
     selectionReasons: ['fixture'],
     ...overrides,
+    materialRevision: overrides.materialRevision ?? 1,
     guidance,
     estimatedChars: overrides.estimatedChars ?? guidance.length,
   };
@@ -66,6 +67,9 @@ const motive = item({
   kind: 'initiative_motive',
   guidance: '可以考虑确认那条悬而未决的线索是否仍需要照看。',
   renderPolicy: 'decision_context',
+  continuity: 'branch',
+  routeId: 'route-a',
+  branchId: 'branch-a',
 });
 const affordance = item({
   materialId: 'affordance-a',
@@ -74,7 +78,9 @@ const affordance = item({
   guidance: '场景允许角色先观察门廊留下的新痕迹，再决定是否靠近。',
   renderPolicy: 'decision_context',
   continuity: 'scene_only',
+  routeId: 'route-a',
   branchId: 'branch-a',
+  sceneId: 'scene-a',
 });
 
 const selection = (
@@ -136,6 +142,12 @@ const storySelection = selection({
   surface: 'storydesk',
   mode: 'story_planning',
   purpose: 'scene_planning',
+  routeRef: {
+    routeId: 'route-a',
+    branchId: 'branch-a',
+    sceneId: 'scene-a',
+    lane: 'mainline',
+  },
   items: [motive, affordance],
 });
 const storySlice = compileCompanionMaterialContextSlice({
@@ -144,6 +156,14 @@ const storySlice = compileCompanionMaterialContextSlice({
 });
 assert.deepEqual(storySlice.surfaceMaterial.motiveCandidates.map(entry => entry.materialId), ['motive-a']);
 assert.deepEqual(storySlice.surfaceMaterial.sceneAffordances.map(entry => entry.materialId), ['affordance-a']);
+assert.deepEqual(storySlice.sourceSelectionRef.routeRef, storySelection.routeRef);
+assert.deepEqual(storySlice.sourceProjectionRef.routeRef, storySelection.routeRef);
+assert.deepEqual(storySlice.sourceProjectionRef.scope, scope);
+assert.equal(storySlice.sourceProjectionRef.requestId, storySelection.requestId);
+assert.equal(
+  storySlice.sourceProjectionRef.sourceRevisionFingerprint,
+  storySelection.sourceRevisionFingerprint,
+);
 
 const forbiddenKeys = [
   'currentMotives',
@@ -207,6 +227,20 @@ assert.throws(
     projection: { ...chatProjection, purpose: 'scene_planning' },
   }),
   /purpose does not match/,
+);
+
+assert.throws(
+  () => compileCompanionMaterialContextSlice({
+    selection: storySelection,
+    projection: {
+      ...projectionFor(storySelection),
+      routeRef: {
+        ...storySelection.routeRef!,
+        sceneId: 'scene-other',
+      },
+    },
+  }),
+  /routeRef does not match/,
 );
 
 assert.throws(

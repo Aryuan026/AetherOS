@@ -181,8 +181,10 @@ assert.notDeepEqual(
 );
 
 const callSource = readFileSync(new URL('../apps/CallApp.tsx', import.meta.url), 'utf8');
+const dateSource = readFileSync(new URL('../apps/DateApp.tsx', import.meta.url), 'utf8');
 const groupSource = readFileSync(new URL('../apps/GroupChat.tsx', import.meta.url), 'utf8');
 const journalSource = readFileSync(new URL('../apps/JournalApp.tsx', import.meta.url), 'utf8');
+const chatSource = readFileSync(new URL('../hooks/useChatAI.ts', import.meta.url), 'utf8');
 const wakeupSource = readFileSync(new URL('../hooks/useCompanionWakeupRuntime.ts', import.meta.url), 'utf8');
 for (const [source, seam] of [
     [callSource, 'callRelationshipScopeRef'],
@@ -190,5 +192,83 @@ for (const [source, seam] of [
     [journalSource, 'relationshipScope: strictRelationshipScopeForProfile'],
     [wakeupSource, 'relationship_scope_missing'],
 ] as const) assert.ok(source.includes(seam), `life surface missing scoped seam: ${seam}`);
+for (const seam of [
+    'prepareCompanionMaterialPrompt',
+    "surface: 'proactive_letter'",
+    "mode: 'proactive_letter'",
+    "purpose: 'proactive_intent'",
+    "rule.priority === 'care'",
+    "['proactive_intent', 'opening', rule.kind]",
+    'maxItems: 2',
+    'recordPreparedCompanionMaterialPromptDelivery',
+    "revision: 'proactive-letter-v1'",
+] as const) assert.ok(wakeupSource.includes(seam), `proactive material consumer missing seam: ${seam}`);
+assert.ok(
+    wakeupSource.lastIndexOf('recordPreparedCompanionMaterialPromptDelivery')
+      > wakeupSource.indexOf("safeFetchJson(`${baseUrl}/chat/completions`"),
+    'proactive material receipt must be recorded only after the provider accepted the prompt',
+);
+assert.ok(
+    wakeupSource.indexOf('const normalizedContent = normalizeWakeupText')
+      < wakeupSource.lastIndexOf('recordPreparedCompanionMaterialPromptDelivery'),
+    'proactive material receipt must wait for a non-empty normalized completion',
+);
+assert.ok(
+    chatSource.indexOf('ChatParser.hasDisplayContent(aiContent)')
+      < chatSource.lastIndexOf('recordPreparedCompanionMaterialPromptDelivery'),
+    'Chat material receipt must wait for a displayable completion instead of consuming the local fallback',
+);
+for (const seam of [
+    'prepareCompanionMaterialPrompt',
+    "surface: 'call'",
+    "mode: 'call'",
+    "purpose: isOpeningTurn ? 'opening' : 'stable_context'",
+    'maxItems: isOpeningTurn ? 2 : 1',
+    'recordPreparedCompanionMaterialPromptDelivery',
+    "revision: 'call-v1'",
+] as const) assert.ok(callSource.includes(seam), `call material consumer missing seam: ${seam}`);
+assert.ok(
+    callSource.lastIndexOf('recordPreparedCompanionMaterialPromptDelivery')
+      > callSource.indexOf("safeFetchJson(`${baseUrl}/chat/completions`"),
+    'call material receipt must be recorded only after the provider accepted the prompt',
+);
+assert.ok(
+    callSource.indexOf("const assistantText = sanitizeAssistantOutput(chatData?.choices?.[0]?.message?.content || '')")
+      < callSource.lastIndexOf('recordPreparedCompanionMaterialPromptDelivery'),
+    'call material receipt must wait until transport labels are removed and displayable content remains',
+);
+for (const forbiddenPromptLeak of [
+    '我刚差点把咖啡洒了',
+    '今天有件事我还挺想跟你说的',
+    '系统已经把你此刻所在的场景单独显示给用户',
+] as const) {
+    assert.ok(
+        !callSource.includes(forbiddenPromptLeak),
+        `call prompt must not use an invented-current-life example: ${forbiddenPromptLeak}`,
+    );
+}
+for (const seam of [
+    'prepareCompanionMaterialPrompt',
+    "surface: 'meet_scene'",
+    "mode: 'meet_scene'",
+    "surface: 'date'",
+    "mode: 'date_scene'",
+    "purpose: 'opening'",
+    "purpose: 'stable_context'",
+    'recordPreparedCompanionMaterialPromptDelivery',
+    "revision: 'date-opening-v1'",
+    "revision: 'date-turn-v1'",
+    "revision: 'date-reroll-v1'",
+] as const) assert.ok(dateSource.includes(seam), `date material consumer missing seam: ${seam}`);
+assert.equal(
+    dateSource.includes("purpose: 'scene_planning'"),
+    false,
+    'date prompt consumer must not bypass ScenePlan by consuming motive or scene-planning material directly',
+);
+assert.ok(
+    dateSource.lastIndexOf('recordPreparedCompanionMaterialPromptDelivery')
+      > dateSource.lastIndexOf('const data = await safeResponseJson(response);'),
+    'date material receipt must be recorded only after a provider response is accepted',
+);
 
 console.log('life surface evidence OK: call, group, journal, social and proactive records are scoped, revisioned and tombstoned');

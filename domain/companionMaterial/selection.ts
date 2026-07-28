@@ -15,11 +15,14 @@ import {
   type CompanionMaterialDeliveryReceipt,
   type CompanionMaterialRecord,
   type CompanionMaterialRetrievalHints,
+  type CompanionMaterialSemanticRank,
+  type CompanionMaterialSemanticRankAuthority,
   type CompanionMaterialSelection,
   type CompanionMaterialSelectionRequest,
   type CompanionMaterialSlotLimits,
   type CompanionMaterialSlot,
 } from './types.ts';
+import { createHistoryScopeKey } from '../historyImport/contract.ts';
 
 const SLOT_LIMITS: Record<CompanionMaterialSlot, number> = {
   stable_character_voice: 2,
@@ -58,12 +61,51 @@ const stableNoise = (requestId: string, materialId: string): number => {
   return Number.isFinite(hash) ? (hash % 997) / 9970 : 0;
 };
 
-const sourceRevisionFingerprint = (records: readonly CompanionMaterialRecord[]): string => hashText(
+export const companionMaterialSetFingerprint = (
+  records: readonly CompanionMaterialRecord[],
+): string => `material-set-v1:${hashText(JSON.stringify(
   records
-    .map(record => `${record.id}:${record.revision}:${record.sourceRefs.map(ref => ref.sourceFingerprint).join(',')}`)
-    .sort()
-    .join('|'),
-);
+    .map(record => ({
+      id: record.id,
+      revision: record.revision,
+      ownerScope: record.ownerScope,
+      charId: record.charId,
+      kind: record.kind,
+      slot: record.slot,
+      guidance: normalizeGuidanceForExactDedupe(record.guidance),
+      renderPolicy: record.renderPolicy,
+      knowledge: record.knowledge,
+      continuity: record.continuity,
+      status: record.status,
+      routeId: record.routeId || '',
+      branchId: record.branchId || '',
+      sceneId: record.sceneId || '',
+      eligibleModes: [...record.eligibleModes].sort(),
+      eligiblePurposes: [...record.eligiblePurposes].sort(),
+      tags: [...record.tags].sort(),
+      retrievalHints: record.retrievalHints
+        ? {
+            activationPolicy: record.retrievalHints.activationPolicy,
+            positiveSignals: [...record.retrievalHints.positiveSignals].sort(),
+            suppressSignals: [...(record.retrievalHints.suppressSignals || [])].sort(),
+            variationGroup: record.retrievalHints.variationGroup || '',
+            fallbackPriority: record.retrievalHints.fallbackPriority ?? null,
+          }
+        : null,
+      relationshipFloor: record.relationshipFloor || '',
+      cooldownMs: record.cooldownMs ?? null,
+      maxDeliveries: record.maxDeliveries ?? null,
+      sourceRefs: record.sourceRefs
+        .map(ref => ({
+          storeFamily: ref.storeFamily,
+          recordId: ref.recordId,
+          revision: ref.revision,
+          sourceFingerprint: ref.sourceFingerprint,
+        }))
+        .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id)),
+))}`;
 
 const exactOwnerScopeKey = (record: CompanionMaterialRecord): string => (
   record.ownerScope.kind === 'character'
@@ -126,12 +168,26 @@ const routeMatches = (
   return true;
 };
 
+const sameUsageClass = (
+  receipt: CompanionMaterialDeliveryReceipt,
+  request: CompanionMaterialSelectionRequest,
+): boolean => (
+  receipt.surface === request.surface
+  && receipt.mode === request.mode
+  && receipt.purpose === request.purpose
+);
+
 const wasDelivered = (
-  materialId: string,
+  record: CompanionMaterialRecord,
   receipts: readonly CompanionMaterialDeliveryReceipt[],
+  request?: CompanionMaterialSelectionRequest,
 ): CompanionMaterialDeliveryReceipt[] => receipts.filter(receipt => (
   receipt.status === 'delivered'
-  && receipt.delivered.some(item => item.materialId === materialId)
+  && (!request || sameUsageClass(receipt, request))
+  && receipt.delivered.some(item => (
+    item.materialId === record.id
+    && item.materialRevision === record.revision
+  ))
 ));
 
 const materialAvailable = (params: {
@@ -139,7 +195,11 @@ const materialAvailable = (params: {
   request: CompanionMaterialSelectionRequest;
   receipts: readonly CompanionMaterialDeliveryReceipt[];
 }): { available: boolean; reason?: string } => {
-  const { record, request, receipts } = params;
+  const {
+    record,
+    request,
+    receipts,
+  } = params;
   if (record.status !== 'active') return { available: false, reason: 'disabled' };
   if (record.knowledge === 'unknown_to_char') return { available: false, reason: 'knowledge' };
   if (!companionMaterialOwnerScopeMatches(record, request.scope)) return { available: false, reason: 'scope' };
@@ -152,11 +212,15 @@ const materialAvailable = (params: {
     && relationshipStageRank[request.relationshipStage] < relationshipStageRank[record.relationshipFloor]
   ) return { available: false, reason: 'relationship_floor' };
 
-  const past = wasDelivered(record.id, receipts);
-  if (record.maxDeliveries !== undefined && past.length >= record.maxDeliveries) {
+  const allUsagePast = wasDelivered(record, receipts);
+  if (record.maxDeliveries !== undefined && allUsagePast.length >= record.maxDeliveries) {
     return { available: false, reason: 'duplicate' };
   }
-  if (record.cooldownMs && past.some(receipt => request.now - receipt.occurredAt < record.cooldownMs!)) {
+  const sameUsagePast = wasDelivered(record, receipts, request);
+  if (
+    record.cooldownMs
+    && sameUsagePast.some(receipt => request.now - receipt.occurredAt < record.cooldownMs!)
+  ) {
     return { available: false, reason: 'cooldown' };
   }
   return { available: true };
@@ -184,7 +248,7 @@ const retrievalHintsFor = (record: CompanionMaterialRecord): CompanionMaterialRe
     ...defaults,
     ...record.retrievalHints,
     positiveSignals: [...new Set([
-      ...defaults.positiveSignals,
+      ...record.tags,
       ...record.retrievalHints.positiveSignals,
     ].map(normalize).filter(Boolean))],
     suppressSignals: [...new Set((record.retrievalHints.suppressSignals || []).map(normalize).filter(Boolean))],
@@ -194,8 +258,30 @@ const retrievalHintsFor = (record: CompanionMaterialRecord): CompanionMaterialRe
 const semanticScoreFor = (
   record: CompanionMaterialRecord,
   request: CompanionMaterialSelectionRequest,
+  usable: boolean,
 ): number => (
-  request.semanticRank?.scores.find(item => item.materialId === record.id)?.score || 0
+  usable ? request.semanticRank?.scores.find(item => item.materialId === record.id)?.score || 0 : 0
+);
+
+const semanticRankMatchesAuthority = (
+  rank: CompanionMaterialSemanticRank,
+  authority: CompanionMaterialSemanticRankAuthority,
+): boolean => (
+  authority.authority === 'trusted_local_index_manifest'
+  && rank.manifestId === authority.manifestId
+  && rank.manifestDigest === authority.manifestDigest
+  && rank.backend === authority.backend
+  && rank.modelId === authority.modelId
+  && rank.modelArtifactDigest === authority.modelArtifactDigest
+  && rank.dimensions === authority.dimensions
+  && rank.metric === authority.metric
+  && rank.normalized === authority.normalized
+  && rank.projectionVersion === authority.projectionVersion
+  && rank.calibrationRevision === authority.calibrationRevision
+  && rank.strongThreshold === authority.strongThreshold
+  && rank.indexRevision === authority.indexRevision
+  && rank.scopeKey === authority.scopeKey
+  && rank.materialSetFingerprint === authority.materialSetFingerprint
 );
 
 const deliveryPenalty = (
@@ -203,7 +289,7 @@ const deliveryPenalty = (
   request: CompanionMaterialSelectionRequest,
   receipts: readonly CompanionMaterialDeliveryReceipt[],
 ): { score: number; reasons: string[] } => {
-  const past = wasDelivered(record.id, receipts);
+  const past = wasDelivered(record, receipts, request);
   if (!past.length) return { score: 0, reasons: ['novel_material'] };
   const latest = Math.max(...past.map(receipt => receipt.occurredAt));
   const age = Math.max(0, request.now - latest);
@@ -227,15 +313,70 @@ interface RankedMaterial {
   reasons: string[];
 }
 
-const NON_DISCRIMINATING_SIGNALS = new Set(['ordinary_share']);
+// A surface saying "I am opening" is transport metadata, not evidence that
+// every opening recipe is semantically relevant. Specific topic/state signals
+// (or a future semantic rank) must still earn situational material.
+const NON_DISCRIMINATING_SIGNALS = new Set(['ordinary_share', 'opening']);
+const LOW_SIGNAL_VOICE_FALLBACK_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+const scopesMatch = (
+  left: CompanionMaterialSelectionRequest['scope'],
+  right: CompanionMaterialSelectionRequest['scope'],
+): boolean => (
+  left.progressBundleId === right.progressBundleId
+  && left.personaMaskId === right.personaMaskId
+  && left.charId === right.charId
+);
+
+const deliveredMaterialIds = (
+  request: CompanionMaterialSelectionRequest,
+  receipts: readonly CompanionMaterialDeliveryReceipt[],
+  recordsById: ReadonlyMap<string, CompanionMaterialRecord>,
+): readonly { materialId: string; occurredAt: number }[] => receipts.flatMap(receipt => (
+  receipt.status === 'delivered'
+    && scopesMatch(receipt.scope, request.scope)
+    && sameUsageClass(receipt, request)
+    ? receipt.delivered.flatMap(item => {
+        const current = recordsById.get(item.materialId);
+        return current && current.revision === item.materialRevision
+          ? [{ materialId: item.materialId, occurredAt: receipt.occurredAt }]
+          : [];
+      })
+    : []
+));
+
+const variationGroupDeliveries = (params: {
+  record: CompanionMaterialRecord;
+  request: CompanionMaterialSelectionRequest;
+  receipts: readonly CompanionMaterialDeliveryReceipt[];
+  recordsById: ReadonlyMap<string, CompanionMaterialRecord>;
+}): readonly { materialId: string; occurredAt: number }[] => {
+  const candidateGroup = retrievalHintsFor(params.record).variationGroup || params.record.id;
+  return deliveredMaterialIds(params.request, params.receipts, params.recordsById).filter(delivery => {
+    if (delivery.materialId === params.record.id) return false;
+    const deliveredRecord = params.recordsById.get(delivery.materialId);
+    if (!deliveredRecord) return false;
+    const deliveredGroup = retrievalHintsFor(deliveredRecord).variationGroup || deliveredRecord.id;
+    return deliveredGroup === candidateGroup;
+  });
+};
 
 const scoreMaterial = (params: {
   record: CompanionMaterialRecord;
   request: CompanionMaterialSelectionRequest;
   features: CompanionMaterialQueryFeatures;
   receipts: readonly CompanionMaterialDeliveryReceipt[];
+  recordsById: ReadonlyMap<string, CompanionMaterialRecord>;
+  semanticRankUsable: boolean;
 }): RankedMaterial | null => {
-  const { record, request, features, receipts } = params;
+  const {
+    record,
+    request,
+    features,
+    receipts,
+    recordsById,
+    semanticRankUsable,
+  } = params;
   const hints = retrievalHintsFor(record);
   const querySignals = new Set(features.signals.map(normalize));
   const positiveSignals = new Set(hints.positiveSignals.map(normalize));
@@ -246,19 +387,55 @@ const scoreMaterial = (params: {
   if (suppressionHits.length) return null;
 
   const lexical = companionMaterialLexicalSimilarity(features, record);
-  const semantic = semanticScoreFor(record, request);
-  const strong = discriminatingSignalHits.length > 0 || lexical >= 0.08 || semantic >= 0.5;
+  const semantic = semanticScoreFor(record, request, semanticRankUsable);
+  const semanticEvidenceBlocked = (
+    querySignals.has('low_signal')
+    || querySignals.has('tool_request')
+    || querySignals.has('no_advice_chat')
+  );
+  const semanticEvidence = semanticEvidenceBlocked ? 0 : semantic;
+  const strongThreshold = semanticRankUsable ? request.semanticRank!.strongThreshold : 1;
+  const semanticStrong = (
+    semanticRankUsable
+    && semanticEvidence > 0
+    && semanticEvidence >= strongThreshold
+  );
+  const strong = (
+    discriminatingSignalHits.length > 0
+    || lexical >= 0.08
+    || semanticStrong
+  );
   if (hints.activationPolicy === 'relevance_required' && !strong) return null;
 
   const relationshipBoost = record.ownerScope.kind === 'relationship' ? 0.25 : 0;
   const novelty = deliveryPenalty(record, request, receipts);
+  const groupDeliveries = variationGroupDeliveries({
+    record,
+    request,
+    receipts,
+    recordsById,
+  });
+  const latestGroupDeliveryAt = groupDeliveries.length
+    ? Math.max(...groupDeliveries.map(delivery => delivery.occurredAt))
+    : 0;
+  const groupAge = latestGroupDeliveryAt ? Math.max(0, request.now - latestGroupDeliveryAt) : Number.POSITIVE_INFINITY;
+  const groupPenalty = groupAge < 12 * 60 * 60 * 1000
+    ? 2
+    : groupAge < 7 * 24 * 60 * 60 * 1000
+      ? 0.6
+      : 0;
   const fallback = hints.activationPolicy === 'voice_fallback' && !strong;
   const reasons = ['scope_match', 'surface_match', 'purpose_match'];
   if (discriminatingSignalHits.length) reasons.push(`semantic_signals:${discriminatingSignalHits.join(',')}`);
   if (lexical > 0) reasons.push(`lexical:${lexical.toFixed(3)}`);
-  if (semantic > 0) reasons.push(`embedding:${semantic.toFixed(3)}@${request.semanticRank?.indexRevision}`);
+  if (semanticEvidence > 0) {
+    reasons.push(`embedding:${semanticEvidence.toFixed(3)}@${request.semanticRank?.indexRevision}`);
+  }
+  if (semantic > 0 && semanticEvidenceBlocked) reasons.push('embedding_suppressed:low_authority_query');
   if (fallback) reasons.push('voice_fallback');
   if (relationshipBoost) reasons.push('relationship_specific');
+  if (groupDeliveries.length) reasons.push(`variation_group_delivery_count:${groupDeliveries.length}`);
+  if (groupPenalty) reasons.push('recent_variation_group_penalty');
   reasons.push(...novelty.reasons);
 
   return {
@@ -270,27 +447,45 @@ const scoreMaterial = (params: {
     score: (
       discriminatingSignalHits.length * 6
       + lexical * 8
-      + semantic * 7
+      + semanticEvidence * 7
       + relationshipBoost
       + (hints.fallbackPriority || 0) * 0.02
       + stableNoise(request.requestId, record.id)
       - novelty.score
+      - Math.min(1.2, groupDeliveries.length * 0.2)
+      - groupPenalty
     ),
   };
 };
+
+const fallbackRecentlyDelivered = (params: {
+  candidate: RankedMaterial;
+  request: CompanionMaterialSelectionRequest;
+  receipts: readonly CompanionMaterialDeliveryReceipt[];
+  recordsById: ReadonlyMap<string, CompanionMaterialRecord>;
+}): boolean => (
+  params.candidate.fallback
+  && deliveredMaterialIds(params.request, params.receipts, params.recordsById).some(delivery => (
+    delivery.materialId === params.candidate.record.id
+    && params.request.now - delivery.occurredAt < LOW_SIGNAL_VOICE_FALLBACK_COOLDOWN_MS
+  ))
+);
 
 const toDeliveryItem = (
   record: CompanionMaterialRecord,
   selectionReasons: string[],
 ): CompanionMaterialDeliveryItem => ({
   materialId: record.id,
+  materialRevision: record.revision,
   slot: record.slot,
   kind: record.kind,
   guidance: record.guidance,
   renderPolicy: record.renderPolicy,
   knowledge: record.knowledge,
   continuity: record.continuity,
+  routeId: record.routeId,
   branchId: record.branchId,
+  sceneId: record.sceneId,
   sourceRefs: record.sourceRefs,
   selectionReasons,
   estimatedChars: record.guidance.length,
@@ -389,13 +584,28 @@ export const selectCompanionMaterialFromRecords = (params: {
   request: CompanionMaterialSelectionRequest;
   records: readonly CompanionMaterialRecord[];
   receipts?: readonly CompanionMaterialDeliveryReceipt[];
+  semanticRankAuthority?: CompanionMaterialSemanticRankAuthority;
 }): CompanionMaterialSelection => {
-  const { request, records, receipts = [] } = params;
+  const {
+    request,
+    records,
+    receipts = [],
+    semanticRankAuthority,
+  } = params;
   assertValidCompanionMaterialSelectionRequest(request);
   const warnings: string[] = [];
   const excluded = new Map<string, number>();
   const features = queryFeaturesForCompanionMaterialRequest(request);
   const ranked: RankedMaterial[] = [];
+  const recordsById = new Map(records.map(record => [record.id, record]));
+  const fingerprint = companionMaterialSetFingerprint(records);
+  const semanticRankUsable = Boolean(
+    request.semanticRank
+    && semanticRankAuthority
+    && semanticRankMatchesAuthority(request.semanticRank, semanticRankAuthority)
+    && request.semanticRank.scopeKey === createHistoryScopeKey(request.scope)
+    && request.semanticRank.materialSetFingerprint === fingerprint
+  );
   const isOrdinaryChat = (
     request.surface === 'chat'
     && request.mode === 'remote_chat'
@@ -413,7 +623,6 @@ export const selectCompanionMaterialFromRecords = (params: {
         : undefined;
 
   if (hardBypassSignal) {
-    const fingerprint = sourceRevisionFingerprint(records);
     return {
       schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
       selectionId: `material-selection-${hashText(`${request.requestId}:${fingerprint}:${request.now}`)}`,
@@ -422,12 +631,13 @@ export const selectCompanionMaterialFromRecords = (params: {
       surface: request.surface,
       mode: request.mode,
       purpose: request.purpose,
+      routeRef: request.routeRef ? { ...request.routeRef } : undefined,
       sourceRevisionFingerprint: fingerprint,
       budgetChars: request.budgetChars,
       items: [],
       selectedMaterialIds: [],
       warnings: [
-        `retrieval_backend:${request.semanticRank ? 'hybrid_embedding' : 'lexical_v1'}`,
+        `retrieval_backend:${semanticRankUsable ? 'hybrid_embedding' : 'lexical_v1'}`,
         `query_signals:${features.signals.join(',') || 'none'}`,
         `material_bypass:${hardBypassSignal}`,
       ],
@@ -436,13 +646,24 @@ export const selectCompanionMaterialFromRecords = (params: {
   }
 
   for (const record of records) {
-    const availability = materialAvailable({ record, request, receipts });
+    const availability = materialAvailable({
+      record,
+      request,
+      receipts,
+    });
     if (!availability.available) {
       const key = availability.reason || 'not_relevant';
       excluded.set(key, (excluded.get(key) || 0) + 1);
       continue;
     }
-    const scored = scoreMaterial({ record, request, features, receipts });
+    const scored = scoreMaterial({
+      record,
+      request,
+      features,
+      receipts,
+      recordsById,
+      semanticRankUsable,
+    });
     if (!scored) {
       excluded.set('not_relevant', (excluded.get('not_relevant') || 0) + 1);
       continue;
@@ -465,13 +686,23 @@ export const selectCompanionMaterialFromRecords = (params: {
     return true;
   });
   excluded.forEach((count, reason) => warnings.push(`excluded_${reason}:${count}`));
-  warnings.push(`retrieval_backend:${request.semanticRank ? 'hybrid_embedding' : 'lexical_v1'}`);
+  warnings.push(`retrieval_backend:${semanticRankUsable ? 'hybrid_embedding' : 'lexical_v1'}`);
+  if (request.semanticRank && !semanticRankUsable) {
+    warnings.push('semantic_rank_ignored:untrusted_or_binding_mismatch');
+  }
   warnings.push(`query_signals:${features.signals.join(',') || 'none'}`);
   if (features.usedPreviousQuery) warnings.push('used_previous_query');
 
   const strong = deduplicatedRanked.filter(candidate => candidate.strong);
   const fallbackVoices = deduplicatedRanked.filter(candidate => (
-    candidate.fallback && candidate.record.slot === 'stable_character_voice'
+    candidate.fallback
+    && candidate.record.slot === 'stable_character_voice'
+    && !fallbackRecentlyDelivered({
+      candidate,
+      request,
+      receipts,
+      recordsById,
+    })
   ));
   const candidatePool = strong.length ? strong : fallbackVoices.slice(0, 1);
   const requiredVoiceFallback = strong.length && !strong.some(item => item.record.slot === 'stable_character_voice')
@@ -484,7 +715,6 @@ export const selectCompanionMaterialFromRecords = (params: {
     requireVoiceFallback: requiredVoiceFallback,
   });
 
-  const fingerprint = sourceRevisionFingerprint(records);
   return {
     schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
     selectionId: `material-selection-${hashText(`${request.requestId}:${fingerprint}:${request.now}`)}`,
@@ -493,6 +723,7 @@ export const selectCompanionMaterialFromRecords = (params: {
     surface: request.surface,
     mode: request.mode,
     purpose: request.purpose,
+    routeRef: request.routeRef ? { ...request.routeRef } : undefined,
     sourceRevisionFingerprint: fingerprint,
     budgetChars: request.budgetChars,
     items,

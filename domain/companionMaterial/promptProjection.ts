@@ -4,11 +4,13 @@ import {
   type CompanionMaterialKind,
   type CompanionMaterialMode,
   type CompanionMaterialPurpose,
+  type CompanionMaterialRouteRef,
   type CompanionMaterialSelection,
   type CompanionMaterialSlot,
   type CompanionMaterialSurface,
 } from './types.ts';
 import type { CompanionMaterialSemanticProjection } from './semanticProjection.ts';
+import type { HistoryScope } from '../historyImport/types.ts';
 
 /**
  * A deliberately small, pure hand-off from selected non-verbatim material to
@@ -44,9 +46,13 @@ export interface CompanionMaterialPromptProjectionDrop {
 
 export interface CompanionMaterialPromptProjection {
   selectionId: string;
+  requestId: string;
+  scope: HistoryScope;
   surface: CompanionMaterialSurface;
   mode: CompanionMaterialMode;
   purpose: CompanionMaterialPurpose;
+  routeRef?: CompanionMaterialRouteRef;
+  sourceRevisionFingerprint: string;
   budgetChars: number;
   usedChars: number;
   fragments: readonly CompanionMaterialPromptFragment[];
@@ -134,27 +140,27 @@ const slotCanReachSurface = (params: {
 const renderGuidance = (item: CompanionMaterialDeliveryItem): string => {
   const guidance = normalize(item.guidance);
   if (item.slot === 'stable_character_voice') {
-    return `- 表达方向：${guidance}`;
+    return `- 角色注意角度：${guidance}`;
   }
   if (item.slot === 'stable_base' && item.kind === 'initiative_motive') {
-    return `- 长期行动倾向：${guidance}`;
+    return `- 稳定选择倾向（不是当轮任务）：${guidance}`;
   }
   if (item.slot === 'stable_base') {
-    return `- 稳定身份参考：${guidance}`;
+    return `- 稳定角色参考：${guidance}`;
   }
   if (item.slot === 'relevant_stable_details') {
-    return `- 相关生活触点：${guidance}`;
+    return `- 与已知线索相关时可用的稳定触点：${guidance}`;
   }
   if (item.slot === 'opening_recipes') {
-    return `- 开场生成方向：${guidance}`;
+    return `- 由当前证据落地的开场灵感（非固定步骤）：${guidance}`;
   }
   if (item.slot === 'proactive_seeds') {
-    return `- 主动联系线索：${guidance}`;
+    return `- 主动联系灵感：${guidance}`;
   }
   if (item.slot === 'motive_candidates') {
-    return `- 行动线索候选：${guidance}`;
+    return `- 可供场景判断的动机候选：${guidance}`;
   }
-  return `- 场景可能性：${guidance}`;
+  return `- 可供场景判断的可能性：${guidance}`;
 };
 
 const assertCompatibleInput = (input: CompanionMaterialPromptProjectionInput): void => {
@@ -230,9 +236,13 @@ export const projectCompanionMaterialPrompt = (
 
   return {
     selectionId: source.selectionId,
+    requestId: source.requestId,
+    scope: { ...source.scope },
     surface: input.surface,
     mode: input.mode,
     purpose: input.purpose,
+    routeRef: source.routeRef ? { ...source.routeRef } : undefined,
+    sourceRevisionFingerprint: source.sourceRevisionFingerprint,
     budgetChars,
     usedChars,
     fragments,

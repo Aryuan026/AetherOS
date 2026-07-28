@@ -111,14 +111,37 @@ export interface CompanionMaterialRetrievalHints {
  * continuity, knowledge, cooldown and diversity gates remain code-owned.
  * Query and indexed vectors must have been produced by the same named index.
  */
-export interface CompanionMaterialSemanticRank {
+export interface CompanionMaterialSemanticRankBinding {
+  manifestId: string;
+  manifestDigest: string;
   backend: 'embedding';
   modelId: string;
+  modelArtifactDigest: string;
+  dimensions: number;
+  metric: 'cosine' | 'dot_product';
+  normalized: boolean;
+  projectionVersion: string;
+  calibrationRevision: string;
+  strongThreshold: number;
   indexRevision: string;
+  scopeKey: string;
+  materialSetFingerprint: string;
+}
+
+export interface CompanionMaterialSemanticRank extends CompanionMaterialSemanticRankBinding {
   scores: readonly {
     materialId: string;
     score: number;
   }[];
+}
+
+/**
+ * Code-owned proof of the active local index. A request's self-reported rank
+ * metadata is never authority by itself; every binding field must match this
+ * trusted manifest before semantic scores can influence selection.
+ */
+export interface CompanionMaterialSemanticRankAuthority extends CompanionMaterialSemanticRankBinding {
+  authority: 'trusted_local_index_manifest';
 }
 
 export interface CompanionMaterialSlotLimits {
@@ -212,6 +235,7 @@ export interface CompanionMaterialSelectionRequest {
 
 export interface CompanionMaterialDeliveryItem {
   materialId: string;
+  materialRevision: number;
   slot: CompanionMaterialSlot;
   kind: CompanionMaterialKind;
   /** The only material content that a future Context Compiler may receive. */
@@ -219,7 +243,9 @@ export interface CompanionMaterialDeliveryItem {
   renderPolicy: CompanionMaterialRenderPolicy;
   knowledge: CompanionMaterialKnowledge;
   continuity: CompanionMaterialContinuity;
+  routeId?: string;
   branchId?: string;
+  sceneId?: string;
   sourceRefs: readonly CompanionMaterialSourceRef[];
   selectionReasons: readonly string[];
   estimatedChars: number;
@@ -233,6 +259,7 @@ export interface CompanionMaterialSelection {
   surface: CompanionMaterialSurface;
   mode: CompanionMaterialMode;
   purpose: CompanionMaterialPurpose;
+  routeRef?: CompanionMaterialRouteRef;
   sourceRevisionFingerprint: string;
   budgetChars: number;
   items: readonly CompanionMaterialDeliveryItem[];
@@ -254,9 +281,11 @@ export interface CompanionMaterialDeliveryReceipt {
   surface: CompanionMaterialSurface;
   mode: CompanionMaterialMode;
   purpose: CompanionMaterialPurpose;
+  routeRef?: CompanionMaterialRouteRef;
   sourceRevisionFingerprint: string;
   delivered: readonly {
     materialId: string;
+    materialRevision: number;
     slot: CompanionMaterialSlot;
     promptCharCount: number;
     /** Hash only; it never stores the private prompt fragment itself. */

@@ -125,6 +125,7 @@ export const loadCompanionMaterialRecords = async (scope: {
       const pass = await getHistoryCompanionMaterialPass({ passId });
       if (
         !pass
+        || pass.status !== 'active'
         || companionMaterialScopeKey(pass.scope) !== companionMaterialScopeKey(scope)
       ) return;
       const receipt = await loadCurrentHistoryCompanionMaterialActivationReceiptForPass({ pass });

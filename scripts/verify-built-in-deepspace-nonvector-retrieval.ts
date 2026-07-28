@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import {
   BUILT_IN_DEEPSPACE_LISHEN_ID,
+  BUILT_IN_DEEPSPACE_QINCHE_ID,
   BUILT_IN_DEEPSPACE_QIYU_ID,
   BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL,
+  BUILT_IN_DEEPSPACE_SHENXINGHUI_ID,
+  BUILT_IN_DEEPSPACE_XIAYIZHOU_ID,
 } from '../domain/companionMaterial/builtInDeepspaceReviewed.ts';
 import {
   BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID,
@@ -14,8 +17,10 @@ import {
 } from '../domain/companionMaterial/builtInDeepspaceRetrievalCalibration.ts';
 import { analyzeCompanionMaterialQuery } from '../domain/companionMaterial/retrieval.ts';
 import { selectCompanionMaterialFromRecords } from '../domain/companionMaterial/selection.ts';
+import { createCompanionMaterialDeliveryReceipt } from '../domain/companionMaterial/deliveryReceipt.ts';
 import {
   COMPANION_MATERIAL_SCHEMA_VERSION,
+  type CompanionMaterialDeliveryReceipt,
   type CompanionMaterialMode,
   type CompanionMaterialPurpose,
   type CompanionMaterialRecord,
@@ -233,9 +238,8 @@ const BLIND_SCENARIOS: readonly BlindRetrievalScenario[] = [
         expectedIds: [
           'builtin-qiyu-proactive-own-thread-v1',
           'builtin-qiyu-opening-curious-hook-v1',
-          'builtin-qiyu-opening-reentry-v1',
         ],
-        expectedVariationGroups: ['independent_proactive', 'curious_opening', 'reentry_opening'],
+        expectedVariationGroups: ['independent_proactive', 'curious_opening'],
         forbiddenIds: ['builtin-qiyu-proactive-optional-care-v1'],
       },
       [BUILT_IN_DEEPSPACE_LISHEN_ID]: {
@@ -271,8 +275,8 @@ const LOW_SIGNAL_GREETING: BlindRetrievalScenario = {
 };
 
 assert.deepEqual(validateBuiltInDeepspaceRetrievalCalibration(), []);
-assert.equal(Object.keys(BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID).length, 20);
-assert.equal(recordById.size, 20);
+assert.equal(Object.keys(BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID).length, 23);
+assert.equal(recordById.size, 23);
 assert.ok(
   analyzeCompanionMaterialQuery({ query: LOW_SIGNAL_GREETING.userOpening }).signals.includes('low_signal'),
   'the existing lightweight analyser must expose the legal low-signal fallback path',
@@ -295,6 +299,98 @@ for (const charId of [BUILT_IN_DEEPSPACE_QIYU_ID, BUILT_IN_DEEPSPACE_LISHEN_ID])
   ));
   assert.ok(fallbackRecords.length >= 1 && fallbackRecords.length <= 2, `${charId} keeps 1-2 voice fallbacks`);
   assert.equal(fallbackRecords.some(record => record.tags.includes('care')), false, `${charId} fallback cannot become default care`);
+}
+
+const OTHER_LEAD_RUNTIME_CASES = [
+  {
+    charId: BUILT_IN_DEEPSPACE_SHENXINGHUI_ID,
+    expectedId: 'builtin-shenxinghui-voice-even-playful-premise-v1',
+    positiveQuery: '我们假装这是一个小游戏，定个奇怪规则。',
+    positiveSignal: 'playful_premise',
+  },
+  {
+    charId: BUILT_IN_DEEPSPACE_QINCHE_ID,
+    expectedId: 'builtin-qinche-voice-criterion-led-reframe-v1',
+    positiveQuery: '两个方案二选一，你觉得哪个更好？',
+    positiveSignal: 'choice_tradeoff',
+  },
+  {
+    charId: BUILT_IN_DEEPSPACE_XIAYIZHOU_ID,
+    expectedId: 'builtin-xiayizhou-voice-warm-playful-continuation-v1',
+    positiveQuery: '来打个赌，输的人负责买甜点。',
+    positiveSignal: 'playful_premise',
+  },
+] as const;
+
+for (const fixture of OTHER_LEAD_RUNTIME_CASES) {
+  const records = builtInDeepspaceRetrievalCalibrationForCharacter(fixture.charId);
+  assert.equal(records.length, 1);
+  assert.equal(records[0]?.retrievalHints?.activationPolicy, 'relevance_required');
+  assert.ok(
+    analyzeCompanionMaterialQuery({ query: fixture.positiveQuery }).signals.includes(fixture.positiveSignal),
+    `${fixture.charId} positive query must expose its non-vector signal`,
+  );
+
+  const select = (
+    query: string,
+    now = 1_800_000_000_000,
+    receipts: readonly CompanionMaterialDeliveryReceipt[] = [],
+  ) => selectCompanionMaterialFromRecords({
+    request: {
+      schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+      requestId: `other-lead:${fixture.charId}:${query}`,
+      scope: {
+        progressBundleId: 'runtime-bundle',
+        personaMaskId: 'runtime-mask',
+        charId: fixture.charId,
+      },
+      surface: 'chat',
+      mode: 'remote_chat',
+      purpose: 'stable_context',
+      query,
+      relationshipStage: 'unknown',
+      budgetChars: 360,
+      maxItems: 1,
+      now,
+    },
+    records,
+    receipts,
+  });
+
+  const firstSelection = select(fixture.positiveQuery);
+  assert.deepEqual(firstSelection.selectedMaterialIds, [fixture.expectedId]);
+  const firstReceipt = createCompanionMaterialDeliveryReceipt({
+    selection: firstSelection,
+    consumerRef: { kind: 'prompt', id: `other-lead:${fixture.charId}:first`, revision: '1' },
+    delivered: firstSelection.items.map(item => ({
+      materialId: item.materialId,
+      promptCharCount: item.estimatedChars,
+    })),
+    occurredAt: 1_800_000_000_000,
+  });
+  assert.deepEqual(
+    select(fixture.positiveQuery, 1_800_000_001_000, [firstReceipt]).selectedMaterialIds,
+    [],
+    `${fixture.charId} must not repeat its only narrow operator on adjacent turns`,
+  );
+  for (const negativeQuery of [
+    '在吗',
+    '我今天胃有点不舒服',
+    '不了，我想一个人待着',
+    '这几天没怎么出现，我回来了',
+    '你今天都做了什么？',
+    '提醒我晚上十点睡觉',
+    '我把钥匙忘在家里了，怎么办？',
+    '（我在雨里拉住你的袖口）',
+    '（我安静地坐在你旁边）',
+    '（我低头擦掉眼泪）',
+  ]) {
+    assert.deepEqual(
+      select(negativeQuery).selectedMaterialIds,
+      [],
+      `${fixture.charId} must not turn one narrow character operator into a default response path`,
+    );
+  }
 }
 
 for (const scenario of [...BLIND_SCENARIOS, LOW_SIGNAL_GREETING]) {
@@ -338,6 +434,7 @@ const runtimeCases = [
   { id: 'refusal', query: '今天不去了，下次吧' },
   { id: 'reentry', query: '这几天有点忙，刚回来' },
   { id: 'character_self_share', query: '你今天在忙什么？' },
+  { id: 'character_self_share_colloquial', query: '你今天都做了什么？' },
 ] as const;
 
 for (const charId of [BUILT_IN_DEEPSPACE_QIYU_ID, BUILT_IN_DEEPSPACE_LISHEN_ID]) {
@@ -382,7 +479,7 @@ for (const charId of [BUILT_IN_DEEPSPACE_QIYU_ID, BUILT_IN_DEEPSPACE_LISHEN_ID])
         `${charId} refusal does not pull care back in`,
       );
     }
-    if (fixture.id === 'reentry' || fixture.id === 'character_self_share') {
+    if (fixture.id === 'reentry' || fixture.id.startsWith('character_self_share')) {
       const expectedIndependentVoice = charId === BUILT_IN_DEEPSPACE_QIYU_ID
         ? 'builtin-qiyu-voice-own-rhythm-v1'
         : 'builtin-lishen-voice-own-perspective-v1';
@@ -393,6 +490,120 @@ for (const charId of [BUILT_IN_DEEPSPACE_QIYU_ID, BUILT_IN_DEEPSPACE_LISHEN_ID])
       );
     }
   }
+}
+
+for (const charId of [BUILT_IN_DEEPSPACE_QIYU_ID, BUILT_IN_DEEPSPACE_LISHEN_ID]) {
+  const genericCallOpening = selectCompanionMaterialFromRecords({
+    request: {
+      schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+      requestId: `runtime:${charId}:call-opening`,
+      scope: {
+        progressBundleId: 'runtime-bundle',
+        personaMaskId: 'runtime-mask',
+        charId,
+      },
+      surface: 'call',
+      mode: 'call',
+      purpose: 'opening',
+      query: '电话刚接通。',
+      semanticTags: ['opening', 'call'],
+      relationshipStage: 'unknown',
+      budgetChars: 520,
+      maxItems: 2,
+      now: 1_800_000_000_000,
+    },
+    records: builtInDeepspaceRetrievalCalibrationForCharacter(charId),
+  });
+  assert.equal(
+    genericCallOpening.items.some(item => item.slot === 'opening_recipes'),
+    false,
+    `${charId} generic transport metadata must not force an unrelated opening recipe`,
+  );
+  const relevantCallOpening = selectCompanionMaterialFromRecords({
+    request: {
+      schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+      requestId: `runtime:${charId}:call-opening-observation`,
+      scope: {
+        progressBundleId: 'runtime-bundle',
+        personaMaskId: 'runtime-mask',
+        charId,
+      },
+      surface: 'call',
+      mode: 'call',
+      purpose: 'opening',
+      query: '电话接通时，我刚好看到窗边的雨光。',
+      semanticTags: ['opening', 'call'],
+      relationshipStage: 'unknown',
+      budgetChars: 520,
+      maxItems: 2,
+      now: 1_800_000_000_000,
+    },
+    records: builtInDeepspaceRetrievalCalibrationForCharacter(charId),
+  });
+  assert.equal(
+    relevantCallOpening.items.some(item => item.slot === 'opening_recipes'),
+    true,
+    `${charId} evidence-backed call opening may reach one legal opening recipe`,
+  );
+
+  const proactive = selectCompanionMaterialFromRecords({
+    request: {
+      schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+      requestId: `runtime:${charId}:proactive`,
+      scope: {
+        progressBundleId: 'runtime-bundle',
+        personaMaskId: 'runtime-mask',
+        charId,
+      },
+      surface: 'proactive_letter',
+      mode: 'proactive_letter',
+      purpose: 'proactive_intent',
+      query: '自由主动来信',
+      semanticTags: ['proactive_intent', 'opening'],
+      relationshipStage: 'unknown',
+      budgetChars: 600,
+      maxItems: 2,
+      now: 1_800_000_000_000,
+    },
+    records: builtInDeepspaceRetrievalCalibrationForCharacter(charId),
+  });
+  assert.equal(
+    proactive.items.some(item => item.slot === 'proactive_seeds'),
+    true,
+    `${charId} heartbeat must reach one legal proactive seed`,
+  );
+  assert.equal(
+    proactive.items.some(item => item.materialId.includes('reentry')),
+    false,
+    `${charId} generic heartbeat must not impersonate a reunion without reentry evidence`,
+  );
+
+  const selfLifeProactive = selectCompanionMaterialFromRecords({
+    request: {
+      schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+      requestId: `runtime:${charId}:proactive-self-life`,
+      scope: {
+        progressBundleId: 'runtime-bundle',
+        personaMaskId: 'runtime-mask',
+        charId,
+      },
+      surface: 'proactive_letter',
+      mode: 'proactive_letter',
+      purpose: 'proactive_intent',
+      query: '你今天都做了什么？',
+      semanticTags: ['proactive_intent', 'opening'],
+      relationshipStage: 'unknown',
+      budgetChars: 600,
+      maxItems: 2,
+      now: 1_800_000_000_000,
+    },
+    records: builtInDeepspaceRetrievalCalibrationForCharacter(charId),
+  });
+  assert.equal(
+    selfLifeProactive.items.some(item => item.materialId.includes('reentry')),
+    false,
+    `${charId} self-life prompt must not invent a reunion interval`,
+  );
 }
 
 console.log('built-in deepspace non-vector retrieval calibration: green');

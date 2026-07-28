@@ -17,6 +17,11 @@ import { useVirtualWorldClock } from '../hooks/useVirtualWorldClock';
 import { BookOpen } from '@phosphor-icons/react';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 import { DATE_EXPERIENCE_BOUNDARY, getBuiltInDateBackgroundForHour, getDateFallbackMood, resolveDateDefaultPortrait } from '../utils/dateExperience';
+import {
+    prepareCompanionMaterialPrompt,
+    recordPreparedCompanionMaterialPromptDelivery,
+    type PreparedCompanionMaterialPrompt,
+} from '../utils/companionMaterial/promptConsumer';
 import { DateCharacterSelectCard } from '../components/date/DateCharacterSelectCard';
 import { DatePersonaScopeNotice, DateSelectIntro } from '../components/date/DateSelectIntro';
 import {
@@ -301,6 +306,8 @@ const DateApp: React.FC = () => {
                         dateSessionId,
                         interactionId: `date:${dateSessionId}`,
                         turnId: `date-opening:${dateSessionId}`,
+                        sceneProposalAccepted: true,
+                        sceneProvenance: 'generated_date_opening',
                     }
                 });
                 setHasSavedOpening(true);
@@ -331,6 +338,7 @@ const DateApp: React.FC = () => {
         setHasSavedOpening(false); 
 
         try {
+            const requestTime = Date.now();
             const msgs = (await DB.getMessagesByCharId(c.id))
                 .filter(message => messageMatchesRelationshipScope(message, relationshipScope));
             const limit = c.contextLimit || 500; 
@@ -351,10 +359,32 @@ const DateApp: React.FC = () => {
                 surface: 'date',
                 relationshipScope,
                 currentMessages: msgs,
-                query: '用户正在进入见面场景，生成角色此刻状态。',
+                query: '用户正在进入见面场景；只读取与本次开场可靠相关的背景。',
                 budgetChars: 900,
             });
-            const baseContext = `${ContextBuilder.buildCoreContext(c, userProfile, false)}${worldlineMemory.markdown ? `\n${worldlineMemory.markdown}\n` : ''}`;
+            let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
+            try {
+                preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+                    requestId: `date-opening-material:${dateSessionIdRef.current}:${requestTime}`,
+                    scope: relationshipScope,
+                    surface: 'meet_scene',
+                    mode: 'meet_scene',
+                    purpose: 'opening',
+                    query: '用户正准备进入见面场景。',
+                    semanticTags: ['opening', 'meet_scene'],
+                    relationshipStage: 'unknown',
+                    budgetChars: 560,
+                    maxItems: 2,
+                    now: requestTime,
+                });
+            } catch (error) {
+                console.warn('[date] opening companion material unavailable', error);
+            }
+            const baseContext = [
+                ContextBuilder.buildCoreContext(c, userProfile, false),
+                worldlineMemory.markdown,
+                preparedCompanionMaterial?.markdown,
+            ].filter(Boolean).join('\n');
 
             // 强制分隔符，让 AI 意识到这是新的一场戏
             const contextSeparator = gapHint ? `\n\n--- [TIME SKIP: ${gapHint}] ---\n\n` : `\n\n--- [NEW SCENE START] ---\n\n`;
@@ -367,13 +397,12 @@ const DateApp: React.FC = () => {
 ${DATE_EXPERIENCE_BOUNDARY}
 
 ### 任务
-你现在并不在和用户直接对话。用户正在悄悄靠近你所在的地点。
-请用**第三人称**描写一段话。
-描述：${c.name} 此时此刻正在做什么？周围环境是怎样的？状态如何？
+你现在并不在和用户直接对话。请为用户设计一段可以进入的见面开场提案，并用**第三人称**描写一段话。
+从可靠当前状态或最近 live 对话已经确认的线索起笔；如果没有这样的线索，就选一个不暗示具体工作、任务、伤病或等待经历的日常空间，让 ${c.name} 的动作与周围环境保持开放。
 
 ### 逻辑检查
 1. **上下文连贯性**: 参考 [最近记录]，但**必须**注意 [TIME SKIP]。如果是很久没见，不要接着上一次的话题聊，而是开启新场景。
-2. **状态一致性**: ${gapHint.includes('很久') ? '因为很久没见，可能在发呆、忙碌或者有点落寞。' : '根据之前的聊天状态决定。'}
+2. **状态一致性**: 时间间隔只表示镜头换场；角色的忙碌、落寞、等待或具体日程，需要来自可靠上文，而不是从“很久没见”自动推断。
 3. **描写风格**: 电影感，沉浸式，细节丰富。不要输出任何前缀，直接输出描写内容。`;
 
             const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -391,7 +420,23 @@ ${DATE_EXPERIENCE_BOUNDARY}
 
             if (!response.ok) throw new Error('Failed to sense presence');
             const data = await safeResponseJson(response);
-            const content = data.choices[0].message.content;
+            const content = data?.choices?.[0]?.message?.content?.trim() || '';
+            if (!content) throw new Error('Failed to sense presence');
+            if (preparedCompanionMaterial) {
+                try {
+                    await recordPreparedCompanionMaterialPromptDelivery({
+                        prepared: preparedCompanionMaterial,
+                        consumerRef: {
+                            kind: 'prompt',
+                            id: `date-opening:${dateSessionIdRef.current}:${requestTime}`,
+                            revision: 'date-opening-v1',
+                        },
+                        occurredAt: Date.now(),
+                    });
+                } catch (error) {
+                    console.warn('[date] opening companion material receipt unavailable', error);
+                }
+            }
             setPeekStatus(content);
 
         } catch (e: any) {
@@ -404,6 +449,7 @@ ${DATE_EXPERIENCE_BOUNDARY}
     // --- Session API Logic ---
     const handleSendMessage = async (text: string): Promise<string> => {
         if (!char) throw new Error("No char");
+        const requestTime = Date.now();
         const relationshipScope = dateRelationshipScopeRef.current;
         const dateSessionId = dateSessionIdRef.current;
         if (!relationshipScope || !dateSessionId) throw new Error('Date session scope missing');
@@ -460,7 +506,29 @@ ${DATE_EXPERIENCE_BOUNDARY}
             query: text,
             budgetChars: 1200,
         });
-        let systemPrompt = `${ContextBuilder.buildCoreContext(char, userProfile)}${worldlineMemory.markdown ? `\n${worldlineMemory.markdown}\n` : ''}`;
+        let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
+        try {
+            preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+                requestId: `date-turn-material:${dateSessionId}:${requestTime}`,
+                scope: relationshipScope,
+                surface: 'date',
+                mode: 'date_scene',
+                purpose: 'stable_context',
+                query: text,
+                semanticTags: ['stable_voice', 'date_scene'],
+                relationshipStage: 'unknown',
+                budgetChars: 420,
+                maxItems: 1,
+                now: requestTime,
+            });
+        } catch (error) {
+            console.warn('[date] turn companion material unavailable', error);
+        }
+        let systemPrompt = [
+            ContextBuilder.buildCoreContext(char, userProfile),
+            worldlineMemory.markdown,
+            preparedCompanionMaterial?.markdown,
+        ].filter(Boolean).join('\n');
         const REQUIRED_EMOTIONS = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotions = [...REQUIRED_EMOTIONS, ...(char.customDateSprites || [])];
 
@@ -517,7 +585,23 @@ ${DATE_EXPERIENCE_BOUNDARY}
 
         if (!response.ok) throw new Error('API Error');
         const data = await safeResponseJson(response);
-        const content = data.choices[0].message.content;
+        const content = data?.choices?.[0]?.message?.content?.trim() || '';
+        if (!content) throw new Error('API Error');
+        if (preparedCompanionMaterial) {
+            try {
+                await recordPreparedCompanionMaterialPromptDelivery({
+                    prepared: preparedCompanionMaterial,
+                    consumerRef: {
+                        kind: 'prompt',
+                        id: `date-turn:${dateSessionId}:${requestTime}`,
+                        revision: 'date-turn-v1',
+                    },
+                    occurredAt: Date.now(),
+                });
+            } catch (error) {
+                console.warn('[date] turn companion material receipt unavailable', error);
+            }
+        }
 
         // 3. Save AI Response
         await DB.saveMessage({
@@ -547,6 +631,7 @@ ${DATE_EXPERIENCE_BOUNDARY}
 
     const handleReroll = async (): Promise<string> => {
         if (!char || dateMessages.length === 0) throw new Error("No context");
+        const requestTime = Date.now();
         
         const lastMsg = dateMessages[dateMessages.length - 1];
         if (lastMsg.role !== 'assistant') throw new Error("Cannot reroll user message");
@@ -586,7 +671,29 @@ ${DATE_EXPERIENCE_BOUNDARY}
             query: String(lastUserMsg.content || ''),
             budgetChars: 1200,
         });
-        let systemPrompt = `${ContextBuilder.buildCoreContext(char, userProfile)}${worldlineMemoryR.markdown ? `\n${worldlineMemoryR.markdown}\n` : ''}`;
+        let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
+        try {
+            preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+                requestId: `date-reroll-material:${dateSessionId}:${requestTime}`,
+                scope: initiatingScope,
+                surface: 'date',
+                mode: 'date_scene',
+                purpose: 'stable_context',
+                query: String(lastUserMsg.content || ''),
+                semanticTags: ['stable_voice', 'date_scene', 'reroll'],
+                relationshipStage: 'unknown',
+                budgetChars: 420,
+                maxItems: 1,
+                now: requestTime,
+            });
+        } catch (error) {
+            console.warn('[date] reroll companion material unavailable', error);
+        }
+        let systemPrompt = [
+            ContextBuilder.buildCoreContext(char, userProfile),
+            worldlineMemoryR.markdown,
+            preparedCompanionMaterial?.markdown,
+        ].filter(Boolean).join('\n');
         const REQUIRED_EMOTIONS_R = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotionsR = [...REQUIRED_EMOTIONS_R, ...(char.customDateSprites || [])];
         systemPrompt += `${DATE_EXPERIENCE_BOUNDARY}
@@ -620,7 +727,23 @@ ${DATE_EXPERIENCE_BOUNDARY}
 
         if (!response.ok) throw new Error('API Error');
         const data = await safeResponseJson(response);
-        const content = data.choices[0].message.content;
+        const content = data?.choices?.[0]?.message?.content?.trim() || '';
+        if (!content) throw new Error('API Error');
+        if (preparedCompanionMaterial) {
+            try {
+                await recordPreparedCompanionMaterialPromptDelivery({
+                    prepared: preparedCompanionMaterial,
+                    consumerRef: {
+                        kind: 'prompt',
+                        id: `date-reroll:${dateSessionId}:${requestTime}`,
+                        revision: 'date-reroll-v1',
+                    },
+                    occurredAt: Date.now(),
+                });
+            } catch (error) {
+                console.warn('[date] reroll companion material receipt unavailable', error);
+            }
+        }
 
         await DB.saveMessage({
             charId: char.id,

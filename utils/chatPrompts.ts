@@ -37,7 +37,7 @@ export const ChatPrompts = {
         }
         if (diffHours < 24) return `[系统提示: 距离上一条消息: ${diffHours} 小时。很长的间隔。]`;
         const days = Math.floor(diffHours / 24);
-        return `[系统提示: 距离上一条消息: ${days} 天。用户消失了很久。请根据你们的关系做出反应（想念、生气、担心或冷漠）。]`;
+        return `[系统提示: 距离上一条消息: ${days} 天。这是一次较长间隔；角色是否在意、如何接话以及要不要提起间隔，由关系、角色自己的生活和本轮现场决定。]`;
     },
 
     // 构建表情包上下文
@@ -76,18 +76,15 @@ export const ChatPrompts = {
         const replyMode = delivery === 'proactive'
             ? 'texting'
             : (behavior.replyMode || DEFAULT_CHAT_REPLY_MODE);
+        const companionMaterialContext = behavior.companionMaterialContext?.trim() || '';
         let baseSystemPrompt = ContextBuilder.buildCoreContext(char, userProfile);
 
         // 情绪底色（buffInjection）已移入 ContextBuilder.buildCoreContext()，所有 App 统一注入
         if (worldlineMemoryContext?.trim()) {
             baseSystemPrompt += `\n${worldlineMemoryContext.trim()}\n`;
         }
-        if (behavior.companionMaterialContext?.trim()) {
-            baseSystemPrompt += `\n${behavior.companionMaterialContext.trim()}\n`;
-        }
-
         if (currentMsgs.some(isHistoricalContextMessage)) {
-            baseSystemPrompt += `\n### 旧日档案边界\n标有“旧日档案”的消息是过去的共同创作原文，只用于理解关系、语气和已知事实，不代表今天或刚刚发生。其中的动作、神态、场景和环境描写都是历史叙事证据；可以谈起或在用户本轮明确接回时继续创作，但不得只凭这些旧消息推导当前受伤、生病、失眠、情绪 Buff、未完约定、所在地点、可用时间或独立生活状态，也不得据此创建提醒、日程、NarrativeRun、ExperienceReceipt 或记忆写入。只有本轮未标为旧日档案的实时消息，才能改变当前状态。\n`;
+            baseSystemPrompt += `\n### 旧日档案边界\n标有“旧日档案”的消息属于过去，可帮助理解关系、语气、已建立事实和共同创作；动作、神态、场景与环境也只表示当时的叙事。用户本轮明确接回时可以谈起或继续创作。当前状态只取本轮实时消息或明确的当前回执：旧日档案本身不更新伤病、情绪、约定、地点、可用时间或角色生活，也没有创建提醒、日程、剧情收据和记忆写入的权限。\n`;
         }
 
         // 注入现实同频规则与实时信号（时间、昼夜、可选天气）
@@ -132,15 +129,10 @@ ${replyModePrompt}
 
 1. **沉浸感**: 保持角色扮演，具体表达方式以角色卡和可靠上下文为准。
 2. **行为模式**: 不要总是围绕用户转。可以分享角色自己的生活、想法或随意观察；主动程度和互动节奏由人设决定。
-2.5 **对话质量 (极其重要)**:
-   - **拒绝空话**: 不要说”我会一直在”、”我不会离开你”这类万能安慰句。这些话谁都能说，毫无信息量。
-   - **用细节代替概括**: 用本轮出现的细节、角色自己生活里的具体事或已经可靠建立的共同记忆表达态度。没有可靠共同经历时，不补造并不存在的默契。
-   - **让每句话只有你能说出来**: 你说的话应该带着你的性格、经历和记忆。如果把你换成别人，这句话不应该还成立。
-   - **情绪要有层次**: 生气时不只是生气，可能还有委屈、不甘、或者气自己在意。不要只输出一种扁平的情绪。
-   - **按已有了解回应**: 确实存在的共同细节可以自然出现；没有建立的关系、默契和经历不要补造。不知道的事可以追问或暂时不下结论。
-   - **你有自己的视角**: 你不是只会附和的人。你会观察和思考，但所有判断都应来自人设与已有证据。
-   - **允许长句**: 在情绪强烈、争吵、倾诉、回忆等场景下，你可以发长消息。不是每句话都要短。真人在激动时会发大段文字。
-   - **打破"捕捉情绪→回应情绪→收束安慰"的固定结构**: 真人聊天不会每次都精准回应对方话里最沉重的那个点。你可以：揪住一个不起眼的细节追问；先岔开聊点别的过一会儿再绕回来；突然分享自己最近的事（看似离题但其实是在用自己的方式陪伴）；只回一个"嗯"或者省略号，把空间留给对方；对方说了很重的话你反而语气变轻，因为你知道这时候太认真反而让人更难受。不要每次都"接住"对方的情绪——有时候故意不接，反而是最体贴的回应。
+2.5 **对话质感**:
+   - 从角色此刻最可能注意的内容出发，不要求逐项回答，也不要求总是先处理用户话里最沉重的部分。
+   - 本轮细节、角色自己的生活和可靠共同记忆都可以自然进入回应；未知之处可以追问、保留判断或暂时略过。
+   - 保留角色自己的判断、边界和节奏。回复长短、情绪层次与主动程度可以随现场变化，不必套用固定的安慰、建议或总结流程。
 3. **格式要求**:
 ${replyMode === 'texting'
     ? `   - 想发送多条独立消息时，使用真正的换行符（\\n）分隔；每一行会成为一个独立气泡。`
@@ -154,7 +146,7 @@ ${replyMode === 'texting'
 4. **引用功能 (Quote/Reply)**:
    - 如果你想专门回复用户某句具体的话，可以在回复开头使用: \`[[QUOTE: 引用内容]]\`。这会在UI上显示为对该消息的引用。
 5. **环境感知**:
-   - 留意 [系统提示] 中的时间跨度。如果用户消失了很久，请根据你们的关系做出反应（如撒娇、生气、担心或冷漠）。
+   - 留意 [系统提示] 中的时间跨度。长间隔只是一项现场信息，是否提起以及怎样回应由角色关系与当前对话决定。
    - 如果用户发送了图片，请对图片内容进行评论。
 6. **可用动作**:
    - 回戳用户: \`[[ACTION:POKE]]\`
@@ -238,7 +230,14 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
             }
         } else {
             // Voice is disabled — explicitly prohibit voice tags to prevent inertia from call/date history
-            baseSystemPrompt += `\n\n[系统提示: 语音消息功能当前未开启。严禁使用 <语音>...</语音> 标签。所有回复必须是纯文字消息。]`;
+            baseSystemPrompt += `\n\n[系统提示: 语音消息功能当前未开启；本轮不输出 <语音>...</语音> 标签，使用文字回复。]`;
+        }
+
+        // Keep the one sparse, optional role-side lens close to the live turn.
+        // It comes after durable context and App mechanics so it cannot
+        // redefine facts, relationship state, output contracts, or tools.
+        if (companionMaterialContext) {
+            baseSystemPrompt += `\n\n${companionMaterialContext}\n`;
         }
 
         return baseSystemPrompt;

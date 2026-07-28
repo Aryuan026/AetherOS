@@ -1,7 +1,10 @@
 import {
   BUILT_IN_DEEPSPACE_LISHEN_ID,
+  BUILT_IN_DEEPSPACE_QINCHE_ID,
   BUILT_IN_DEEPSPACE_QIYU_ID,
   BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL,
+  BUILT_IN_DEEPSPACE_SHENXINGHUI_ID,
+  BUILT_IN_DEEPSPACE_XIAYIZHOU_ID,
 } from './builtInDeepspaceReviewed.ts';
 import type { CompanionMaterialRecord } from './types.ts';
 
@@ -21,7 +24,12 @@ export type BuiltInDeepspaceRetrievalSignal =
   | 'observation'
   | 'humor'
   | 'practical_next_step'
+  | 'playful_premise'
+  | 'choice_tradeoff'
   | 'independent_life'
+  | 'opening'
+  | 'proactive_intent'
+  | 'no_advice_chat'
   | 'low_signal';
 
 export type BuiltInDeepspaceActivationPolicy =
@@ -59,7 +67,7 @@ export const BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID = {
   'builtin-qiyu-voice-playful-care-v1': {
     activationPolicy: 'relevance_required',
     positiveSignals: ['mild_discomfort', 'care_needed'],
-    suppressSignals: ['low_signal', 'refusal'],
+    suppressSignals: ['low_signal', 'refusal', 'no_advice_chat'],
     variationGroup: 'optional_care',
     fallbackPriority: 0,
   },
@@ -86,21 +94,21 @@ export const BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID = {
   },
   'builtin-qiyu-opening-curious-hook-v1': {
     activationPolicy: 'relevance_required',
-    positiveSignals: ['observation', 'light_scene', 'character_self_share'],
+    positiveSignals: ['opening', 'observation', 'light_scene', 'character_self_share'],
     suppressSignals: ['mild_discomfort', 'care_needed', 'refusal'],
     variationGroup: 'curious_opening',
     fallbackPriority: 0,
   },
   'builtin-qiyu-opening-reentry-v1': {
     activationPolicy: 'relevance_required',
-    positiveSignals: ['reentry', 'independent_life'],
+    positiveSignals: ['reentry'],
     suppressSignals: [],
     variationGroup: 'reentry_opening',
     fallbackPriority: 0,
   },
   'builtin-qiyu-proactive-own-thread-v1': {
     activationPolicy: 'relevance_required',
-    positiveSignals: ['character_self_share', 'independent_life'],
+    positiveSignals: ['proactive_intent', 'character_self_share', 'independent_life'],
     suppressSignals: ['mild_discomfort', 'care_needed'],
     variationGroup: 'independent_proactive',
     fallbackPriority: 0,
@@ -108,7 +116,7 @@ export const BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID = {
   'builtin-qiyu-proactive-optional-care-v1': {
     activationPolicy: 'relevance_required',
     positiveSignals: ['mild_discomfort', 'care_needed'],
-    suppressSignals: ['low_signal', 'refusal'],
+    suppressSignals: ['low_signal', 'refusal', 'no_advice_chat'],
     variationGroup: 'optional_care',
     fallbackPriority: 0,
   },
@@ -129,7 +137,7 @@ export const BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID = {
   'builtin-lishen-voice-practical-care-v1': {
     activationPolicy: 'relevance_required',
     positiveSignals: ['mild_discomfort', 'care_needed', 'practical_next_step'],
-    suppressSignals: ['low_signal', 'refusal'],
+    suppressSignals: ['low_signal', 'refusal', 'no_advice_chat'],
     variationGroup: 'optional_care',
     fallbackPriority: 0,
   },
@@ -150,7 +158,7 @@ export const BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID = {
   'builtin-lishen-agency-next-step-v1': {
     activationPolicy: 'relevance_required',
     positiveSignals: ['care_needed', 'practical_next_step'],
-    suppressSignals: ['low_signal', 'refusal'],
+    suppressSignals: ['low_signal', 'refusal', 'no_advice_chat'],
     variationGroup: 'practical_agency',
     fallbackPriority: 0,
   },
@@ -163,14 +171,14 @@ export const BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID = {
   },
   'builtin-lishen-opening-observed-detail-v1': {
     activationPolicy: 'relevance_required',
-    positiveSignals: ['observation', 'light_scene', 'character_self_share'],
+    positiveSignals: ['opening', 'observation', 'light_scene', 'character_self_share'],
     suppressSignals: ['mild_discomfort', 'care_needed', 'refusal'],
     variationGroup: 'observed_opening',
     fallbackPriority: 0,
   },
   'builtin-lishen-proactive-own-thread-v1': {
     activationPolicy: 'relevance_required',
-    positiveSignals: ['character_self_share', 'independent_life'],
+    positiveSignals: ['proactive_intent', 'character_self_share', 'independent_life'],
     suppressSignals: ['mild_discomfort', 'care_needed'],
     variationGroup: 'independent_proactive',
     fallbackPriority: 0,
@@ -180,6 +188,54 @@ export const BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID = {
     positiveSignals: ['reentry'],
     suppressSignals: [],
     variationGroup: 'reentry_proactive',
+    fallbackPriority: 0,
+  },
+  'builtin-shenxinghui-voice-even-playful-premise-v1': {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['playful_premise'],
+    suppressSignals: [
+      'low_signal',
+      'mild_discomfort',
+      'care_needed',
+      'refusal',
+      'reentry',
+      'character_self_share',
+      'independent_life',
+      'no_advice_chat',
+    ],
+    variationGroup: 'even_playful_premise',
+    fallbackPriority: 0,
+  },
+  'builtin-qinche-voice-criterion-led-reframe-v1': {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['choice_tradeoff', 'playful_premise'],
+    suppressSignals: [
+      'low_signal',
+      'mild_discomfort',
+      'care_needed',
+      'refusal',
+      'reentry',
+      'character_self_share',
+      'independent_life',
+      'no_advice_chat',
+    ],
+    variationGroup: 'criterion_led_reframe',
+    fallbackPriority: 0,
+  },
+  'builtin-xiayizhou-voice-warm-playful-continuation-v1': {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['playful_premise'],
+    suppressSignals: [
+      'low_signal',
+      'mild_discomfort',
+      'care_needed',
+      'refusal',
+      'reentry',
+      'character_self_share',
+      'independent_life',
+      'no_advice_chat',
+    ],
+    variationGroup: 'warm_playful_continuation',
     fallbackPriority: 0,
   },
 } as const satisfies Readonly<Record<string, BuiltInDeepspaceRetrievalCalibration>>;
@@ -233,7 +289,13 @@ export const validateBuiltInDeepspaceRetrievalCalibration = (): readonly string[
     });
   });
 
-  const recordsByCharacter = [BUILT_IN_DEEPSPACE_QIYU_ID, BUILT_IN_DEEPSPACE_LISHEN_ID]
+  const recordsByCharacter = [
+    BUILT_IN_DEEPSPACE_QIYU_ID,
+    BUILT_IN_DEEPSPACE_LISHEN_ID,
+    BUILT_IN_DEEPSPACE_SHENXINGHUI_ID,
+    BUILT_IN_DEEPSPACE_QINCHE_ID,
+    BUILT_IN_DEEPSPACE_XIAYIZHOU_ID,
+  ]
     .map(charId => ({
       charId,
       records: builtInDeepspaceRetrievalCalibrationForCharacter(charId),
@@ -241,8 +303,12 @@ export const validateBuiltInDeepspaceRetrievalCalibration = (): readonly string[
 
   recordsByCharacter.forEach(({ charId, records }) => {
     const fallbackCount = records.filter(record => record.retrievalHints?.activationPolicy === 'voice_fallback').length;
-    if (fallbackCount < 1 || fallbackCount > 2) {
-      errors.push(`fallback count outside 1-2: ${charId}:${fallbackCount}`);
+    const requiresFallback = (
+      charId === BUILT_IN_DEEPSPACE_QIYU_ID
+      || charId === BUILT_IN_DEEPSPACE_LISHEN_ID
+    );
+    if ((requiresFallback && (fallbackCount < 1 || fallbackCount > 2)) || (!requiresFallback && fallbackCount !== 0)) {
+      errors.push(`fallback count is invalid: ${charId}:${fallbackCount}`);
     }
     records
       .filter(record => record.slot === 'relevant_stable_details')

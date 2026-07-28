@@ -10,9 +10,11 @@
   - Published historical analysis passes into an independent relationship
     material library while preserving immutable evidence refs, alternate
     analysis passes and `truthEffect: none` delivery receipts.
-  - Added the first real Chat consumer. It selects at most three stable
-    voice/base/detail fragments from the latest live user turn and records a
-    receipt only after the main API request accepts the prompt.
+  - Connected the reviewed stable layer to Chat, proactive wakeups, Call and
+    Date. Each consumer captures the exact relationship scope before work
+    starts, receives only its legal surface/purpose projection, and writes a
+    receipt only after the provider result has survived surface normalization
+    and is non-empty.
   - Implemented the default no-vector retriever using bounded scenario signals,
     CJK n-gram/token overlap, exact scope/surface/route gates, recent-delivery
     rotation, variation groups and prompt budgets.
@@ -22,12 +24,36 @@
     a low-signal fallback.
   - Added 10 reviewed non-verbatim materials each for the built-in Qi Yu and
     Zayne roles. Each keeps one voice fallback; care and stable detail require
-    evidence.
+    evidence. The final 187/187 Qi Yu and 199/199 Zayne source disposition
+    closure now reinforces or narrowly revises existing records instead of
+    manufacturing one prompt record per source.
+  - Completed the same source-conservation pass for Xavier 221/221, Sylus
+    166/166 and Caleb 136/136. Their 523-source artifact keeps disabled and
+    withheld scene/opening/detail clusters for provenance, while only three
+    narrow, character-owned voice operators survived as active runtime
+    candidates. Together the five leads now account for all 909 frozen source
+    units with zero dropped.
   - Added a read-only Context Compiler slice. Normal Chat rejects situational
     slots; StoryDesk may retain motive/affordance candidates without creating
     current motives, Life state, tools, Narrative objects or receipts.
-  - Added a model/revision-labelled embedding score seam. It is advisory after
-    hard gates and can be omitted without changing the legal retrieval path.
+  - Hardened the future embedding seam with exact scope, current material-set
+    fingerprint, model artifact, dimensions, metric, projection version,
+    calibration revision and index revision. Request metadata is not authority:
+    every field must match an independently supplied trusted active-manifest
+    binding, and the current runtime supplies none. A zero threshold is
+    invalid; stale, untrusted or mismatched semantic ranks are ignored, and
+    low-signal, tool and no-advice input cannot become strong merely because an
+    embedding score is high.
+  - Completed the vector necessity review. Production vector retrieval remains
+    disabled for the current small candidate pools; a measured relationship
+    corpus threshold, shadow evaluation and zero hard-gate violations are
+    required before a local index can become active.
+  - Defined relationship-local live personality drift as a versioned style
+    overlay backed by repeated evidence across dates/sessions. It may widen how
+    this character commonly speaks in this relationship, but cannot rewrite
+    character canon, current state/motive, Life state or tool policy.
+  - Made superseded historical analysis passes fail closed even if a stale
+    material-library row survives interrupted cleanup.
   - Added the first player-facing historical analysis path in Dialogue
     Calendar. A player chooses all records or an exact date range, sees a
     bounded cost estimate, and explicitly starts analysis with the currently
@@ -62,10 +88,17 @@
     cancellation, publication-boundary abort, stale-source invalidation and
     same-provider/model fake-independence rejection.
   - Built-in production-selector fixtures cover low signal, ordinary sharing,
-    discomfort, refusal, re-entry and character self-life. Every positive path
-    returns 1–3 items; care does not leak into low signal or refusal.
-  - Vector-seam fixture proves a 0.99 semantic score cannot cross a persona-mask
-    scope boundary.
+    discomfort, refusal, re-entry and character self-life. Ordinary Chat
+    returns at most one item; care does not leak into low signal or refusal.
+  - Vector-seam fixtures prove a 0.99 semantic score cannot cross a
+    persona-mask scope boundary, survive a stale material/model/projection/
+    calibration/index binding, operate without a trusted manifest authority,
+    or turn low-signal/tool/no-advice input into heavy material.
+  - API-role blind review found no fixed Qi Yu
+    “observe -> tease -> invite” pipeline and no fixed Zayne
+    “confirm -> advise -> care” pipeline. The review also caught and fixed a
+    Call receipt-before-sanitizer bug and removed prompt examples that could
+    invent a current workplace, task or recent event.
   - The canonical 390 x 844 browser path opened Dialogue Calendar and the
     analysis sheet without horizontal overflow or console errors. With no
     active API the start action stayed disabled, and the external-API privacy
@@ -76,10 +109,26 @@
     background job. The natural “像不像” result still requires friend testing;
     code gates prove scope, authority, bounded input and failure semantics, not
     role-play quality.
-  - Call, proactive letters, meet/date and StoryDesk do not yet consume the new
-    material at runtime.
-  - Browser/APK local embedding indexing remains HOLD until player testing shows
-    the no-vector quality gap is worth its resource cost.
+  - StoryDesk/ScenePlan still consumes only the typed proposal seam; a legal
+    accepted ScenePlan revision and its own consumer receipt remain future
+    work. Material candidates never become current motives or played events.
+  - Browser/APK local embedding producer, persistent index, query runtime and
+    player toggle remain HOLD. The contract and lexical fallback exist, but no
+    production vector index is being claimed.
+  - Relationship-local live style promotion is specified but not yet connected
+    to an automatic background writer. Current live chat remains evidence, not
+    an immediate personality mutation.
+  - Xavier, Sylus and Caleb intentionally have no low-signal fallback and no
+    auto-active care/detail/opening/scene item in this release. Their one narrow
+    runtime voice operator each requires concrete current-turn evidence; the
+    remaining reviewed clusters stay disabled or ScenePlan-gated rather than
+    becoming generic character decoration.
+  - Their existing built-in character cards are still shared placeholder
+    templates. The 523-source review could safely widen each one narrow voice
+    operator into multiple exits, but did not support ordinary-share,
+    self-life or re-entry baselines. This release therefore improves only
+    evidence-matched turns and does not claim those three full personas are
+    complete.
 
 ## 2026-07-20 Information Station Editorial Boundary And Preference Loop
 
@@ -2534,7 +2583,7 @@
   - Kept historical initiative motives candidate-only. Historical records
     cannot become current motives, current Character Life, active narrative,
     tool policy or already-played experience.
-  - Tightened ordinary Chat to one sparse response operator with a 360-
+  - Tightened ordinary Chat to one sparse role-side reference with a 360-
     character material budget. `ordinary_share` alone no longer establishes
     relevance.
   - Added legal zero-material paths for explicit no-advice conversation and
@@ -2548,15 +2597,30 @@
     complete finalizer instead of trusting a self-consistent digest; and
     already-published historical material immediately fails closed at runtime
     after any bound Daily Archive source changes.
-  - Replaced the defensive prompt checklist with one positive optional
-    response-operator boundary. It preserves role-owned expression, initiative
-    and future tool choice while keeping current facts receipt-backed.
-  - Documented the two-round Qi Yu / Zayne offline API mirror and two-judge
-    blind acceptance in
-    `docs/COMPANION_MATERIAL_NONVECTOR_ACCEPTANCE.md`.
+  - Reframed the prompt projection from “本轮回应动作” to “本轮角色侧参考”.
+    A selected fragment suggests what the role may notice; it is explicitly
+    not a task, current motive, fact, relationship claim or tool policy.
+  - Shortened the generic Chat quality tutorial to three open principles,
+    neutralized the long-gap/history wording, and moved the one optional
+    role-side reference to the end of the System Prompt so it remains legible
+    without taking over durable context or App mechanics.
+  - Ran an API-side full-prompt read with the real built-in cards and default
+    mounted material: Qi Yu produced 13,347 prompt characters with 9,232
+    worldbook characters; Zayne produced 12,456 with 8,446. This exposed the
+    mounted worldbooks as the largest remaining density source; no worldbook
+    rewrite was smuggled into this companion-material patch.
+  - Reframed the earlier A/B and blind-judge runs as supporting observations,
+    not mathematical acceptance. Code checks boundaries; maintainers inspect
+    the complete prompt from the next-model perspective; players provide
+    natural “像 / 腻 / 套路化” feedback without seeing a test UI.
   - Kept all 196 private semantic drafts non-active. The 909-source cruise is
-    evidence/retrieval calibration, not a 909-fragment prompt pack. No new
-    runtime material was activated.
+    a source corpus for reusable language fingerprint, stable detail,
+    opening/proactive and scene-affordance assets, not a 909-fragment prompt
+    pack. Repeated sources may strengthen one cluster; useful material is not
+    discarded merely because it did not win one offline score cell.
+  - Recognized the natural self-life request “你今天都做了什么” so it now
+    retrieves each role's independent-life lens instead of the generic
+    low-information fallback.
 
 - verified:
   - `npm run verify:history-import`
@@ -2576,13 +2640,19 @@
 - boundary:
   - This is local verified work. It is not committed, pushed, merged or
     deployed.
-  - The blind test used offline independent API-role simulations, not a real
-    configured provider or natural multi-turn player session.
-  - Qi Yu receives no new runtime record. Zayne has one disabled narrow
-    revision candidate; care, embodied-scene and unsupported current-life
-    directions remain withheld.
-  - Call, proactive messages, Meeting/Date, ScenePlan and local embedding
-    runtime integration remain HOLD.
+  - The full-prompt read is a qualitative backend judgment, not proof that any
+    provider will never go OOC. Natural multi-turn use remains necessary to
+    observe tendencies, but players are not responsible for diagnosing hidden
+    prompt assembly.
+  - The dedicated persona-cruise workstream still owns 909-source content
+    analysis and classification. This control-room patch does not re-crawl or
+    replace its curation.
+  - Chat, proactive messages, Call and Date now consume their legal sparse
+    projections. ScenePlan remains a typed future seam and has no implemented
+    runtime consumer yet.
+  - Local embedding producer/store/query and automatic relationship-style
+    promotion remain HOLD. Their contracts and fail-closed boundaries are
+    documented; lexical selection remains the only enabled runtime.
 
 ## 2026-07-28 Browser History Companion Analysis Closed Loop
 
@@ -2630,5 +2700,6 @@
   - This stage publishes companion performance material only. It does not
     mutate character cards or promote relationship, current-life or narrative
     truth.
-  - Call, proactive messages, Meeting/Date, ScenePlan and optional embeddings
-    remain HOLD.
+  - Chat, proactive messages, Call and Date now consume their legal sparse
+    projections. ScenePlan and optional embeddings remain HOLD; neither is
+    represented as an enabled runtime capability.

@@ -13,6 +13,7 @@ import type {
   CompanionMaterialKind,
   CompanionMaterialMode,
   CompanionMaterialPurpose,
+  CompanionMaterialRouteRef,
   CompanionMaterialSelection,
   CompanionMaterialSurface,
 } from '../companionMaterial/types.ts';
@@ -34,6 +35,7 @@ export interface CompanionMaterialContextSelectionRef {
   readonly surface: CompanionMaterialSurface;
   readonly mode: CompanionMaterialMode;
   readonly purpose: CompanionMaterialPurpose;
+  readonly routeRef?: Readonly<CompanionMaterialRouteRef>;
   readonly sourceRevisionFingerprint: string;
   readonly budgetChars: number;
   readonly selectedMaterialIds: readonly string[];
@@ -41,9 +43,14 @@ export interface CompanionMaterialContextSelectionRef {
 
 export interface CompanionMaterialContextProjectionRef {
   readonly selectionId: string;
+  readonly requestId: string;
+  readonly scope: Readonly<HistoryScope>;
+  readonly scopeKey: string;
   readonly surface: CompanionMaterialSurface;
   readonly mode: CompanionMaterialMode;
   readonly purpose: CompanionMaterialPurpose;
+  readonly routeRef?: Readonly<CompanionMaterialRouteRef>;
+  readonly sourceRevisionFingerprint: string;
   readonly budgetChars: number;
   readonly usedChars: number;
   readonly renderedHashes: readonly {
@@ -95,6 +102,25 @@ const sameMembers = (left: readonly string[], right: readonly string[]): boolean
   && left.every(value => right.includes(value))
 );
 
+const sameScope = (left: HistoryScope, right: HistoryScope): boolean => (
+  createHistoryScopeKey(left) === createHistoryScopeKey(right)
+);
+
+const sameRouteRef = (
+  left?: CompanionMaterialRouteRef,
+  right?: CompanionMaterialRouteRef,
+): boolean => (
+  (!left && !right)
+  || Boolean(
+    left
+    && right
+    && left.routeId === right.routeId
+    && left.branchId === right.branchId
+    && left.sceneId === right.sceneId
+    && left.lane === right.lane,
+  )
+);
+
 const assertSelectionIntegrity = (selection: CompanionMaterialSelection): void => {
   const scopeErrors = validateHistoryScope(selection.scope);
   if (scopeErrors.length) {
@@ -121,6 +147,9 @@ const assertSelectionIntegrity = (selection: CompanionMaterialSelection): void =
   let selectedChars = 0;
   selection.items.forEach((item, index) => {
     if (!isNonEmpty(item.materialId)) reject(`selection items[${index}].materialId is required`);
+    if (!Number.isInteger(item.materialRevision) || item.materialRevision < 1) {
+      reject(`selection items[${index}].materialRevision must be a positive integer`);
+    }
     if (!Number.isFinite(item.estimatedChars) || item.estimatedChars < 0) {
       reject(`selection items[${index}].estimatedChars must be non-negative and finite`);
     }
@@ -163,6 +192,12 @@ const assertProjectionContext = (
   if (projection.selectionId !== selection.selectionId) {
     reject('projection selectionId does not match selection');
   }
+  if (projection.requestId !== selection.requestId) {
+    reject('projection requestId does not match selection');
+  }
+  if (!sameScope(projection.scope, selection.scope)) {
+    reject('projection scope does not match selection');
+  }
   if (projection.surface !== selection.surface) {
     reject('projection surface does not match selection');
   }
@@ -171,6 +206,12 @@ const assertProjectionContext = (
   }
   if (projection.purpose !== selection.purpose) {
     reject('projection purpose does not match selection');
+  }
+  if (!sameRouteRef(projection.routeRef, selection.routeRef)) {
+    reject('projection routeRef does not match selection');
+  }
+  if (projection.sourceRevisionFingerprint !== selection.sourceRevisionFingerprint) {
+    reject('projection sourceRevisionFingerprint does not match selection');
   }
   if (!Number.isFinite(projection.budgetChars) || projection.budgetChars < 0) {
     reject('projection budgetChars must be non-negative and finite');
@@ -336,15 +377,21 @@ export const compileCompanionMaterialContextSlice = (
       surface: selection.surface,
       mode: selection.mode,
       purpose: selection.purpose,
+      routeRef: selection.routeRef ? { ...selection.routeRef } : undefined,
       sourceRevisionFingerprint: selection.sourceRevisionFingerprint,
       budgetChars: selection.budgetChars,
       selectedMaterialIds: [...selection.selectedMaterialIds],
     },
     sourceProjectionRef: {
       selectionId: projection.selectionId,
+      requestId: projection.requestId,
+      scope: { ...projection.scope },
+      scopeKey: createHistoryScopeKey(projection.scope),
       surface: projection.surface,
       mode: projection.mode,
       purpose: projection.purpose,
+      routeRef: projection.routeRef ? { ...projection.routeRef } : undefined,
+      sourceRevisionFingerprint: projection.sourceRevisionFingerprint,
       budgetChars: projection.budgetChars,
       usedChars: projection.usedChars,
       renderedHashes: projection.fragments.map(fragment => ({

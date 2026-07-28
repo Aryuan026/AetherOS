@@ -15,17 +15,19 @@ reviewed guidance / historical analysis pass
 ```
 
 - `available`：内置复核素材与通过代码门禁、二次复核和来源新鲜度校验后发布的历史素材都能进入候选仓；回执会诚实区分同模型二次复核与真正独立裁决。
-- `selected`：普通 Chat 使用本地检索器，每轮只选择 1 条真正相关的回应动作；其他 surface 仍可在自己的预算内选择 1–3 条。
-- `delivered`：只有请求已被 API 接受后才写 delivery receipt；准备或选择素材不写回执。
+- `selected`：普通 Chat 使用本地检索器，每轮只选择 1 条真正相关的角色侧参考；其他 surface 在自己的预算内选择 1–3 条。
+- `delivered`：只有请求已被 API 接受、且经过对应 surface 清洗后仍有可显示内容，才写 delivery receipt；准备、选择、空 completion 或本地 fallback 不写回执。
 - `truth effect`：固定为 `none`。素材递送不会改写当前状态、关系事实、角色生活、剧情事实或工具权限。
 - `browser runtime`：对话日历可按全部记录或日期范围读取本机日档，先预估 token / 分包 / 调用次数，再把选定原文片段临时发送给当前已启用 API，完成分析、同模型二次复核、最终化与新鲜度校验发布。默认链路的 authority 明确是 `same_model_second_pass`，不同 role-bound principal 只用于审计调用职责，不冒充两位独立评审；run id 与 API key 均不构成 principal。
-- `HOLD`：Call、主动来信、见面与 StoryDesk 的正式运行时消费；浏览器/APK 向量索引开关。
+- `available consumers`：普通 Chat、主动来信、Call 与 Date / Meet 的稳定声音链已接入；Date / Meet 目前只消费稳定层，不把 scene planning 直接塞给前台。
+- `HOLD`：未来 StoryDesk / ScenePlan 对 motive / scene candidates 的正式裁决；浏览器/APK 本地向量 index producer、store 与开关。
 
 ## 无向量第一层
 
-本轮祁煜/黎深双盲离线验收、逐格裁决与仍未证明的运行时边界见
-`docs/COMPANION_MATERIAL_NONVECTOR_ACCEPTANCE.md`。该验收只授权稀疏选择器与
-零素材路径，不授权激活新的 909 素材记录。
+本轮祁煜/黎深完整 Prompt 复读、辅助离线观察与仍未覆盖的运行时边界见
+`docs/COMPANION_MATERIAL_NONVECTOR_ACCEPTANCE.md`。它不声称能证明角色永不 OOC，
+也不把玩家体验变成数学验收；代码门禁、API 侧上文判断和自然使用反馈各自回答
+不同问题。
 
 选择器先执行不可绕过的代码门禁：
 
@@ -171,7 +173,11 @@ accepted finding 时会直接结束，不为形式完整额外花一次调用；
 “只想聊天、不需要建议”。“只想听你说说今天”仍属于角色自生活请求，不能被
 `no_advice` 误伤；Call、主动来信、见面与 ScenePlan 也不继承普通 Chat 的硬 bypass。
 
-即使 slot 合法，prompt fragment 也只是可选的 `response operator`，不是事实、记忆或台词模板。具体的当下事件必须来自用户本轮、可信系统状态或 canonical receipt；角色卡、世界书与稳定身份只能提供观察视角，不能单独证明“今天/刚才已经发生”。没有当前证据时，可以由角色当下提出新的设想或未来建议，但不能写成已经准备、已经经历或已有共同约定。
+即使 slot 合法，prompt fragment 也只是一条可忽略的角色侧观察/选择参考，不是事实、
+记忆、当轮任务或台词模板。具体的当下事件必须来自用户本轮、可信系统状态或
+canonical receipt；角色卡、世界书与稳定身份只能提供观察视角，不能单独证明
+“今天/刚才已经发生”。没有当前证据时，可以由角色当下提出新的设想或未来建议，
+但不能写成已经准备、已经经历或已有共同约定。
 
 `CompanionMaterialContextSlice` 可以把已经选择且已经投影的材料编译成稳定层和 surface 候选层，但它不包含：
 
@@ -185,13 +191,22 @@ accepted finding 时会直接结束，不为形式完整额外花一次调用；
 
 ## 向量升级缝
 
-`CompanionMaterialSemanticRank` 是可选的旁路分数：
+`CompanionMaterialSemanticRank` 是可选的未来排序结果，不是已经上线的索引能力：
 
-- 带 `modelId + indexRevision + materialId/score`；
-- query 向量只与同一次 index revision 中的素材向量比较；
-- 更换 embedding 模型时新建/重建 revision，不要求永远使用同一个模型；
-- 原始素材、source fingerprint 和 scope 是可重建真相，向量只是可丢弃索引；
+- 必须绑定 `manifestId + manifestDigest`，并逐字段匹配代码持有的 active manifest authority；
+- 必须绑定 exact `scopeKey` 与当前 `materialSetFingerprint`；
+- 必须记录 `modelId + modelArtifactDigest + dimensions + metric + normalized`；
+- 必须记录 `projectionVersion + calibrationRevision + strongThreshold + indexRevision`；
+- query 只能读取同一份 ready manifest 的向量；任一绑定不一致时忽略 rank；
+- 更换 embedding 模型时新建 revision，不要求永远使用同一个模型，也不迁移旧向量；
+- rank 只能由未来本机 active index manifest 的可信 producer 内部构造，并和独立传入
+  selector 的 `trusted_local_index_manifest` authority 完全一致；导入文件、模型回复、页面
+  参数或普通 UI 不能直接提供 scores。当前运行时不传 authority，所以手写 rank 不生效；
+- 原始素材与 canonical records 是可重建真相，向量只是可丢弃索引；
 - embedding 高分不能越过 scope、surface、knowledge、continuity、cooldown 或预算门禁；
-- 无向量时 lexical/signals/receipt 路径始终可用。
+- 纯寒暄、工具请求和 no-advice 输入不能被高分唤醒重素材；
+- 无向量时 lexical / signals / receipt 路径始终可用。
 
-浏览器与未来 APK 的本地向量化开关属于下一盒。开启前必须展示首次建索引的资源成本；关闭或索引失效时自动回到当前无向量路径。
+当前 23 条内置运行包不需要生产向量。长期关系素材达到可观察规模并证明无向量漏召回后，
+才进入本地 shadow；详细门槛、manifest 与 live 个性偏移见
+`docs/COMPANION_MATERIAL_VECTOR_AND_LIVE_DRIFT.md`。

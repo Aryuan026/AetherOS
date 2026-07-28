@@ -19,7 +19,10 @@ import {
   upsertDailyArchiveMessages,
 } from '../utils/dailyArchive/storage.ts';
 import { loadCompanionMaterialRecords } from '../utils/companionMaterial/store.ts';
-import { getHistoryCompanionMaterialPass } from '../utils/historyImport/companionMaterial/indexedDbPasses.ts';
+import {
+  getHistoryCompanionMaterialPass,
+  saveHistoryCompanionMaterialPass,
+} from '../utils/historyImport/companionMaterial/indexedDbPasses.ts';
 import { publishHistoryCompanionMaterialPass } from '../utils/historyImport/companionMaterial/publish.ts';
 import {
   appendHistoryCompanionAnalysisFinalizationActivation,
@@ -346,6 +349,32 @@ await assert.rejects(
     activationReceiptId: primary.finalization.activationReceipt.id,
   }),
   /crosses scope|targets another pass/,
+);
+
+await appendFinalization(crossScope);
+await publishHistoryCompanionMaterialPass({
+  pass: crossScope.finalization.pass,
+  activationReceiptId: crossScope.finalization.activationReceipt.id,
+  publishedAt: T0 + 220,
+});
+assert.equal(
+  (await loadCompanionMaterialRecords(SCOPE_B)).length,
+  1,
+  'a current active pass is visible after canonical publication',
+);
+await saveHistoryCompanionMaterialPass({
+  pass: {
+    ...crossScope.finalization.pass,
+    status: 'superseded',
+    updatedAt: T0 + 221,
+    revision: crossScope.finalization.pass.revision + 1,
+  },
+  expectedRevision: crossScope.finalization.pass.revision,
+});
+assert.equal(
+  (await loadCompanionMaterialRecords(SCOPE_B)).length,
+  0,
+  'a superseded pass fails closed even if a retry has not removed its projected library rows yet',
 );
 
 assert.equal(

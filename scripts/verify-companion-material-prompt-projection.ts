@@ -31,6 +31,7 @@ const item = (overrides: Partial<CompanionMaterialDeliveryItem> = {}): Companion
   selectionReasons: ['fixture'],
   estimatedChars: 30,
   ...overrides,
+  materialRevision: overrides.materialRevision ?? 1,
 });
 
 const voice = item();
@@ -107,8 +108,8 @@ assert.deepEqual(
   'scene and proactive material must not become resident normal-chat context',
 );
 const remoteText = remoteProjection.fragments.map(fragment => fragment.text).join('\n');
-assert.match(remoteText, /表达方向/);
-assert.match(remoteText, /长期行动倾向/);
+assert.match(remoteText, /角色注意角度/);
+assert.match(remoteText, /稳定选择倾向（不是当轮任务）/);
 assert.doesNotMatch(remoteText, /currentMotives|固定动作|必须爱|[“”]/);
 assert.equal(remoteProjection.usedChars <= remoteProjection.budgetChars, true);
 remoteProjection.fragments.forEach(fragment => {
@@ -143,9 +144,9 @@ assert.deepEqual(
   'proactive material remains optional and only reaches its matching surface',
 );
 const proactiveText = proactiveProjection.fragments.map(fragment => fragment.text).join('\n');
-assert.match(proactiveText, /开场生成方向/);
-assert.match(proactiveText, /主动联系线索/);
-assert.match(proactiveText, /行动线索候选/);
+assert.match(proactiveText, /开场灵感（非固定步骤）/);
+assert.match(proactiveText, /主动联系灵感/);
+assert.match(proactiveText, /可供场景判断的动机候选/);
 assert.doesNotMatch(proactiveText, /currentMotives|现在必须|固定动作/);
 
 const sceneSelection = selection({
@@ -153,6 +154,12 @@ const sceneSelection = selection({
   surface: 'storydesk',
   mode: 'story_scene',
   purpose: 'scene_planning',
+  routeRef: {
+    routeId: 'route-a',
+    branchId: 'branch-a',
+    sceneId: 'scene-a',
+    lane: 'mainline',
+  },
   items: [voice, motive, affordance],
   selectedMaterialIds: [voice, motive, affordance].map(entry => entry.materialId),
 });
@@ -164,6 +171,10 @@ const sceneProjection = projectCompanionMaterialPrompt({
   budgetChars: 1_000,
 });
 assert.deepEqual(sceneProjection.fragments.map(fragment => fragment.materialId).sort(), ['affordance-a', 'motive-a', 'voice-a']);
+assert.deepEqual(sceneProjection.scope, scope);
+assert.equal(sceneProjection.requestId, sceneSelection.requestId);
+assert.equal(sceneProjection.sourceRevisionFingerprint, sceneSelection.sourceRevisionFingerprint);
+assert.deepEqual(sceneProjection.routeRef, sceneSelection.routeRef);
 
 const fullBudget = projectCompanionMaterialPrompt({
   source: selection({ items: [voice, agency], selectedMaterialIds: [voice.materialId, agency.materialId] }),

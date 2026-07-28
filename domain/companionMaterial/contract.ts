@@ -157,6 +157,9 @@ export const validateCompanionMaterialSelectionRequest = (
   if (request.routeRef && (!isNonEmpty(request.routeRef.routeId) || !isNonEmpty(request.routeRef.branchId))) {
     errors.push('material routeRef requires routeId and branchId');
   }
+  if (request.routeRef && !['mainline', 'if_line'].includes(request.routeRef.lane)) {
+    errors.push('material routeRef lane is invalid');
+  }
   if (request.semanticTags && (!unique(request.semanticTags) || !request.semanticTags.every(isSignal))) {
     errors.push('material selection semanticTags must be unique normalized signals');
   }
@@ -164,9 +167,34 @@ export const validateCompanionMaterialSelectionRequest = (
     errors.push('material selection contextTags must be unique normalized signals');
   }
   if (request.semanticRank) {
+    if (!isNonEmpty(request.semanticRank.manifestId)) errors.push('material semanticRank manifestId is required');
+    if (!isNonEmpty(request.semanticRank.manifestDigest)) errors.push('material semanticRank manifestDigest is required');
     if (request.semanticRank.backend !== 'embedding') errors.push('material semanticRank backend is invalid');
     if (!isNonEmpty(request.semanticRank.modelId)) errors.push('material semanticRank modelId is required');
+    if (!isNonEmpty(request.semanticRank.modelArtifactDigest)) errors.push('material semanticRank modelArtifactDigest is required');
+    if (!Number.isInteger(request.semanticRank.dimensions) || request.semanticRank.dimensions < 1) {
+      errors.push('material semanticRank dimensions must be a positive integer');
+    }
+    if (!['cosine', 'dot_product'].includes(request.semanticRank.metric)) {
+      errors.push('material semanticRank metric is invalid');
+    }
+    if (typeof request.semanticRank.normalized !== 'boolean') {
+      errors.push('material semanticRank normalized is required');
+    }
+    if (!isNonEmpty(request.semanticRank.projectionVersion)) errors.push('material semanticRank projectionVersion is required');
+    if (!isNonEmpty(request.semanticRank.calibrationRevision)) errors.push('material semanticRank calibrationRevision is required');
+    if (
+      !Number.isFinite(request.semanticRank.strongThreshold)
+      || request.semanticRank.strongThreshold <= 0
+      || request.semanticRank.strongThreshold > 1
+    ) {
+      errors.push('material semanticRank strongThreshold must be greater than 0 and at most 1');
+    }
     if (!isNonEmpty(request.semanticRank.indexRevision)) errors.push('material semanticRank indexRevision is required');
+    if (!isNonEmpty(request.semanticRank.scopeKey)) errors.push('material semanticRank scopeKey is required');
+    if (!isNonEmpty(request.semanticRank.materialSetFingerprint)) {
+      errors.push('material semanticRank materialSetFingerprint is required');
+    }
     const ids = request.semanticRank.scores.map(item => item.materialId);
     if (!unique(ids)) errors.push('material semanticRank material ids must be unique');
     request.semanticRank.scores.forEach((item, index) => {
@@ -209,6 +237,12 @@ export const validateCompanionMaterialDeliveryReceipt = (
   if (!['delivered', 'skipped', 'rejected'].includes(receipt.status)) {
     errors.push('delivery receipt status is invalid');
   }
+  if (receipt.routeRef && (!isNonEmpty(receipt.routeRef.routeId) || !isNonEmpty(receipt.routeRef.branchId))) {
+    errors.push('delivery receipt routeRef requires routeId and branchId');
+  }
+  if (receipt.routeRef && !['mainline', 'if_line'].includes(receipt.routeRef.lane)) {
+    errors.push('delivery receipt routeRef lane is invalid');
+  }
   if (receipt.truthEffect !== 'none') errors.push('delivery receipt truthEffect must be none');
   if (!Number.isFinite(receipt.budgetChars) || receipt.budgetChars < 0) {
     errors.push('delivery receipt budgetChars must be non-negative and finite');
@@ -230,6 +264,9 @@ export const validateCompanionMaterialDeliveryReceipt = (
 
   receipt.delivered.forEach((item, index) => {
     if (!selectedIds.has(item.materialId)) errors.push(`delivery receipt delivered[${index}] references unselected material`);
+    if (!Number.isInteger(item.materialRevision) || item.materialRevision < 1) {
+      errors.push(`delivery receipt delivered[${index}].materialRevision must be a positive integer`);
+    }
     if (!isNonEmpty(item.renderedHash)) errors.push(`delivery receipt delivered[${index}].renderedHash is required`);
     if (!Number.isFinite(item.promptCharCount) || item.promptCharCount < 0) {
       errors.push(`delivery receipt delivered[${index}].promptCharCount must be non-negative and finite`);
