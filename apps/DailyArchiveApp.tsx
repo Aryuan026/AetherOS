@@ -6,7 +6,6 @@ import {
   CaretLeft,
   CaretRight,
   Check,
-  Sparkle,
   SpinnerGap,
   WarningCircle,
 } from '@phosphor-icons/react';
@@ -58,7 +57,6 @@ import DailyArchiveReader, {
   type DailyArchiveSelectionPurpose,
 } from '../components/daily-archive/DailyArchiveReader';
 import ConversationClippingLibrary from '../components/daily-archive/ConversationClippingLibrary';
-import HistoryCompanionAnalysisSheet from '../components/daily-archive/HistoryCompanionAnalysisSheet';
 import {
   consumeDailyArchiveNavigation,
   type DailyArchiveNavigationTarget,
@@ -90,7 +88,6 @@ const DailyArchiveApp: React.FC = () => {
     userProfile,
     updateUserProfile,
     addToast,
-    apiConfig,
   } = useOS();
   const personaProfile = useMemo(() => normalizeUserPersonaProfile(userProfile), [userProfile]);
   const personaMasks = personaProfile.personaMasks || [];
@@ -127,7 +124,6 @@ const DailyArchiveApp: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string>();
   const [showUndated, setShowUndated] = useState(false);
   const [showScopePicker, setShowScopePicker] = useState(false);
-  const [showCompanionAnalysis, setShowCompanionAnalysis] = useState(false);
   const [pickerMaskId, setPickerMaskId] = useState(activeMask?.id || '');
   const initialMonthChosenRef = useRef(false);
   const pendingNavigationRef = useRef<DailyArchiveNavigationTarget | undefined>(undefined);
@@ -161,7 +157,6 @@ const DailyArchiveApp: React.FC = () => {
     setShowScopePicker(false);
     setReaderOpen(false);
     setShowClippingLibrary(false);
-    setShowCompanionAnalysis(false);
     addToast(`正在看 ${nextMask?.label || '面具'} × ${nextCharacter?.name || '角色'} 的日档`, 'success');
   };
 
@@ -781,25 +776,6 @@ const DailyArchiveApp: React.FC = () => {
               )}
             </section>
 
-            <button
-              type="button"
-              onClick={() => setShowCompanionAnalysis(true)}
-              disabled={!coverage?.messageCount || loading}
-              className="mt-3 flex w-full items-center gap-3 rounded-[26px] border border-violet-100 bg-gradient-to-br from-white/94 to-violet-50/88 p-4 text-left shadow-[0_14px_38px_rgba(100,82,135,0.08)] transition active:scale-[0.99] disabled:opacity-45"
-              aria-label="整理旧日角色素材"
-            >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-md shadow-violet-200">
-                <Sparkle size={20} weight="fill" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[12px] font-black text-slate-800">让旧记录帮助角色接上你</span>
-                <span className="mt-1 block text-[9px] leading-relaxed text-slate-500">
-                  自动提炼表达习惯和稳定细节；先估算用量，再由你开始。
-                </span>
-              </span>
-              <CaretRight size={15} className="shrink-0 text-violet-400" weight="bold" />
-            </button>
-
             <section className="mt-3 rounded-[28px] border border-white/90 bg-white/82 p-4 shadow-[0_14px_38px_rgba(100,82,135,0.08)] backdrop-blur-xl">
               <div className="flex items-center justify-between">
                 <button type="button" onClick={() => setMonthKey(current => shiftMonth(current, -1))} className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-50 text-violet-500">
@@ -891,26 +867,6 @@ const DailyArchiveApp: React.FC = () => {
           onDelete={id => void removeClipping(id)}
           onSearch={searchArchive}
           onOpenSearchHit={openSearchHit}
-        />
-      )}
-
-      {showCompanionAnalysis && scope && (
-        <HistoryCompanionAnalysisSheet
-          scope={scope}
-          relationshipLabel={`${activeMask?.label || '当前面具'} × ${character?.name || '当前角色'}`}
-          coverage={coverage}
-          apiConfig={apiConfig}
-          onClose={() => setShowCompanionAnalysis(false)}
-          onComplete={result => {
-            if (result.status === 'published') {
-              addToast(
-                `已保留 ${result.approvedMaterialCount} 条可靠方向，从下一轮聊天起按需参与`,
-                'success',
-              );
-              return;
-            }
-            addToast('这次没有硬凑新结论，旧记录仍完整留在日历里', 'info');
-          }}
         />
       )}
 

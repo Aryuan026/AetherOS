@@ -10,12 +10,6 @@ import {
 import {
   builtInDeepspaceRetrievalCalibrationForCharacter,
 } from '../../domain/companionMaterial/builtInDeepspaceRetrievalCalibration.ts';
-import {
-  getHistoryCompanionMaterialPass,
-} from '../historyImport/companionMaterial/indexedDbPasses.ts';
-import {
-  loadCurrentHistoryCompanionMaterialActivationReceiptForPass,
-} from '../historyImport/companionMaterial/sourceAuthority.ts';
 import { DB } from '../db';
 
 const STORAGE_PREFIX = 'aetheros_companion_material_v1';
@@ -112,39 +106,7 @@ export const loadCompanionMaterialRecords = async (scope: {
   (characterLibrary?.records || []).forEach(record => {
     records.set(record.id, clone(record));
   });
-  const relationshipRecords = relationshipLibrary?.records || [];
-  const historyPassIds = new Set(
-    relationshipRecords.flatMap(record => record.sourceRefs
-      .filter(sourceRef => sourceRef.storeFamily === 'history_companion_material')
-      .map(sourceRef => normalize(sourceRef.sourcePackId))
-      .filter(Boolean)),
-  );
-  const currentHistoryPassIds = new Set<string>();
-  await Promise.all([...historyPassIds].map(async passId => {
-    try {
-      const pass = await getHistoryCompanionMaterialPass({ passId });
-      if (
-        !pass
-        || companionMaterialScopeKey(pass.scope) !== companionMaterialScopeKey(scope)
-      ) return;
-      const receipt = await loadCurrentHistoryCompanionMaterialActivationReceiptForPass({ pass });
-      if (receipt) currentHistoryPassIds.add(passId);
-    } catch {
-      // Historical material fails closed when its pass, receipt, or current
-      // Daily Archive source head cannot be verified.
-    }
-  }));
-  relationshipRecords.forEach(record => {
-    const recordHistoryPassIds = record.sourceRefs
-      .filter(sourceRef => sourceRef.storeFamily === 'history_companion_material')
-      .map(sourceRef => normalize(sourceRef.sourcePackId));
-    if (
-      recordHistoryPassIds.length > 0
-      && (
-        recordHistoryPassIds.some(passId => !passId)
-        || recordHistoryPassIds.some(passId => !currentHistoryPassIds.has(passId))
-      )
-    ) return;
+  (relationshipLibrary?.records || []).forEach(record => {
     records.set(record.id, clone(record));
   });
   return [...records.values()];

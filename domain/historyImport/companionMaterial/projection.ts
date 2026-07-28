@@ -5,18 +5,19 @@ import {
   type CompanionMaterialSourceRef,
 } from '../../companionMaterial/types.ts';
 import { assertValidHistoryCompanionMaterialPass } from './contract.ts';
-import {
-  canonicalHistoryCompanionAuthorityJson,
-  sha256HistoryCompanionAuthority,
-} from './analysisPacket.ts';
 import type {
   HistoryCompanionMaterialCandidate,
   HistoryCompanionMaterialPass,
 } from './types.ts';
 
-const authorityId = (value: unknown): string => sha256HistoryCompanionAuthority(
-  canonicalHistoryCompanionAuthorityJson(value),
-);
+const hashText = (value: string): string => {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
 
 const safeLocator = (candidate: HistoryCompanionMaterialCandidate): string => (
   candidate.sourceRefs
@@ -35,12 +36,15 @@ const sourceRefsForCandidate = (
   storeFamily: 'history_companion_material',
   recordId: candidate.id,
   revision: candidate.revision,
-  sourceFingerprint: `sha256:${authorityId({
-    sourceRevisionFingerprint: pass.sourceRevisionFingerprint,
-    candidateId: candidate.id,
-    candidateRevision: candidate.revision,
-    sourceRef,
-  })}`,
+  sourceFingerprint: hashText([
+    pass.sourceRevisionFingerprint,
+    candidate.id,
+    candidate.revision,
+    sourceRef.documentId,
+    sourceRef.documentRevision,
+    sourceRef.startMessageOffset,
+    sourceRef.endMessageOffset,
+  ].join(':')),
   sourcePackId: pass.id,
   sourceLocator: `${index + 1}/${candidate.sourceRefs.length}:${safeLocator({
     ...candidate,
@@ -97,7 +101,7 @@ const retrievalHintsForCandidate = (
 export const historyCompanionMaterialRecordId = (
   passId: string,
   candidate: Pick<HistoryCompanionMaterialCandidate, 'id'>,
-): string => `history-material-${authorityId({ passId, candidateId: candidate.id })}`;
+): string => `history-material-${hashText(`${passId}:${candidate.id}`)}`;
 
 /**
  * Projection is intentionally mechanical. It does not elevate confidence,
