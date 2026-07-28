@@ -111,8 +111,32 @@ const relevantDetail = material('relevant-detail', {
     variationGroup: 'weather_texture',
   },
 });
+const genericOrdinaryRequired = material('generic-ordinary-required', {
+  guidance: '这条只声明 ordinary share，不能因此被当成真正相关。',
+  retrievalHints: {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['ordinary_share'],
+    variationGroup: 'generic_ordinary',
+  },
+});
+const selfLifeVoice = material('self-life-voice', {
+  guidance: '被问到自己的今天时，可以从已获准的当下生活事实自然起话。',
+  retrievalHints: {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['character_self_share', 'independent_life'],
+    variationGroup: 'self_life_share',
+  },
+});
 
-const records = [ordinaryVoice, careVoice, refusalVoice, secondObservation, relevantDetail];
+const records = [
+  ordinaryVoice,
+  careVoice,
+  refusalVoice,
+  secondObservation,
+  relevantDetail,
+  genericOrdinaryRequired,
+  selfLifeVoice,
+];
 
 const lowSignal = selectCompanionMaterialFromRecords({
   request: request('在吗'),
@@ -120,6 +144,17 @@ const lowSignal = selectCompanionMaterialFromRecords({
 });
 assert.equal(lowSignal.items.length, 1, 'low-signal chat keeps one legal voice fallback');
 assert.equal(lowSignal.items[0].slot, 'stable_character_voice');
+
+const genericOrdinary = selectCompanionMaterialFromRecords({
+  request: request('今天想聊点事情'),
+  records,
+});
+assert.equal(
+  genericOrdinary.selectedMaterialIds.includes(genericOrdinaryRequired.id),
+  false,
+  'ordinary_share alone is not a discriminating relevance signal',
+);
+assert.equal(genericOrdinary.items.length, 1, 'generic chat keeps one fallback instead of stacking material');
 
 const ordinary = selectCompanionMaterialFromRecords({
   request: request('我刚刚看到一朵很像水母的云'),
@@ -134,6 +169,76 @@ const discomfort = selectCompanionMaterialFromRecords({
   records,
 });
 assert.deepEqual(discomfort.selectedMaterialIds, [careVoice.id]);
+
+const noAdviceChat = selectCompanionMaterialFromRecords({
+  request: request('我今天胃有点不舒服，但不要给我建议，我只想聊聊'),
+  records,
+});
+assert.deepEqual(noAdviceChat.selectedMaterialIds, []);
+assert.ok(noAdviceChat.warnings.includes('material_bypass:no_advice_chat'));
+
+const askCharacterToShare = selectCompanionMaterialFromRecords({
+  request: request('我不想听建议，只想听你说说你今天'),
+  records,
+});
+assert.equal(
+  askCharacterToShare.warnings.includes('material_bypass:no_advice_chat'),
+  false,
+  'an explicit request for the character to share their life is not a no-advice bypass',
+);
+assert.ok(askCharacterToShare.selectedMaterialIds.includes(selfLifeVoice.id));
+
+const noAdviceOutsideOrdinaryChat = selectCompanionMaterialFromRecords({
+  request: request('不用分析，只想聊聊', { surface: 'call' }),
+  records,
+});
+assert.equal(
+  noAdviceOutsideOrdinaryChat.warnings.includes('material_bypass:no_advice_chat'),
+  false,
+  'the ordinary Chat bypass does not silently govern another surface',
+);
+
+const toolRequest = selectCompanionMaterialFromRecords({
+  request: request('明天下午三点提醒我交材料'),
+  records,
+});
+assert.deepEqual(toolRequest.selectedMaterialIds, []);
+assert.ok(toolRequest.warnings.includes('material_bypass:tool_request'));
+
+const toolTopicWithoutRequest = selectCompanionMaterialFromRecords({
+  request: request('我今天日程很乱，想跟你吐槽一下'),
+  records,
+});
+assert.equal(
+  toolTopicWithoutRequest.warnings.some(warning => warning === 'material_bypass:tool_request'),
+  false,
+  'mentioning a schedule is not itself a tool request',
+);
+assert.equal(toolTopicWithoutRequest.items.length, 1, 'ordinary schedule talk still has a legal fallback path');
+
+for (const ordinaryCreativeRequest of [
+  '帮我安排一下这段剧情',
+  '帮我记一下你刚才讲的故事',
+  '帮我加一下这段对白的氛围',
+  '帮我设想一下我们在海边会发生什么',
+]) {
+  const selection = selectCompanionMaterialFromRecords({
+    request: request(ordinaryCreativeRequest),
+    records,
+  });
+  assert.equal(
+    selection.warnings.includes('material_bypass:tool_request'),
+    false,
+    `creative conversation must not masquerade as a tool request: ${ordinaryCreativeRequest}`,
+  );
+}
+
+const explicitNamedToolRequest = selectCompanionMaterialFromRecords({
+  request: request('明天下午三点帮我设个提醒'),
+  records,
+});
+assert.deepEqual(explicitNamedToolRequest.selectedMaterialIds, []);
+assert.ok(explicitNamedToolRequest.warnings.includes('material_bypass:tool_request'));
 
 const refusal = selectCompanionMaterialFromRecords({
   request: request('今天不去了，下次吧'),

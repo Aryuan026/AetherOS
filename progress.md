@@ -1,6 +1,6 @@
 # AetherOS Progress
 
-## 2026-07-28 Companion Material Non-Vector Retrieval
+## 2026-07-28 Companion Material Non-Vector Retrieval And Calendar Analysis
 
 - done:
   - Added a character/relationship-scoped Companion Material contract for
@@ -28,20 +28,54 @@
     current motives, Life state, tools, Narrative objects or receipts.
   - Added a model/revision-labelled embedding score seam. It is advisory after
     hard gates and can be omitted without changing the legal retrieval path.
+  - Added the first player-facing historical analysis path in Dialogue
+    Calendar. A player chooses all records or an exact date range, sees a
+    bounded cost estimate, and explicitly starts analysis with the currently
+    active API.
+  - Historical excerpts are split into bounded batches. A same-model second
+    pass checks speaker ownership and evidence sufficiency before any
+    non-verbatim material becomes prompt-visible; its final evidence prompt has
+    a hard 24,000-character ceiling and overflow findings remain visibly
+    withheld for a smaller future run.
+  - Labelled the browser-default authority honestly as
+    `same_model_second_pass`; merely changing the analyzer/adjudicator role id
+    can no longer claim independent adjudication. A genuinely independent tier
+    requires a different provider/model runtime.
+  - Made the privacy and output boundary visible before execution: selected
+    source excerpts are temporarily sent to the active external API, while the
+    local material library stores no original sentence and cannot create
+    current mood, promises, played plot, character-card facts or tool policy.
+  - Cancellation remains effective before publication. Once the UI announces
+    local publication, the idempotent pass -> canonical activation -> prompt
+    projection sequence finishes without consulting a later sheet-unmount
+    abort, preventing half-written runs.
 
 - verified:
   - `npm run verify:companion-material`
-  - `node --import tsx scripts/verify-history-import.ts`
+  - `npm run verify:history-import`
   - `npm run verify:narrative`
   - `npm run typecheck`
+  - `npm run verify:health`
+  - Independent read-only code review found no remaining P0-P2 release blocker.
+  - Runtime fixtures cover bounded multi-batch input, missing API, malformed
+    first and second passes, rejected adjudication, pre-publication
+    cancellation, publication-boundary abort, stale-source invalidation and
+    same-provider/model fake-independence rejection.
   - Built-in production-selector fixtures cover low signal, ordinary sharing,
     discomfort, refusal, re-entry and character self-life. Every positive path
     returns 1–3 items; care does not leak into low signal or refusal.
   - Vector-seam fixture proves a 0.99 semantic score cannot cross a persona-mask
     scope boundary.
+  - The canonical 390 x 844 browser path opened Dialogue Calendar and the
+    analysis sheet without horizontal overflow or console errors. With no
+    active API the start action stayed disabled, and the external-API privacy
+    notice remained visible before execution.
 
 - boundary:
-  - Calendar does not yet call a real analysis model automatically.
+  - Calendar analysis is an explicit small-circle beta action, not an automatic
+    background job. The natural “像不像” result still requires friend testing;
+    code gates prove scope, authority, bounded input and failure semantics, not
+    role-play quality.
   - Call, proactive letters, meet/date and StoryDesk do not yet consume the new
     material at runtime.
   - Browser/APK local embedding indexing remains HOLD until player testing shows
@@ -2489,3 +2523,112 @@
     mounted the group to a custom character, changed B from `旧版正文 001` to
     `新版正文 002`, reopened the character and confirmed the mounted read-only
     viewer showed the new body without remounting.
+
+## 2026-07-28 History Companion Material Authority And Non-vector Gate
+
+- done:
+  - Closed the local history-analysis authority chain from exact-scope Daily
+    Archive packets through bounded batches, non-authoritative model drafts,
+    adjudication with an explicit authority tier, canonical activation receipts
+    and freshness-checked publication.
+  - Kept historical initiative motives candidate-only. Historical records
+    cannot become current motives, current Character Life, active narrative,
+    tool policy or already-played experience.
+  - Tightened ordinary Chat to one sparse response operator with a 360-
+    character material budget. `ordinary_share` alone no longer establishes
+    relevance.
+  - Added legal zero-material paths for explicit no-advice conversation and
+    actual tool requests. Merely mentioning a schedule does not trigger the
+    tool bypass. A self-life request such as asking the character to talk about
+    their own day remains eligible, and the hard bypass is limited to ordinary
+    Chat rather than leaking into Call/Meeting/ScenePlan surfaces.
+  - Closed three authority gaps found by independent review:
+    `sourceRevisionFingerprint` is now derived from exact Daily Archive message
+    bodies instead of accepted from a caller; finalization authority reruns the
+    complete finalizer instead of trusting a self-consistent digest; and
+    already-published historical material immediately fails closed at runtime
+    after any bound Daily Archive source changes.
+  - Replaced the defensive prompt checklist with one positive optional
+    response-operator boundary. It preserves role-owned expression, initiative
+    and future tool choice while keeping current facts receipt-backed.
+  - Documented the two-round Qi Yu / Zayne offline API mirror and two-judge
+    blind acceptance in
+    `docs/COMPANION_MATERIAL_NONVECTOR_ACCEPTANCE.md`.
+  - Kept all 196 private semantic drafts non-active. The 909-source cruise is
+    evidence/retrieval calibration, not a 909-fragment prompt pack. No new
+    runtime material was activated.
+
+- verified:
+  - `npm run verify:history-import`
+  - `npm run verify:companion-material`
+  - `npm run verify:narrative`
+  - `npm run typecheck`
+  - `npm run verify:health`
+  - Independent authority regression fixtures: forged self-consistent active
+    pass rejected; same-revision substituted source body changes the source
+    fingerprint; modified published source returns zero historical runtime
+    records until explicitly re-analysed and republished.
+  - Persona-cruise semantic draft verifier: 196 drafts, `active=0`
+  - Persona-cruise summary: 64 clusters, 139 independent-adjudication
+    candidates, 57 withheld, 5 retained parse failures
+  - `git diff --check`
+
+- boundary:
+  - This is local verified work. It is not committed, pushed, merged or
+    deployed.
+  - The blind test used offline independent API-role simulations, not a real
+    configured provider or natural multi-turn player session.
+  - Qi Yu receives no new runtime record. Zayne has one disabled narrow
+    revision candidate; care, embodied-scene and unsupported current-life
+    directions remain withheld.
+  - Call, proactive messages, Meeting/Date, ScenePlan and local embedding
+    runtime integration remain HOLD.
+
+## 2026-07-28 Browser History Companion Analysis Closed Loop
+
+- done:
+  - Added a human-visible entry in Dialogue Calendar for the exact active
+    progress bundle, persona mask and character relationship.
+  - Players can analyse all local archive records or a cross-month date range.
+    The sheet shows message, token, bounded-batch and API-call estimates before
+    any source text is sent to the configured provider.
+  - Added the browser-local runtime from ephemeral Daily Archive packets through
+    direct/bounded model analysis, optional synthesis, a separate adjudication
+    call, canonical finalization, activation receipt and freshness-checked
+    publication.
+  - Corrected the default one-provider path to `same_model_second_pass`.
+    Analyzer/adjudicator role ids remain useful audit labels, but cannot mint
+    independent authority from one configured provider/model. True independent
+    authority now rejects the same provider/model even when the role id differs.
+  - Added a hard second-pass evidence budget and included a source-sized,
+    hard-cap-bounded reserve in the preflight token estimate. Overflow findings
+    remain withheld for a narrower retry instead of rebuilding all accepted
+    excerpts into an unbounded prompt.
+  - The sheet now states before execution that selected original excerpts are
+    temporarily sent to the currently enabled external API; the local material
+    library never stores those original sentences.
+  - No-finding analysis exits without inventing material or spending an
+    adjudication call. API/schema failure leaves no prompt-visible partial
+    material. Any later source edit makes previously published historical
+    material fail closed immediately.
+
+- verified:
+  - `node --import tsx scripts/verify-history-companion-runtime-analysis.ts`
+  - `node --import tsx scripts/verify-history-import.ts`
+  - `npm run typecheck`
+  - Runtime fixtures cover direct publication, same-model authority, bounded
+    batch + synthesis, second-pass budget withholding, missing API, cancellation,
+    malformed output, no-finding exit and source freshness invalidation.
+  - Real 390 × 844 browser pass on canonical port 5174: Calendar entry,
+    cross-month date controls, estimates, disabled-no-API state and internal
+    sheet scrolling; no console errors.
+
+- boundary:
+  - Runtime success is covered with an OpenAI-compatible mocked provider. A
+    player's configured real provider and natural “像 / 不像” judgement remain
+    the next small-circle test rather than a code-level claim.
+  - This stage publishes companion performance material only. It does not
+    mutate character cards or promote relationship, current-life or narrative
+    truth.
+  - Call, proactive messages, Meeting/Date, ScenePlan and optional embeddings
+    remain HOLD.

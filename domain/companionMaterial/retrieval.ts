@@ -19,6 +19,15 @@ const TECHNICAL_META_PATTERNS = [
   /(?:代码|编程|bug|报错|服务器|部署|github|仓库|浏览器|api|token|模型|prompt|向量|embedding)/i,
 ];
 
+const NO_ADVICE_CHAT_PATTERNS = [
+  /(?:不想|不要|不用|别).{0,8}(?:建议|分析|解决|办法|指导)/i,
+  /(?:只想|就想).{0,6}(?:聊聊|聊天|说说话|听你说)/i,
+];
+
+const TOOL_REQUEST_PATTERNS = [
+  /(?:提醒我|到时叫我|帮我(?:设|加|建|安排|记)(?:个|一下)?(?:提醒|日程|备忘)|(?:设|定)(?:个|一下)?(?:闹钟|提醒)|(?:加到|放进|记到)(?:日程|备忘))/i,
+];
+
 const UNDERSPECIFIED_PATTERNS = [
   /^(?:这个|那个|这事|那事|这样|那样|然后呢|后来呢|还行|也行|继续|接着|算了|不了)[呀啊嘛吗呢～~！!。.\s]*$/i,
 ];
@@ -49,11 +58,11 @@ const SIGNAL_PATTERNS: ReadonlyArray<{
   },
   {
     signal: 'character_self_share',
-    patterns: [/(?:你在干嘛|你在做什么|你今天(?:在)?忙什么|你最近怎么样|你那边|你今天过得|讲讲你的|你有没有什么想说|你也说说)/i],
+    patterns: [/(?:你在干嘛|你在做什么|你今天(?:在)?忙什么|你今天(?:自己)?做了什么|说说你今天|你最近怎么样|你那边|你今天过得|讲讲你的|你有没有什么想说|你也说说)/i],
   },
   {
     signal: 'independent_life',
-    patterns: [/(?:你在干嘛|你在做什么|你今天(?:在)?忙什么|你最近怎么样|你那边|你的生活|你的工作|你的安排)/i],
+    patterns: [/(?:你在干嘛|你在做什么|你今天(?:在)?忙什么|你今天(?:自己)?做了什么|说说你今天|你最近怎么样|你那边|你的生活|你的工作|你的安排)/i],
   },
   {
     signal: 'observation',
@@ -133,6 +142,8 @@ export const analyzeCompanionMaterialQuery = (params: {
   const previousQuery = normalizeText(params.previousQuery);
   const phatic = !normalizedQuery || PHATIC_PATTERNS.some(pattern => pattern.test(normalizedQuery));
   const technicalMeta = TECHNICAL_META_PATTERNS.some(pattern => pattern.test(normalizedQuery));
+  const noAdviceChat = NO_ADVICE_CHAT_PATTERNS.some(pattern => pattern.test(normalizedQuery));
+  const toolRequest = TOOL_REQUEST_PATTERNS.some(pattern => pattern.test(normalizedQuery));
   const usedPreviousQuery = Boolean(previousQuery && shouldUsePreviousQuery(normalizedQuery));
   const recallQuery = usedPreviousQuery
     ? `${normalizedQuery} ${previousQuery}`.trim()
@@ -153,6 +164,8 @@ export const analyzeCompanionMaterialQuery = (params: {
   if (phatic) signals.add('low_signal');
   else signals.add('ordinary_share');
   if (technicalMeta) signals.add('technical_meta');
+  if (noAdviceChat) signals.add('no_advice_chat');
+  if (toolRequest) signals.add('tool_request');
 
   return {
     normalizedQuery,

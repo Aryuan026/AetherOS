@@ -19,7 +19,8 @@ export const HISTORY_COMPANION_MATERIAL_HOLD = {
   memoryPromotion: 'separate_gate',
   characterLifeWrite: 'forbidden',
   toolPolicyWrite: 'forbidden',
-  rawTranscriptPromptRead: 'forbidden',
+  privateAnalysisRawTranscriptRead: 'bounded_ephemeral_only',
+  runtimePromptRawTranscriptRead: 'forbidden',
 } as const;
 
 const PASS_STATUSES = new Set(['active', 'superseded', 'archived']);
@@ -157,8 +158,8 @@ const validateCandidate = (
   if (candidate.slot === 'stable_base' && !strongAuthority) {
     errors.push(`${label} inferred or reconstructed material cannot become stable_base`);
   }
-  if (candidate.kind === 'initiative_motive' && candidate.slot === 'stable_base' && candidate.confidence < 0.8) {
-    errors.push(`${label} stable agency drive requires confidence >= 0.8`);
+  if (candidate.kind === 'initiative_motive' && candidate.slot !== 'motive_candidates') {
+    errors.push(`${label} historical initiative motive must remain a motive_candidate`);
   }
   if (
     candidate.kind === 'language_fingerprint'

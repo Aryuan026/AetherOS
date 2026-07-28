@@ -110,6 +110,8 @@ export interface HistoryCompanionMaterialPass {
 
 export interface HistoryCompanionMaterialPublication {
   passId: string;
+  /** Canonical authority actually consumed by this publication. */
+  activationReceiptId: string;
   scope: HistoryScope;
   sourceRevisionFingerprint: string;
   materialIds: readonly string[];

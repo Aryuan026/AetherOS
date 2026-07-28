@@ -26,8 +26,8 @@ export interface PreparedCompanionMaterialPrompt {
 const promptMarkdown = (projection: CompanionMaterialPromptProjection): string => {
   if (!projection.fragments.length) return '';
   return [
-    '### 本轮角色素材',
-    '让角色先依据当下证据和自身判断，选择真正相关的部分自然发展；每条只提供起念方向，表达形式、关系距离和行动仍保持开放。',
+    '### 本轮可选回应动作',
+    '以角色卡、本轮用户内容和可信状态为主；只在有助于角色自然回应时吸收下面一条方向。当下事实以本轮或明确回执为准，表达、行动和工具选择继续由角色按现场自行决定。',
     ...projection.fragments.map(fragment => fragment.text),
   ].join('\n');
 };

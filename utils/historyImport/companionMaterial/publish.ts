@@ -10,12 +10,19 @@ import type {
   HistoryCompanionMaterialPublication,
 } from '../../../domain/historyImport/companionMaterial/types.ts';
 import {
+  createHistoryScopeKey,
+} from '../../../domain/historyImport/contract.ts';
+import {
   loadCompanionMaterialLibrary,
   saveCompanionMaterialLibrary,
 } from '../../companionMaterial/store.ts';
 import {
+  getHistoryCompanionMaterialPass,
   saveHistoryCompanionMaterialPass,
 } from './indexedDbPasses.ts';
+import {
+  assertCurrentHistoryCompanionMaterialActivation,
+} from './sourceAuthority.ts';
 
 const belongsToPass = (
   record: CompanionMaterialRecord,
@@ -25,14 +32,26 @@ const belongsToPass = (
   && sourceRef.sourcePackId === passId
 ));
 
+const sameScope = (
+  left: HistoryCompanionMaterialPass['scope'],
+  right: HistoryCompanionMaterialPass['scope'],
+): boolean => createHistoryScopeKey(left) === createHistoryScopeKey(right);
+
 /**
  * Publish is idempotent per pass id and preserves unrelated character/private
  * packs plus other historical analyses. A different pass over the same source
  * may coexist, which keeps alternate interpretations and plot-line reuse
- * possible until an explicit correction disables one.
+ * possible. Only pass ids explicitly named in supersedePassIds are retired.
+ *
+ * The caller supplies only an opaque canonical activation receipt id. Publish
+ * reloads that append-only receipt, recomputes the pass digest, and reads the
+ * current Daily Archive head again. Direct fingerprints and receipt objects
+ * are deliberately not accepted as source authority.
  */
 export const publishHistoryCompanionMaterialPass = async (input: {
   pass: HistoryCompanionMaterialPass;
+  activationReceiptId: string;
+  supersedePassIds?: readonly string[];
   expectedPassRevision?: number;
   publishedAt?: number;
 }): Promise<HistoryCompanionMaterialPublication> => {
@@ -40,6 +59,37 @@ export const publishHistoryCompanionMaterialPass = async (input: {
   if (input.pass.status !== 'active') {
     throw new Error('only an active history companion material pass can be published');
   }
+  if (!input.activationReceiptId?.trim()) {
+    throw new Error('canonical activationReceiptId is required to publish history companion material');
+  }
+  await assertCurrentHistoryCompanionMaterialActivation({
+    pass: input.pass,
+    activationReceiptId: input.activationReceiptId,
+  });
+
+  const projected = projectHistoryCompanionMaterialPass(input.pass);
+  if (projected.length < 1) {
+    throw new Error('active history companion material pass requires at least one active candidate');
+  }
+
+  const supersedePassIds = [...new Set(input.supersedePassIds || [])];
+  if (supersedePassIds.some(passId => !passId.trim())) {
+    throw new Error('supersedePassIds must contain non-empty pass ids');
+  }
+  if (supersedePassIds.includes(input.pass.id)) {
+    throw new Error('history companion material pass cannot supersede itself');
+  }
+  const supersededPasses = await Promise.all(supersedePassIds.map(async passId => {
+    const pass = await getHistoryCompanionMaterialPass({ passId });
+    if (!pass) throw new Error(`history companion material supersession target ${passId} does not exist`);
+    if (!sameScope(pass.scope, input.pass.scope)) {
+      throw new Error(`history companion material supersession target ${passId} crosses scope`);
+    }
+    if (pass.status === 'archived') {
+      throw new Error(`archived history companion material pass ${passId} cannot be superseded`);
+    }
+    return pass;
+  }));
 
   // Evidence is durable before its prompt-facing projection becomes visible.
   // If the second write fails, retrying the same pass is idempotent.
@@ -48,13 +98,29 @@ export const publishHistoryCompanionMaterialPass = async (input: {
     expectedRevision: input.expectedPassRevision,
   });
 
+  const publishedAt = input.publishedAt ?? Date.now();
+  for (const pass of supersededPasses) {
+    if (pass.status === 'superseded') continue;
+    await saveHistoryCompanionMaterialPass({
+      pass: {
+        ...pass,
+        status: 'superseded',
+        updatedAt: Math.max(publishedAt, pass.updatedAt),
+        revision: pass.revision + 1,
+      },
+      expectedRevision: pass.revision,
+    });
+  }
+
   const ownerScope = {
     kind: 'relationship' as const,
     scope: { ...input.pass.scope },
   };
-  const projected = projectHistoryCompanionMaterialPass(input.pass);
   const existing = await loadCompanionMaterialLibrary(ownerScope);
-  const preserved = (existing?.records || []).filter(record => !belongsToPass(record, input.pass.id));
+  const replacedPassIds = new Set([input.pass.id, ...supersedePassIds]);
+  const preserved = (existing?.records || []).filter(record => (
+    ![...replacedPassIds].some(passId => belongsToPass(record, passId))
+  ));
   const preservedIds = new Set(preserved.map(record => record.id));
   projected.forEach(record => {
     if (preservedIds.has(record.id)) {
@@ -62,7 +128,6 @@ export const publishHistoryCompanionMaterialPass = async (input: {
     }
   });
 
-  const publishedAt = input.publishedAt || Date.now();
   await saveCompanionMaterialLibrary({
     ownerScope,
     records: [...preserved, ...projected],
@@ -72,6 +137,7 @@ export const publishHistoryCompanionMaterialPass = async (input: {
 
   return {
     passId: input.pass.id,
+    activationReceiptId: input.activationReceiptId,
     scope: { ...input.pass.scope },
     sourceRevisionFingerprint: input.pass.sourceRevisionFingerprint,
     materialIds: projected.map(record => record.id),
