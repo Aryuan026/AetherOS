@@ -2591,7 +2591,7 @@
     `新版正文 002`, reopened the character and confirmed the mounted read-only
     viewer showed the new body without remounting.
 
-## 2026-07-28 History Companion Material Authority And Non-vector Gate
+## 2026-07-28 History Companion Material Authority And Non-vector Gate (Superseded Checkpoint)
 
 - done:
   - Closed the local history-analysis authority chain from exact-scope Daily
@@ -2656,8 +2656,8 @@
   - `git diff --check`
 
 - boundary:
-  - This is local verified work. It is not committed, pushed, merged or
-    deployed.
+  - This earlier local-only checkpoint is superseded by the complete five-role
+    four-lane release below.
   - The full-prompt read is a qualitative backend judgment, not proof that any
     provider will never go OOC. Natural multi-turn use remains necessary to
     observe tendencies, but players are not responsible for diagnosing hidden
@@ -2721,3 +2721,50 @@
   - Chat, proactive messages, Call and Date now consume their legal sparse
     projections. ScenePlan and optional embeddings remain HOLD; neither is
     represented as an enabled runtime capability.
+
+## 2026-07-29 Five-role Four-lane Companion Material Release
+
+- published:
+  - Public `Aryuan026/AetherOS main@0335e21` completes the replacement for the
+    earlier 23-record sparse checkpoint.
+  - All 909 reviewed source units have an explicit disposition with
+    `416 active-library support + 493 retained = 909` and zero unresolved.
+    Raw source text and private analysis artifacts remain outside the public
+    repository and runtime prompts.
+  - The runtime library now contains 56 non-verbatim records across five roles
+    and four use lanes. Another 21 reviewed candidates compile only to disabled
+    drafts; no canonical publisher is installed, so none can be persisted,
+    selected or delivered.
+  - Chat, proactive wakeup, Call and Date use the same scoped selector and real
+    provider-facing message builders. Receipts are written only after a
+    successful non-empty provider response and always carry
+    `truthEffect:none`.
+  - Five real built-in cards across four surfaces produced 20 complete
+    model-facing audit payloads. No source ref, raw dialogue, candidate state,
+    current motive or tool strategy entered the material segment.
+  - Full companion/history/narrative/daily-archive/typecheck/build/health gates,
+    source conservation and independent code review are Green. No player
+    testing control was added.
+
+- deployment:
+  - GitHub Pages run `30390993289` completed successfully.
+  - The isolated lab build contains 258 regular files and 91 gzip sidecars.
+    Local, staging, server and Pages `index.html` SHA-256 is
+    `b9e6310c81e7ef8ead9ecd27a02ed8d4b7cf9aab290efa5527c1a8d9b688150a`.
+  - Only `/srv/asherie/sites/science-demos/aetheros` was atomically replaced.
+    Rollback is
+    `/srv/asherie/backups/aetheros-companion-full-0335e21-20260728T191525Z/aetheros-static.previous`.
+  - Public GET is 200, POST is 403, retired `/sullyos/` remains 410 and hashed
+    assets are gzip-served with immutable caching. Nginx, Home and Bridge
+    remained active; Home PID `241844` and Bridge PID `225578` stayed
+    unchanged with `NRestarts=0`.
+
+- boundary:
+  - Runtime selection remains lexical and sparse. The trusted semantic-rank
+    seam is present, but local embedding generation/indexing stays HOLD until
+    measured misses justify its resource cost.
+  - ScenePlan's pure contract is Green; StoryDesk still has no runtime ScenePlan
+    consumer and must not be reported as delivered.
+  - Natural multi-turn use may still expose OOC or repetition. This release
+    improves the model's available character-specific footing without
+    hard-coding a response template or claiming deterministic roleplay.
