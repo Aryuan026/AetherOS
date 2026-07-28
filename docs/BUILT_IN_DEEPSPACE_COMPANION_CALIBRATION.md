@@ -1,6 +1,6 @@
 # 五位内置角色陪伴素材校准
 
-这是一组非逐字的行为校准，不是角色卡替代、标准答案或原短信台词库。祁煜与黎深各有 10 条复核素材；每人只有 1 条普通低信号兜底，其他材料都需要当前场景证据。
+这里保留的是先前交付的内置角色 Companion Material 校准子集，不是 909 页短信已经完成真实语义分析的证明。
 
 2026-07-28 的来源结案没有扩写新的同义模板。祁煜最终 private refs 只加固既有
 observed / playful records；黎深的 concrete-entry 与 calm-confirmation 升为 revision 2，
@@ -28,27 +28,25 @@ Prompt。来源守恒与运行时少量递送是两层职责。
 
 ## 实际选择器盲测
 
-| 人类起点 | 祁煜材料方向 | 黎深材料方向 | 共同禁止的漂移 |
-| --- | --- | --- | --- |
-| 普通小事/观察 | 观察反差、轻转向、可共同试一试 | 具体观察、平静确认、相关生活触点 | 不自动浪漫宣言，不把细节写成设定展示 |
-| 轻微不舒服 | 轻量且可拒绝的关心 | 可实行且可拒绝的一小步 | 不诊断，不列健康清单 |
-| 明确拒绝 | 回到自己的节奏与安排 | 平静接受并留出退路 | 不追问，不施压，不把拒绝当关系裁决 |
-| 几天后回来 | 用自己的近况/观察重新搭桥 | 承认时间过去，从眼前续上 | 不追责，不把旧事当当前未完约定 |
-| 括号轻场景 | 随现场观察与玩心变化 | 先看清现场，再决定回应分量 | 不把素材变成固定动作或当前剧情事实 |
-| 问角色在忙什么 | 保留好奇、个人节奏和生活线 | 保留自己的事务、判断和生活线 | 不只围绕 user 状态运转 |
-| “在吗” | 恰好 1 条轻量声音底色 | 恰好 1 条轻量声音底色 | 关怀/稳定细节不得常驻 |
+## 当前重新标定
 
-## “像”的判断
+全量整理时发现，静态 `clusterFor` / feature 规则只能守住来源账本和候选池，不能把预写 guidance 加上支持数就升级为 persona evidence。因此，`scripts/build-lysk-sms-material-analysis.mjs` 的默认输出把全部非 scoped 簇标为 `unresolved`，等待私有 DriftStone-derived 分批语义复核。
 
-祁煜应当能从具体事物、反差或自身好奇起话，玩笑随情境变化，关心保留参与和拒绝空间；不要求每轮撒娇、暧昧升级或复述海洋神话。
+尤其是沈星回、秦彻、夏以昼的可见候选中，许多“从眼前变化起念 / 留给对方选择 / 关心可拒绝”的方向属于健康互动原则，却在去名后可互换。它们现在仅作为 name-blind 校准候选，不能再被称为已验证语言指纹。
 
-黎深应当先看可观察信息，关心落到有限且可拒绝的行动，克制反问与冷幽默可收可放，并保留自己的事务；不把每个疲惫信号变成问诊。
+祁煜与黎深已有较早的人工复核子集和非空 holdout candidate pool；这也只意味着可进入 blind render，不意味着已经实机通过、自动投递，或能够代替后续全量语义 review。
 
-素材层不控制气泡、括号、分段或回复格式，也不改内置角色卡。回复容器继续由 Chat 的 relationship-scoped reply mode 管理。
+第一批全量结案现已补上：两人 386 个来源都已落入逐来源 disposition，独立语义
+裁决只留下祁煜对既有声音的 evidence reinforcement，以及黎深一枚仍 disabled 的
+concrete-entry / calm-confirmation revision candidate。它们没有改动这份校准子集的
+runtime export；详情见 [祁煜、黎深第一批结案](QIYU_LISHEN_FINAL_MATERIAL_CLOSURE.md)。
 
 ## 运行时边界检查
 
-`verify-built-in-deepspace-nonvector-retrieval.ts` 同时验证：
+- stable voice/base/detail 之外的 material 不得因同属一个角色而常驻普通 Chat。
+- `motive_candidate` 只能是未来主动或场景入口的候选理由，不能成为 `currentMotive` 或 `stable_base`。
+- stable detail 只在相关话题按需检索，不能转写为 relationship memory、共同经历或 played truth。
+- guidance 只能提供可变化的表达空间；不能要求每轮照护、玩笑、爱意、固定称呼、固定动作或固定容器格式，也不限制角色的自驱力、未来工具调用或更高权重角色卡修订。
 
 - 23 条材料都有检索 metadata；
 - stable detail/care 不能成为 fallback；
