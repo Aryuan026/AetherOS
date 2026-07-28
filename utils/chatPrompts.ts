@@ -11,6 +11,7 @@ import { buildChatReplyModePrompt, DEFAULT_CHAT_REPLY_MODE } from './chatReplyMo
 export interface ChatPromptBehavior {
     replyMode?: ChatReplyMode;
     delivery?: 'interactive' | 'proactive';
+    companionMaterialContext?: string;
 }
 
 export const ChatPrompts = {
@@ -80,6 +81,9 @@ export const ChatPrompts = {
         // 情绪底色（buffInjection）已移入 ContextBuilder.buildCoreContext()，所有 App 统一注入
         if (worldlineMemoryContext?.trim()) {
             baseSystemPrompt += `\n${worldlineMemoryContext.trim()}\n`;
+        }
+        if (behavior.companionMaterialContext?.trim()) {
+            baseSystemPrompt += `\n${behavior.companionMaterialContext.trim()}\n`;
         }
 
         if (currentMsgs.some(isHistoricalContextMessage)) {

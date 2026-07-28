@@ -18,6 +18,11 @@ import {
     strictRelationshipScopeForProfile,
 } from '../utils/messageContext';
 import { createAssistantResponseId, splitChatReplyText } from '../utils/chatReplyMode';
+import {
+    prepareCompanionMaterialPrompt,
+    recordPreparedCompanionMaterialPromptDelivery,
+    type PreparedCompanionMaterialPrompt,
+} from '../utils/companionMaterial';
 
 // ─── 情绪评估（副API，fire & forget）───
 
@@ -357,6 +362,11 @@ export const useChatAI = ({
 
             // 1. Build System Prompt (包含实时世界信息)
             const lastUserMessage = [...filterCurrentStateMessages(currentMsgs)].reverse().find(m => m.role === 'user' && !m.metadata?.proactiveHint);
+            const liveUserMessages = filterCurrentStateMessages(currentMsgs)
+                .filter(message => message.role === 'user' && !message.metadata?.proactiveHint);
+            const previousUserMessage = liveUserMessages.length > 1
+                ? liveUserMessages[liveUserMessages.length - 2]
+                : undefined;
             const worldlineMemory = selectorRelationshipScope ? await selectWorldlineMemoryContext({
                 char,
                 user: userProfile,
@@ -367,6 +377,28 @@ export const useChatAI = ({
                 query: typeof lastUserMessage?.content === 'string' ? lastUserMessage.content : '',
                 budgetChars: 1200,
             }) : { markdown: '' };
+            let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
+            if (selectorRelationshipScope && lastUserMessage) {
+                try {
+                    preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+                        requestId: `chat-material:${assistantResponseId}`,
+                        scope: selectorRelationshipScope,
+                        surface: 'chat',
+                        mode: 'remote_chat',
+                        purpose: 'stable_context',
+                        query: typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
+                        previousQuery: typeof previousUserMessage?.content === 'string'
+                            ? previousUserMessage.content
+                            : undefined,
+                        relationshipStage: 'unknown',
+                        budgetChars: 520,
+                        maxItems: 3,
+                        now: Date.now(),
+                    });
+                } catch (error) {
+                    console.warn('Companion material context unavailable:', error);
+                }
+            }
             let systemPrompt = await ChatPrompts.buildSystemPrompt(
                 char,
                 userProfile,
@@ -379,6 +411,7 @@ export const useChatAI = ({
                 {
                     replyMode: chatReplyMode,
                     delivery: 'interactive',
+                    companionMaterialContext: preparedCompanionMaterial?.markdown,
                 },
             );
 
@@ -480,6 +513,21 @@ export const useChatAI = ({
                 method: 'POST', headers,
                 body: JSON.stringify({ model: effectiveApi.model, messages: fullMessages, temperature: 0.85, stream: false })
             });
+            if (preparedCompanionMaterial?.projection.fragments.length) {
+                try {
+                    await recordPreparedCompanionMaterialPromptDelivery({
+                        prepared: preparedCompanionMaterial,
+                        consumerRef: {
+                            kind: 'prompt',
+                            id: `chat-prompt:${assistantResponseId}`,
+                            revision: '1',
+                        },
+                        occurredAt: Date.now(),
+                    });
+                } catch (error) {
+                    console.warn('Companion material delivery receipt unavailable:', error);
+                }
+            }
             updateTokenUsage(data, historyMsgCount, 'initial');
 
             // 4. Initial Cleanup

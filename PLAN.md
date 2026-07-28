@@ -6,6 +6,26 @@ Make AetherOS usable as a small public static web app while keeping personal dat
 
 ## Active Block
 
+Companion material and historical voice reuse:
+
+- Keep the default path fully local and non-vector: deterministic scene
+  signals, CJK n-gram/token overlap, delivery-receipt rotation, diversity and
+  a 1–3 item Chat budget.
+- Let only a reviewed general speech-rhythm voice become a low-signal
+  fallback. Care, boundary, repair, affection, stable-detail, opening,
+  proactive and scene material must earn relevance from the current turn.
+- Publish historical analysis into an exact relationship-scoped material
+  library without copying transcript text. Selection and prompt delivery keep
+  separate receipts; both have `truthEffect: none`.
+- Keep normal Chat limited to stable voice/base/relevant detail. Director and
+  ScenePlan remain the only future owners that may turn a motive candidate into
+  a current motive.
+- Preserve an optional embedding rank seam identified by model and index
+  revision. A new model rebuilds the disposable index; vectors never replace
+  scope, surface, continuity, knowledge, cooldown or budget gates.
+- HOLD browser/APK vector-index settings and automatic Calendar model analysis
+  until the non-vector real-chat calibration has been observed in player use.
+
 Desktop application visibility and ordering:
 
 - Keep launcher order, hidden ids, and Dock order in the versioned `OSTheme`

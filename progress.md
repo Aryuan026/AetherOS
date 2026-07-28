@@ -1,5 +1,52 @@
 # AetherOS Progress
 
+## 2026-07-28 Companion Material Non-Vector Retrieval
+
+- done:
+  - Added a character/relationship-scoped Companion Material contract for
+    non-verbatim language fingerprints, stable character behavior, relevant
+    details, opening recipes, proactive seeds, motive candidates and scene
+    affordances.
+  - Published historical analysis passes into an independent relationship
+    material library while preserving immutable evidence refs, alternate
+    analysis passes and `truthEffect: none` delivery receipts.
+  - Added the first real Chat consumer. It selects at most three stable
+    voice/base/detail fragments from the latest live user turn and records a
+    receipt only after the main API request accepts the prompt.
+  - Implemented the default no-vector retriever using bounded scenario signals,
+    CJK n-gram/token overlap, exact scope/surface/route gates, recent-delivery
+    rotation, variation groups and prompt budgets.
+  - Mapped historical `speech_rhythm / care_style / boundary_style /
+    repair_style / initiative_style / stable_habit / world_detail` tags to the
+    same evidence requirements. Only an unspecialized speech rhythm may become
+    a low-signal fallback.
+  - Added 10 reviewed non-verbatim materials each for the built-in Qi Yu and
+    Zayne roles. Each keeps one voice fallback; care and stable detail require
+    evidence.
+  - Added a read-only Context Compiler slice. Normal Chat rejects situational
+    slots; StoryDesk may retain motive/affordance candidates without creating
+    current motives, Life state, tools, Narrative objects or receipts.
+  - Added a model/revision-labelled embedding score seam. It is advisory after
+    hard gates and can be omitted without changing the legal retrieval path.
+
+- verified:
+  - `npm run verify:companion-material`
+  - `node --import tsx scripts/verify-history-import.ts`
+  - `npm run verify:narrative`
+  - `npm run typecheck`
+  - Built-in production-selector fixtures cover low signal, ordinary sharing,
+    discomfort, refusal, re-entry and character self-life. Every positive path
+    returns 1–3 items; care does not leak into low signal or refusal.
+  - Vector-seam fixture proves a 0.99 semantic score cannot cross a persona-mask
+    scope boundary.
+
+- boundary:
+  - Calendar does not yet call a real analysis model automatically.
+  - Call, proactive letters, meet/date and StoryDesk do not yet consume the new
+    material at runtime.
+  - Browser/APK local embedding indexing remains HOLD until player testing shows
+    the no-vector quality gap is worth its resource cost.
+
 ## 2026-07-20 Information Station Editorial Boundary And Preference Loop
 
 - done:

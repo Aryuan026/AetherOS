@@ -4,3 +4,4 @@ export * from './jobState.ts';
 export * from './storageHealth.ts';
 export * from './rescue.ts';
 export * from './backupReceipt.ts';
+export * from './companionMaterial/index.ts';

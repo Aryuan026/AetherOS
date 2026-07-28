@@ -1,5 +1,47 @@
 # AetherOS Public Sticker Schema
 
+## Companion Material Retrieval
+
+Character material keeps reviewed semantic guidance separate from raw evidence:
+
+```ts
+interface CompanionMaterialRecord {
+  ownerScope:
+    | { kind: 'character'; charId: string }
+    | { kind: 'relationship'; scope: HistoryScope };
+  charId: string;
+  kind: 'language_fingerprint' | 'stable_detail' | 'initiative_motive'
+    | 'opening_recipe' | 'proactive_seed' | 'scene_affordance';
+  slot: 'stable_character_voice' | 'stable_base'
+    | 'relevant_stable_details' | 'motive_candidates'
+    | 'opening_recipes' | 'proactive_seeds' | 'scene_affordances';
+  guidance: string; // reviewed and non-verbatim
+  retrievalHints?: {
+    activationPolicy: 'voice_fallback' | 'relevance_required';
+    positiveSignals: string[];
+    suppressSignals?: string[];
+    variationGroup?: string;
+    fallbackPriority?: number;
+  };
+  sourceRefs: CompanionMaterialSourceRef[]; // no raw transcript
+}
+```
+
+An optional semantic rank is a disposable index result, not durable truth:
+
+```ts
+interface CompanionMaterialSemanticRank {
+  backend: 'embedding';
+  modelId: string;
+  indexRevision: string;
+  scores: { materialId: string; score: number }[];
+}
+```
+
+Changing the embedding model creates/rebuilds an index revision. Exact
+relationship scope, surface, continuity, knowledge, cooldown, diversity and
+budget remain code-owned gates.
+
 ## Daily Archive Human Curation
 
 Imported and live source rows keep their stable archive ids. Post-import
