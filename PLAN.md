@@ -23,8 +23,11 @@ Companion material and historical voice reuse:
 - Preserve an optional embedding rank seam identified by model and index
   revision. A new model rebuilds the disposable index; vectors never replace
   scope, surface, continuity, knowledge, cooldown or budget gates.
-- HOLD browser/APK vector-index settings and automatic Calendar model analysis
-  until the non-vector real-chat calibration has been observed in player use.
+- Open Calendar model analysis as an opt-in small-circle beta: selected excerpts
+  temporarily go to the player's current API, the same model performs a bounded
+  second-pass review, and receipts truthfully record the lower
+  `same_model_second_pass` authority. Keep browser/APK vector-index settings
+  HOLD until this non-vector real-chat calibration is observed in player use.
 
 Desktop application visibility and ordering:
 

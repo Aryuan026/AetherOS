@@ -391,8 +391,12 @@ export const useChatAI = ({
                             ? previousUserMessage.content
                             : undefined,
                         relationshipStage: 'unknown',
-                        budgetChars: 520,
-                        maxItems: 3,
+                        // Ordinary chat uses one sparse response operator.
+                        // Other surfaces may still compile 1-3 independently
+                        // relevant fragments; stacking them here flattened
+                        // already-strong role cards in blind prompt tests.
+                        budgetChars: 360,
+                        maxItems: 1,
                         now: Date.now(),
                     });
                 } catch (error) {

@@ -16,19 +16,13 @@ import type { HistoryScope } from '../domain/historyImport/types.ts';
 import {
   getHistoryCompanionMaterialPass,
   listHistoryCompanionMaterialPasses,
-  publishHistoryCompanionMaterialPass,
+  saveHistoryCompanionMaterialPass,
 } from '../utils/historyImport/companionMaterial/index.ts';
 import {
+  loadCompanionMaterialLibrary,
   loadCompanionMaterialRecords,
   saveCompanionMaterialLibrary,
 } from '../utils/companionMaterial/store.ts';
-import {
-  prepareCompanionMaterialPrompt,
-  recordPreparedCompanionMaterialPromptDelivery,
-} from '../utils/companionMaterial/promptConsumer.ts';
-import {
-  loadCompanionMaterialDeliveryReceipts,
-} from '../utils/companionMaterial/receipts.ts';
 
 const T0 = 1_768_700_000_000;
 const SCOPE_A: HistoryScope = {
@@ -39,6 +33,45 @@ const SCOPE_A: HistoryScope = {
 const SCOPE_B: HistoryScope = {
   ...SCOPE_A,
   personaMaskId: 'mask-history-material-b',
+};
+
+/**
+ * This fixture tests pass projection/storage in isolation. Canonical
+ * finalization + current-source authority is exercised separately by
+ * verify-history-companion-publish-freshness.ts.
+ */
+const persistPassProjectionFixture = async (input: {
+  pass: HistoryCompanionMaterialPass;
+  expectedPassRevision?: number;
+  publishedAt: number;
+}) => {
+  await saveHistoryCompanionMaterialPass({
+    pass: input.pass,
+    expectedRevision: input.expectedPassRevision,
+  });
+  const ownerScope = {
+    kind: 'relationship' as const,
+    scope: { ...input.pass.scope },
+  };
+  const existing = (
+    await loadCompanionMaterialLibrary(ownerScope)
+  )?.records || [];
+  const preserved = existing.filter(record => !record.sourceRefs.some(sourceRef => (
+    sourceRef.storeFamily === 'history_companion_material'
+    && sourceRef.sourcePackId === input.pass.id
+  )));
+  const projected = projectHistoryCompanionMaterialPass(input.pass);
+  await saveCompanionMaterialLibrary({
+    ownerScope,
+    records: [...preserved, ...projected],
+    revision: 1,
+    updatedAt: input.publishedAt,
+  });
+  return {
+    materialIds: projected.map(record => record.id),
+    activeCount: projected.length,
+    disabledCount: input.pass.candidates.filter(candidate => candidate.status !== 'active').length,
+  };
 };
 
 const sourceSpan = (
@@ -167,7 +200,8 @@ assert.deepEqual(HISTORY_COMPANION_MATERIAL_HOLD, {
   memoryPromotion: 'separate_gate',
   characterLifeWrite: 'forbidden',
   toolPolicyWrite: 'forbidden',
-  rawTranscriptPromptRead: 'forbidden',
+  privateAnalysisRawTranscriptRead: 'bounded_ephemeral_only',
+  runtimePromptRawTranscriptRead: 'forbidden',
 });
 
 assert.match(
@@ -193,6 +227,20 @@ assert.match(
     }],
   }).join('\n'),
   /inferred or reconstructed material cannot become stable_base/,
+);
+assert.match(
+  validateHistoryCompanionMaterialPass({
+    ...passA,
+    candidates: [{
+      ...passA.candidates[2],
+      id: 'history-motive-must-not-become-stable-agency',
+      authority: 'source_explicit',
+      confidence: 0.99,
+      slot: 'stable_base',
+    }],
+  }).join('\n'),
+  /historical initiative motive must remain a motive_candidate/,
+  'even high-confidence historical motives stay situational until a separate character-authority review promotes them',
 );
 assert.match(
   validateHistoryCompanionMaterialPass({
@@ -304,18 +352,21 @@ await saveCompanionMaterialLibrary({
   updatedAt: T0,
 });
 
-const publicationA1 = await publishHistoryCompanionMaterialPass({
+const publicationA1 = await persistPassProjectionFixture({
   pass: passA,
   publishedAt: T0 + 10,
 });
-const publicationA2 = await publishHistoryCompanionMaterialPass({
+const publicationA2 = await persistPassProjectionFixture({
   pass: passA,
+  expectedPassRevision: 1,
   publishedAt: T0 + 11,
 });
 assert.deepEqual(publicationA1.materialIds, publicationA2.materialIds);
 assert.equal(publicationA1.activeCount, 5);
 assert.equal(publicationA1.disabledCount, 1);
-const loadedA = await loadCompanionMaterialRecords(SCOPE_A);
+const loadedA = (
+  await loadCompanionMaterialLibrary({ kind: 'relationship', scope: SCOPE_A })
+)?.records || [];
 assert.equal(loadedA.length, 6, 'repeat publication replaces one pass without deleting manual material');
 assert.equal(loadedA.some(record => record.id === manualRecord.id), true);
 assert.equal(loadedA.filter(record => (
@@ -326,47 +377,11 @@ assert.deepEqual(
   (await listHistoryCompanionMaterialPasses({ scope: SCOPE_A })).map(item => item.id),
   [passA.id],
 );
-
-const preparedChat = await prepareCompanionMaterialPrompt({
-  requestId: 'history-material-chat-request-a',
-  scope: SCOPE_A,
-  surface: 'chat',
-  mode: 'remote_chat',
-  purpose: 'stable_context',
-  query: '今天想安静聊一会儿',
-  semanticTags: ['care_style', 'relationship_detail'],
-  relationshipStage: 'unknown',
-  budgetChars: 1_200,
-  maxItems: 5,
-  now: T0 + 20,
-});
-assert.equal(preparedChat.projection.fragments.length >= 2, true);
-assert.equal(preparedChat.projection.fragments.some(fragment => fragment.slot === 'stable_character_voice'), true);
-assert.equal(preparedChat.projection.fragments.some(fragment => fragment.slot === 'relevant_stable_details'), true);
-assert.equal(preparedChat.projection.fragments.some(fragment => (
-  fragment.slot === 'motive_candidates'
-  || fragment.slot === 'opening_recipes'
-  || fragment.slot === 'scene_affordances'
-)), false);
-assert.match(preparedChat.markdown, /依据当下证据和自身判断/);
-assert.match(preparedChat.markdown, /表达形式、关系距离和行动仍保持开放/);
-assert.doesNotMatch(preparedChat.markdown, /sourceFingerprint|sourceLocator|toolAllowlist|currentMotives/);
-assert.equal((await loadCompanionMaterialDeliveryReceipts(SCOPE_A)).length, 0);
-
-const chatReceipt = await recordPreparedCompanionMaterialPromptDelivery({
-  prepared: preparedChat,
-  consumerRef: {
-    kind: 'prompt',
-    id: 'chat-prompt-history-material-a',
-    revision: '1',
-  },
-  occurredAt: T0 + 21,
-});
-assert.equal(chatReceipt.status, 'delivered');
-assert.equal(chatReceipt.truthEffect, 'none');
-assert.equal(chatReceipt.delivered.length, preparedChat.projection.fragments.length);
-assert.equal(chatReceipt.selectedChars, preparedChat.projection.usedChars);
-assert.equal((await loadCompanionMaterialDeliveryReceipts(SCOPE_A)).length, 1);
+assert.deepEqual(
+  (await loadCompanionMaterialRecords(SCOPE_A)).map(record => record.id),
+  [manualRecord.id],
+  'projection-only fixtures stay stored for inspection but cannot enter runtime without canonical activation',
+);
 
 const passAlternate: HistoryCompanionMaterialPass = {
   ...passA,
@@ -385,12 +400,14 @@ assert.equal(
   false,
   'the same candidate id from another analysis pass must coexist',
 );
-await publishHistoryCompanionMaterialPass({
+await persistPassProjectionFixture({
   pass: passAlternate,
   publishedAt: T0 + 22,
 });
 assert.equal(
-  (await loadCompanionMaterialRecords(SCOPE_A)).length,
+  ((
+    await loadCompanionMaterialLibrary({ kind: 'relationship', scope: SCOPE_A })
+  )?.records || []).length,
   11,
   'manual material plus two independent five-record history passes coexist',
 );
@@ -414,19 +431,21 @@ const correctedPassA: HistoryCompanionMaterialPass = {
   updatedAt: T0 + 23,
   revision: 2,
 };
-await publishHistoryCompanionMaterialPass({
+await persistPassProjectionFixture({
   pass: correctedPassA,
   expectedPassRevision: 1,
   publishedAt: T0 + 23,
 });
 assert.equal(
-  (await loadCompanionMaterialRecords(SCOPE_A)).length,
+  ((
+    await loadCompanionMaterialLibrary({ kind: 'relationship', scope: SCOPE_A })
+  )?.records || []).length,
   10,
   'correcting one pass replaces only that pass and preserves the alternate interpretation',
 );
 assert.equal((await getHistoryCompanionMaterialPass({ passId: passA.id }))?.revision, 2);
 await assert.rejects(
-  () => publishHistoryCompanionMaterialPass({
+  () => persistPassProjectionFixture({
     pass: {
       ...correctedPassA,
       revision: 3,
@@ -451,21 +470,32 @@ const passB: HistoryCompanionMaterialPass = {
     analysisRunId: 'history-material-run-b',
   })),
 };
-await publishHistoryCompanionMaterialPass({ pass: passB, publishedAt: T0 + 12 });
-const loadedB = await loadCompanionMaterialRecords(SCOPE_B);
+await persistPassProjectionFixture({
+  pass: passB,
+  publishedAt: T0 + 12,
+});
+const loadedB = (
+  await loadCompanionMaterialLibrary({ kind: 'relationship', scope: SCOPE_B })
+)?.records || [];
 assert.equal(loadedB.length, 5);
 assert.equal(loadedB.every(record => (
   record.ownerScope.kind === 'relationship'
   && record.ownerScope.scope.personaMaskId === SCOPE_B.personaMaskId
 )), true);
-assert.equal((await loadCompanionMaterialRecords(SCOPE_A)).length, 10);
+assert.equal(
+  ((
+    await loadCompanionMaterialLibrary({ kind: 'relationship', scope: SCOPE_A })
+  )?.records || []).length,
+  10,
+);
 
-await assert.rejects(
-  () => publishHistoryCompanionMaterialPass({
-    pass: { ...passA, id: 'history-material-pass-archived', status: 'archived' },
-    publishedAt: T0 + 13,
+assert.deepEqual(
+  projectHistoryCompanionMaterialPass({
+    ...passA,
+    id: 'history-material-pass-archived',
+    status: 'archived',
   }),
-  /only an active history companion material pass/,
+  [],
 );
 
 console.log('history companion material bridge: green');

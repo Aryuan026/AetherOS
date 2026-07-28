@@ -40,6 +40,10 @@ const relationshipStageRank: Record<CompanionMaterialSelectionRequest['relations
 
 const normalize = (value: unknown): string => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
+const normalizeGuidanceForExactDedupe = (value: string): string => (
+  value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
+);
+
 const hashText = (value: string): string => {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -60,6 +64,55 @@ const sourceRevisionFingerprint = (records: readonly CompanionMaterialRecord[]):
     .sort()
     .join('|'),
 );
+
+const exactOwnerScopeKey = (record: CompanionMaterialRecord): string => (
+  record.ownerScope.kind === 'character'
+    ? `character:${record.ownerScope.charId}`
+    : [
+        'relationship',
+        record.ownerScope.scope.progressBundleId,
+        record.ownerScope.scope.personaMaskId,
+        record.ownerScope.scope.charId,
+      ].join(':')
+);
+
+const equivalentEvidenceKey = (record: CompanionMaterialRecord): string => (
+  record.sourceRefs
+    .map(sourceRef => {
+      const locator = normalize(sourceRef.sourceLocator).replace(/^\d+\/\d+:/, '');
+      return locator
+        ? `${sourceRef.storeFamily}:locator:${locator}`
+        : [
+            sourceRef.storeFamily,
+            sourceRef.recordId,
+            sourceRef.revision,
+            sourceRef.sourceFingerprint,
+          ].join(':');
+    })
+    .sort()
+    .join('|')
+);
+
+/**
+ * This is deliberately narrower than semantic similarity. It removes only a
+ * mirrored asset from the same exact owner scope, slot, evidence and runtime
+ * use. Re-analysis may still keep a different interpretation, branch/scene
+ * affordance, or eligible purpose over the same historical span.
+ */
+const exactTurnDuplicateKey = (record: CompanionMaterialRecord): string => [
+  exactOwnerScopeKey(record),
+  record.slot,
+  record.kind,
+  normalizeGuidanceForExactDedupe(record.guidance),
+  equivalentEvidenceKey(record),
+  record.renderPolicy,
+  record.continuity,
+  record.routeId || '',
+  record.branchId || '',
+  record.sceneId || '',
+  [...record.eligibleModes].sort().join(','),
+  [...record.eligiblePurposes].sort().join(','),
+].join('::');
 
 const routeMatches = (
   record: CompanionMaterialRecord,
@@ -174,6 +227,8 @@ interface RankedMaterial {
   reasons: string[];
 }
 
+const NON_DISCRIMINATING_SIGNALS = new Set(['ordinary_share']);
+
 const scoreMaterial = (params: {
   record: CompanionMaterialRecord;
   request: CompanionMaterialSelectionRequest;
@@ -186,19 +241,20 @@ const scoreMaterial = (params: {
   const positiveSignals = new Set(hints.positiveSignals.map(normalize));
   const suppressSignals = new Set((hints.suppressSignals || []).map(normalize));
   const signalHits = [...positiveSignals].filter(signal => querySignals.has(signal));
+  const discriminatingSignalHits = signalHits.filter(signal => !NON_DISCRIMINATING_SIGNALS.has(signal));
   const suppressionHits = [...suppressSignals].filter(signal => querySignals.has(signal));
   if (suppressionHits.length) return null;
 
   const lexical = companionMaterialLexicalSimilarity(features, record);
   const semantic = semanticScoreFor(record, request);
-  const strong = signalHits.length > 0 || lexical >= 0.08 || semantic >= 0.5;
+  const strong = discriminatingSignalHits.length > 0 || lexical >= 0.08 || semantic >= 0.5;
   if (hints.activationPolicy === 'relevance_required' && !strong) return null;
 
   const relationshipBoost = record.ownerScope.kind === 'relationship' ? 0.25 : 0;
   const novelty = deliveryPenalty(record, request, receipts);
   const fallback = hints.activationPolicy === 'voice_fallback' && !strong;
   const reasons = ['scope_match', 'surface_match', 'purpose_match'];
-  if (signalHits.length) reasons.push(`semantic_signals:${signalHits.join(',')}`);
+  if (discriminatingSignalHits.length) reasons.push(`semantic_signals:${discriminatingSignalHits.join(',')}`);
   if (lexical > 0) reasons.push(`lexical:${lexical.toFixed(3)}`);
   if (semantic > 0) reasons.push(`embedding:${semantic.toFixed(3)}@${request.semanticRank?.indexRevision}`);
   if (fallback) reasons.push('voice_fallback');
@@ -212,7 +268,7 @@ const scoreMaterial = (params: {
     fallback,
     reasons,
     score: (
-      signalHits.length * 6
+      discriminatingSignalHits.length * 6
       + lexical * 8
       + semantic * 7
       + relationshipBoost
@@ -340,6 +396,44 @@ export const selectCompanionMaterialFromRecords = (params: {
   const excluded = new Map<string, number>();
   const features = queryFeaturesForCompanionMaterialRequest(request);
   const ranked: RankedMaterial[] = [];
+  const isOrdinaryChat = (
+    request.surface === 'chat'
+    && request.mode === 'remote_chat'
+    && request.purpose === 'stable_context'
+  );
+  const selfLifeRequested = features.signals.some(signal => (
+    signal === 'character_self_share' || signal === 'independent_life'
+  ));
+  const hardBypassSignal = !isOrdinaryChat
+    ? undefined
+    : features.signals.includes('tool_request')
+      ? 'tool_request'
+      : features.signals.includes('no_advice_chat') && !selfLifeRequested
+        ? 'no_advice_chat'
+        : undefined;
+
+  if (hardBypassSignal) {
+    const fingerprint = sourceRevisionFingerprint(records);
+    return {
+      schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+      selectionId: `material-selection-${hashText(`${request.requestId}:${fingerprint}:${request.now}`)}`,
+      requestId: request.requestId,
+      scope: { ...request.scope },
+      surface: request.surface,
+      mode: request.mode,
+      purpose: request.purpose,
+      sourceRevisionFingerprint: fingerprint,
+      budgetChars: request.budgetChars,
+      items: [],
+      selectedMaterialIds: [],
+      warnings: [
+        `retrieval_backend:${request.semanticRank ? 'hybrid_embedding' : 'lexical_v1'}`,
+        `query_signals:${features.signals.join(',') || 'none'}`,
+        `material_bypass:${hardBypassSignal}`,
+      ],
+      selectedAt: request.now,
+    };
+  }
 
   for (const record of records) {
     const availability = materialAvailable({ record, request, receipts });
@@ -360,13 +454,23 @@ export const selectCompanionMaterialFromRecords = (params: {
     right.score - left.score
     || left.record.id.localeCompare(right.record.id)
   ));
+  const exactDuplicateKeys = new Set<string>();
+  const deduplicatedRanked = ranked.filter(candidate => {
+    const key = exactTurnDuplicateKey(candidate.record);
+    if (exactDuplicateKeys.has(key)) {
+      excluded.set('exact_duplicate', (excluded.get('exact_duplicate') || 0) + 1);
+      return false;
+    }
+    exactDuplicateKeys.add(key);
+    return true;
+  });
   excluded.forEach((count, reason) => warnings.push(`excluded_${reason}:${count}`));
   warnings.push(`retrieval_backend:${request.semanticRank ? 'hybrid_embedding' : 'lexical_v1'}`);
   warnings.push(`query_signals:${features.signals.join(',') || 'none'}`);
   if (features.usedPreviousQuery) warnings.push('used_previous_query');
 
-  const strong = ranked.filter(candidate => candidate.strong);
-  const fallbackVoices = ranked.filter(candidate => (
+  const strong = deduplicatedRanked.filter(candidate => candidate.strong);
+  const fallbackVoices = deduplicatedRanked.filter(candidate => (
     candidate.fallback && candidate.record.slot === 'stable_character_voice'
   ));
   const candidatePool = strong.length ? strong : fallbackVoices.slice(0, 1);
