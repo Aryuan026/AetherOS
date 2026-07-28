@@ -207,6 +207,6 @@ canonical receipt；角色卡、世界书与稳定身份只能提供观察视角
 - 纯寒暄、工具请求和 no-advice 输入不能被高分唤醒重素材；
 - 无向量时 lexical / signals / receipt 路径始终可用。
 
-当前 23 条内置运行包不需要生产向量。长期关系素材达到可观察规模并证明无向量漏召回后，
+当前 56 条内置运行包在硬门后仍是小候选集，不需要生产向量。长期关系素材达到可观察规模并证明无向量漏召回后，
 才进入本地 shadow；详细门槛、manifest 与 live 个性偏移见
 `docs/COMPANION_MATERIAL_VECTOR_AND_LIVE_DRIFT.md`。

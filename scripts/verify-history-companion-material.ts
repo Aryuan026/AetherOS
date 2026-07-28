@@ -92,26 +92,35 @@ const candidate = (
     HistoryCompanionMaterialCandidate,
     'id' | 'kind' | 'slot' | 'guidance' | 'renderPolicy'
   >,
-): HistoryCompanionMaterialCandidate => ({
-  schemaVersion: HISTORY_COMPANION_MATERIAL_SCHEMA_VERSION,
-  scope: { ...SCOPE_A },
-  temporalClass: 'historical',
-  analysisRunId: 'history-material-run-a',
-  extractorVersion: 'history-material-fixture-v1',
-  authority: 'source_inferred',
-  confidence: 0.82,
-  sourceRefs: [sourceSpan('daily:2025-07-16', 10, 24)],
-  knowledge: 'relationship_private',
-  continuity: 'relationship',
-  eligibleModes: ['remote_chat'],
-  eligiblePurposes: ['stable_context'],
-  tags: ['relationship_detail'],
-  status: 'active',
-  createdAt: T0,
-  updatedAt: T0,
-  revision: 1,
-  ...input,
-});
+): HistoryCompanionMaterialCandidate => {
+  const groundingClass = input.groundingClass ?? 'live_semantic_anchor';
+  return {
+    schemaVersion: HISTORY_COMPANION_MATERIAL_SCHEMA_VERSION,
+    scope: { ...SCOPE_A },
+    temporalClass: 'historical',
+    analysisRunId: 'history-material-run-a',
+    extractorVersion: 'history-material-fixture-v1',
+    authority: 'source_inferred',
+    confidence: 0.82,
+    sourceRefs: [sourceSpan('daily:2025-07-16', 10, 24)],
+    knowledge: 'relationship_private',
+    continuity: 'relationship',
+    eligibleModes: ['remote_chat'],
+    eligiblePurposes: ['stable_context'],
+    tags: ['relationship_detail'],
+    status: 'active',
+    createdAt: T0,
+    updatedAt: T0,
+    revision: 1,
+    ...input,
+    groundingClass,
+    groundingPolicy: groundingClass === 'none'
+      ? undefined
+      : input.groundingPolicy ?? {
+          anyOf: [{ kind: 'live_user_turn', claimKey: 'relationship_detail' }],
+        },
+  };
+};
 
 const passA: HistoryCompanionMaterialPass = {
   schemaVersion: HISTORY_COMPANION_MATERIAL_SCHEMA_VERSION,
@@ -134,6 +143,8 @@ const passA: HistoryCompanionMaterialPass = {
         sourceSpan('daily:2025-07-18', 4, 16),
       ],
       tags: ['care_style', 'speech_rhythm'],
+      groundingClass: 'none',
+      groundingPolicy: undefined,
       eligibleModes: ['remote_chat', 'call', 'meet_scene'],
     }),
     candidate({
@@ -153,6 +164,10 @@ const passA: HistoryCompanionMaterialPass = {
       renderPolicy: 'decision_context',
       authority: 'model_reconstructed',
       tags: ['repair_style', 'initiative_style'],
+      groundingClass: 'scene_context',
+      groundingPolicy: {
+        anyOf: [{ kind: 'scene_context', claimKey: 'emotional_weight' }],
+      },
       eligibleModes: ['remote_chat', 'meet_scene', 'story_scene'],
       eligiblePurposes: ['scene_planning'],
     }),
@@ -163,6 +178,9 @@ const passA: HistoryCompanionMaterialPass = {
       guidance: '开场可先落在一个当前可见的小观察，再自然问起对方此刻的状态；每次重新生成。',
       renderPolicy: 'transform_required',
       tags: ['opening_shape'],
+      groundingPolicy: {
+        anyOf: [{ kind: 'live_user_turn', claimKey: 'opening' }],
+      },
       eligibleModes: ['proactive_letter'],
       eligiblePurposes: ['opening'],
     }),
@@ -176,6 +194,10 @@ const passA: HistoryCompanionMaterialPass = {
       routeId: 'route-history-main',
       branchId: 'branch-history-main',
       tags: ['scene_permission'],
+      groundingClass: 'scene_context',
+      groundingPolicy: {
+        anyOf: [{ kind: 'scene_context', claimKey: 'light_scene' }],
+      },
       eligibleModes: ['story_planning', 'story_scene'],
       eligiblePurposes: ['scene_planning'],
     }),
@@ -303,6 +325,8 @@ const rhythmOnlyProjection = projectHistoryCompanionMaterialPass({
     guidance: '表达节奏通常从一处具体观察展开，再自然保留下一步转向空间。',
     renderPolicy: 'style_only',
     tags: ['speech_rhythm'],
+    groundingClass: 'none',
+    groundingPolicy: undefined,
     sourceRefs: [
       sourceSpan('daily:2025-07-16', 10, 24),
       sourceSpan('daily:2025-07-18', 4, 16),

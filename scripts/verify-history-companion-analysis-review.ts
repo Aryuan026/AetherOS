@@ -16,6 +16,10 @@ import {
 } from '../domain/historyImport/companionMaterial/index.ts';
 import type { DailyArchiveDocument } from '../domain/dailyArchive/types.ts';
 import type { HistoryScope } from '../domain/historyImport/types.ts';
+import {
+  buildCallCompanionMaterialRequest,
+  buildDateOpeningCompanionMaterialRequest,
+} from '../utils/companionMaterial/requestBuilders.ts';
 
 const scope: HistoryScope = {
   progressBundleId: 'bundle-history-review',
@@ -94,6 +98,7 @@ const voiceFinding: HistoryCompanionAnalysisFinding = {
   confidence: 0.84,
   guidance: '回应可先落在眼前可观察的小变化，再带入角色自己的近况；语气可以轻重变换，并给对方决定话题走向的空间。',
   tags: ['speech_rhythm', 'initiative_style'],
+  groundingClass: 'none',
   speakerResolution: 'primary_character_direct',
   behaviorBoundary: {
     variationPreserved: true,
@@ -122,6 +127,7 @@ const motiveFinding: HistoryCompanionAnalysisFinding = {
   confidence: 0.73,
   guidance: '在需要推动场景时，可以把角色手边尚未完成的小事当作候选起点，再让现场反应决定是否继续。',
   tags: ['proactive_intent'],
+  groundingClass: 'scene_context',
   materialKind: 'initiative_motive',
   speakerResolution: 'primary_character_direct',
   behaviorBoundary: {
@@ -134,6 +140,27 @@ const motiveFinding: HistoryCompanionAnalysisFinding = {
   uncertaintyOrConflict: '它只是场景候选，不代表角色此刻真的有这项任务。',
 };
 
+const factFreeOpeningFinding: HistoryCompanionAnalysisFinding = {
+  id: 'finding-fact-free-opening',
+  lane: 'opening_proactive',
+  decision: 'accepted',
+  evidenceIds: [allEvidence[0].id, allEvidence[1].id],
+  confidence: 0.78,
+  guidance: '开场可以先捕捉一处轻巧的可感变化，再用角色自己的观察角度留出多种自然接续。',
+  tags: ['opening_shape', 'fact_free_opening'],
+  groundingClass: 'none',
+  materialKind: 'opening_recipe',
+  speakerResolution: 'primary_character_direct',
+  behaviorBoundary: {
+    variationPreserved: true,
+    fixedReplyTemplate: false,
+    currentStateEffect: 'none',
+    toolPolicyEffect: 'none',
+  },
+  reviewReason: '两份不同日期记录都支持同一种可抽象进入方式，且去除旧事件后仍可变化。',
+  uncertaintyOrConflict: '只保留进入方式，不携带旧日地点、关系阶段、生活事实或固定台词。',
+};
+
 const review = createHistoryCompanionAnalysisReview({
   packets,
   analysisRunId: 'history-review-run-1',
@@ -144,7 +171,7 @@ const review = createHistoryCompanionAnalysisReview({
     version: '1',
     reviewerKind: 'model_semantic_review',
   },
-  findings: [voiceFinding, motiveFinding],
+  findings: [voiceFinding, motiveFinding, factFreeOpeningFinding],
   reviewedAt: 1_768_700_000_200,
 });
 assert.equal(review.schemaVersion, HISTORY_COMPANION_ANALYSIS_REVIEW_SCHEMA_VERSION);
@@ -177,10 +204,13 @@ const adjudication = createHistoryCompanionAnalysisAdjudicationReceipt({
 const finalization = finalizeHistoryCompanionAnalysisReview(packets, review, adjudication);
 const pass = finalization.pass;
 assert.deepEqual(validateHistoryCompanionMaterialPass(pass), []);
-assert.equal(pass.candidates.length, 2);
+assert.equal(pass.candidates.length, 3);
 assert.equal(pass.candidates[0].slot, 'stable_character_voice');
 assert.equal(pass.candidates[1].slot, 'motive_candidates');
 assert.equal(pass.candidates[1].kind, 'initiative_motive');
+assert.equal(pass.candidates[2].slot, 'opening_recipes');
+assert.equal(pass.candidates[2].groundingClass, 'none');
+assert.equal(pass.candidates[2].groundingPolicy, undefined);
 assert.equal(pass.candidates.every(item => item.authority === 'model_reconstructed'), true);
 assert.equal(pass.candidates.every(item => item.continuity === 'relationship'), true);
 assert.equal(JSON.stringify(pass).includes('ephemeralText'), false);
@@ -198,6 +228,10 @@ assert.equal(
 );
 
 const projectedRecords = projectHistoryCompanionMaterialPass(pass);
+const projectedFactFreeOpening = projectedRecords.find(record => (
+  record.tags.includes('fact_free_opening')
+));
+assert.ok(projectedFactFreeOpening);
 const chatSelection = selectCompanionMaterialFromRecords({
   request: {
     schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
@@ -227,6 +261,61 @@ assert.equal(chatProjection.fragments.some(item => item.slot === 'stable_charact
 assert.equal(chatProjection.fragments.some(item => item.slot === 'motive_candidates'), false);
 assert.equal(JSON.stringify(chatProjection).includes('sourceRefs'), false);
 
+const automaticCallSelection = selectCompanionMaterialFromRecords({
+  request: {
+    schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+    ...buildCallCompanionMaterialRequest({
+      requestId: 'history-review-fact-free-call',
+      scope,
+      refId: 'call-session-history-review',
+      query: '电话刚刚接通。',
+      occurredAt: 1_768_700_000_310,
+      opening: true,
+      automaticOpening: true,
+    }),
+  },
+  records: projectedRecords,
+});
+assert.equal(
+  automaticCallSelection.items.some(item => item.materialId === projectedFactFreeOpening.id),
+  true,
+  'a reviewed fact-free historical opening must be usable by the real automatic-call request',
+);
+
+const dateOpeningSelection = selectCompanionMaterialFromRecords({
+  request: {
+    schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+    ...buildDateOpeningCompanionMaterialRequest({
+      requestId: 'history-review-fact-free-date',
+      scope,
+      sceneRefId: 'date-scene-history-review',
+      occurredAt: 1_768_700_000_320,
+    }),
+  },
+  records: projectedRecords,
+});
+assert.equal(
+  dateOpeningSelection.items.some(item => item.materialId === projectedFactFreeOpening.id),
+  true,
+  'a reviewed fact-free historical opening must be usable by the real date-opening request',
+);
+
+const invalidUngatedOpening: HistoryCompanionAnalysisReview = {
+  ...review,
+  findings: review.findings.map(finding => (
+    finding.id === factFreeOpeningFinding.id
+      ? {
+          ...finding,
+          tags: ['opening_shape'],
+        }
+      : finding
+  )),
+};
+assert.match(
+  validateHistoryCompanionAnalysisReview(packets, invalidUngatedOpening).join('\n'),
+  /fact-free opening requires fact_free_opening/,
+);
+
 const reviewWithWithheldFailure: HistoryCompanionAnalysisReview = {
   ...review,
   findings: [
@@ -252,7 +341,7 @@ assert.equal(
     reviewWithWithheldFailure,
     adjudication,
   ).pass.candidates.length,
-  2,
+  3,
   'withheld failures remain auditable but never become material candidates',
 );
 

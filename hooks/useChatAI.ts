@@ -19,6 +19,7 @@ import {
 } from '../utils/messageContext';
 import { createAssistantResponseId, splitChatReplyText } from '../utils/chatReplyMode';
 import {
+    buildChatCompanionMaterialRequest,
     prepareCompanionMaterialPrompt,
     recordPreparedCompanionMaterialPromptDelivery,
     type PreparedCompanionMaterialPrompt,
@@ -380,25 +381,22 @@ export const useChatAI = ({
             let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
             if (selectorRelationshipScope && lastUserMessage) {
                 try {
-                    preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+                    preparedCompanionMaterial = await prepareCompanionMaterialPrompt(
+                      buildChatCompanionMaterialRequest({
                         requestId: `chat-material:${assistantResponseId}`,
                         scope: selectorRelationshipScope,
-                        surface: 'chat',
-                        mode: 'remote_chat',
-                        purpose: 'stable_context',
+                        refId: `message:${lastUserMessage.id}`,
                         query: typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
                         previousQuery: typeof previousUserMessage?.content === 'string'
                             ? previousUserMessage.content
                             : undefined,
-                        relationshipStage: 'unknown',
-                        // Ordinary chat uses one sparse, optional role-side lens.
-                        // Other surfaces may still compile 1-3 independently
-                        // relevant fragments; stacking them here flattened
-                        // already-strong role cards in blind prompt tests.
-                        budgetChars: 360,
-                        maxItems: 1,
-                        now: Date.now(),
-                    });
+                        occurredAt: lastUserMessage.timestamp,
+                        // A legacy message with no frozen relationship scope
+                        // cannot borrow the currently active UI relationship as
+                        // evidence.
+                        allowGrounding: Boolean(initiatingRelationshipScope),
+                      }),
+                    );
                 } catch (error) {
                     console.warn('Companion material context unavailable:', error);
                 }
@@ -470,34 +468,22 @@ export const useChatAI = ({
             }
             const { apiMessages, historySlice } = ChatPrompts.buildMessageHistory(contextMsgs, limit, char, userProfile, emojis);
 
-            // 2.5 Strip translation content from previous messages to save tokens
-            const cleanedApiMessages = apiMessages.map((msg: any) => {
-                if (typeof msg.content !== 'string') return msg;
-                let c = msg.content;
-                // Strip old %%BILINGUAL%% format
-                if (c.toLowerCase().includes('%%bilingual%%')) {
-                    const idx = c.toLowerCase().indexOf('%%bilingual%%');
-                    c = c.substring(0, idx).trim();
-                }
-                // Strip new XML tag format: keep only <原文> content
-                if (c.includes('<翻译>')) {
-                    c = c.replace(/<翻译>\s*<原文>([\s\S]*?)<\/原文>\s*<译文>[\s\S]*?<\/译文>\s*<\/翻译>/g, '$1').trim();
-                }
-                return { ...msg, content: c };
+            // 2.5 Build the exact provider-facing payload through the same
+            // pure builder used by the model-context audit.
+            const {
+                cleanedApiMessages,
+                messages: fullMessages,
+            } = ChatPrompts.buildModelFacingMessages({
+                systemPrompt,
+                apiMessages,
+                bilingualActive: Boolean(bilingualActive),
             });
-
-            const fullMessages = [{ role: 'system', content: systemPrompt }, ...cleanedApiMessages];
 
             // Debug: Log context composition
             const systemPromptLength = systemPrompt.length;
             const historyMsgCount = cleanedApiMessages.length;
             const historyTotalChars = cleanedApiMessages.reduce((sum: number, m: any) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0);
             console.log(`📊 [Context Debug] system_prompt_chars=${systemPromptLength} | history_msgs=${historyMsgCount} | history_chars=${historyTotalChars} | total_msgs_in_array=${fullMessages.length} | contextLimit=${limit}`);
-
-            // 2.6 Reinforce bilingual instruction at the end of messages for stronger compliance
-            if (bilingualActive) {
-                fullMessages.push({ role: 'system', content: `[Reminder: 每句话必须用 <翻译><原文>...</原文><译文>...</译文></翻译> 标签包裹。一句一个标签。绝对不能省略。]` });
-            }
 
             // 3. Fire-and-forget emotion evaluation in parallel with main API call
             const currentStateEmotionMessages = selectEmotionEvaluationMessages(contextMsgs);

@@ -25,7 +25,7 @@ const NO_ADVICE_CHAT_PATTERNS = [
 ];
 
 const TOOL_REQUEST_PATTERNS = [
-  /(?:提醒我|到时叫我|帮我(?:设|加|建|安排|记)(?:个|一下)?(?:提醒|日程|备忘)|(?:设|定)(?:个|一下)?(?:闹钟|提醒)|(?:加到|放进|记到)(?:日程|备忘))/i,
+  /(?:提醒我|到时叫我|帮我.{0,24}(?:提醒|日程|备忘|闹钟)|(?:设(?:置)?|定).{0,18}(?:闹钟|提醒)|(?:加到|放进|记到)(?:日程|备忘))/i,
 ];
 
 const UNDERSPECIFIED_PATTERNS = [
@@ -81,7 +81,7 @@ const SIGNAL_PATTERNS: ReadonlyArray<{
   },
   {
     signal: 'practical_next_step',
-    patterns: [/(?:怎么办|怎么弄|怎么处理|下一步|帮我想想|给个办法|如何)/i],
+    patterns: [/(?:怎么办|怎么弄|怎么处理|下一步|帮我(?:想想|看看)|先做哪个|给个办法|如何|理清(?:条件|顺序|安排)|梳理(?:条件|顺序|安排)|安排(?:冲突|撞在一起))/i],
   },
   {
     signal: 'playful_premise',

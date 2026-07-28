@@ -100,6 +100,7 @@ const finalizationFor = (input: {
     confidence: 0.78,
     guidance: input.guidance,
     tags: ['scene_permission'],
+    groundingClass: 'scene_context',
     speakerResolution: 'primary_character_direct',
     behaviorBoundary: {
       variationPreserved: true,

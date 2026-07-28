@@ -6,14 +6,16 @@
 
 现在不启用生产向量。
 
-祁煜与黎深当前运行包各 10 条；沈星回、秦彻、夏以昼各有 1 条经过最终来源复核的
-窄声音候选，共 23 条。经过 scope、surface、purpose、route、knowledge 与 cooldown
-硬门后，一个入口实际只面对 0–7 条合法候选；信号、词面相关性和回执轮换已经足够。
-此时增加 embedding 主要会引入模型文件、阈值、设备资源和版本漂移，收益很小。
+五位内置角色当前运行包共 56 条（11 / 11 / 11 / 12 / 11）。其中包含 37 条四路
+核心资产、15 条受 surface 限制的投影和 4 条保留校准基线。经过 scope、surface、
+purpose、route、lane、knowledge、grounding 与 cooldown 硬门后，一个入口实际仍只
+面对很小的合法候选集；普通 Chat 最多取 1 条，其他合法入口最多 1–3 条。当前
+41 个语义检索 fixture 与 15 个 surface fixture 没有证明 embedding 能带来值得设备
+成本的净收益。
 
-386 条祁煜 / 黎深来源处置是 provenance 账，不是 386 条运行时材料。它们应先聚类成
-少量非逐字 guidance；向量可以在私有工位辅助离线聚类与覆盖检查，但不能把来源账逐条
-变成 Prompt 器官。
+909 条来源处置是 provenance 账，不是 909 条运行时材料。416 条共同支撑当前 56 条
+运行库，493 条保留为 exact-scope、candidate、holdout 或不足证据。向量可以在私有
+工位辅助离线聚类与覆盖检查，但不能把来源账逐条变成 Prompt 器官。
 
 真正可能需要向量的是长期关系素材：同一
 `progressBundleId + personaMaskId + charId` 下积累了大量不同说法、相似情境和模糊的

@@ -13,6 +13,7 @@ import {
   COMPANION_MATERIAL_SCHEMA_VERSION,
   type CompanionMaterialDeliveryItem,
   type CompanionMaterialDeliveryReceipt,
+  type CompanionMaterialGroundingRequirement,
   type CompanionMaterialRecord,
   type CompanionMaterialRetrievalHints,
   type CompanionMaterialSemanticRank,
@@ -80,6 +81,7 @@ export const companionMaterialSetFingerprint = (
       routeId: record.routeId || '',
       branchId: record.branchId || '',
       sceneId: record.sceneId || '',
+      routeLane: record.routeLane || '',
       eligibleModes: [...record.eligibleModes].sort(),
       eligiblePurposes: [...record.eligiblePurposes].sort(),
       tags: [...record.tags].sort(),
@@ -90,6 +92,20 @@ export const companionMaterialSetFingerprint = (
             suppressSignals: [...(record.retrievalHints.suppressSignals || [])].sort(),
             variationGroup: record.retrievalHints.variationGroup || '',
             fallbackPriority: record.retrievalHints.fallbackPriority ?? null,
+          }
+        : null,
+      groundingPolicy: record.groundingPolicy
+        ? {
+            allOf: [...(record.groundingPolicy.allOf || [])]
+              .map(item => ({ kind: item.kind, claimKey: item.claimKey }))
+              .sort((left, right) => (
+                left.kind.localeCompare(right.kind) || left.claimKey.localeCompare(right.claimKey)
+              )),
+            anyOf: [...(record.groundingPolicy.anyOf || [])]
+              .map(item => ({ kind: item.kind, claimKey: item.claimKey }))
+              .sort((left, right) => (
+                left.kind.localeCompare(right.kind) || left.claimKey.localeCompare(right.claimKey)
+              )),
           }
         : null,
       relationshipFloor: record.relationshipFloor || '',
@@ -152,6 +168,7 @@ const exactTurnDuplicateKey = (record: CompanionMaterialRecord): string => [
   record.routeId || '',
   record.branchId || '',
   record.sceneId || '',
+  record.routeLane || '',
   [...record.eligibleModes].sort().join(','),
   [...record.eligiblePurposes].sort().join(','),
 ].join('::');
@@ -165,6 +182,7 @@ const routeMatches = (
   if (record.routeId && record.routeId !== request.routeRef.routeId) return false;
   if (record.branchId && record.branchId !== request.routeRef.branchId) return false;
   if (record.continuity === 'scene_only' && record.sceneId !== request.routeRef.sceneId) return false;
+  if (record.routeLane && record.routeLane !== request.routeRef.lane) return false;
   return true;
 };
 
@@ -176,6 +194,20 @@ const sameUsageClass = (
   && receipt.mode === request.mode
   && receipt.purpose === request.purpose
 );
+
+const sameRouteRef = (
+  left: CompanionMaterialDeliveryReceipt['routeRef'],
+  right: CompanionMaterialSelectionRequest['routeRef'],
+): boolean => Boolean(
+  left
+  && right
+  && left.routeId === right.routeId
+  && left.branchId === right.branchId
+  && left.sceneId === right.sceneId
+  && left.lane === right.lane,
+);
+
+const CHAT_STABLE_REUSE_COOLDOWN_MS = 60 * 60 * 1000;
 
 const wasDelivered = (
   record: CompanionMaterialRecord,
@@ -211,17 +243,84 @@ const materialAvailable = (params: {
     record.relationshipFloor
     && relationshipStageRank[request.relationshipStage] < relationshipStageRank[record.relationshipFloor]
   ) return { available: false, reason: 'relationship_floor' };
+  if (record.groundingPolicy) {
+    const groundingRefs = (request.groundingRefs || [])
+      .filter(ref => (
+        ref.occurredAt <= request.now
+        && (ref.validUntil === undefined || ref.validUntil >= request.now)
+      ));
+    const matchesRequirement = (
+      requirement: CompanionMaterialGroundingRequirement,
+    ): boolean => groundingRefs.some(ref => (
+      ref.kind === requirement.kind
+      && normalize(ref.claimKey) === normalize(requirement.claimKey)
+      && (requirement.refId === undefined || ref.refId === requirement.refId)
+      && (requirement.revision === undefined || ref.revision === requirement.revision)
+      && (requirement.issuerId === undefined || ref.issuerId === requirement.issuerId)
+      && (
+        requirement.authorityDigest === undefined
+        || ref.authorityDigest === requirement.authorityDigest
+      )
+    ));
+    const allOf = record.groundingPolicy.allOf || [];
+    const anyOf = record.groundingPolicy.anyOf || [];
+    if (allOf.some(item => !matchesRequirement(item))) {
+      return { available: false, reason: 'grounding' };
+    }
+    if (
+      anyOf.length
+      && !anyOf.some(item => matchesRequirement(item))
+    ) {
+      return { available: false, reason: 'grounding' };
+    }
+  }
 
   const allUsagePast = wasDelivered(record, receipts);
   if (record.maxDeliveries !== undefined && allUsagePast.length >= record.maxDeliveries) {
     return { available: false, reason: 'duplicate' };
   }
   const sameUsagePast = wasDelivered(record, receipts, request);
+  const isOrdinaryChatCalibration = (
+    request.surface === 'chat'
+    && request.mode === 'remote_chat'
+    && request.purpose === 'stable_context'
+    && (
+      record.slot === 'stable_character_voice'
+      || record.slot === 'stable_base'
+      || record.slot === 'relevant_stable_details'
+    )
+  );
+  const effectiveCooldownMs = Math.max(
+    record.cooldownMs || 0,
+    isOrdinaryChatCalibration ? CHAT_STABLE_REUSE_COOLDOWN_MS : 0,
+  );
   if (
-    record.cooldownMs
-    && sameUsagePast.some(receipt => request.now - receipt.occurredAt < record.cooldownMs!)
+    effectiveCooldownMs
+    && sameUsagePast.some(receipt => request.now - receipt.occurredAt < effectiveCooldownMs)
   ) {
     return { available: false, reason: 'cooldown' };
+  }
+  if (
+    request.purpose === 'scene_planning'
+    && (
+      record.slot === 'scene_affordances'
+      || record.slot === 'motive_candidates'
+    )
+  ) {
+    if (!request.routeRef) return { available: false, reason: 'continuity' };
+    const alreadyDeliveredToScenePlan = receipts.some(receipt => (
+      receipt.status === 'delivered'
+      && receipt.consumerRef.kind === 'scene_plan'
+      && scopesMatch(receipt.scope, request.scope)
+      && sameRouteRef(receipt.routeRef, request.routeRef)
+      && receipt.delivered.some(item => (
+        item.materialId === record.id
+        && item.materialRevision === record.revision
+      ))
+    ));
+    if (alreadyDeliveredToScenePlan) {
+      return { available: false, reason: 'duplicate' };
+    }
   }
   return { available: true };
 };
@@ -426,6 +525,7 @@ const scoreMaterial = (params: {
       : 0;
   const fallback = hints.activationPolicy === 'voice_fallback' && !strong;
   const reasons = ['scope_match', 'surface_match', 'purpose_match'];
+  if (record.groundingPolicy) reasons.push('grounding_match');
   if (discriminatingSignalHits.length) reasons.push(`semantic_signals:${discriminatingSignalHits.join(',')}`);
   if (lexical > 0) reasons.push(`lexical:${lexical.toFixed(3)}`);
   if (semanticEvidence > 0) {

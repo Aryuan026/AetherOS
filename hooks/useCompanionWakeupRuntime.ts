@@ -25,10 +25,12 @@ import {
     strictRelationshipScopeForProfile,
 } from '../utils/messageContext';
 import {
+    buildWakeupCompanionMaterialRequest,
     prepareCompanionMaterialPrompt,
     recordPreparedCompanionMaterialPromptDelivery,
     type PreparedCompanionMaterialPrompt,
 } from '../utils/companionMaterial';
+import { buildCompanionWakeupModelMessages } from '../utils/companionWakeupModelMessages';
 
 const TICK_INTERVAL_MS = 60 * 1000;
 const SENT_WAKEUP_HISTORY_LIMIT = 500;
@@ -193,50 +195,33 @@ const renderWakeupWithAI = async (
     const realityContext = await buildRealitySyncContext(realtimeConfig, 'proactive_letter');
     let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
     try {
-        const materialSemanticTags = rule.priority === 'care'
-            ? ['care_needed', 'proactive_care', rule.kind]
-            : ['proactive_intent', 'opening', rule.kind];
-        preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+        preparedCompanionMaterial = await prepareCompanionMaterialPrompt(
+          buildWakeupCompanionMaterialRequest({
             requestId: `wakeup-material:${rule.id}:${requestTime}`,
             scope: relationshipScope,
-            surface: 'proactive_letter',
-            mode: 'proactive_letter',
-            purpose: 'proactive_intent',
+            ruleRefId: `wakeup-rule:${rule.id}:${requestTime}`,
             query: `${rule.title} ${rule.value || ''}`.trim(),
-            semanticTags: materialSemanticTags,
-            relationshipStage: 'unknown',
-            budgetChars: 600,
-            maxItems: 2,
-            now: requestTime,
-        });
+            occurredAt: requestTime,
+            carePriority: rule.priority === 'care',
+            ruleKind: rule.kind,
+          }),
+        );
     } catch (error) {
         console.warn('Companion material proactive context unavailable:', error);
     }
-    const baseContext = [
-        ContextBuilder.buildCoreContext(char, userProfile),
-        worldlineMemory.markdown,
-        realityContext,
-        preparedCompanionMaterial?.markdown,
-    ].filter(Boolean).join('\n\n');
     const now = new Date();
     const timeText = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const systemPrompt = `${baseContext}
-
-### 主动来信
-现在是 ${timeText}。
-你正在主动给 ${userProfile.name || '对方'} 发一条消息，不是回复刚刚的新消息。
-触发意图：${rule.value || rule.title}
-规则标题：${rule.title}
-
-输出要求：
-- 只输出真正要发送的消息正文。
-- 一到两句话，像手机聊天里自然发出的短消息；最多只用一次换行。
-- 最近对话只用于判断语气，不要接续或回答用户刚刚说的话。
-- 如果是吃饭、睡觉这类照看，只轻轻提醒用户，不要连续追问，也不要展开成多轮对话。
-- 遵守现实同频规则。不要为了天气或时间强行越过世界边界。
-- 不要解释规则，不要写时间戳，不要写“系统提示”。`;
-
-    const userPrompt = `最近对话片段：\n${visibleRecent}\n\n请按角色口吻写这次主动来信。`;
+    const messages = buildCompanionWakeupModelMessages({
+        coreContext: ContextBuilder.buildCoreContext(char, userProfile),
+        worldlineContext: worldlineMemory.markdown,
+        realityContext,
+        companionMaterialContext: preparedCompanionMaterial?.markdown,
+        timeText,
+        userName: userProfile.name,
+        ruleTitle: rule.title,
+        ruleValue: rule.value,
+        visibleRecent,
+    });
     const baseUrl = apiConfig.baseUrl.replace(/\/+$/, '');
     const data = await safeFetchJson(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -246,10 +231,7 @@ const renderWakeupWithAI = async (
         },
         body: JSON.stringify({
             model: apiConfig.model,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt },
-            ],
+            messages,
             temperature: 0.75,
             stream: false,
         }),

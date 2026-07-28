@@ -1,7 +1,7 @@
 # 陪伴素材无向量召回验收
 
 日期：2026-07-28
-状态：本地候选代码 Green；没有提交、推送或部署
+状态：五人完整四路素材、真实消费者与全量门禁 Green；发布状态以当前 Git revision 与测试站 revision 为准
 
 ## 验收到底在验什么
 
@@ -35,18 +35,39 @@
 明确的语义参考。普通 Chat 每轮最多一条；其他入口未来可在各自预算下使用
 1–3 条。选择少不等于素材浪费：没有被本轮选中的材料仍然保留为未来场景的可能性。
 
+## 909 条的最终编译结果
+
+来源不是被压成十几条“代表作”，而是先完整审读，再按运行权限分层：
+
+| 层 | 数量 | 含义 |
+| --- | ---: | --- |
+| 冻结来源 | 909 | 全部有 disposition，0 unresolved |
+| 支撑当前运行库 | 416 | 327 条直接支撑，89 条作为去名/留出验证 |
+| 留在运行库外 | 493 | 精确范围、候选支撑、holdout 或 1 条证据不足 |
+| 当前运行记录 | 56 | 祁煜 11、黎深 11、沈星回 11、秦彻 12、夏以昼 11 |
+| 待权威候选 | 21 | 角色事实、明确线程/外部物件或 Director/ScenePlan 成立后才可晋升 |
+
+56 条运行记录按 slot 分为：8 条语言指纹、5 条稳定 base、5 条相关稳定细节、
+18 条 opening、14 条 proactive、1 条 motive candidate、5 条 scene affordance。
+21 条待权威候选另含 5 条稳定细节、5 条 opening、1 条 motive 和 10 条 scene。
+
+这解释了“物尽其用”和“每轮稀疏”为什么可以同时成立：来源越完整，后台可选择的
+角度越丰富；真正送给模型的仍是普通 Chat 最多 1 条、适合的开场/主动/场景最多
+1–3 条。没有匹配时合法返回 NONE。
+
 ## 这次完整 Prompt 复读
 
-本轮使用真实 `ChatPrompts.buildSystemPrompt()`、祁煜/黎深内置角色卡、默认挂载
-资料和生产 selector 拼装了两份代表性长上文；另外三位只接受窄命中与零素材探针，
-不因缺少同等成熟的人类校准角色卡而伪造完整表现结论：
+本轮不再用另写的审计模板模拟入口。Chat、自动 Call opening、Date opening 与 Wakeup
+分别提取了运行时共同使用的纯 `messages[]` builder；审计直接读取五位内置角色当前
+角色卡，并生成 `5 x 4 = 20` 份真正的 provider-facing payload：
 
-| 角色 | 默认资料包 | 资料正文字符 | 最终 System Prompt 字符 |
-| --- | ---: | ---: | ---: |
-| 祁煜 | 9 | 9,232 | 13,347 |
-| 黎深 | 9 | 8,446 | 12,456 |
+- 带素材和不带素材的非 system 消息完全一致；
+- 素材只在 system 上下文出现一次；
+- 当前用户输入、最近记录和各 surface 的真实格式约束保持原位；
+- source ref、原文、candidate、current motive 与工具策略不进入素材段；
+- 审计不调用 provider，也不写 delivery receipt。
 
-这不是 token 费用承诺，只是同一代码版本下的相对密度观察。真正明显的压力来自：
+这不是 token 费用承诺，也不冒充自然多轮表现已经观察。真正明显的压力仍来自：
 
 - 默认世界书和角色资料量很大；
 - 原 Chat 通用质量规范又重复要求细节、主动生活、独立判断和打破安慰结构；
@@ -79,25 +100,36 @@
 更像角色的落脚点，同时仍觉得自己可以选择别的合理回应。当前答案是“可以”，且
 比修改前少了明显的流程压力。
 
+另外三位也不再只靠一条通用“好伴侣”指纹：
+
+- 沈星回更容易从近处、空间与安静变化起念，但仍可留白或转向自己的节奏；
+- 秦彻更容易注意门槛、代价和选择空间，但不被固定成挑衅或掌控；
+- 夏以昼更容易接住日常画面的来回与熟悉温度，但不被固定成插科打诨。
+
+这些是可变的注意角度，不是输出步骤。角色卡、现场事实、关系状态和模型自己的
+判断仍然拥有更高权重。
+
 ## 当前能力真相
 
 | 层级 | 状态 |
 | --- | --- |
-| available | 五位角色共 23 条 active 运行素材；909 条来源均完成 disposition 守恒。祁煜/黎深 20 条，另外三位各 1 条窄声音候选；其余已复核簇保留 disabled / withheld / ScenePlan gate |
-| selected | 普通 Chat 无向量 selector、相关性、轮换、预算和零素材路径可用 |
+| available | 五位角色共 56 条 active 运行素材；909 条来源均完成 disposition 守恒。另有 21 条 reviewed candidate 仍禁止运行时递送 |
+| selected | 普通 Chat、Call、Date opening、Wakeup 使用同一无向量 selector、相关性、轮换、预算和零素材路径 |
 | delivered | Chat、主动来信、Call、Date / Meet 只在最终非空内容成立后写 `truthEffect:none` receipt |
-| full-prompt read | 已用真实角色卡、默认资料、规则与生产 selector 完成 API 侧复读 |
+| full-prompt read | 已用五位真实角色卡与四个运行时共用 message builder 完成 20 份完整 API 侧复读 |
 | natural behavior observed | 仍需自然多轮体验；它用于发现倾向，不是证明永不 OOC |
-| 909 material complete | 是，`386 + 523 = 909 accounted + 0 dropped`；这不等于 909 条逐条递送 |
-| other three full persona complete | 否；各 1 条 source-grounded 窄 voice 已多出口化并安全接入，但既有角色卡仍是占位资料，普通分享/自生活/reentry 缺口不由素材层冒充填满 |
-| committed / pushed / deployed | 否 |
+| 909 material complete | 是，`416 active-library support + 493 retained = 909 accounted + 0 unresolved`；这不等于 909 条逐条递送 |
+| candidate promotion | 21 条 fail-closed draft 路径通过合同；`runtimeAvailable=0 / persisted=0 / delivered=0 / publisher=not-installed` |
+| other three persona caveat | 四路素材已齐；但既有角色卡的人类校准深度仍低于祁煜/黎深，素材层不冒充角色卡完整度 |
 
 ## 仍然保留的边界
 
-- Call、主动来信与 Date / Meet 的稳定层消费者已接；ScenePlan 的 motive / affordance 裁决仍 HOLD；
+- Call、主动来信与 Date / Meet 的稳定层消费者已接；纯 ScenePlan 合同已 Green，
+  但 StoryDesk 的真实 ScenePlan 消费者仍 HOLD；
 - 909 条素材的内容分析与归类由专门工位完成，当前运行树只接收结案 artifact 的
-  非逐字 active records；disabled / withheld 处置不能被运行树擅自翻案；
+  非逐字 active records；候选当前只能编译为 disabled draft，未来必须由独立
+  canonical publisher 重新核验后才能晋升，运行树不能擅自翻案；
 - 浏览器/APK embedding producer / store / toggle 继续 HOLD；可信 rank seam 与自动 lexical fallback 已准备；
-- 三位窄 voice 只在 explicit premise / tradeoff 下命中，普通括号动作与“怎么办”不再
-  误触；每条有 6 小时 cooldown，邻接轮不重复注入；
+- 普通 Chat 的同一条素材在真实递送后 1 小时内不复用；scene material 在同一 exact
+  route / branch / scene / lane 内只递送一次，新的场景身份可重新选择；
 - 不增加玩家可见的测试入口。玩家最终看到的只有自然角色表现。

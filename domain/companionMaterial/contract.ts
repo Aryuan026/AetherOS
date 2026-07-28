@@ -6,6 +6,7 @@ import type { HistoryScope } from '../historyImport/types.ts';
 import {
   COMPANION_MATERIAL_SCHEMA_VERSION,
   type CompanionMaterialKind,
+  type CompanionMaterialGroundingKind,
   type CompanionMaterialDeliveryReceipt,
   type CompanionMaterialRecord,
   type CompanionMaterialRenderPolicy,
@@ -27,9 +28,27 @@ const isSignal = (value: unknown): value is string => (
   /^[a-z0-9][a-z0-9_:-]{0,63}$/.test(normalizedSignal(value))
 );
 
+const isSha256 = (value: unknown): value is string => (
+  typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value)
+);
+
 const sameScope = (left: HistoryScope, right: HistoryScope): boolean => (
   createHistoryScopeKey(left) === createHistoryScopeKey(right)
 );
+
+const GROUNDING_KINDS = new Set<CompanionMaterialGroundingKind>([
+  'live_user_turn',
+  'call_session',
+  'observed_time_gap',
+  'canonical_thread_receipt',
+  'external_artifact_receipt',
+  'character_canon_evidence',
+  'wakeup_rule',
+  'character_life_receipt',
+  'confirmed_user_state',
+  'scene_context',
+  'scene_plan',
+]);
 
 export const COMPANION_MATERIAL_SLOT_POLICY: Record<
   CompanionMaterialKind,
@@ -100,6 +119,88 @@ export const validateCompanionMaterialRecord = (record: CompanionMaterialRecord)
       errors.push('material retrievalHints.fallbackPriority must be between 0 and 100');
     }
   }
+  if (record.groundingPolicy) {
+    const { allOf = [], anyOf = [] } = record.groundingPolicy;
+    if (!allOf.length && !anyOf.length) {
+      errors.push('material groundingPolicy requires allOf or anyOf');
+    }
+    const requirementKey = (item: typeof allOf[number]): string => [
+      item.kind,
+      normalizedSignal(item.claimKey),
+      item.refId || '',
+      item.revision || '',
+      item.issuerId || '',
+      item.authorityDigest || '',
+    ].join(':');
+    const allOfKeys = allOf.map(requirementKey);
+    const anyOfKeys = anyOf.map(requirementKey);
+    if (!unique(allOfKeys)) errors.push('material groundingPolicy.allOf must be unique');
+    if (!unique(anyOfKeys)) errors.push('material groundingPolicy.anyOf must be unique');
+    if (!allOf.every(item => GROUNDING_KINDS.has(item.kind) && isSignal(item.claimKey))) {
+      errors.push('material groundingPolicy.allOf contains an invalid kind');
+    }
+    if (!anyOf.every(item => GROUNDING_KINDS.has(item.kind) && isSignal(item.claimKey))) {
+      errors.push('material groundingPolicy.anyOf contains an invalid kind');
+    }
+    if (new Set(anyOf.map(item => item.kind)).size > 1) {
+      errors.push('material groundingPolicy.anyOf cannot mix authority kinds');
+    }
+    [...allOf, ...anyOf].forEach((item, index) => {
+      const exactFields = [
+        item.refId,
+        item.revision,
+        item.issuerId,
+        item.authorityDigest,
+      ];
+      const exactCount = exactFields.filter(value => value !== undefined).length;
+      if (exactCount !== 0 && exactCount !== exactFields.length) {
+        errors.push(`material groundingPolicy requirement[${index}] exact authority binding is incomplete`);
+      }
+      if (item.refId !== undefined && !isNonEmpty(item.refId)) {
+        errors.push(`material groundingPolicy requirement[${index}].refId is invalid`);
+      }
+      if (item.revision !== undefined && (!Number.isInteger(item.revision) || item.revision < 1)) {
+        errors.push(`material groundingPolicy requirement[${index}].revision is invalid`);
+      }
+      if (item.issuerId !== undefined && !isNonEmpty(item.issuerId)) {
+        errors.push(`material groundingPolicy requirement[${index}].issuerId is invalid`);
+      }
+      if (item.authorityDigest !== undefined && !isSha256(item.authorityDigest)) {
+        errors.push(`material groundingPolicy requirement[${index}].authorityDigest is invalid`);
+      }
+    });
+  }
+  if (record.promotionAuthority) {
+    const binding = record.promotionAuthority;
+    if (![
+      'character_canon_review',
+      'canonical_thread_or_artifact',
+      'director_scene_plan',
+      'director_motive',
+    ].includes(binding.authorityKind)) {
+      errors.push('material promotionAuthority.authorityKind is invalid');
+    }
+    if (!isNonEmpty(binding.receiptId)) errors.push('material promotionAuthority.receiptId is required');
+    if (!Number.isInteger(binding.receiptRevision) || binding.receiptRevision < 1) {
+      errors.push('material promotionAuthority.receiptRevision is invalid');
+    }
+    if (!isSha256(binding.receiptDigest)) {
+      errors.push('material promotionAuthority.receiptDigest is invalid');
+    }
+    if (!isNonEmpty(binding.issuerId)) errors.push('material promotionAuthority.issuerId is required');
+    const exactRequirements = [
+      ...(record.groundingPolicy?.allOf || []),
+      ...(record.groundingPolicy?.anyOf || []),
+    ].filter(item => (
+      item.refId === binding.receiptId
+      && item.revision === binding.receiptRevision
+      && item.issuerId === binding.issuerId
+      && item.authorityDigest === binding.receiptDigest
+    ));
+    if (exactRequirements.length !== 1) {
+      errors.push('material promotionAuthority must bind exactly one grounding requirement');
+    }
+  }
   if (!record.sourceRefs.length) errors.push('material requires a private source reference');
   if (!Number.isInteger(record.revision) || record.revision < 1) errors.push('material revision must be a positive integer');
   if (!Number.isFinite(record.createdAt) || !Number.isFinite(record.updatedAt)) errors.push('material timestamps must be finite');
@@ -122,6 +223,15 @@ export const validateCompanionMaterialRecord = (record: CompanionMaterialRecord)
     errors.push('material kind, slot, and renderPolicy are incompatible');
   }
   if (record.continuity === 'branch' && !isNonEmpty(record.branchId)) errors.push('branch material requires branchId');
+  if (record.routeLane !== undefined && !['mainline', 'if_line'].includes(record.routeLane)) {
+    errors.push('material routeLane is invalid');
+  }
+  if (
+    record.routeLane !== undefined
+    && (!isNonEmpty(record.routeId) || !isNonEmpty(record.branchId))
+  ) {
+    errors.push('material routeLane requires routeId and branchId');
+  }
   if (record.continuity === 'scene_only' && (!isNonEmpty(record.branchId) || !isNonEmpty(record.sceneId))) {
     errors.push('scene-only material requires branchId and sceneId');
   }
@@ -165,6 +275,53 @@ export const validateCompanionMaterialSelectionRequest = (
   }
   if (request.contextTags && (!unique(request.contextTags) || !request.contextTags.every(isSignal))) {
     errors.push('material selection contextTags must be unique normalized signals');
+  }
+  if (request.groundingRefs) {
+    const groundingKeys = request.groundingRefs.map(ref => (
+      `${ref.kind}:${normalizedSignal(ref.claimKey)}:${ref.refId}:${ref.revision}`
+    ));
+    if (!unique(groundingKeys)) errors.push('material selection groundingRefs must be unique');
+    request.groundingRefs.forEach((ref, index) => {
+      if (!GROUNDING_KINDS.has(ref.kind)) {
+        errors.push(`material selection groundingRefs[${index}].kind is invalid`);
+      }
+      if (!isSignal(ref.claimKey)) {
+        errors.push(`material selection groundingRefs[${index}].claimKey is invalid`);
+      }
+      if (!isNonEmpty(ref.refId)) {
+        errors.push(`material selection groundingRefs[${index}].refId is required`);
+      }
+      if (!Number.isInteger(ref.revision) || ref.revision < 1) {
+        errors.push(`material selection groundingRefs[${index}].revision must be a positive integer`);
+      }
+      if (ref.issuerId !== undefined && !isNonEmpty(ref.issuerId)) {
+        errors.push(`material selection groundingRefs[${index}].issuerId is invalid`);
+      }
+      if (ref.authorityDigest !== undefined && !isSha256(ref.authorityDigest)) {
+        errors.push(`material selection groundingRefs[${index}].authorityDigest is invalid`);
+      }
+      if ((ref.issuerId === undefined) !== (ref.authorityDigest === undefined)) {
+        errors.push(`material selection groundingRefs[${index}] authority binding is incomplete`);
+      }
+      errors.push(...validateHistoryScope(ref.scope).map(error => (
+        `material selection groundingRefs[${index}].scope: ${error}`
+      )));
+      if (!sameScope(ref.scope, request.scope)) {
+        errors.push(`material selection groundingRefs[${index}] must match request scope`);
+      }
+      if (!Number.isFinite(ref.occurredAt)) {
+        errors.push(`material selection groundingRefs[${index}].occurredAt must be finite`);
+      }
+      if (Number.isFinite(ref.occurredAt) && ref.occurredAt > request.now) {
+        errors.push(`material selection groundingRefs[${index}].occurredAt is in the future`);
+      }
+      if (ref.validUntil !== undefined && !Number.isFinite(ref.validUntil)) {
+        errors.push(`material selection groundingRefs[${index}].validUntil must be finite`);
+      }
+      if (ref.validUntil !== undefined && ref.validUntil < ref.occurredAt) {
+        errors.push(`material selection groundingRefs[${index}].validUntil precedes occurredAt`);
+      }
+    });
   }
   if (request.semanticRank) {
     if (!isNonEmpty(request.semanticRank.manifestId)) errors.push('material semanticRank manifestId is required');

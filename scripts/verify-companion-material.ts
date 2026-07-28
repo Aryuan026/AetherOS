@@ -216,6 +216,152 @@ const earlyRelationshipSelection = selectCompanionMaterialFromRecords({
 assert.equal(earlyRelationshipSelection.items.length, 0);
 assert.ok(earlyRelationshipSelection.warnings.some(item => item === 'excluded_relationship_floor:1'));
 
+const groundedOwnThread = material({
+  id: 'material-grounded-own-thread',
+  kind: 'proactive_seed',
+  slot: 'proactive_seeds',
+  guidance: '只从已经有权读取的生活事项起念；若没有这样的事项，就不制造角色刚刚经历了什么。',
+  renderPolicy: 'transform_required',
+  eligibleModes: ['proactive_letter'],
+  eligiblePurposes: ['proactive_intent'],
+  tags: ['proactive', 'independent_life'],
+  retrievalHints: {
+    activationPolicy: 'relevance_required',
+    positiveSignals: ['proactive_intent', 'independent_life'],
+  },
+  groundingPolicy: {
+    allOf: [{ kind: 'character_life_receipt', claimKey: 'self_life_thread' }],
+  },
+  sourceRefs: [{
+    storeFamily: 'private_review',
+    recordId: 'review-grounded-own-thread',
+    revision: 1,
+    sourceFingerprint: 'grounded-own-thread-fp',
+  }],
+});
+assertValidCompanionMaterialRecord(groundedOwnThread);
+const ungroundedOwnThreadSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-own-thread-without-grounding',
+    surface: 'proactive_letter',
+    mode: 'proactive_letter',
+    purpose: 'proactive_intent',
+    semanticTags: ['proactive_intent', 'independent_life'],
+  }),
+  records: [groundedOwnThread],
+});
+assert.deepEqual(ungroundedOwnThreadSelection.items, []);
+assert.ok(ungroundedOwnThreadSelection.warnings.includes('excluded_grounding:1'));
+
+const expiredGroundingSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-own-thread-expired-grounding',
+    surface: 'proactive_letter',
+    mode: 'proactive_letter',
+    purpose: 'proactive_intent',
+    semanticTags: ['proactive_intent', 'independent_life'],
+    groundingRefs: [{
+      kind: 'character_life_receipt',
+      claimKey: 'self_life_thread',
+      refId: 'character-life-a',
+      revision: 1,
+      scope,
+      occurredAt: T0 - 10_000,
+      validUntil: T0 - 1,
+    }],
+  }),
+  records: [groundedOwnThread],
+});
+assert.deepEqual(expiredGroundingSelection.items, []);
+assert.ok(expiredGroundingSelection.warnings.includes('excluded_grounding:1'));
+
+const wrongAuthorityGroundingSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-own-thread-wrong-authority',
+    surface: 'proactive_letter',
+    mode: 'proactive_letter',
+    purpose: 'proactive_intent',
+    semanticTags: ['proactive_intent', 'independent_life'],
+    groundingRefs: [{
+      kind: 'wakeup_rule',
+      claimKey: 'self_life_thread',
+      refId: 'wakeup-rule-cannot-prove-life',
+      revision: 1,
+      scope,
+      occurredAt: T0,
+      validUntil: T0 + 60_000,
+    }],
+  }),
+  records: [groundedOwnThread],
+});
+assert.deepEqual(wrongAuthorityGroundingSelection.items, []);
+assert.ok(wrongAuthorityGroundingSelection.warnings.includes('excluded_grounding:1'));
+
+const wrongClaimGroundingSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-own-thread-wrong-claim',
+    surface: 'proactive_letter',
+    mode: 'proactive_letter',
+    purpose: 'proactive_intent',
+    semanticTags: ['proactive_intent', 'independent_life'],
+    groundingRefs: [{
+      kind: 'character_life_receipt',
+      claimKey: 'unrelated_life_claim',
+      refId: 'character-life-unrelated',
+      revision: 1,
+      scope,
+      occurredAt: T0,
+      validUntil: T0 + 60_000,
+    }],
+  }),
+  records: [groundedOwnThread],
+});
+assert.deepEqual(wrongClaimGroundingSelection.items, []);
+assert.ok(wrongClaimGroundingSelection.warnings.includes('excluded_grounding:1'));
+
+const groundedOwnThreadSelection = selectCompanionMaterialFromRecords({
+  request: request({
+    requestId: 'request-own-thread-grounded',
+    surface: 'proactive_letter',
+    mode: 'proactive_letter',
+    purpose: 'proactive_intent',
+    semanticTags: ['proactive_intent', 'independent_life'],
+    groundingRefs: [{
+      kind: 'character_life_receipt',
+      claimKey: 'self_life_thread',
+      refId: 'character-life-a',
+      revision: 1,
+      scope,
+      occurredAt: T0 - 10_000,
+      validUntil: T0 + 60_000,
+    }],
+  }),
+  records: [groundedOwnThread],
+});
+assert.deepEqual(groundedOwnThreadSelection.selectedMaterialIds, [groundedOwnThread.id]);
+assert.ok(groundedOwnThreadSelection.items[0].selectionReasons.includes('grounding_match'));
+
+assert.throws(
+  () => selectCompanionMaterialFromRecords({
+    request: request({
+      requestId: 'request-own-thread-wrong-grounding-scope',
+      surface: 'proactive_letter',
+      mode: 'proactive_letter',
+      purpose: 'proactive_intent',
+      groundingRefs: [{
+        kind: 'character_life_receipt',
+        claimKey: 'self_life_thread',
+        refId: 'character-life-b',
+        revision: 1,
+        scope: { ...scope, personaMaskId: 'mask-b' },
+        occurredAt: T0,
+      }],
+    }),
+    records: [groundedOwnThread],
+  }),
+  /groundingRefs\[0\] must match request scope/,
+);
+
 const noRouteSelection = selectCompanionMaterialFromRecords({
   request: request({
     requestId: 'request-no-route',

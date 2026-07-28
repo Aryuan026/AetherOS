@@ -69,6 +69,10 @@ const normalizeLibrary = (
   const records = data.records.filter((record): record is CompanionMaterialRecord => {
     try {
       assertValidCompanionMaterialRecord(record);
+      // Candidate-promotion records require a future canonical publisher.
+      // Reject them on read as well as write so raw assets, legacy backups, or
+      // interrupted old builds cannot bypass the fail-closed boundary.
+      if (record.promotionAuthority) return false;
       return ownerScopesMatch(record.ownerScope, ownerScope);
     } catch {
       return false;
@@ -163,6 +167,11 @@ export const saveCompanionMaterialLibrary = async (params: {
   const ids = new Set<string>();
   const records = params.records.map(record => {
     assertValidCompanionMaterialRecord(record);
+    if (record.promotionAuthority) {
+      throw new Error(
+        `Material ${record.id} requires the canonical reviewed-candidate promotion publisher`,
+      );
+    }
     if (!ownerScopesMatch(record.ownerScope, params.ownerScope)) {
       throw new Error(`Material ${record.id} does not belong to this library scope`);
     }

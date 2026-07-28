@@ -3,6 +3,12 @@ import {
   type CompanionMaterialRecord,
   type CompanionMaterialSourceRef,
 } from './types.ts';
+import {
+  BUILT_IN_DEEPSPACE_FOUR_LANE_REVIEWED_MATERIAL,
+} from './builtInDeepspaceFourLaneReviewed.ts';
+import {
+  BUILT_IN_DEEPSPACE_SURFACE_PROJECTIONS,
+} from './builtInDeepspaceSurfaceProjections.ts';
 
 /**
  * These are candidate, character-owned materials for the five calibrated
@@ -495,12 +501,26 @@ export const BUILT_IN_XIAYIZHOU_REVIEWED_MATERIAL: readonly CompanionMaterialRec
   }),
 ];
 
+const RETAINED_BASELINE_IDS = new Set([
+  'builtin-qiyu-voice-playful-turn-v1',
+  'builtin-lishen-voice-concrete-entry-v1',
+  'builtin-lishen-voice-calm-confirmation-v1',
+  'builtin-lishen-voice-ask-before-concluding-v1',
+]);
+
+/**
+ * Rich reviewed library: 37 four-lane semantic assets backed by the full
+ * 909-source adjudication, fifteen fact-free surface projections over those
+ * reviewed assets, plus four earlier voice operators that passed independent
+ * prompt-view evaluation. Selection remains sparse; this array is not a prompt.
+ */
 export const BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL: readonly CompanionMaterialRecord[] = [
-  ...BUILT_IN_QIYU_REVIEWED_MATERIAL,
-  ...BUILT_IN_LISHEN_REVIEWED_MATERIAL,
-  ...BUILT_IN_SHENXINGHUI_REVIEWED_MATERIAL,
-  ...BUILT_IN_QINCHE_REVIEWED_MATERIAL,
-  ...BUILT_IN_XIAYIZHOU_REVIEWED_MATERIAL,
+  ...BUILT_IN_DEEPSPACE_FOUR_LANE_REVIEWED_MATERIAL,
+  ...BUILT_IN_DEEPSPACE_SURFACE_PROJECTIONS,
+  ...[
+    ...BUILT_IN_QIYU_REVIEWED_MATERIAL,
+    ...BUILT_IN_LISHEN_REVIEWED_MATERIAL,
+  ].filter(record => RETAINED_BASELINE_IDS.has(record.id)),
 ];
 
 export const reviewedBuiltInDeepspaceMaterialForCharacter = (

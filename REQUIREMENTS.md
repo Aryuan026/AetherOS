@@ -49,6 +49,21 @@
   overlap/compression, latency, and fallback behavior. Phase 2 will use those
   traces to design surface/model-aware token delivery instead of one universal
   hard-coded limit.
+- Built-in and imported companion material must use the same typed four-lane
+  contract: language fingerprint, stable base/detail, opening/proactive/motive
+  candidates, and scene affordances. Raw dialogue and source locators never
+  enter model-facing fragments.
+- A complete source review means every source is conserved as active-library
+  support, reviewed candidate support, exact-scope evidence, holdout, duplicate
+  support or explicit insufficient evidence. It does not mean one Prompt record
+  per source.
+- Reviewed candidates are not runtime availability. Until an independent
+  canonical publisher exists, candidate compilation must produce only disabled
+  drafts, generic storage must reject them on read/write, and mainline/if-line
+  route identity must not cross.
+- Ordinary Chat receives at most one relevant material item and allows NONE.
+  Only a successful, non-empty consumer result may write a delivery receipt;
+  failed selection/provider/normalization does not spend cooldown.
 
 ## Post-import Daily Archive Curation
 

@@ -107,6 +107,65 @@ export interface CompanionMaterialRetrievalHints {
 }
 
 /**
+ * Typed, opaque evidence that may unlock situational material. These refs are
+ * selector input only: they are never rendered into the prompt and never
+ * become material-delivery receipts.
+ */
+export type CompanionMaterialGroundingKind =
+  | 'live_user_turn'
+  | 'call_session'
+  | 'observed_time_gap'
+  | 'canonical_thread_receipt'
+  | 'external_artifact_receipt'
+  | 'character_canon_evidence'
+  | 'wakeup_rule'
+  | 'character_life_receipt'
+  | 'confirmed_user_state'
+  | 'scene_context'
+  | 'scene_plan';
+
+export interface CompanionMaterialGroundingRef {
+  kind: CompanionMaterialGroundingKind;
+  /** Opaque, normalized claim family; never source text. */
+  claimKey: string;
+  refId: string;
+  revision: number;
+  /** Present when the ref comes from a canonical authority registry. */
+  issuerId?: string;
+  /** SHA-256 digest of the exact canonical receipt revision. */
+  authorityDigest?: string;
+  scope: HistoryScope;
+  occurredAt: number;
+  validUntil?: number;
+}
+
+export interface CompanionMaterialGroundingRequirement {
+  kind: CompanionMaterialGroundingKind;
+  claimKey: string;
+  /**
+   * Optional exact authority binding. Ordinary live-turn rules only need a
+   * kind/claim family; promoted reviewed candidates must bind all four fields.
+   */
+  refId?: string;
+  revision?: number;
+  issuerId?: string;
+  authorityDigest?: string;
+}
+
+/**
+ * Code-owned eligibility only. This proves why a material may be considered;
+ * it does not prescribe what the model should say.
+ */
+export interface CompanionMaterialGroundingPolicy {
+  allOf?: readonly CompanionMaterialGroundingRequirement[];
+  /**
+   * Alternative claims may vary, but they must come from one authority kind.
+   * A wakeup rule can therefore never substitute for Life or user-state truth.
+   */
+  anyOf?: readonly CompanionMaterialGroundingRequirement[];
+}
+
+/**
  * Optional semantic scores are an upgrade seam only. Scope, surface,
  * continuity, knowledge, cooldown and diversity gates remain code-owned.
  * Query and indexed vectors must have been produced by the same named index.
@@ -168,6 +227,18 @@ export interface CompanionMaterialSourceRef {
   sourceLocator?: string;
 }
 
+export interface CompanionMaterialPromotionAuthorityBinding {
+  authorityKind:
+    | 'character_canon_review'
+    | 'canonical_thread_or_artifact'
+    | 'director_scene_plan'
+    | 'director_motive';
+  receiptId: string;
+  receiptRevision: number;
+  receiptDigest: string;
+  issuerId: string;
+}
+
 export interface CompanionMaterialRecord {
   schemaVersion: typeof COMPANION_MATERIAL_SCHEMA_VERSION;
   id: string;
@@ -185,11 +256,20 @@ export interface CompanionMaterialRecord {
   routeId?: string;
   branchId?: string;
   sceneId?: string;
+  /** Optional exact Director lane. When present it must match routeRef.lane. */
+  routeLane?: CompanionMaterialRouteRef['lane'];
 
   eligibleModes: readonly CompanionMaterialMode[];
   eligiblePurposes: readonly CompanionMaterialPurpose[];
   tags: readonly string[];
   retrievalHints?: CompanionMaterialRetrievalHints;
+  groundingPolicy?: CompanionMaterialGroundingPolicy;
+  /**
+   * Only records produced from a verifier-approved reviewed-candidate receipt
+   * carry this binding. Generic library persistence rejects these records
+   * until a canonical promotion publisher is installed.
+   */
+  promotionAuthority?: CompanionMaterialPromotionAuthorityBinding;
   relationshipFloor?: CompanionRelationshipFloor;
   cooldownMs?: number;
   maxDeliveries?: number;
@@ -224,6 +304,11 @@ export interface CompanionMaterialSelectionRequest {
   semanticTags?: readonly string[];
   /** Compatibility alias for the current material-review callers. */
   contextTags?: readonly string[];
+  /**
+   * Canonical/live evidence for this exact relationship request. Semantic tags
+   * cannot substitute for these opaque refs.
+   */
+  groundingRefs?: readonly CompanionMaterialGroundingRef[];
   relationshipStage: CompanionMaterialRelationshipStage;
   semanticRank?: CompanionMaterialSemanticRank;
   /** Optional per-slot ceilings supplied by a future Context Compiler. */

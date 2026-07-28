@@ -24,8 +24,40 @@ interface CompanionMaterialRecord {
     fallbackPriority?: number;
   };
   sourceRefs: CompanionMaterialSourceRef[]; // no raw transcript
+  routeLane?: 'mainline' | 'if_line'; // exact Director lane when route-bound
 }
 ```
+
+Reviewed source-derived possibilities that still need character canon, an exact
+thread/artifact, or Director authority are not `CompanionMaterialRecord` rows:
+
+```ts
+interface ReviewedCompanionMaterialCandidate {
+  id: string;
+  charId: string;
+  materialLane:
+    | 'stable_detail_claim'
+    | 'opening_recipe'
+    | 'proactive_seed'
+    | 'motive_candidate'
+    | 'scene_affordance';
+  activationAuthority:
+    | 'character_canon_review'
+    | 'canonical_thread_or_artifact'
+    | 'director_motive'
+    | 'director_scene_plan';
+  runtimeDelivery: 'forbidden_until_authorized_promotion';
+  truthEffect: 'none';
+}
+```
+
+The current draft compiler never publishes availability: it returns only a
+disabled, non-persistable draft plus
+`publicationEffect: 'canonical_publisher_required'`. Generic material storage
+rejects `promotionAuthority` rows on both read and write. A future publisher
+must own an independent canonical registry and recheck exact receipt id,
+revision, digest, issuer, HistoryScope, route and lane. The current build has no
+such publisher and therefore exposes zero candidate records at runtime.
 
 An optional semantic rank is a disposable index result, not durable truth:
 

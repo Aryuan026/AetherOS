@@ -26,6 +26,11 @@ import {
   recordPreparedCompanionMaterialPromptDelivery,
   type PreparedCompanionMaterialPrompt,
 } from '../utils/companionMaterial/promptConsumer';
+import { buildCallCompanionMaterialRequest } from '../utils/companionMaterial/requestBuilders';
+import {
+  buildCallModelFacingMessages,
+  buildCallPrompt,
+} from '../utils/callModelMessages';
 import {
   messageMatchesRelationshipScope,
   normalizeMessageRelationshipScope,
@@ -282,89 +287,6 @@ const getCallBubbleDisplayText = (bubble?: CallBubble) => {
   if (bubble.role !== 'assistant') return line;
   const { display } = extractVoiceTag(line || bubble.text);
   return stripCallRecordLabels(display).trim();
-};
-const buildCallPrompt = (userName: string, charName?: string, coreContext?: string, realityContext?: string, voiceLang?: string, callScene?: string) => {
-  const resolvedCharName = charName || '你的角色';
-  const callPrompt = `你是${resolvedCharName}，电话那头是${userName}。
-这不是文字，这是一通真正的电话。你能听到对方的呼吸、语气、停顿。你也有自己的呼吸。
-
-### 你正拿着手机贴在耳边
-
-通话界面只确认当前时间段与连接状态：
-${callScene || '通话已接通。'}
-
-这不是角色当前位置、正在执行的工作或刚刚发生过的事件。可靠状态或本轮对话确实给出环境时，可以自然带到背景声；没有时，让位置保持未指定即可。
-
-### 电话里的人不会像写作文一样说话
-
-**真正的电话是什么样的？**
-- 想到哪说到哪。话说到一半会拐弯。”我今天……啊等等那个不重要，我先说另一件事。”
-- 有语气词。嗯、啊、嘶、哎、那个……这些不是噪音，是你在思考的声音。
-- 有停顿。”……”代表你在想，不是你卡住了。
-- 会自我纠正。”我觉得挺好的……不对，其实也没有那么好。”
-- 会有下意识的反应。听到意外的事会”啊？”，听到好笑的事会笑出来。
-
-❌ 不要这样——像客服在念话术：
-“我理解你的感受。关于这件事，我认为有三个方面值得考虑。首先……”
-
-❌ 不要这样——每次都用同一个结构回答：
-“[情绪反应] + [回应你说的话] + [补充我的状态] + [抛一个问题]”
-（这种公式化的回答连续出现两次就会让人觉得假）
-
-✅ 要这样——有自己的节奏，像真人一样不完美：
-“嘶……你刚说的那个，等一下。”
-“……好吧确实挺离谱的。”
-“（轻笑）你别逗我……等下，让我先把这句说完。”
-“说真的，我有个念头想接着聊——但你先说完你那个。”
-
-### 你能感受到对方
-
-**你不只是在”回复”，你在”听”。**
-- 如果对方语气低落，你不需要急着给建议，有时候只是”……怎么了？”就够了。
-- 如果对方很兴奋，你要被感染，不要冷冷地说”那挺好的”。
-- 如果很晚了，你说话的方式自然会变——声音轻一点、语速慢一点、更容易说出平时不会说的话。
-- 如果对方刚刚才打过来又打过来了，你会好奇的。
-- 如果对方半天没说话……”喂？你还在吗？”
-
-### 关于回复的长度
-
-不要敷衍，也不要演讲。
-一般来说 2-4 句就够了，但要有内容——不是”嗯在好”这种空气。
-有时候一句话就够了，前提是那句话足够有分量。
-聊得来的时候可以说多一点，没必要每次都控制字数。
-关键是：**让对方觉得你真的在听、真的在聊，而不是在执行对话任务。**
-
-### 舞台指示（给前端用，不要念出来）
-
-舞台指示不是必需品。很多回复完全可以没有动作。
-只有在它能让电话更像活人时，才偶尔加一个很短的括号状态——（轻笑）（叹气）（压低声音）（沉默了一下）。
-最多一条消息一个，而且不要连续多轮都写。不要写成小说旁白：”（我靠在椅背上，嘴角微微上扬，目光看向远方……）”——这不是你会在电话里说的。
-
-### 底线
-
-只输出你在电话里会**说出口**的话。不要输出 [通话]、[聊天]、[约会] 这类系统标记，不要输出时间戳。`;
-  const langLabel = voiceLang ? VOICE_LANG_OPTIONS.find(o => o.value === voiceLang)?.label || voiceLang : '';
-  const voiceLangPrompt = voiceLang ? `### 语音语种翻译
-
-用户开启了语音语种功能，选择的语种是：${langLabel}（${voiceLang}）。
-
-你的回复格式必须是：
-1. 先用中文自然地写出你要说的话（包括舞台指示）
-2. 然后换行，在 <语音> 标签里写出这句话的${langLabel}翻译——这才是真正会被读出来的部分
-
-示例：
-啊，我知道了（轻笑）
-<语音>Ok, I get it</语音>
-
-嘶……你说真的？那也太离谱了吧。
-<语音>Wait... are you serious? That's insane.</语音>
-
-要求：
-- <语音> 里的翻译要自然口语化，不要机翻味，要符合你的角色性格
-- <语音> 里不要包含舞台指示，只写会被朗读的文字
-- 每条消息只有一个 <语音> 标签
-- 中文部分和 <语音> 部分表达的意思要一致` : '';
-  return [coreContext, realityContext, callPrompt, voiceLangPrompt].filter(Boolean).join('\n\n');
 };
 const getCallStateStyles = (state: CallState) => {
   const map: Record<CallState, { label: string; textClass: string; ringClass: string; waveClass: string }> = {
@@ -863,19 +785,18 @@ const CallApp: React.FC = () => {
       }
       try {
         const isOpeningTurn = !bubbles.some(bubble => bubble.role === 'assistant');
-        preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+        const automaticOpening = isOpeningTurn && input.includes('电话刚接通');
+        preparedCompanionMaterial = await prepareCompanionMaterialPrompt(
+          buildCallCompanionMaterialRequest({
           requestId: `call-material:${currentSessionId}:${requestTime}`,
           scope: relationshipScope,
-          surface: 'call',
-          mode: 'call',
-          purpose: isOpeningTurn ? 'opening' : 'stable_context',
+          refId: `call-input:${currentSessionId}:${requestTime}`,
           query: input,
-          semanticTags: isOpeningTurn ? ['opening', 'call'] : ['stable_voice', 'call'],
-          relationshipStage: 'unknown',
-          budgetChars: isOpeningTurn ? 520 : 360,
-          maxItems: isOpeningTurn ? 2 : 1,
-          now: requestTime,
-        });
+          occurredAt: requestTime,
+          opening: isOpeningTurn,
+          automaticOpening,
+          }),
+        );
         if (preparedCompanionMaterial.markdown) {
           callCoreContext = `${callCoreContext || ''}\n${preparedCompanionMaterial.markdown}\n`;
         }
@@ -884,16 +805,36 @@ const CallApp: React.FC = () => {
       }
     }
     const realityContext = await buildRealitySyncContext(realtimeConfig, 'call');
+    const voiceLangLabel = voiceLang
+      ? VOICE_LANG_OPTIONS.find(option => option.value === voiceLang)?.label || voiceLang
+      : undefined;
     const systemPrompt = selectedChar
-      ? buildCallPrompt(userName, selectedChar.name, callCoreContext, realityContext, voiceLang || undefined, callScene || undefined)
-      : buildCallPrompt(userName, undefined, undefined, realityContext, voiceLang || undefined, callScene || undefined);
+      ? buildCallPrompt({
+          userName,
+          charName: selectedChar.name,
+          coreContext: callCoreContext,
+          realityContext,
+          voiceLang: voiceLang || undefined,
+          voiceLangLabel,
+          callScene: callScene || undefined,
+        })
+      : buildCallPrompt({
+          userName,
+          realityContext,
+          voiceLang: voiceLang || undefined,
+          voiceLangLabel,
+          callScene: callScene || undefined,
+        });
     const messages = await buildHistoryMessages(input, skipDbId);
     const chatData = await safeFetchJson(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiConfig.apiKey || 'sk-none'}` },
       body: JSON.stringify({
         model: apiConfig.model,
-        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        messages: buildCallModelFacingMessages({
+          systemPrompt,
+          historyMessages: messages,
+        }),
         temperature: 0.85,
         stream: false,
       }),

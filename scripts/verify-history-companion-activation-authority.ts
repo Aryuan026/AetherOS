@@ -90,6 +90,7 @@ const finding: HistoryCompanionAnalysisFinding = {
   confidence: 0.84,
   guidance: '表达可以从现场可感知的落点进入，再自然带出角色自己的节奏，并保留变化空间。',
   tags: ['speech_rhythm', 'initiative_style'],
+  groundingClass: 'none',
   speakerResolution: 'primary_character_direct',
   behaviorBoundary: {
     variationPreserved: true,

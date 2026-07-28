@@ -61,6 +61,7 @@ const SIGNALS_BY_HISTORY_TAG = {
   world_detail: ['observation', 'sensory_detail', 'light_scene'],
   relationship_detail: ['relationship_detail'],
   opening_shape: ['opening', 'proactive_intent'],
+  fact_free_opening: ['fact_free_opening'],
   scene_permission: ['light_scene', 'scene_planning'],
   proactive_intent: ['character_self_share', 'independent_life', 'proactive_intent'],
 } as const satisfies Record<HistoryCompanionMaterialCandidate['tags'][number], readonly string[]>;
@@ -132,6 +133,16 @@ export const projectHistoryCompanionMaterialPass = (
       eligiblePurposes: [...candidate.eligiblePurposes],
       tags: [...candidate.tags],
       retrievalHints: retrievalHintsForCandidate(candidate),
+      groundingPolicy: candidate.groundingPolicy
+        ? {
+            allOf: candidate.groundingPolicy.allOf
+              ? candidate.groundingPolicy.allOf.map(item => ({ ...item }))
+              : undefined,
+            anyOf: candidate.groundingPolicy.anyOf
+              ? candidate.groundingPolicy.anyOf.map(item => ({ ...item }))
+              : undefined,
+          }
+        : undefined,
       relationshipFloor: candidate.relationshipFloor,
       cooldownMs: candidate.cooldownMs,
       maxDeliveries: candidate.maxDeliveries,

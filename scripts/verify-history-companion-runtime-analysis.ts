@@ -119,6 +119,7 @@ try {
     confidence: 0.86,
     guidance: '在确实聊到收尾习惯或工作物件时，可参考角色倾向先整理手边工具再转入新话题；不要主动重复提起。',
     tags: ['stable_habit'],
+    groundingClass: 'live_semantic_anchor',
     speakerResolution: 'primary_character_direct',
     behaviorBoundary: {
       variationPreserved: true,

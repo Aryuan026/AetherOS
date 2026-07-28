@@ -2,6 +2,7 @@ import {
   createCompanionMaterialDeliveryReceipt,
 } from '../../domain/companionMaterial/deliveryReceipt.ts';
 import {
+  formatCompanionMaterialPromptMarkdown,
   projectCompanionMaterialPrompt,
   type CompanionMaterialPromptProjection,
 } from '../../domain/companionMaterial/promptProjection.ts';
@@ -22,15 +23,6 @@ export interface PreparedCompanionMaterialPrompt {
   projection: CompanionMaterialPromptProjection;
   markdown: string;
 }
-
-const promptMarkdown = (projection: CompanionMaterialPromptProjection): string => {
-  if (!projection.fragments.length) return '';
-  return [
-    '### 本轮角色侧参考',
-    '下面是一到几条与本轮可能相关的角色侧参考。把自然吻合的部分化进回应，像灵感而不是任务。事实、关系和当下动机以角色卡、可靠状态和本轮对话为准；角色仍可自行选择是否采用、如何展开、主动到什么程度以及是否使用工具。',
-    ...projection.fragments.map(fragment => fragment.text),
-  ].join('\n');
-};
 
 /**
  * Read/select/render only. Preparing a prompt does not claim that any model or
@@ -55,7 +47,7 @@ export const prepareCompanionMaterialPrompt = async (
   return {
     selection,
     projection,
-    markdown: promptMarkdown(projection),
+    markdown: formatCompanionMaterialPromptMarkdown(projection),
   };
 };
 

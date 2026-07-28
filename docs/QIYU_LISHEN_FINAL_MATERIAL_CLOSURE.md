@@ -1,5 +1,9 @@
 # 祁煜、黎深：第一批 Companion Material 结案
 
+> 阶段记录：本文保留第一批 private artifact 的判定过程，不再代表当前运行包。
+> 当前五人四路编译与运行数字以
+> [深空短信素材最终分流说明](LYSK_SMS_MATERIAL_ANALYSIS.md) 为准。
+
 这批结案把 386 条私有短信来源从“静态归桶”推进为可交接的语义判断，但没有把
 它们塞进 Chat。原文仍在 ignored 私有区；可交接 artifact 只保留 opaque refs、
 非逐字 guidance、surface、审计条件和状态。

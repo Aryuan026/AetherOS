@@ -205,6 +205,7 @@ const boundedFinding: HistoryCompanionAnalysisFinding = {
   confidence: 0.76,
   guidance: '开场可以从角色手边尚在进行的小事落地，再依现场回应决定是否展开。',
   tags: ['opening_shape'],
+  groundingClass: 'live_semantic_anchor',
   speakerResolution: 'primary_character_direct',
   materialKind: 'opening_recipe',
   behaviorBoundary: {

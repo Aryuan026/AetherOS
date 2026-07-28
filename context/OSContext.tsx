@@ -1148,6 +1148,17 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
   ),
 ];
 
+/**
+ * Read-only access for provider-payload verification. Runtime callers still
+ * receive characters through OSContext; this avoids copying role cards into
+ * test fixtures that could silently drift.
+ */
+export const getDefaultBuiltInCharacter = (
+    charId: string,
+): Readonly<CharacterProfile> | undefined => (
+    defaultBuiltInCharacters.find(character => character.id === charId)
+);
+
 const seedBuiltInStarterMessages = async (charId: string) => {
     if (charId !== QIYU_BUILT_IN_ID) return;
     const existingSeed = builtInStarterSeedInFlight.get(charId);

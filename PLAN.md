@@ -10,7 +10,12 @@ Companion material and historical voice reuse:
 
 - Keep the default path fully local and non-vector: deterministic scene
   signals, CJK n-gram/token overlap, delivery-receipt rotation, diversity and
-  a 1–3 item Chat budget.
+  a sparse per-surface budget. Ordinary Chat is capped at one item; legal
+  opening/proactive/scene consumers may use 1–3.
+- Treat the 909-source review as complete only when every source has an
+  auditable destination. The current five-character runtime library has 56
+  non-verbatim records; 21 additional reviewed candidates stay runtime
+  forbidden until a future canonical publisher exists.
 - Let only a reviewed general speech-rhythm voice become a low-signal
   fallback. Care, boundary, repair, affection, stable-detail, opening,
   proactive and scene material must earn relevance from the current turn.
@@ -20,6 +25,10 @@ Companion material and historical voice reuse:
 - Keep normal Chat limited to stable voice/base/relevant detail. Director and
   ScenePlan remain the only future owners that may turn a motive candidate into
   a current motive.
+- Keep candidate compilation fail closed. A review lookup can produce only a
+  disabled, non-persistable draft; generic storage rejects promotion-bound rows
+  on read and write, and route-bound drafts preserve exact mainline/if-line
+  identity.
 - Preserve an optional embedding rank seam identified by model and index
   revision. A new model rebuilds the disposable index; vectors never replace
   scope, surface, continuity, knowledge, cooldown or budget gates.

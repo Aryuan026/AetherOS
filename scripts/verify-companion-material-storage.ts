@@ -7,9 +7,11 @@ import {
   type CompanionMaterialSelection,
 } from '../domain/companionMaterial/types.ts';
 import {
+  companionMaterialStorageKey,
   loadCompanionMaterialRecords,
   saveCompanionMaterialLibrary,
 } from '../utils/companionMaterial/store.ts';
+import { DB } from '../utils/db.ts';
 import {
   loadCompanionMaterialDeliveryReceipts,
   recordCompanionMaterialDeliveryReceipt,
@@ -84,6 +86,49 @@ await saveCompanionMaterialLibrary({
 const loaded = await loadCompanionMaterialRecords(scope);
 assert.deepEqual(loaded.map(record => record.id).sort(), [characterRecord.id, relationshipRecord.id].sort());
 assert.equal('rawText' in loaded[0], false, 'runtime library records must not expose raw text');
+
+const rawPromotionRecord: CompanionMaterialRecord = {
+  ...characterRecord,
+  id: 'raw-promotion-record',
+  promotionAuthority: {
+    authorityKind: 'character_canon_review',
+    receiptId: 'raw-authority-receipt',
+    receiptRevision: 1,
+    receiptDigest: 'a'.repeat(64),
+    issuerId: 'raw-authority-issuer',
+  },
+  groundingPolicy: {
+    allOf: [{
+      kind: 'character_canon_evidence',
+      claimKey: 'raw_candidate_claim',
+      refId: 'raw-authority-receipt',
+      revision: 1,
+      issuerId: 'raw-authority-issuer',
+      authorityDigest: 'a'.repeat(64),
+    }],
+  },
+};
+await assert.rejects(
+  () => saveCompanionMaterialLibrary({
+    ownerScope: characterRecord.ownerScope,
+    records: [rawPromotionRecord],
+  }),
+  /canonical reviewed-candidate promotion publisher/u,
+);
+await DB.saveAssetRaw(companionMaterialStorageKey(characterRecord.ownerScope), {
+  schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,
+  ownerScope: characterRecord.ownerScope,
+  charId: scope.charId,
+  records: [rawPromotionRecord],
+  revision: 99,
+  updatedAt: T0 + 1,
+});
+const loadedAfterRawBypassAttempt = await loadCompanionMaterialRecords(scope);
+assert.equal(
+  loadedAfterRawBypassAttempt.some(record => record.id === rawPromotionRecord.id),
+  false,
+  'raw assets and old backups must not bypass candidate-promotion publication',
+);
 
 const selection: CompanionMaterialSelection = {
   schemaVersion: COMPANION_MATERIAL_SCHEMA_VERSION,

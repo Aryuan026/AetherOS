@@ -186,6 +186,10 @@ const groupSource = readFileSync(new URL('../apps/GroupChat.tsx', import.meta.ur
 const journalSource = readFileSync(new URL('../apps/JournalApp.tsx', import.meta.url), 'utf8');
 const chatSource = readFileSync(new URL('../hooks/useChatAI.ts', import.meta.url), 'utf8');
 const wakeupSource = readFileSync(new URL('../hooks/useCompanionWakeupRuntime.ts', import.meta.url), 'utf8');
+const materialRequestBuilderSource = readFileSync(
+    new URL('../utils/companionMaterial/requestBuilders.ts', import.meta.url),
+    'utf8',
+);
 for (const [source, seam] of [
     [callSource, 'callRelationshipScopeRef'],
     [groupSource, 'relationshipScopes: scopes'],
@@ -194,15 +198,22 @@ for (const [source, seam] of [
 ] as const) assert.ok(source.includes(seam), `life surface missing scoped seam: ${seam}`);
 for (const seam of [
     'prepareCompanionMaterialPrompt',
-    "surface: 'proactive_letter'",
-    "mode: 'proactive_letter'",
-    "purpose: 'proactive_intent'",
+    'buildWakeupCompanionMaterialRequest',
     "rule.priority === 'care'",
-    "['proactive_intent', 'opening', rule.kind]",
-    'maxItems: 2',
     'recordPreparedCompanionMaterialPromptDelivery',
     "revision: 'proactive-letter-v1'",
 ] as const) assert.ok(wakeupSource.includes(seam), `proactive material consumer missing seam: ${seam}`);
+for (const seam of [
+    "surface: 'proactive_letter'",
+    "mode: 'proactive_letter'",
+    "purpose: 'proactive_intent'",
+    "kind: 'wakeup_rule'",
+    "claimKey: 'proactive_intent'",
+    'maxItems: 2',
+] as const) assert.ok(
+    materialRequestBuilderSource.includes(seam),
+    `proactive material request builder missing seam: ${seam}`,
+);
 assert.ok(
     wakeupSource.lastIndexOf('recordPreparedCompanionMaterialPromptDelivery')
       > wakeupSource.indexOf("safeFetchJson(`${baseUrl}/chat/completions`"),
@@ -220,13 +231,21 @@ assert.ok(
 );
 for (const seam of [
     'prepareCompanionMaterialPrompt',
-    "surface: 'call'",
-    "mode: 'call'",
-    "purpose: isOpeningTurn ? 'opening' : 'stable_context'",
-    'maxItems: isOpeningTurn ? 2 : 1',
+    'buildCallCompanionMaterialRequest',
     'recordPreparedCompanionMaterialPromptDelivery',
     "revision: 'call-v1'",
 ] as const) assert.ok(callSource.includes(seam), `call material consumer missing seam: ${seam}`);
+for (const seam of [
+    "surface: 'call'",
+    "mode: 'call'",
+    "const purpose = input.opening ? 'opening' : 'stable_context'",
+    "kind: 'call_session'",
+    "claimKey: 'opened'",
+    'maxItems: input.opening ? 2 : 1',
+] as const) assert.ok(
+    materialRequestBuilderSource.includes(seam),
+    `call material request builder missing seam: ${seam}`,
+);
 assert.ok(
     callSource.lastIndexOf('recordPreparedCompanionMaterialPromptDelivery')
       > callSource.indexOf("safeFetchJson(`${baseUrl}/chat/completions`"),
@@ -249,17 +268,26 @@ for (const forbiddenPromptLeak of [
 }
 for (const seam of [
     'prepareCompanionMaterialPrompt',
-    "surface: 'meet_scene'",
-    "mode: 'meet_scene'",
+    'buildDateOpeningCompanionMaterialRequest',
     "surface: 'date'",
     "mode: 'date_scene'",
-    "purpose: 'opening'",
     "purpose: 'stable_context'",
     'recordPreparedCompanionMaterialPromptDelivery',
     "revision: 'date-opening-v1'",
     "revision: 'date-turn-v1'",
     "revision: 'date-reroll-v1'",
 ] as const) assert.ok(dateSource.includes(seam), `date material consumer missing seam: ${seam}`);
+for (const seam of [
+    "surface: 'meet_scene'",
+    "mode: 'meet_scene'",
+    "purpose: 'opening'",
+    "kind: 'scene_context'",
+    "claimKey: 'light_scene'",
+    'maxItems: 2',
+] as const) assert.ok(
+    materialRequestBuilderSource.includes(seam),
+    `date opening material request builder missing seam: ${seam}`,
+);
 assert.equal(
     dateSource.includes("purpose: 'scene_planning'"),
     false,

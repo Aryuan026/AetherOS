@@ -22,6 +22,9 @@ import {
     recordPreparedCompanionMaterialPromptDelivery,
     type PreparedCompanionMaterialPrompt,
 } from '../utils/companionMaterial/promptConsumer';
+import { buildDateOpeningCompanionMaterialRequest } from '../utils/companionMaterial/requestBuilders';
+import { buildLiveUserTurnGroundingRefs } from '../utils/companionMaterial/grounding';
+import { buildDateOpeningModelMessages } from '../utils/dateOpeningModelMessages';
 import { DateCharacterSelectCard } from '../components/date/DateCharacterSelectCard';
 import { DatePersonaScopeNotice, DateSelectIntro } from '../components/date/DateSelectIntro';
 import {
@@ -241,6 +244,14 @@ const DateApp: React.FC = () => {
         const days = Math.floor(diffHours / 24);
         return `[系统提示: 距离上次互动: ${days} 天。]`;
     };
+    const getTimeGapClaimKey = (lastMsgTimestamp: number | undefined): string | undefined => {
+        if (!lastMsgTimestamp) return undefined;
+        const diffMs = Math.max(0, Date.now() - lastMsgTimestamp);
+        if (diffMs < 5 * 60 * 1000) return undefined;
+        if (diffMs < 60 * 60 * 1000) return 'gap_short';
+        if (diffMs < 24 * 60 * 60 * 1000) return 'gap_medium';
+        return 'gap_long';
+    };
 
     // --- Resume / Start Logic ---
     const handleCharClick = (c: CharacterProfile) => {
@@ -345,6 +356,7 @@ const DateApp: React.FC = () => {
             const peekLimit = Math.min(limit, 50); 
             const lastMsg = msgs[msgs.length - 1];
             const gapHint = getTimeGapHint(lastMsg?.timestamp);
+            const gapClaimKey = getTimeGapClaimKey(lastMsg?.timestamp);
 
             const recentMsgs = msgs.slice(-peekLimit).map(m => {
                 const content = m.type === 'image' ? '[User sent an image]' : m.content;
@@ -364,56 +376,38 @@ const DateApp: React.FC = () => {
             });
             let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
             try {
-                preparedCompanionMaterial = await prepareCompanionMaterialPrompt({
+                preparedCompanionMaterial = await prepareCompanionMaterialPrompt(
+                  buildDateOpeningCompanionMaterialRequest({
                     requestId: `date-opening-material:${dateSessionIdRef.current}:${requestTime}`,
                     scope: relationshipScope,
-                    surface: 'meet_scene',
-                    mode: 'meet_scene',
-                    purpose: 'opening',
-                    query: '用户正准备进入见面场景。',
-                    semanticTags: ['opening', 'meet_scene'],
-                    relationshipStage: 'unknown',
-                    budgetChars: 560,
-                    maxItems: 2,
-                    now: requestTime,
-                });
+                    sceneRefId: `date-opening:${dateSessionIdRef.current}:${requestTime}`,
+                    occurredAt: requestTime,
+                    observedGap: lastMsg && gapClaimKey ? {
+                      claimKey: gapClaimKey,
+                      refId: `message-gap:${lastMsg.id}:${requestTime}`,
+                    } : undefined,
+                  }),
+                );
             } catch (error) {
                 console.warn('[date] opening companion material unavailable', error);
             }
-            const baseContext = [
-                ContextBuilder.buildCoreContext(c, userProfile, false),
-                worldlineMemory.markdown,
-                preparedCompanionMaterial?.markdown,
-            ].filter(Boolean).join('\n');
-
-            // 强制分隔符，让 AI 意识到这是新的一场戏
-            const contextSeparator = gapHint ? `\n\n--- [TIME SKIP: ${gapHint}] ---\n\n` : `\n\n--- [NEW SCENE START] ---\n\n`;
-
-            const peekInstructions = `
-### 场景：感知 (Sense Presence)
-当前时间: ${timeStr}
-时间上下文: ${gapHint}
-
-${DATE_EXPERIENCE_BOUNDARY}
-
-### 任务
-你现在并不在和用户直接对话。请为用户设计一段可以进入的见面开场提案，并用**第三人称**描写一段话。
-从可靠当前状态或最近 live 对话已经确认的线索起笔；如果没有这样的线索，就选一个不暗示具体工作、任务、伤病或等待经历的日常空间，让 ${c.name} 的动作与周围环境保持开放。
-
-### 逻辑检查
-1. **上下文连贯性**: 参考 [最近记录]，但**必须**注意 [TIME SKIP]。如果是很久没见，不要接着上一次的话题聊，而是开启新场景。
-2. **状态一致性**: 时间间隔只表示镜头换场；角色的忙碌、落寞、等待或具体日程，需要来自可靠上文，而不是从“很久没见”自动推断。
-3. **描写风格**: 电影感，沉浸式，细节丰富。不要输出任何前缀，直接输出描写内容。`;
+            const messages = buildDateOpeningModelMessages({
+                characterName: c.name,
+                coreContext: ContextBuilder.buildCoreContext(c, userProfile, false),
+                worldlineContext: worldlineMemory.markdown,
+                companionMaterialContext: preparedCompanionMaterial?.markdown,
+                recentContext: recentMsgs,
+                timeText: timeStr,
+                gapHint,
+                experienceBoundary: DATE_EXPERIENCE_BOUNDARY,
+            });
 
             const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
                 body: JSON.stringify({
                     model: apiConfig.model,
-                    messages: [
-                        { role: "system", content: baseContext },
-                        { role: "user", content: `[最近记录 (Previous Context)]:${recentMsgs}${contextSeparator}${peekInstructions}\n\n(Start sensing...)` }
-                    ],
+                    messages,
                     temperature: 0.85
                 })
             });
@@ -516,6 +510,16 @@ ${DATE_EXPERIENCE_BOUNDARY}
                 purpose: 'stable_context',
                 query: text,
                 semanticTags: ['stable_voice', 'date_scene'],
+                groundingRefs: buildLiveUserTurnGroundingRefs({
+                    scope: relationshipScope,
+                    refId: `date-input:${dateSessionId}:${requestTime}`,
+                    query: text,
+                    semanticTags: ['stable_voice'],
+                    surface: 'date',
+                    mode: 'date_scene',
+                    purpose: 'stable_context',
+                    occurredAt: requestTime,
+                }),
                 relationshipStage: 'unknown',
                 budgetChars: 420,
                 maxItems: 1,
@@ -681,6 +685,16 @@ ${DATE_EXPERIENCE_BOUNDARY}
                 purpose: 'stable_context',
                 query: String(lastUserMsg.content || ''),
                 semanticTags: ['stable_voice', 'date_scene', 'reroll'],
+                groundingRefs: buildLiveUserTurnGroundingRefs({
+                    scope: initiatingScope,
+                    refId: `message:${lastUserMsg.id}`,
+                    query: String(lastUserMsg.content || ''),
+                    semanticTags: ['stable_voice'],
+                    surface: 'date',
+                    mode: 'date_scene',
+                    purpose: 'stable_context',
+                    occurredAt: requestTime,
+                }),
                 relationshipStage: 'unknown',
                 budgetChars: 420,
                 maxItems: 1,

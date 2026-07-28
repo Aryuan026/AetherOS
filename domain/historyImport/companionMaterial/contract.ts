@@ -9,6 +9,7 @@ import type { HistorySourceSpan } from '../analysis/types.ts';
 import {
   HISTORY_COMPANION_MATERIAL_SCHEMA_VERSION,
   type HistoryCompanionMaterialCandidate,
+  type HistoryCompanionMaterialGroundingClass,
   type HistoryCompanionMaterialPass,
   type HistoryCompanionMaterialTag,
 } from './types.ts';
@@ -39,8 +40,17 @@ const TAGS = new Set<HistoryCompanionMaterialTag>([
   'world_detail',
   'relationship_detail',
   'opening_shape',
+  'fact_free_opening',
   'scene_permission',
   'proactive_intent',
+]);
+const GROUNDING_CLASSES = new Set<HistoryCompanionMaterialGroundingClass>([
+  'none',
+  'live_semantic_anchor',
+  'confirmed_thread',
+  'character_life',
+  'confirmed_user_state',
+  'scene_context',
 ]);
 
 const FORBIDDEN_FIELDS = new Set([
@@ -137,6 +147,15 @@ const validateCandidate = (
   }
   if (candidate.tags.length > 6 || !unique(candidate.tags) || candidate.tags.some(tag => !TAGS.has(tag))) {
     errors.push(`${label}.tags must use at most six controlled unique values`);
+  }
+  if (!GROUNDING_CLASSES.has(candidate.groundingClass)) {
+    errors.push(`${label}.groundingClass is invalid`);
+  }
+  if (candidate.groundingClass === 'none' && candidate.groundingPolicy) {
+    errors.push(`${label}.groundingPolicy must be absent when groundingClass is none`);
+  }
+  if (candidate.groundingClass !== 'none' && !candidate.groundingPolicy) {
+    errors.push(`${label}.groundingPolicy is required for grounded material`);
   }
   if (!Number.isInteger(candidate.revision) || candidate.revision < 1) {
     errors.push(`${label}.revision must be a positive integer`);

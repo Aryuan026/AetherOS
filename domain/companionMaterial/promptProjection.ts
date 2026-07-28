@@ -59,6 +59,22 @@ export interface CompanionMaterialPromptProjection {
   dropped: readonly CompanionMaterialPromptProjectionDrop[];
 }
 
+/**
+ * Shared pure renderer for prompt consumers and API-view verification. It is
+ * intentionally colocated with the projection so tests never need to import
+ * browser storage or receipt writers merely to inspect model-facing text.
+ */
+export const formatCompanionMaterialPromptMarkdown = (
+  projection: CompanionMaterialPromptProjection,
+): string => {
+  if (!projection.fragments.length) return '';
+  return [
+    '### 本轮角色侧参考',
+    '下面是一到几条与本轮可能相关的角色侧参考。把自然吻合的部分化进回应，像灵感而不是任务。事实、关系和当下动机以角色卡、可靠状态和本轮对话为准；角色仍可自行选择是否采用、如何展开以及主动到什么程度。',
+    ...projection.fragments.map(fragment => fragment.text),
+  ].join('\n');
+};
+
 const normalize = (value: string): string => value.replace(/\s+/g, ' ').trim();
 
 const hashText = (value: string): string => {

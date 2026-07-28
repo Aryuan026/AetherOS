@@ -1,5 +1,6 @@
 import type {
   CompanionMaterialContinuity,
+  CompanionMaterialGroundingPolicy,
   CompanionMaterialKind,
   CompanionMaterialKnowledge,
   CompanionMaterialMode,
@@ -14,7 +15,7 @@ import type {
 } from '../analysis/types.ts';
 import type { HistoryScope } from '../types.ts';
 
-export const HISTORY_COMPANION_MATERIAL_SCHEMA_VERSION = 1 as const;
+export const HISTORY_COMPANION_MATERIAL_SCHEMA_VERSION = 2 as const;
 
 export type HistoryCompanionMaterialPassStatus =
   | 'active'
@@ -26,6 +27,19 @@ export type HistoryCompanionMaterialCandidateStatus =
   | 'disabled'
   | 'stale'
   | 'discarded';
+
+/**
+ * Code-owned evidence class for a historical finding. It describes what must
+ * already be established before selection, never a prompt instruction or a
+ * claim that an old event is current.
+ */
+export type HistoryCompanionMaterialGroundingClass =
+  | 'none'
+  | 'live_semantic_anchor'
+  | 'confirmed_thread'
+  | 'character_life'
+  | 'confirmed_user_state'
+  | 'scene_context';
 
 /**
  * A deliberately small vocabulary. Query terms may still come from the user's
@@ -45,6 +59,7 @@ export type HistoryCompanionMaterialTag =
   | 'world_detail'
   | 'relationship_detail'
   | 'opening_shape'
+  | 'fact_free_opening'
   | 'scene_permission'
   | 'proactive_intent';
 
@@ -78,6 +93,8 @@ export interface HistoryCompanionMaterialCandidate {
   eligibleModes: readonly CompanionMaterialMode[];
   eligiblePurposes: readonly CompanionMaterialPurpose[];
   tags: readonly HistoryCompanionMaterialTag[];
+  groundingClass: HistoryCompanionMaterialGroundingClass;
+  groundingPolicy?: CompanionMaterialGroundingPolicy;
   relationshipFloor?: Exclude<CompanionMaterialRelationshipStage, 'unknown'>;
   cooldownMs?: number;
   maxDeliveries?: number;

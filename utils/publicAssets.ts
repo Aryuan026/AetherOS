@@ -1,7 +1,7 @@
 const trimLeadingSlash = (value: string): string => value.replace(/^\/+/, '');
 
 export const publicAsset = (path: string): string => {
-  const base = import.meta.env.BASE_URL || '/';
+  const base = import.meta.env?.BASE_URL || '/';
   const normalizedBase = base.endsWith('/') ? base : `${base}/`;
   return `${normalizedBase}${trimLeadingSlash(path)}`;
 };

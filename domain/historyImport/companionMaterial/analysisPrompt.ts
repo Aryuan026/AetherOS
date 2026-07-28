@@ -90,8 +90,10 @@ const SYSTEM_PROMPT = `你负责把一组旧聊天证据整理成少量、可复
 
 输出边界：
 - 每个 finding 只能引用 allowedLanes 明确包含该 lane 的 evidence；不能跨 packet 借用未授权 lane。
-- 所有 guidance 都用新的、非逐字的中文表达，保留变奏空间。
+- 所有 guidance 都用新的、非逐字、正向可生成的中文表达，描述角色可以注意什么、怎样展开和保留哪些变化；事实禁区放进 groundingClass、behaviorBoundary 与 uncertaintyOrConflict，不要把 guidance 写成一串“不要／不能／不必”的限制。
 - current state、current motive、关系真相、工具权限和固定回复模板都保持无影响。
+- 每个 accepted finding 必须选择 groundingClass：none 只给不依赖当下事实的语言指纹、纯创作种子，或已去除旧事件事实的 fact_free_opening 配方；live_semantic_anchor 需要本轮用户语义命中；confirmed_thread 需要已确认旧线索；character_life 需要角色生活回执；confirmed_user_state 需要已确认玩家状态；scene_context 只供场景规划。
+- opening_recipe 若使用 none，必须带 fact_free_opening，并且 guidance 只能保留可变化的进入方式、注意力或节奏，不能携带旧事件、当前关系、当前生活或固定开场台词。
 - 证据不足时使用 withheld；不要补齐一个看似完整但没有证据的人格。
 - 最多 12 个 findings。只输出 JSON，不输出前言、原文、标题、URL 或路径。`;
 
@@ -106,6 +108,7 @@ const RESPONSE_SHAPE = {
     tags: ['controlled tags shown below'],
     speakerResolution: 'primary_character_direct | coauthored_multi_actor | user | unknown',
     materialKind: 'opening_recipe | proactive_seed | initiative_motive (opening_proactive only)',
+    groundingClass: 'none | live_semantic_anchor | confirmed_thread | character_life | confirmed_user_state | scene_context',
     behaviorBoundary: {
       variationPreserved: true,
       fixedReplyTemplate: false,
@@ -138,7 +141,13 @@ const CONTROLLED_TAGS = {
     'affection_style',
   ],
   stable_detail: ['stable_habit', 'world_detail', 'relationship_detail'],
-  opening_proactive: ['opening_shape', 'proactive_intent', 'initiative_style', 'repair_style'],
+  opening_proactive: [
+    'opening_shape',
+    'fact_free_opening',
+    'proactive_intent',
+    'initiative_style',
+    'repair_style',
+  ],
   scene_texture: ['scene_permission', 'world_detail', 'relationship_detail'],
 };
 

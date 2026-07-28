@@ -22,17 +22,27 @@
     repair_style / initiative_style / stable_habit / world_detail` tags to the
     same evidence requirements. Only an unspecialized speech rhythm may become
     a low-signal fallback.
-  - Added 10 reviewed non-verbatim materials each for the built-in Qi Yu and
-    Zayne roles. Each keeps one voice fallback; care and stable detail require
-    evidence. The final 187/187 Qi Yu and 199/199 Zayne source disposition
-    closure now reinforces or narrowly revises existing records instead of
-    manufacturing one prompt record per source.
-  - Completed the same source-conservation pass for Xavier 221/221, Sylus
-    166/166 and Caleb 136/136. Their 523-source artifact keeps disabled and
-    withheld scene/opening/detail clusters for provenance, while only three
-    narrow, character-owned voice operators survived as active runtime
-    candidates. Together the five leads now account for all 909 frozen source
-    units with zero dropped.
+  - Completed the five-lead four-lane compilation instead of stopping at the
+    first sparse calibration subset. The canonical built-in runtime library now
+    has 56 non-verbatim records: Qi Yu 11, Zayne 11, Xavier 11, Sylus 12 and
+    Caleb 11. Across the library there are 8 language-fingerprint, 10 stable
+    base/detail, 18 opening, 14 proactive, 1 motive-candidate and 5
+    scene-affordance projections. Ordinary Chat still receives at most one
+    relevant item; richer storage is not prompt stuffing.
+  - Conserved all 909 frozen source units with zero unresolved. 416 sources
+    support the active library (327 direct support plus 89 blind-holdout
+    evaluation sources). The remaining 493 sources stay explicitly accounted
+    for as exact-scope evidence, candidate support, holdout evidence or one
+    insufficient item rather than disappearing behind a generic "unused"
+    label.
+  - Preserved 21 additional reviewed candidates supported by 66 sources. They
+    are separate candidate values, not `CompanionMaterialRecord` rows, and
+    cannot enter a prompt until an exact canonical character/thread/Director
+    authority receipt is independently resolved. The current promotion path
+    only compiles a disabled, non-persistable review draft; it cannot publish
+    availability. The draft contract binds receipt id, revision, digest,
+    issuer, scope, route and lane, while the generic material store rejects
+    these rows on both read and write until a canonical publisher exists.
   - Added a read-only Context Compiler slice. Normal Chat rejects situational
     slots; StoryDesk may retain motive/affordance candidates without creating
     current motives, Life state, tools, Narrative objects or receipts.
@@ -90,14 +100,23 @@
   - Built-in production-selector fixtures cover low signal, ordinary sharing,
     discomfort, refusal, re-entry and character self-life. Ordinary Chat
     returns at most one item; care does not leak into low signal or refusal.
+    Exact ordinary-Chat reuse is suppressed for one hour after real delivery,
+    and ScenePlan material is once-per-exact route/branch/scene/lane instead of
+    looping the same affordance.
   - Vector-seam fixtures prove a 0.99 semantic score cannot cross a
     persona-mask scope boundary, survive a stale material/model/projection/
     calibration/index binding, operate without a trusted manifest authority,
     or turn low-signal/tool/no-advice input into heavy material.
-  - API-role blind review found no fixed Qi Yu
-    “observe -> tease -> invite” pipeline and no fixed Zayne
-    “confirm -> advise -> care” pipeline. The review also caught and fixed a
-    Call receipt-before-sanitizer bug and removed prompt examples that could
+  - API-role review used the real built-in character records and the same pure
+    message builders as Chat, automatic Call opening, Date opening and Wakeup:
+    5 characters x 4 surfaces = 20 complete provider-facing `messages[]`
+    payloads. Material appears once in system context, live turns remain
+    unchanged, private source refs never appear, and no provider call or fake
+    receipt is made by the audit.
+  - The review found no fixed Qi Yu “observe -> tease -> invite” pipeline and
+    no fixed Zayne “confirm -> advise -> care” pipeline. It also preserved
+    distinct attention angles for Xavier, Sylus and Caleb, caught and fixed a
+    Call receipt-before-sanitizer bug, and removed prompt examples that could
     invent a current workplace, task or recent event.
   - The canonical 390 x 844 browser path opened Dialogue Calendar and the
     analysis sheet without horizontal overflow or console errors. With no
@@ -118,17 +137,16 @@
   - Relationship-local live style promotion is specified but not yet connected
     to an automatic background writer. Current live chat remains evidence, not
     an immediate personality mutation.
-  - Xavier, Sylus and Caleb intentionally have no low-signal fallback and no
-    auto-active care/detail/opening/scene item in this release. Their one narrow
-    runtime voice operator each requires concrete current-turn evidence; the
-    remaining reviewed clusters stay disabled or ScenePlan-gated rather than
-    becoming generic character decoration.
-  - Their existing built-in character cards are still shared placeholder
-    templates. The 523-source review could safely widen each one narrow voice
-    operator into multiple exits, but did not support ordinary-share,
-    self-life or re-entry baselines. This release therefore improves only
-    evidence-matched turns and does not claim those three full personas are
-    complete.
+  - The 21 reviewed candidates are not runtime-available yet: the promotion
+    publisher is deliberately absent until the character-canon, canonical
+    thread/artifact and Director/ScenePlan authority registries exist. Current
+    verified state is `draft paths=21, runtimeAvailable=0, persisted=0,
+    delivered=0, publisher=not-installed`.
+  - Xavier, Sylus and Caleb now have complete sparse four-lane libraries rather
+    than one-token placeholders, but their built-in character cards remain less
+    human-calibrated than Qi Yu and Zayne. The material layer improves
+    evidence-matched attention, openings and initiative without claiming that
+    any prompt can guarantee perfect long-run characterization.
 
 ## 2026-07-20 Information Station Editorial Boundary And Preference Loop
 

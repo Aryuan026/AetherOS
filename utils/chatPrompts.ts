@@ -60,6 +60,46 @@ export const ChatPrompts = {
         }).join('; ');
     },
 
+    /**
+     * Final provider-facing Chat messages. Kept pure so runtime and the
+     * model-context audit cannot silently drift apart.
+     */
+    buildModelFacingMessages: (input: {
+        systemPrompt: string;
+        apiMessages: readonly { role: string; content: unknown }[];
+        bilingualActive?: boolean;
+    }) => {
+        const cleanedApiMessages = input.apiMessages.map((message) => {
+            if (typeof message.content !== 'string') return { ...message };
+            let content = message.content;
+            if (content.toLowerCase().includes('%%bilingual%%')) {
+                const index = content.toLowerCase().indexOf('%%bilingual%%');
+                content = content.substring(0, index).trim();
+            }
+            if (content.includes('<翻译>')) {
+                content = content.replace(
+                    /<翻译>\s*<原文>([\s\S]*?)<\/原文>\s*<译文>[\s\S]*?<\/译文>\s*<\/翻译>/g,
+                    '$1',
+                ).trim();
+            }
+            return { ...message, content };
+        });
+        const messages = [
+            { role: 'system', content: input.systemPrompt },
+            ...cleanedApiMessages,
+        ];
+        if (input.bilingualActive) {
+            messages.push({
+                role: 'system',
+                content: '[Reminder: 每句话必须用 <翻译><原文>...</原文><译文>...</译文></翻译> 标签包裹。一句一个标签。绝对不能省略。]',
+            });
+        }
+        return {
+            cleanedApiMessages,
+            messages,
+        };
+    },
+
     // 构建 System Prompt
     buildSystemPrompt: async (
         char: CharacterProfile,

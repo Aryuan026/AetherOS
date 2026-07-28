@@ -1,5 +1,6 @@
 import { createHistoryScopeKey, validateHistoryScope } from '../contract.ts';
 import type {
+  CompanionMaterialGroundingPolicy,
   CompanionMaterialKind,
   CompanionMaterialMode,
   CompanionMaterialPurpose,
@@ -9,6 +10,7 @@ import type {
 import {
   HISTORY_COMPANION_MATERIAL_SCHEMA_VERSION,
   type HistoryCompanionMaterialCandidate,
+  type HistoryCompanionMaterialGroundingClass,
   type HistoryCompanionMaterialPass,
   type HistoryCompanionMaterialTag,
 } from './types.ts';
@@ -61,9 +63,9 @@ export type {
   HistoryCompanionExecutionPrincipal,
 } from './analysisAuthority.ts';
 
-export const HISTORY_COMPANION_ANALYSIS_REVIEW_SCHEMA_VERSION = 2 as const;
+export const HISTORY_COMPANION_ANALYSIS_REVIEW_SCHEMA_VERSION = 3 as const;
 export const HISTORY_COMPANION_ANALYSIS_ADJUDICATION_SCHEMA_VERSION = 1 as const;
-export const HISTORY_COMPANION_ANALYSIS_FINALIZER_VERSION = 'history-companion-finalizer-v3' as const;
+export const HISTORY_COMPANION_ANALYSIS_FINALIZER_VERSION = 'history-companion-finalizer-v4' as const;
 
 export type HistoryCompanionAnalysisReviewerKind =
   | 'model_semantic_draft'
@@ -127,6 +129,11 @@ export interface HistoryCompanionAnalysisFinding {
     CompanionMaterialKind,
     'opening_recipe' | 'proactive_seed' | 'initiative_motive'
   >;
+  /**
+   * Reviewed evidence requirement. Code maps this closed value to selector
+   * grounding and never renders it as a behavior instruction.
+   */
+  groundingClass: HistoryCompanionMaterialGroundingClass;
   behaviorBoundary?: HistoryCompanionBehaviorBoundary;
   voiceDiagnostics?: HistoryCompanionVoiceDiagnostics;
   reviewReason: string;
@@ -297,6 +304,7 @@ const TAGS_BY_LANE: Record<HistoryCompanionAnalysisLane, ReadonlySet<HistoryComp
   ]),
   opening_proactive: new Set([
     'opening_shape',
+    'fact_free_opening',
     'proactive_intent',
     'initiative_style',
     'repair_style',
@@ -327,6 +335,7 @@ const FORBIDDEN_RESPONSE_FIELDS = new Set([
 
 const FORBIDDEN_GUIDANCE = /currentMotives|toolAllowlist|toolDenylist|工具白名单|工具黑名单|固定回复|照抄|逐字复述/;
 const PROMPT_INJECTION_GUIDANCE = /(?:^|\n)\s*(?:system|assistant|user)\s*:|```|###|忽略(?:以上|前文|此前)指令|系统提示|\[\[(?:ACTION|RECALL|SEND_EMOJI)|<\s*(?:system|assistant|user)\b/iu;
+const NEGATIVE_GUIDANCE_CLAUSE = /(?:不要|不能|不必|不得|不许|严禁|避免)/gu;
 
 const isNonEmpty = (value: unknown): value is string => (
   typeof value === 'string' && value.trim().length > 0
@@ -508,6 +517,101 @@ const acceptedFindingMaterial = (
   };
 };
 
+const GROUNDING_CLASSES = new Set<HistoryCompanionMaterialGroundingClass>([
+  'none',
+  'live_semantic_anchor',
+  'confirmed_thread',
+  'character_life',
+  'confirmed_user_state',
+  'scene_context',
+]);
+
+const CLAIM_KEYS_BY_HISTORY_TAG: Record<
+  HistoryCompanionMaterialTag,
+  readonly string[]
+> = {
+  speech_rhythm: ['ordinary_share', 'observation'],
+  care_style: ['care_needed', 'mild_discomfort'],
+  humor_style: ['humor', 'light_scene'],
+  conflict_style: ['emotional_weight', 'refusal'],
+  repair_style: ['reentry', 'emotional_weight'],
+  initiative_style: ['character_self_share', 'independent_life'],
+  boundary_style: ['refusal'],
+  affection_style: ['affection_style'],
+  stable_habit: ['independent_life'],
+  world_detail: ['observation', 'sensory_detail', 'light_scene'],
+  relationship_detail: ['relationship_detail'],
+  opening_shape: ['opening'],
+  fact_free_opening: ['fact_free_opening'],
+  scene_permission: ['light_scene', 'scene_planning'],
+  proactive_intent: ['proactive_intent', 'character_self_share'],
+};
+
+const claimKeysForFinding = (
+  finding: HistoryCompanionAnalysisFinding,
+): string[] => [...new Set(
+  finding.tags.flatMap(tag => CLAIM_KEYS_BY_HISTORY_TAG[tag] || []),
+)];
+
+const groundingPolicyForFinding = (
+  finding: HistoryCompanionAnalysisFinding,
+): CompanionMaterialGroundingPolicy | undefined => {
+  if (finding.groundingClass === 'none') return undefined;
+  const claimKeys = claimKeysForFinding(finding);
+  if (finding.groundingClass === 'live_semantic_anchor') {
+    return {
+      anyOf: claimKeys.map(claimKey => ({ kind: 'live_user_turn', claimKey })),
+    };
+  }
+  if (finding.groundingClass === 'confirmed_thread') {
+    return {
+      allOf: [{ kind: 'canonical_thread_receipt', claimKey: 'reentry_thread' }],
+    };
+  }
+  if (finding.groundingClass === 'character_life') {
+    return {
+      allOf: [{ kind: 'character_life_receipt', claimKey: 'self_life_thread' }],
+    };
+  }
+  if (finding.groundingClass === 'confirmed_user_state') {
+    return {
+      allOf: [{ kind: 'confirmed_user_state', claimKey: 'care_relevant_state' }],
+    };
+  }
+  return {
+    anyOf: claimKeys.map(claimKey => ({ kind: 'scene_context', claimKey })),
+  };
+};
+
+const groundingClassAllowedForFinding = (
+  finding: HistoryCompanionAnalysisFinding,
+): boolean => {
+  if (finding.lane === 'language_fingerprint') return finding.groundingClass === 'none';
+  if (finding.lane === 'stable_detail') return finding.groundingClass === 'live_semantic_anchor';
+  if (finding.lane === 'scene_texture') return finding.groundingClass === 'scene_context';
+  if (finding.materialKind === 'opening_recipe') {
+    return (
+      (
+        finding.groundingClass === 'none'
+        && finding.tags.includes('fact_free_opening')
+      )
+      || finding.groundingClass === 'live_semantic_anchor'
+      || finding.groundingClass === 'confirmed_thread'
+      || finding.groundingClass === 'scene_context'
+    );
+  }
+  if (finding.materialKind === 'proactive_seed') {
+    return (
+      finding.groundingClass === 'none'
+      || finding.groundingClass === 'confirmed_thread'
+      || finding.groundingClass === 'character_life'
+      || finding.groundingClass === 'confirmed_user_state'
+    );
+  }
+  return finding.materialKind === 'initiative_motive'
+    && finding.groundingClass === 'scene_context';
+};
+
 const sourceSpanKey = (span: HistorySourceSpan): string => (
   `${span.documentId}@${span.documentRevision}:${span.startMessageOffset}-${span.endMessageOffset}`
 );
@@ -531,7 +635,9 @@ const validateFinding = (
   const errors: string[] = [];
   if (!finding || typeof finding !== 'object') return [`${label} must be an object`];
   const evidenceIds = Array.isArray(finding.evidenceIds) ? finding.evidenceIds : [];
-  const tags = Array.isArray(finding.tags) ? finding.tags : [];
+  const tags: readonly HistoryCompanionMaterialTag[] = Array.isArray(finding.tags)
+    ? finding.tags
+    : [];
   if (!isNonEmpty(finding.id)) errors.push(`${label}.id is required`);
   if (!packets.some(packet => packet.requestedLanes.includes(finding.lane))) {
     errors.push(`${label}.lane was not requested by the packet`);
@@ -544,11 +650,25 @@ const validateFinding = (
   if (!SPEAKER_RESOLUTIONS.has(finding.speakerResolution)) {
     errors.push(`${label}.speakerResolution is invalid`);
   }
+  if (!GROUNDING_CLASSES.has(finding.groundingClass)) {
+    errors.push(`${label}.groundingClass is invalid`);
+  }
   if (!unique(tags) || tags.length > 6) {
     errors.push(`${label}.tags must be at most six unique controlled values`);
   }
   if (tags.some(tag => !TAGS_BY_LANE[finding.lane]?.has(tag))) {
     errors.push(`${label}.tags cross the lane vocabulary`);
+  }
+  if (
+    finding.decision === 'accepted'
+    &&
+    finding.groundingClass !== 'none'
+    && finding.groundingClass !== 'confirmed_thread'
+    && finding.groundingClass !== 'character_life'
+    && finding.groundingClass !== 'confirmed_user_state'
+    && tags.flatMap(tag => CLAIM_KEYS_BY_HISTORY_TAG[tag] || []).length === 0
+  ) {
+    errors.push(`${label}.groundingClass requires at least one claim-bearing tag`);
   }
   if (!isNonEmpty(finding.reviewReason)) errors.push(`${label}.reviewReason is required`);
   if (!isNonEmpty(finding.uncertaintyOrConflict)) {
@@ -576,6 +696,23 @@ const validateFinding = (
   }
 
   if (finding.decision === 'accepted') {
+    if (!groundingClassAllowedForFinding(finding)) {
+      errors.push(
+        `${label}.groundingClass is incompatible with ${finding.lane}/${finding.materialKind || 'default'}`,
+      );
+    }
+    if (
+      finding.materialKind === 'opening_recipe'
+      && finding.groundingClass === 'none'
+      && (
+        !tags.includes('fact_free_opening')
+        || tags.includes('relationship_detail')
+      )
+    ) {
+      errors.push(
+        `${label}.fact-free opening requires fact_free_opening and may not carry relationship_detail`,
+      );
+    }
     if (!evidenceIds.length) errors.push(`${label} requires evidence`);
     if (
       !finding.behaviorBoundary
@@ -590,6 +727,9 @@ const validateFinding = (
     if (finding.guidance.length > 360) errors.push(`${label}.guidance exceeds 360 characters`);
     if (FORBIDDEN_GUIDANCE.test(finding.guidance)) {
       errors.push(`${label}.guidance crosses current-state, tool, or verbatim boundaries`);
+    }
+    if ((finding.guidance.match(NEGATIVE_GUIDANCE_CLAUSE) || []).length > 1) {
+      errors.push(`${label}.guidance must stay generative; put truth boundaries in grounding metadata`);
     }
     if (PROMPT_INJECTION_GUIDANCE.test(finding.guidance)) {
       errors.push(`${label}.guidance contains prompt-control syntax`);
@@ -1099,6 +1239,8 @@ export const finalizeHistoryCompanionAnalysisReview = (
         eligibleModes: [...material.eligibleModes],
         eligiblePurposes: [...material.eligiblePurposes],
         tags,
+        groundingClass: finding.groundingClass,
+        groundingPolicy: groundingPolicyForFinding(finding),
         status: 'active',
         createdAt: adjudication.adjudicatedAt,
         updatedAt: adjudication.adjudicatedAt,

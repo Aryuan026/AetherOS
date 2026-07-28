@@ -254,7 +254,8 @@ export const builtInDeepspaceRetrievalCalibrationForCharacter = (
   BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL
     .filter(record => record.charId === charId)
     .flatMap(record => {
-      const retrievalHints = builtInDeepspaceRetrievalCalibrationFor(record.id);
+      const retrievalHints = record.retrievalHints
+        || builtInDeepspaceRetrievalCalibrationFor(record.id);
       return retrievalHints ? [{ ...record, retrievalHints }] : [];
     })
 );
@@ -267,17 +268,24 @@ export const builtInDeepspaceRetrievalCalibrationForCharacter = (
 export const validateBuiltInDeepspaceRetrievalCalibration = (): readonly string[] => {
   const errors: string[] = [];
   const reviewedIds = new Set(BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL.map(record => record.id));
-  const calibrationIds = Object.keys(BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID);
 
-  calibrationIds.forEach(materialId => {
-    if (!reviewedIds.has(materialId)) errors.push(`unknown calibrated material: ${materialId}`);
-  });
+  // The map retains dormant baseline calibrations for audit/revision history.
+  // Only records in the reviewed export are loadable at runtime.
   reviewedIds.forEach(materialId => {
-    if (!builtInDeepspaceRetrievalCalibrationFor(materialId)) errors.push(`missing calibration: ${materialId}`);
+    const record = BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL.find(item => item.id === materialId);
+    if (!record?.retrievalHints && !builtInDeepspaceRetrievalCalibrationFor(materialId)) {
+      errors.push(`missing calibration: ${materialId}`);
+    }
   });
 
   const signalPattern = /^[a-z]+(?:_[a-z]+)*$/;
-  Object.entries(BUILT_IN_DEEPSPACE_RETRIEVAL_CALIBRATION_BY_MATERIAL_ID).forEach(([materialId, calibration]) => {
+  const effectiveCalibrations = BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL
+    .map(record => [
+      record.id,
+      record.retrievalHints || builtInDeepspaceRetrievalCalibrationFor(record.id),
+    ] as const)
+    .filter((entry): entry is readonly [string, BuiltInDeepspaceRetrievalCalibration] => Boolean(entry[1]));
+  effectiveCalibrations.forEach(([materialId, calibration]) => {
     if (!calibration.variationGroup || !signalPattern.test(calibration.variationGroup)) {
       errors.push(`invalid variation group: ${materialId}`);
     }
@@ -303,11 +311,11 @@ export const validateBuiltInDeepspaceRetrievalCalibration = (): readonly string[
 
   recordsByCharacter.forEach(({ charId, records }) => {
     const fallbackCount = records.filter(record => record.retrievalHints?.activationPolicy === 'voice_fallback').length;
-    const requiresFallback = (
+    const allowsFallback = (
       charId === BUILT_IN_DEEPSPACE_QIYU_ID
       || charId === BUILT_IN_DEEPSPACE_LISHEN_ID
     );
-    if ((requiresFallback && (fallbackCount < 1 || fallbackCount > 2)) || (!requiresFallback && fallbackCount !== 0)) {
+    if (fallbackCount > 2 || (!allowsFallback && fallbackCount !== 0)) {
       errors.push(`fallback count is invalid: ${charId}:${fallbackCount}`);
     }
     records

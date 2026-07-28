@@ -79,6 +79,9 @@ canonical active records
 - revised material 不继承旧 revision 的 cooldown；
 - superseded / stale history pass 即使 library 清理失败也必须 fail closed；
 - legacy 并行路径必须列名并明确 `active / quarantined / HOLD`，不能悄悄形成第二套消费链。
+- reviewed candidate 在 canonical publisher 到位前只能形成 disabled draft；
+  caller-provided resolver 不得产生 availability。generic store 必须在读写两端都
+  fail closed，Director route 还要绑定 exact mainline / if-line lane。
 - 同一步评估向量是否真的必要：先量 active / eligible 候选规模与已标注语义漏召回，
   不因“以后可能很多”提前启用；若需要，只允许 hard gate 之后的 hybrid rank，并保留
   lexical fallback、版本 manifest 与失败原子回退。
@@ -124,6 +127,10 @@ canonical active records
 - `independent_life` 不能唤醒 reentry opening；时间间隔必须有真正 reentry 证据。
 - 来源复核若只能支持窄 voice，就诚实留下普通分享、自生活和重逢缺口；不得把占位
   角色卡的问题伪装成素材层 Green，也不得用通用好行为填满空白。
+- “素材库丰富”与“单轮稀疏”可以同时成立。本轮最终 909 来源支撑 56 条运行记录与
+  21 条待权威候选；普通 Chat 仍最多 1 条，不能再用早期 23 条校准子集冒充全量结案。
+- API 视角复核必须复用真实消费者的纯 `messages[]` builder。另写一份相似 Prompt
+  只能测文案，不能证明真正发送给 provider 的上文。
 
 ## 封箱条件
 
