@@ -68,7 +68,9 @@ packets.flatMap(item => item.evidence).forEach(evidence => {
   assert.equal(prompt.userPrompt.includes(evidence.id), true);
   assert.equal(prompt.userPrompt.includes(evidence.ephemeralText), true);
 });
-assert.match(prompt.systemPrompt, /共同好行为/);
+assert.match(prompt.systemPrompt, /共同品质要保留为产品共享基线/);
+assert.match(prompt.systemPrompt, /boundary_style \/ care_style \/ repair_style/);
+assert.match(prompt.systemPrompt, /共享原则重复入库/);
 assert.match(prompt.systemPrompt, /自己的观察、生活和判断/);
 assert.match(prompt.systemPrompt, /coauthored_multi_actor/);
 assert.match(prompt.systemPrompt, /最多 12 个 findings/);

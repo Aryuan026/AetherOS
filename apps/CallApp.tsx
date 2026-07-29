@@ -28,6 +28,9 @@ import {
 } from '../utils/companionMaterial/promptConsumer';
 import { buildCallCompanionMaterialRequest } from '../utils/companionMaterial/requestBuilders';
 import {
+  buildCompanionInteractionQualityProjection,
+} from '../utils/companionMaterial/interactionQuality';
+import {
   buildCallModelFacingMessages,
   buildCallPrompt,
 } from '../utils/callModelMessages';
@@ -756,7 +759,11 @@ const CallApp: React.FC = () => {
     const finalInput = timeGapHint ? `${input}\n\n${timeGapHint}` : input;
     return [...history, { role: 'user', content: finalInput }];
   };
-  const requestAssistantReply = async (input: string, skipDbId?: number): Promise<string> => {
+  const requestAssistantReply = async (
+    input: string,
+    skipDbId?: number,
+    qualityPreviousUserOverride?: CallBubble | null,
+  ): Promise<string> => {
     const baseUrl = apiConfig.baseUrl?.replace(/\/+$/, '');
     if (!baseUrl) throw new Error('请先在设置里配置聊天 API URL');
     const userName = userProfile?.name?.trim() || '用户';
@@ -805,6 +812,21 @@ const CallApp: React.FC = () => {
       }
     }
     const realityContext = await buildRealitySyncContext(realtimeConfig, 'call');
+    const previousCallUserBubble = qualityPreviousUserOverride === undefined
+      ? [...bubbles].reverse().find(bubble => bubble.role === 'user')
+      : qualityPreviousUserOverride || undefined;
+    const interactionQuality = selectedChar
+      ? buildCompanionInteractionQualityProjection({
+          charId: selectedChar.id,
+          query: input,
+          previousQuery: previousCallUserBubble?.text,
+          occurredAt: requestTime,
+          previousOccurredAt: previousCallUserBubble?.timestamp,
+          surface: 'call',
+          mode: 'call',
+          purpose: bubbles.some(bubble => bubble.role === 'assistant') ? 'stable_context' : 'opening',
+        })
+      : null;
     const voiceLangLabel = voiceLang
       ? VOICE_LANG_OPTIONS.find(option => option.value === voiceLang)?.label || voiceLang
       : undefined;
@@ -817,6 +839,7 @@ const CallApp: React.FC = () => {
           voiceLang: voiceLang || undefined,
           voiceLangLabel,
           callScene: callScene || undefined,
+          interactionQualityContext: interactionQuality?.markdown,
         })
       : buildCallPrompt({
           userName,
@@ -1118,10 +1141,16 @@ const CallApp: React.FC = () => {
     if (idx <= 0) return;
     const prevUser = bubbles[idx - 1];
     if (!prevUser || prevUser.role !== 'user') return;
+    const previousBeforeReroll = [...bubbles.slice(0, idx - 1)].reverse()
+      .find(item => item.role === 'user');
     try {
       setRerollingBubbleId(bubble.id);
       setCallState('thinking');
-      const rerolled = sanitizeAssistantOutput(await requestAssistantReply(prevUser.text, bubble.dbId));
+      const rerolled = sanitizeAssistantOutput(await requestAssistantReply(
+        prevUser.text,
+        bubble.dbId,
+        previousBeforeReroll || null,
+      ));
       setBubbles(prev => prev.map(b => b.id === bubble.id ? { ...b, text: rerolled, audioUrl: undefined } : b));
       if (bubble.dbId) await DB.updateMessage(bubble.dbId, rerolled);
       if (bubble.dbId) await DB.updateMessageMetadata(bubble.dbId, { audioUrl: undefined, ttsTraceId: undefined });

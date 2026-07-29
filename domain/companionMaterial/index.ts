@@ -5,6 +5,7 @@ export * from './selection.ts';
 export * from './deliveryReceipt.ts';
 export * from './semanticProjection.ts';
 export * from './promptProjection.ts';
+export * from './interactionQuality.ts';
 export * from './reviewedCandidate.ts';
 export * from './candidatePromotion.ts';
 export * from './builtInDeepspaceScopedCandidates.ts';

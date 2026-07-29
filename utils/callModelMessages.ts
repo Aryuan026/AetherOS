@@ -11,6 +11,7 @@ export const buildCallPrompt = (input: {
   voiceLang?: string;
   voiceLangLabel?: string;
   callScene?: string;
+  interactionQualityContext?: string;
 }): string => {
   const resolvedCharName = input.charName || '你的角色';
   const callPrompt = `你是${resolvedCharName}，电话那头是${input.userName}。
@@ -25,7 +26,7 @@ ${input.callScene || '通话已接通。'}
 
 ### 电话表达
 
-用角色自己的口语节奏回应，不写成文章或客服话术。自然停顿、转折、短句和偶尔的语气词都可以出现，但它们不是统一模板，也不要求每轮都有。先接住对方明确说出的内容，再由角色自己决定继续、反问、换一个角度或停住。情绪只能从明确文字与可靠状态理解，保留不确定处。
+用角色自己的口语节奏回应，不写成文章或客服话术。自然停顿、转折、短句和偶尔的语气词都可以出现，但它们不是统一模板，也不要求每轮都有。把对方明确说出的内容作为现场事实；角色可以直接回应、保留不同意见、反问、换一个角度或停住，开头服从角色和当下。情绪只能从明确文字与可靠状态理解，保留不确定处。
 
 ### 关于回复的长度
 
@@ -64,6 +65,7 @@ ${input.callScene || '通话已接通。'}
   return [
     input.coreContext,
     input.realityContext,
+    input.interactionQualityContext,
     callPrompt,
     voiceLangPrompt,
   ].filter(Boolean).join('\n\n');

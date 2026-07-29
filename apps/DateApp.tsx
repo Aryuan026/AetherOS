@@ -24,6 +24,9 @@ import {
 } from '../utils/companionMaterial/promptConsumer';
 import { buildDateOpeningCompanionMaterialRequest } from '../utils/companionMaterial/requestBuilders';
 import { buildLiveUserTurnGroundingRefs } from '../utils/companionMaterial/grounding';
+import {
+    buildCompanionInteractionQualityProjection,
+} from '../utils/companionMaterial/interactionQuality';
 import { buildDateOpeningModelMessages } from '../utils/dateOpeningModelMessages';
 import { DateCharacterSelectCard } from '../components/date/DateCharacterSelectCard';
 import { DatePersonaScopeNotice, DateSelectIntro } from '../components/date/DateSelectIntro';
@@ -489,6 +492,7 @@ const DateApp: React.FC = () => {
                 content: m.type === 'image' ? `${timeAxis} ${source} [User sent an image]` : `${timeAxis} ${source} ${m.content}`
             };
         });
+        const previousDateUserMessage = [...allMsgs.slice(0, -1)].reverse().find(message => message.role === 'user');
 
         const worldlineMemory = await selectWorldlineMemoryContext({
             char,
@@ -532,6 +536,18 @@ const DateApp: React.FC = () => {
             ContextBuilder.buildCoreContext(char, userProfile),
             worldlineMemory.markdown,
             preparedCompanionMaterial?.markdown,
+            buildCompanionInteractionQualityProjection({
+                charId: char.id,
+                query: text,
+                previousQuery: typeof previousDateUserMessage?.content === 'string'
+                    ? previousDateUserMessage.content
+                    : undefined,
+                occurredAt: requestTime,
+                previousOccurredAt: previousDateUserMessage?.timestamp,
+                surface: 'date',
+                mode: 'date_scene',
+                purpose: 'stable_context',
+            })?.markdown,
         ].filter(Boolean).join('\n');
         const REQUIRED_EMOTIONS = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotions = [...REQUIRED_EMOTIONS, ...(char.customDateSprites || [])];
@@ -545,28 +561,11 @@ const DateApp: React.FC = () => {
 ### 核心规则：一行一念 (One Line per Beat)
 前端解析器基于**换行符**来分割气泡。
 1. **禁止混写**: 严禁在同一行里既写动作又写带引号的台词。
-2. **情绪标签**: **每一行都必须以** \`[emotion]\` **开头**，表示该行的表情立绘。情绪随内容变化——台词温柔就用 [happy]，动作紧张就用 [shy]，语气冲就用 [angry]。**不要整段只用一个情绪，要逐行根据语境切换。** 仅限使用以下情绪: ${dateEmotions.join(', ')}。不要使用任何不在此列表中的标签。
+2. **情绪标签**: **每一行都必须以** \`[emotion]\` **开头**，表示该行的表情立绘。标签随内容选择，连续多行可以使用同一标签；仅限使用以下情绪: ${dateEmotions.join(', ')}。
 3. **格式**: 台词用双引号 **"..."**，动作/叙述直接写（不加引号）。
 
 ### ⭐ 动作与叙述行的写法
-你不是在列清单，你是在写一个正在发生的场景。每一行动作/叙述都应该让人感受到**此时此刻的空气**。
-
-**具体要求**：
-- 写出**感官**：光线怎么落的、空气什么味道、皮肤什么触感、周围什么声音
-- 写出**节奏**：动作之间有停顿、有犹豫、有呼吸，不要一口气做完三个动作
-- 写出**情绪的痕迹**：不要说"他很紧张"，而是写他的手指在桌面上画了一道看不见的线
-- 让每一行都有**画面**，像电影里的一个镜头
-
-❌ **不要这样写**（只用一个情绪 + 干巴巴的动作罗列）：
-[normal] 把手放下，看向你。
-走到你身边，坐下来。
-拿起杯子，喝了一口水。
-
-✅ **要这样写**（每行标注情绪 + 有呼吸感的叙述）：
-[normal] 指尖从发梢滑落，垂在身侧。视线转过来的时候并不急，像是刚好、又像是故意。
-[shy] "……你一直在看我吗？"
-[happy] 嘴角的弧度藏不住，像是被戳中了什么小心思。
-[normal] 脚步踩在木地板上的声音很轻。在你旁边坐下来，衣料带过一缕还没散尽的冷风。
+动作与叙述是可选的：一句台词、一次停顿或短暂沉默都可以构成完整回应。出现动作时，让它具体、单纯而有节奏；场景需要时再使用感官细节，回应长度、镜头密度和情绪变化服从角色卡与本轮现场。
 
 ### 场景上下文
 1. **Location**: 你们现在**面对面**。
@@ -581,7 +580,7 @@ const DateApp: React.FC = () => {
                 messages: [
                     { role: 'system', content: systemPrompt },
                     ...historyMsgs,
-                    { role: 'user', content: `${text}\n\n(System Note: 严格遵守 VN 格式。每一行都要以 [emotion] 开头，根据内容逐行切换情绪标签，不要整段只用同一个。叙述行写出场景的呼吸感，不要罗列动作。)` }
+                    { role: 'user', content: `${text}\n\n(System Note: 保持 VN 的行首情绪标签与台词/叙述分行格式；内容长度、是否使用动作、立场与停顿服从角色卡、本轮互动参考和现场。)` }
                 ],
                 temperature: 0.85
             })
@@ -657,6 +656,7 @@ const DateApp: React.FC = () => {
         const lastUserMsg = validMsgs[validMsgs.length - 1];
         
         if (!lastUserMsg || lastUserMsg.role !== 'user') throw new Error("Context lost");
+        const previousDateUserMessage = [...validMsgs.slice(0, -1)].reverse().find(message => message.role === 'user');
 
         // 3. Call API logic
         const limit = char.contextLimit || 500;
@@ -707,6 +707,18 @@ const DateApp: React.FC = () => {
             ContextBuilder.buildCoreContext(char, userProfile),
             worldlineMemoryR.markdown,
             preparedCompanionMaterial?.markdown,
+            buildCompanionInteractionQualityProjection({
+                charId: char.id,
+                query: String(lastUserMsg.content || ''),
+                previousQuery: typeof previousDateUserMessage?.content === 'string'
+                    ? previousDateUserMessage.content
+                    : undefined,
+                occurredAt: lastUserMsg.timestamp,
+                previousOccurredAt: previousDateUserMessage?.timestamp,
+                surface: 'date',
+                mode: 'date_scene',
+                purpose: 'stable_context',
+            })?.markdown,
         ].filter(Boolean).join('\n');
         const REQUIRED_EMOTIONS_R = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotionsR = [...REQUIRED_EMOTIONS_R, ...(char.customDateSprites || [])];
@@ -721,8 +733,7 @@ const DateApp: React.FC = () => {
 3. **格式**: 台词用双引号 **"..."**，动作/叙述直接写。
 
 ### ⭐ 动作与叙述行的写法
-不要罗列动作。写出感官细节、停顿和呼吸感，让每一行都像电影镜头——有画面、有空气、有温度。
-用细微的肢体语言暗示情绪，不要直接说"开心""紧张"。
+动作与叙述是可选的；一句台词或一次停顿也可以成立。出现动作时保持具体与节奏，感官细节只在场景确实需要时使用。
 `;
 
         const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -733,7 +744,7 @@ const DateApp: React.FC = () => {
                 messages: [
                     { role: 'system', content: systemPrompt },
                     ...historyMsgs,
-                    { role: 'user', content: `${lastUserMsg.content}\n\n(System Note: Reroll. 用不同的角度重写，叙述行保持场景感。)` }
+                    { role: 'user', content: `${lastUserMsg.content}\n\n(System Note: Reroll. 换一个仍符合角色卡、互动参考与现场的有效角度；保持 VN 的行首标签和分行格式。)` }
                 ],
                 temperature: 0.9 
             })

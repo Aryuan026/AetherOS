@@ -20,11 +20,14 @@ import {
 import { pickVoiceDirectWakeupLine, selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule } from '../utils/companionWakeupRules';
 import {
+    filterCurrentStateMessages,
+    messageMatchesRelationshipScope,
     normalizeMessageRelationshipScope,
     sameMessageRelationshipScope,
     strictRelationshipScopeForProfile,
 } from '../utils/messageContext';
 import {
+    buildCompanionInteractionQualityProjection,
     buildWakeupCompanionMaterialRequest,
     prepareCompanionMaterialPrompt,
     recordPreparedCompanionMaterialPromptDelivery,
@@ -118,18 +121,27 @@ const pickFreshDirectWakeupLine = async (
     return pickPool[index] || '';
 };
 
-const latestSentWakeupAt = async (charId: string): Promise<number | null> => {
+const latestSentWakeupAt = async (
+    charId: string,
+    relationshipScope: MessageRelationshipScope,
+): Promise<number | null> => {
     const recent = await DB.getRecentMessagesByCharId(charId, SENT_WAKEUP_HISTORY_LIMIT);
     const last = [...recent].reverse().find(message => (
-        message.role === 'assistant'
+        messageMatchesRelationshipScope(message, relationshipScope)
+        && message.role === 'assistant'
         && message.metadata?.source === 'companion_wakeup'
     ));
     return last?.timestamp || null;
 };
 
-const latestRealUserMessageAt = async (charId: string): Promise<number | null> => {
+const latestRealUserMessageAt = async (
+    charId: string,
+    relationshipScope: MessageRelationshipScope,
+): Promise<number | null> => {
     const recent = await DB.getRecentMessagesByCharId(charId, 80);
-    const lastUser = [...recent].reverse().find(message => (
+    const lastUser = [...filterCurrentStateMessages(
+        recent.filter(message => messageMatchesRelationshipScope(message, relationshipScope)),
+    )].reverse().find(message => (
         message.role === 'user'
         && !message.metadata?.hidden
         && !message.metadata?.proactiveHint
@@ -144,8 +156,10 @@ const nextEligibleWakeupAt = async (
 ): Promise<{ at: number; reason?: string }> => {
     let eligibleAt = now;
     let reason: string | undefined;
+    const relationshipScope = normalizeMessageRelationshipScope(rule.relationshipScope);
+    if (!relationshipScope) return { at: now + TICK_INTERVAL_MS, reason: 'relationship_scope_missing' };
 
-    const lastSentAt = await latestSentWakeupAt(rule.charId);
+    const lastSentAt = await latestSentWakeupAt(rule.charId, relationshipScope);
     if (lastSentAt) {
         const sendGapMs = getCompanionWakeupSendGapMs(rule.charId, lastSentAt);
         if (now - lastSentAt < sendGapMs) {
@@ -154,7 +168,7 @@ const nextEligibleWakeupAt = async (
         }
     }
 
-    const lastUserAt = await latestRealUserMessageAt(rule.charId);
+    const lastUserAt = await latestRealUserMessageAt(rule.charId, relationshipScope);
     if (lastUserAt && now - lastUserAt < COMPANION_WAKEUP_USER_COOLDOWN_MS) {
         eligibleAt = Math.max(eligibleAt, lastUserAt + COMPANION_WAKEUP_USER_COOLDOWN_MS);
         reason = 'user_cooldown';
@@ -175,12 +189,19 @@ const renderWakeupWithAI = async (
     if (!apiConfig.baseUrl) return '';
 
     const requestTime = Date.now();
-    const recent = await DB.getRecentMessagesByCharId(char.id, 80);
-    const visibleRecent = recent
+    const recent = (await DB.getRecentMessagesByCharId(char.id, 80))
+        .filter(message => messageMatchesRelationshipScope(message, relationshipScope));
+    const visibleMessages = filterCurrentStateMessages(recent)
         .filter(message => !message.metadata?.hidden)
-        .slice(-8)
+        .slice(-8);
+    const visibleRecent = visibleMessages
         .map(message => `${message.role === 'user' ? userProfile.name : char.name}: ${message.content}`)
         .join('\n') || '暂无最近对话。';
+    const latestVisibleUser = [...visibleMessages].reverse().find(message => (
+        message.role === 'user'
+        && !message.metadata?.proactiveHint
+        && message.metadata?.source !== 'companion_wakeup'
+    ));
 
     const worldlineMemory = await selectWorldlineMemoryContext({
         char,
@@ -216,6 +237,16 @@ const renderWakeupWithAI = async (
         worldlineContext: worldlineMemory.markdown,
         realityContext,
         companionMaterialContext: preparedCompanionMaterial?.markdown,
+        interactionQualityContext: buildCompanionInteractionQualityProjection({
+            charId: char.id,
+            query: typeof latestVisibleUser?.content === 'string'
+                ? latestVisibleUser.content
+                : `${rule.title} ${rule.value || ''}`.trim(),
+            surface: 'proactive_letter',
+            mode: 'proactive_letter',
+            purpose: 'proactive_intent',
+            explicitSignals: rule.priority === 'care' ? ['care_needed'] : undefined,
+        })?.markdown,
         timeText,
         userName: userProfile.name,
         ruleTitle: rule.title,

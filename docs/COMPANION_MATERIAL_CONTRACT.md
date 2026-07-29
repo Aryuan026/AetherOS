@@ -189,6 +189,44 @@ canonical receipt；角色卡、世界书与稳定身份只能提供观察视角
 
 未来 Director/ScenePlan 才能依据路线、Life、关系与现场证据，把 `motiveCandidates` 中的一项转成真正的当下动机。
 
+## 共享互动品质与角色化实现
+
+乙游角色之间反复出现的共同好品质不会再被去名检查直接丢弃，也不会被复制成五条
+角色指纹。运行时由 `domain/companionMaterial/interactionQuality.ts` 持有一份共享
+品质基线：
+
+- 明确拒绝、偏好与边界会真正改变本轮回应；
+- 关心可以主动，但支持保持可调整、可拒绝；
+- 话题可以暂停、转向，并在未来从新线索重新接起。
+
+这层只在 `refusal / no_advice_chat / care_needed / mild_discomfort /
+pause_or_redirect / reentry` 等现场信号出现时投影，普通闲聊不会常驻。一次只选择一个
+最相关品质，并提供当前角色的多个正向出口；模型只需取此刻最自然的一处，不按
+“共同规则 -> 角色动作”的两段式作答。共享原则不会占用 Companion Material 的
+`maxItems`，所以不会挤掉本轮真正相关的语言指纹、细节或场景素材。稀疏素材与品质包
+职责不同：前者提供本轮相关的角色注意角度，后者只在边界/关怀/暂停信号出现时提供
+互动行动空间，因此不再用素材 kind 粗略判断“角色落法已覆盖”。
+
+五位内置角色的 realization 来自私有 909 条短信支持网络，公开运行包只保留非逐字
+方向与来源组统计。自建角色没有内置 realization 时仍使用同一共享地板，但具体落法
+交还角色卡；未来历史分析可把跨来源稳定的角色化实现整理为
+`boundary_style / care_style / repair_style` 关系素材。共同品质本身只由代码保存一份，
+不会被历史 pass 重复发布。
+
+这层的 `truthEffect / currentStateEffect / toolPolicyEffect` 均为 `none`。它不是“必须
+顺从玩家”的禁令：角色仍可不同意、表达自己的条件、主动提出新方向或使用合法工具；
+改变的是回应对方选择的方式，不是取消角色的判断与行动能力。短信证据没有支持任何
+hard persona prohibition，因此低概率负向观察继续停留在审计层，不进入 Prompt。
+
+信号选择只接受当前玩家自己的明确表达：技术痛点、困惑、痛快、累积等复合词不会
+进入身体关怀；多人共创文本中的 NPC 拒绝也不会冒充玩家边界。连续两轮命中同一品质
+且属于同一子信号、间隔不超过 30 分钟时，第二轮依靠当前用户原话和对话历史延续，
+不再次注入相同 system 区块；暂停后的重连、或长时间后的同类边界会重新获得现场参考。
+
+当前真实消费者是 Chat、Call、Date 的 live turn / reroll 与主动来信。Date opening
+没有当前玩家边界，因此不伪造品质输入；StoryDesk / ScenePlan 仍为 HOLD，只保留未来
+接入 seam，不能把 `applicable` 冒充 `delivered`。
+
 ## 向量升级缝
 
 `CompanionMaterialSemanticRank` 是可选的未来排序结果，不是已经上线的索引能力：

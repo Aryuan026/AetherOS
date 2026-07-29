@@ -19,6 +19,7 @@ import {
 } from '../utils/messageContext';
 import { createAssistantResponseId, splitChatReplyText } from '../utils/chatReplyMode';
 import {
+    buildCompanionInteractionQualityProjection,
     buildChatCompanionMaterialRequest,
     prepareCompanionMaterialPrompt,
     recordPreparedCompanionMaterialPromptDelivery,
@@ -401,6 +402,20 @@ export const useChatAI = ({
                     console.warn('Companion material context unavailable:', error);
                 }
             }
+            const interactionQuality = lastUserMessage
+                ? buildCompanionInteractionQualityProjection({
+                    charId: char.id,
+                    query: typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
+                    previousQuery: typeof previousUserMessage?.content === 'string'
+                        ? previousUserMessage.content
+                        : undefined,
+                    occurredAt: lastUserMessage.timestamp,
+                    previousOccurredAt: previousUserMessage?.timestamp,
+                    surface: 'chat',
+                    mode: 'remote_chat',
+                    purpose: 'stable_context',
+                })
+                : null;
             let systemPrompt = await ChatPrompts.buildSystemPrompt(
                 char,
                 userProfile,
@@ -414,6 +429,7 @@ export const useChatAI = ({
                     replyMode: chatReplyMode,
                     delivery: 'interactive',
                     companionMaterialContext: preparedCompanionMaterial?.markdown,
+                    interactionQualityContext: interactionQuality?.markdown,
                 },
             );
 

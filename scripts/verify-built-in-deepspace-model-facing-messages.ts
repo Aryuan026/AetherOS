@@ -28,6 +28,9 @@ import {
   buildWakeupCompanionMaterialRequest,
 } from '../utils/companionMaterial/requestBuilders.ts';
 import {
+  buildCompanionInteractionQualityProjection,
+} from '../domain/companionMaterial/interactionQuality.ts';
+import {
   buildCallModelFacingMessages,
   buildCallPrompt,
 } from '../utils/callModelMessages.ts';
@@ -47,6 +50,11 @@ const CHARACTERS = [
   { charId: BUILT_IN_DEEPSPACE_SHENXINGHUI_ID, name: '沈星回', query: '我们假装这把伞有一条奇怪规则。' },
   { charId: BUILT_IN_DEEPSPACE_QINCHE_ID, name: '秦彻', query: '两个方案都能走，只是代价不一样。' },
   { charId: BUILT_IN_DEEPSPACE_XIAYIZHOU_ID, name: '夏以昼', query: '来打个赌，输的人负责买甜点。' },
+] as const;
+const QUALITY_CASES = [
+  { id: 'agency_and_refusal', query: '这次我不想去，也不用劝我。' },
+  { id: 'care_without_control', query: '今天有点头疼，但我还能聊。' },
+  { id: 'pause_and_reentry', query: '先不说了，我们换个话题。' },
 ] as const;
 
 const memoryStorage = new Map<string, string>();
@@ -151,7 +159,7 @@ const dateExperienceModule = await import('../utils/dateExperience.ts') as unkno
     withoutMaterial: readonly { role: string; content: unknown }[];
     liveNeedle: string;
   }) => {
-    assert.ok(input.material, `${input.label} must select one sparse material fragment`);
+    assert.ok(input.material, `${input.label} must carry one bounded context block`);
     assert.equal(input.withMaterial.length, input.withoutMaterial.length);
     assert.deepEqual(
       input.withMaterial.slice(1),
@@ -257,6 +265,82 @@ const dateExperienceModule = await import('../utils/dateExperience.ts') as unkno
       withoutMaterial: chatWithout,
       liveNeedle: character.query,
     });
+    const qualitySnapshots = [];
+    for (const qualityCase of QUALITY_CASES) {
+      const quality = buildCompanionInteractionQualityProjection({
+        charId: character.charId,
+        query: qualityCase.query,
+        surface: 'chat',
+        mode: 'remote_chat',
+        purpose: 'stable_context',
+      });
+      assert.ok(quality, `${character.name}:${qualityCase.id} must project`);
+      assert.equal(quality.qualityId, qualityCase.id);
+      const qualityLiveMessages = [{
+        id: 2,
+        charId: character.charId,
+        role: 'user',
+        type: 'text',
+        content: qualityCase.query,
+        timestamp: NOW + 1,
+        metadata: { source: 'chat', temporalClass: 'live' },
+      }];
+      const qualityHistory = chatModule.ChatPrompts.buildMessageHistory(
+        qualityLiveMessages,
+        20,
+        char,
+        userProfile,
+        [],
+      ).apiMessages;
+      const qualitySystemWithout = await chatModule.ChatPrompts.buildSystemPrompt(
+        char,
+        userProfile,
+        [],
+        [],
+        [],
+        qualityLiveMessages,
+        undefined,
+        '',
+        { replyMode: 'preserve', delivery: 'interactive' },
+      );
+      const qualitySystemWith = await chatModule.ChatPrompts.buildSystemPrompt(
+        char,
+        userProfile,
+        [],
+        [],
+        [],
+        qualityLiveMessages,
+        undefined,
+        '',
+        {
+          replyMode: 'preserve',
+          delivery: 'interactive',
+          interactionQualityContext: quality.markdown,
+        },
+      );
+      const qualityWithout = chatModule.ChatPrompts.buildModelFacingMessages({
+        systemPrompt: qualitySystemWithout,
+        apiMessages: qualityHistory,
+      }).messages;
+      const qualityWith = chatModule.ChatPrompts.buildModelFacingMessages({
+        systemPrompt: qualitySystemWith,
+        apiMessages: qualityHistory,
+      }).messages;
+      assertPair({
+        label: `${character.name}:quality:${qualityCase.id}`,
+        material: quality.markdown,
+        withMaterial: qualityWith,
+        withoutMaterial: qualityWithout,
+        liveNeedle: qualityCase.query,
+      });
+      assert.equal(/共同底色：|角色落法：/u.test(quality.markdown), false);
+      qualitySnapshots.push({
+        qualityId: quality.qualityId,
+        renderedHash: quality.renderedHash,
+        withQuality: qualityWith,
+        withoutQuality: qualityWithout,
+      });
+    }
 
     const callRequest = buildCallCompanionMaterialRequest({
       requestId: `model-facing:call:${character.charId}`,
@@ -362,6 +446,7 @@ const dateExperienceModule = await import('../utils/dateExperience.ts') as unkno
           withMaterial: chatWith,
           withoutMaterial: chatWithout,
         },
+        interactionQuality: qualitySnapshots,
         callOpening: {
           selectedMaterialIds: callMaterial.selection.selectedMaterialIds,
           withMaterial: callWith,
@@ -389,5 +474,5 @@ const dateExperienceModule = await import('../utils/dateExperience.ts') as unkno
     cases: snapshots,
   }, null, 2)}\n`, 'utf8');
 console.log(
-  `built-in model-facing messages: green cases=20 provider=not-called receipt=none output=${OUTPUT}`,
+  `built-in model-facing messages: green cases=35 provider=not-called receipt=none output=${OUTPUT}`,
 );
