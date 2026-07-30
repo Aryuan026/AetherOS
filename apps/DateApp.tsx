@@ -27,6 +27,7 @@ import { buildLiveUserTurnGroundingRefs } from '../utils/companionMaterial/groun
 import {
     buildCompanionInteractionQualityProjection,
 } from '../utils/companionMaterial/interactionQuality';
+import { prepareCharacterBehaviorBoundaryProjection } from '../utils/characterBehaviorBoundary';
 import { buildDateOpeningModelMessages } from '../utils/dateOpeningModelMessages';
 import { DateCharacterSelectCard } from '../components/date/DateCharacterSelectCard';
 import { DatePersonaScopeNotice, DateSelectIntro } from '../components/date/DateSelectIntro';
@@ -399,6 +400,16 @@ const DateApp: React.FC = () => {
                 coreContext: ContextBuilder.buildCoreContext(c, userProfile, false),
                 worldlineContext: worldlineMemory.markdown,
                 companionMaterialContext: preparedCompanionMaterial?.markdown,
+                characterBehaviorBoundaryContext: prepareCharacterBehaviorBoundaryProjection({
+                    requestId: `date-opening-behavior-boundary:${dateSessionIdRef.current}:${requestTime}`,
+                    char: c,
+                    scope: relationshipScope,
+                    surface: 'meet_scene',
+                    query: '用户正准备进入见面场景',
+                    semanticSignals: ['light_scene', 'opening'],
+                    maxItems: 2,
+                    budgetChars: 520,
+                })?.markdown,
                 recentContext: recentMsgs,
                 timeText: timeStr,
                 gapHint,
@@ -532,11 +543,25 @@ const DateApp: React.FC = () => {
         } catch (error) {
             console.warn('[date] turn companion material unavailable', error);
         }
+        const characterBehaviorBoundary = prepareCharacterBehaviorBoundaryProjection({
+            requestId: `date-behavior-boundary:${dateSessionId}:${requestTime}`,
+            char,
+            scope: relationshipScope,
+            surface: 'date_scene',
+            query: text,
+            previousQuery: typeof previousDateUserMessage?.content === 'string'
+                ? previousDateUserMessage.content
+                : undefined,
+            maxItems: 2,
+            budgetChars: 560,
+        });
         let systemPrompt = [
             ContextBuilder.buildCoreContext(char, userProfile),
             worldlineMemory.markdown,
             preparedCompanionMaterial?.markdown,
-            buildCompanionInteractionQualityProjection({
+            characterBehaviorBoundary?.markdown,
+            !characterBehaviorBoundary?.containsPlayerAuthoredInteractionPattern
+              ? buildCompanionInteractionQualityProjection({
                 charId: char.id,
                 query: text,
                 previousQuery: typeof previousDateUserMessage?.content === 'string'
@@ -547,7 +572,8 @@ const DateApp: React.FC = () => {
                 surface: 'date',
                 mode: 'date_scene',
                 purpose: 'stable_context',
-            })?.markdown,
+              })?.markdown
+              : undefined,
         ].filter(Boolean).join('\n');
         const REQUIRED_EMOTIONS = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotions = [...REQUIRED_EMOTIONS, ...(char.customDateSprites || [])];
@@ -703,11 +729,25 @@ const DateApp: React.FC = () => {
         } catch (error) {
             console.warn('[date] reroll companion material unavailable', error);
         }
+        const characterBehaviorBoundary = prepareCharacterBehaviorBoundaryProjection({
+            requestId: `date-reroll-behavior-boundary:${dateSessionId}:${requestTime}`,
+            char,
+            scope: initiatingScope,
+            surface: 'date_scene',
+            query: String(lastUserMsg.content || ''),
+            previousQuery: typeof previousDateUserMessage?.content === 'string'
+                ? previousDateUserMessage.content
+                : undefined,
+            maxItems: 2,
+            budgetChars: 560,
+        });
         let systemPrompt = [
             ContextBuilder.buildCoreContext(char, userProfile),
             worldlineMemoryR.markdown,
             preparedCompanionMaterial?.markdown,
-            buildCompanionInteractionQualityProjection({
+            characterBehaviorBoundary?.markdown,
+            !characterBehaviorBoundary?.containsPlayerAuthoredInteractionPattern
+              ? buildCompanionInteractionQualityProjection({
                 charId: char.id,
                 query: String(lastUserMsg.content || ''),
                 previousQuery: typeof previousDateUserMessage?.content === 'string'
@@ -718,7 +758,8 @@ const DateApp: React.FC = () => {
                 surface: 'date',
                 mode: 'date_scene',
                 purpose: 'stable_context',
-            })?.markdown,
+              })?.markdown
+              : undefined,
         ].filter(Boolean).join('\n');
         const REQUIRED_EMOTIONS_R = ['normal', 'happy', 'angry', 'sad', 'shy'];
         const dateEmotionsR = [...REQUIRED_EMOTIONS_R, ...(char.customDateSprites || [])];

@@ -1,6 +1,40 @@
 import type { NarrativeDirective, NovelNarrativeState } from './domain/narrative/types';
 import type { ConversationClipping, DailyArchiveBackupManifest, DailyArchiveDocument, DailyArchiveMessageRevision } from './domain/dailyArchive/types';
 import type { HistoryArchiveSystemBackupManifest } from './domain/systemBackup/types';
+import type {
+    CharacterBehaviorCompilationReceipt,
+    CharacterBehaviorBoundaryRule,
+} from './domain/characterBehaviorBoundary';
+import type { AiRuntimeRoutingV1 } from './domain/aiRuntime/types';
+
+export type {
+    AiModelRole,
+    AiProviderBinding,
+    AiRuntimeRoutingV1,
+    AiTaskDefinition,
+    AiTaskId,
+    AiTaskProviderRef,
+    AiTaskRouteFailureReason,
+} from './domain/aiRuntime/types';
+
+export type {
+    CharacterBehaviorBoundaryActivation,
+    CharacterBehaviorBoundaryAuthority,
+    CharacterBehaviorBoundaryKind,
+    CharacterBehaviorBoundaryOwnerScope,
+    CharacterBehaviorBoundaryPlayerInputMode,
+    CharacterBehaviorBoundaryProjection,
+    CharacterBehaviorBoundaryRule,
+    CharacterBehaviorBoundaryStrength,
+    CharacterBehaviorBoundaryVisibility,
+} from './domain/characterBehaviorBoundary/types';
+
+export type {
+    CharacterBehaviorCompilationCandidate,
+    CharacterBehaviorCompilationReceipt,
+    CharacterBehaviorCompilationResult,
+    CharacterBehaviorCompilationSource,
+} from './domain/characterBehaviorBoundary/compilation';
 
 export type {
     NarrativeBeat,
@@ -771,6 +805,10 @@ export interface CharacterProfile {
   writerPersonaGeneratedAt?: number;
 
   mountedWorldbooks?: { id: string; title: string; content: string; category?: string }[];
+  /** Player-authored only. Built-in reviewed boundaries remain code-owned. */
+  behaviorBoundaryRules?: CharacterBehaviorBoundaryRule[];
+  /** Hash-only audit trail for system-director compilation; no raw complaint. */
+  behaviorBoundaryCompilationReceipts?: CharacterBehaviorCompilationReceipt[];
 
   impression?: UserImpression;
 
@@ -860,11 +898,6 @@ export interface CharacterProfile {
   buffInjection?: string;   // 注入到systemPrompt的叙事型情绪底色描述
   emotionConfig?: {
     enabled: boolean;
-    api?: {
-      baseUrl: string;
-      apiKey: string;
-      model: string;
-    };
   };
 }
 
@@ -1356,6 +1389,7 @@ export interface FullBackupData {
     apiConfig?: APIConfig;
     apiPresets?: ApiPreset[];
     activeApiPresetId?: string;
+    aiRuntimeRouting?: AiRuntimeRoutingV1;
     availableModels?: string[];
     realtimeConfig?: RealtimeConfig;  // 实时感知配置（天气）
     customIcons?: Record<string, string>;

@@ -12,6 +12,7 @@ export interface ChatPromptBehavior {
     replyMode?: ChatReplyMode;
     delivery?: 'interactive' | 'proactive';
     companionMaterialContext?: string;
+    characterBehaviorBoundaryContext?: string;
     interactionQualityContext?: string;
 }
 
@@ -118,6 +119,7 @@ export const ChatPrompts = {
             ? 'texting'
             : (behavior.replyMode || DEFAULT_CHAT_REPLY_MODE);
         const companionMaterialContext = behavior.companionMaterialContext?.trim() || '';
+        const characterBehaviorBoundaryContext = behavior.characterBehaviorBoundaryContext?.trim() || '';
         const interactionQualityContext = behavior.interactionQualityContext?.trim() || '';
         let baseSystemPrompt = ContextBuilder.buildCoreContext(char, userProfile);
 
@@ -280,6 +282,9 @@ ${wakeupSettings.aiCareWindowsEnabled ? `   - **生活照看写入工具（后�
         // redefine facts, relationship state, output contracts, or tools.
         if (companionMaterialContext) {
             baseSystemPrompt += `\n\n${companionMaterialContext}\n`;
+        }
+        if (characterBehaviorBoundaryContext) {
+            baseSystemPrompt += `\n\n${characterBehaviorBoundaryContext}\n`;
         }
         if (interactionQualityContext) {
             baseSystemPrompt += `\n\n${interactionQualityContext}\n`;

@@ -11,6 +11,7 @@ large page-specific codebase.
 It is the central routing contract. Detailed behavior remains in:
 
 - `docs/MEMORY_DELIVERY_CONTRACT.md`
+- `docs/AI_RUNTIME_AND_MEMORY_AUTHORITY.md`
 - `docs/WORLDLINE_MEMORY_ARCHITECTURE.md`
 - `docs/LONG_PLOT_AND_CHARACTER_LIFE_CONTRACT.md`
 - `docs/NARRATIVE_EXPERIENCE_BOUNDARIES.md`
@@ -39,6 +40,8 @@ The practical consequences are:
   `progressBundleId + personaMaskId + charId` scope;
 - global appearance, time, location, and memory rules are reused rather than
   reimplemented per page.
+- model work is routed by typed task through the shared dialogue /
+  system-director contract; Apps do not own private secondary API forms.
 
 ## Vocabulary
 

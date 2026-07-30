@@ -1,6 +1,6 @@
 
-import { useState } from 'react';
-import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProfile, RealtimeConfig, CharacterBuff, ChatReplyMode } from '../types';
+import { useRef, useState } from 'react';
+import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProfile, RealtimeConfig, CharacterBuff, ChatReplyMode, APIConfig } from '../types';
 import { DB } from '../utils/db';
 import { ChatPrompts } from '../utils/chatPrompts';
 import { ChatParser } from '../utils/chatParser';
@@ -25,8 +25,10 @@ import {
     recordPreparedCompanionMaterialPromptDelivery,
     type PreparedCompanionMaterialPrompt,
 } from '../utils/companionMaterial';
+import { prepareCharacterBehaviorBoundaryProjection } from '../utils/characterBehaviorBoundary';
+import type { CharacterBehaviorBoundaryRule } from '../domain/characterBehaviorBoundary';
 
-// ─── 情绪评估（副API，fire & forget）───
+// ─── 情绪评估（系统主持 AI，fire & forget）───
 
 export function buildEmotionEvalPrompt(char: CharacterProfile, userProfile: UserProfile, msgs: Message[]): string {
     const roleContext = ContextBuilder.buildRoleSettingsContext(char);
@@ -274,6 +276,8 @@ interface UseChatAIProps {
     translationConfig?: { enabled: boolean; sourceLang: string; targetLang: string };
     updateCharacter?: (id: string, updates: Partial<CharacterProfile>) => void;
     chatReplyMode: ChatReplyMode;
+    emotionApiConfig?: APIConfig;
+    emotionApiErrorMessage?: string;
 }
 
 export const useChatAI = ({
@@ -289,6 +293,8 @@ export const useChatAI = ({
     translationConfig,
     updateCharacter,
     chatReplyMode,
+    emotionApiConfig,
+    emotionApiErrorMessage,
 }: UseChatAIProps) => {
     
     const [isTyping, setIsTyping] = useState(false);
@@ -296,6 +302,7 @@ export const useChatAI = ({
     const [emotionStatus, setEmotionStatus] = useState<string>('');
     const [lastTokenUsage, setLastTokenUsage] = useState<number | null>(null);
     const [tokenBreakdown, setTokenBreakdown] = useState<{ prompt: number; completion: number; total: number; msgCount: number; pass: string } | null>(null);
+    const lastEmotionRouteErrorRef = useRef('');
 
     const updateTokenUsage = (data: any, msgCount: number, pass: string) => {
         if (data.usage?.total_tokens) {
@@ -312,7 +319,15 @@ export const useChatAI = ({
         }
     };
 
-    const triggerAI = async (currentMsgs: Message[], overrideApiConfig?: { baseUrl: string; apiKey: string; model: string }) => {
+    const triggerAI = async (
+        currentMsgs: Message[],
+        overrideApiConfig?: { baseUrl: string; apiKey: string; model: string },
+        runtimeOptions?: {
+            transientBehaviorBoundaryRules?: readonly CharacterBehaviorBoundaryRule[];
+            /** Local selector hint only; it is never rendered into the prompt. */
+            transientBehaviorBoundaryQuery?: string;
+        },
+    ) => {
         if (isTyping || !char) return;
         const effectiveApi = overrideApiConfig || apiConfig;
         if (!effectiveApi.baseUrl) { alert("请先在设置中配置 API URL"); return; }
@@ -402,7 +417,34 @@ export const useChatAI = ({
                     console.warn('Companion material context unavailable:', error);
                 }
             }
+            const behaviorBoundaryChar = runtimeOptions?.transientBehaviorBoundaryRules?.length
+                ? {
+                    ...char,
+                    behaviorBoundaryRules: [
+                        ...(char.behaviorBoundaryRules || []),
+                        ...runtimeOptions.transientBehaviorBoundaryRules,
+                    ],
+                }
+                : char;
+            const characterBehaviorBoundary = selectorRelationshipScope && lastUserMessage
+                ? prepareCharacterBehaviorBoundaryProjection({
+                    requestId: `chat-behavior-boundary:${assistantResponseId}`,
+                    char: behaviorBoundaryChar,
+                    scope: selectorRelationshipScope,
+                    surface: 'chat',
+                    query: [
+                        typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
+                        runtimeOptions?.transientBehaviorBoundaryQuery || '',
+                    ].filter(Boolean).join('\n'),
+                    previousQuery: typeof previousUserMessage?.content === 'string'
+                        ? previousUserMessage.content
+                        : undefined,
+                    maxItems: 2,
+                    budgetChars: 520,
+                })
+                : null;
             const interactionQuality = lastUserMessage
+                && !characterBehaviorBoundary?.containsPlayerAuthoredInteractionPattern
                 ? buildCompanionInteractionQualityProjection({
                     charId: char.id,
                     query: typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
@@ -429,6 +471,7 @@ export const useChatAI = ({
                     replyMode: chatReplyMode,
                     delivery: 'interactive',
                     companionMaterialContext: preparedCompanionMaterial?.markdown,
+                    characterBehaviorBoundaryContext: characterBehaviorBoundary?.markdown,
                     interactionQualityContext: interactionQuality?.markdown,
                 },
             );
@@ -506,10 +549,21 @@ export const useChatAI = ({
             if (
                 currentStateEmotionMessages.length > 0
                 && char.emotionConfig?.enabled
-                && char.emotionConfig.api?.baseUrl
+                && !emotionApiConfig
+                && emotionApiErrorMessage
+                && lastEmotionRouteErrorRef.current !== emotionApiErrorMessage
             ) {
+                lastEmotionRouteErrorRef.current = emotionApiErrorMessage;
+                addToast(emotionApiErrorMessage, 'error');
+            }
+            if (
+                currentStateEmotionMessages.length > 0
+                && char.emotionConfig?.enabled
+                && emotionApiConfig?.baseUrl
+            ) {
+                lastEmotionRouteErrorRef.current = '';
                 setEmotionStatus('evaluating');
-                evaluateEmotionBackground(char, userProfile, currentStateEmotionMessages, char.emotionConfig.api).finally(() => {
+                evaluateEmotionBackground(char, userProfile, currentStateEmotionMessages, emotionApiConfig).finally(() => {
                     setEmotionStatus('');
                 });
             }

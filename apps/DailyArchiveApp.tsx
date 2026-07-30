@@ -63,6 +63,7 @@ import {
   consumeDailyArchiveNavigation,
   type DailyArchiveNavigationTarget,
 } from '../utils/dailyArchive/navigation';
+import { resolveAiTaskRoute } from '../utils/aiRuntime';
 
 const PAGE_SIZE = 80;
 
@@ -91,6 +92,8 @@ const DailyArchiveApp: React.FC = () => {
     updateUserProfile,
     addToast,
     apiConfig,
+    apiPresets,
+    aiRuntimeRouting,
   } = useOS();
   const personaProfile = useMemo(() => normalizeUserPersonaProfile(userProfile), [userProfile]);
   const personaMasks = personaProfile.personaMasks || [];
@@ -104,6 +107,12 @@ const DailyArchiveApp: React.FC = () => {
       charId: character.id,
     };
   }, [character?.id, userProfile.activePersonaMaskId, userProfile.activeProgressBundleId]);
+  const historyAnalysisRoute = useMemo(() => resolveAiTaskRoute({
+    taskId: 'history_companion_material_analysis',
+    dialogueConfig: apiConfig,
+    apiPresets,
+    routing: aiRuntimeRouting,
+  }), [aiRuntimeRouting, apiConfig, apiPresets]);
   const [monthKey, setMonthKey] = useState(() => monthKeyFor(new Date()));
   const [days, setDays] = useState<DailyArchiveMonthDay[]>([]);
   const [coverage, setCoverage] = useState<DailyArchiveCoverage>();
@@ -899,7 +908,8 @@ const DailyArchiveApp: React.FC = () => {
           scope={scope}
           relationshipLabel={`${activeMask?.label || '当前面具'} × ${character?.name || '当前角色'}`}
           coverage={coverage}
-          apiConfig={apiConfig}
+          apiConfig={historyAnalysisRoute.ok ? historyAnalysisRoute.config : undefined}
+          apiErrorMessage={historyAnalysisRoute.ok ? undefined : historyAnalysisRoute.message}
           onClose={() => setShowCompanionAnalysis(false)}
           onComplete={result => {
             if (result.status === 'published') {

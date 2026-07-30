@@ -8,6 +8,7 @@ export const buildDateOpeningModelMessages = (input: {
   coreContext: string;
   worldlineContext?: string;
   companionMaterialContext?: string;
+  characterBehaviorBoundaryContext?: string;
   recentContext: string;
   timeText: string;
   gapHint?: string;
@@ -17,6 +18,7 @@ export const buildDateOpeningModelMessages = (input: {
     input.coreContext,
     input.worldlineContext,
     input.companionMaterialContext,
+    input.characterBehaviorBoundaryContext,
   ].filter(Boolean).join('\n');
   const contextSeparator = input.gapHint
     ? `\n\n--- [TIME SKIP: ${input.gapHint}] ---\n\n`

@@ -15,6 +15,7 @@ import { formatLifeSimResetCardForContext } from '../utils/lifeSimChatCard';
 import { DEFAULT_ARCHIVE_PROMPTS } from '../components/chat/ChatConstants';
 import ImpressionPanel from '../components/character/ImpressionPanel';
 import MemoryArchivist from '../components/character/MemoryArchivist';
+import BehaviorBoundaryPanel from '../components/character/BehaviorBoundaryPanel';
 import AvatarWithFrame from '../components/common/AvatarWithFrame';
 import { safeResponseJson } from '../utils/safeApi';
 import { fetchMiniMaxVoices, MiniMaxVoiceItem } from '../utils/minimaxVoice';
@@ -34,6 +35,11 @@ import {
 } from '../utils/memoryCore/memoryProjection';
 import { queueDailyArchiveNavigation } from '../utils/dailyArchive/navigation';
 import { currentMountedWorldbooks } from '../utils/worldbookMounts';
+import { resolveAiTaskRoute } from '../utils/aiRuntime';
+import {
+    compilePlayerCharacterBehaviorBoundary,
+    integrateCompiledCharacterBehaviorRule,
+} from '../utils/characterBehaviorBoundary';
 
 const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
@@ -152,9 +158,35 @@ const CharacterCard: React.FC<{
 };
 
 const Character: React.FC = () => {
-  const { closeApp, openApp, characters, activeCharacterId, setActiveCharacterId, addCharacter, updateCharacter, deleteCharacter, apiConfig, addToast, userProfile, updateUserProfile, customThemes, addCustomTheme, worldbooks, lastMsgTimestamp, theme } = useOS();
+  const {
+      closeApp,
+      openApp,
+      characters,
+      activeCharacterId,
+      setActiveCharacterId,
+      addCharacter,
+      updateCharacter,
+      deleteCharacter,
+      apiConfig,
+      apiPresets,
+      aiRuntimeRouting,
+      addToast,
+      userProfile,
+      updateUserProfile,
+      customThemes,
+      addCustomTheme,
+      worldbooks,
+      lastMsgTimestamp,
+      theme,
+  } = useOS();
+  const behaviorCompilationRoute = useMemo(() => resolveAiTaskRoute({
+      taskId: 'behavior_boundary_compilation',
+      dialogueConfig: apiConfig,
+      apiPresets,
+      routing: aiRuntimeRouting,
+  }), [aiRuntimeRouting, apiConfig, apiPresets]);
   const [view, setView] = useState<'list' | 'detail'>('list');
-  const [detailTab, setDetailTab] = useState<'identity' | 'memory' | 'impression'>('identity');
+  const [detailTab, setDetailTab] = useState<'identity' | 'boundary' | 'memory' | 'impression'>('identity');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<CharacterProfile | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
@@ -453,6 +485,66 @@ const Character: React.FC = () => {
           return { ...prev, [field]: value };
       });
   };
+
+  const handleCompileBehaviorNote = useCallback(async (note: string) => {
+      if (!formData) throw new Error('请先打开一张角色卡。');
+      if (!behaviorCompilationRoute.ok) {
+          throw new Error(behaviorCompilationRoute.message);
+      }
+      const now = Date.now();
+      const relationshipScope = strictRelationshipScopeForProfile(
+          formData.id,
+          userProfile,
+      );
+      const result = await compilePlayerCharacterBehaviorBoundary({
+          requestId: `character-panel-behavior:${formData.id}:${now.toString(36)}`,
+          char: formData,
+          source: 'character_panel',
+          playerNote: note,
+          relationshipScope,
+          apiConfig: behaviorCompilationRoute.config,
+          provider: behaviorCompilationRoute.provider,
+          now,
+      });
+      let acceptedRule = result.rule;
+      setFormData(previous => {
+          if (!previous || previous.id !== formData.id) return previous;
+          const receipts = [
+              ...(previous.behaviorBoundaryCompilationReceipts || []),
+          ];
+          let behaviorBoundaryRules = previous.behaviorBoundaryRules || [];
+          let receipt = result.receipt;
+          if (result.rule) {
+              const integrated = integrateCompiledCharacterBehaviorRule({
+                  records: behaviorBoundaryRules,
+                  candidate: result.rule,
+                  now,
+              });
+              behaviorBoundaryRules = integrated.records;
+              acceptedRule = integrated.acceptedRule;
+              receipt = {
+                  ...receipt,
+                  ruleId: integrated.acceptedRule.id,
+              };
+          }
+          return {
+              ...previous,
+              behaviorBoundaryRules,
+              behaviorBoundaryCompilationReceipts: [
+                  ...receipts,
+                  receipt,
+              ].slice(-100),
+          };
+      });
+      return {
+          created: Boolean(acceptedRule),
+          diagnostic: result.candidate.diagnostic,
+      };
+  }, [
+      behaviorCompilationRoute,
+      formData,
+      userProfile,
+  ]);
 
   const isPromptLocked = Boolean(formData?.isBuiltIn && formData.lockPromptEditing);
   const canConfigureWorldbooks = Boolean(formData && (!isPromptLocked || formData.isBuiltIn));
@@ -1243,8 +1335,9 @@ ${isInitialGeneration ? `
                    )}
                />
                <div className="shrink-0 z-30 bg-white/58 backdrop-blur-md px-5 pt-1 border-b border-white/40">
-                   <div className="flex gap-6 text-sm font-medium text-slate-400 pl-1">
+                   <div className="flex gap-4 text-xs font-medium text-slate-400 pl-1">
                        <button onClick={() => setDetailTab('identity')} className={`pb-2 transition-colors relative ${detailTab === 'identity' ? 'text-slate-800' : ''}`}>设定{detailTab === 'identity' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
+                       <button onClick={() => setDetailTab('boundary')} className={`pb-2 transition-colors relative ${detailTab === 'boundary' ? 'text-slate-800' : ''}`}>行为边界{detailTab === 'boundary' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
                        <button onClick={() => setDetailTab('memory')} className={`pb-2 transition-colors relative ${detailTab === 'memory' ? 'text-slate-800' : ''}`}>记忆 ({(formData.memories || []).length + promotedMemoryViews.filter(item => !item.hidden).length}){detailTab === 'memory' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
                        <button onClick={() => setDetailTab('impression')} className={`pb-2 transition-colors relative ${detailTab === 'impression' ? 'text-slate-800' : ''}`}>关系印象{detailTab === 'impression' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>}</button>
                    </div>
@@ -1461,6 +1554,16 @@ ${isInitialGeneration ? `
                                </div>
                            )}
                        </div>
+                   )}
+
+                   {detailTab === 'boundary' && (
+                       <BehaviorBoundaryPanel
+                           charId={formData.id}
+                           rules={formData.behaviorBoundaryRules || []}
+                           onChange={rules => handleChange('behaviorBoundaryRules', rules)}
+                           onNotify={addToast}
+                           onCompileGuidedNote={handleCompileBehaviorNote}
+                       />
                    )}
                    
                    {detailTab === 'memory' && (

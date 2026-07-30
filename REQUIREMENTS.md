@@ -1,5 +1,40 @@
 # SullyOS Requirements
 
+## Dual AI Runtime And Memory Authority
+
+- AetherOS must expose one dialogue AI and one optional system-host AI role.
+  Leaving the system host unset intentionally inherits the active dialogue AI.
+- The system host must select from saved API presets instead of copying
+  URL/key/model fields into each character or App.
+- An explicitly selected missing or incomplete system-host preset must fail
+  visibly. It must not silently fall back to the dialogue AI or another
+  provider.
+- Apps must request a typed task. Historical material analysis, emotion
+  classification, behavior-rule compilation, editorial review and third-person
+  ScenePlan/DM work belong to the system host.
+- Visible character replies, proactive character expression, MemoryDM,
+  character-authored impressions and relationship-memory prose belong to the
+  dialogue AI.
+- System-host output has no direct authority to write current Character Life,
+  current motives, tool permissions, played narrative, or durable relationship
+  memory.
+- Per-character emotion settings retain only enablement and character-local
+  state. API choice is global.
+- The route selection must travel with full/text device backup and restore.
+- Entertainment Apps may be repaired after this API/memory backbone is stable;
+  new App-local model configuration islands are not accepted meanwhile.
+- Character behavior requirements must expose both a verbatim expert path and
+  one low-floor `帮我整理` path through the typed system-host compiler. Direct
+  instructions must not be rewritten.
+- Behavior-rule activation is a visible player decision: `每次都遵守` and
+  `内容相关时提醒` must not be hidden behind an advanced-settings fold.
+- Chat reroll may optionally compile a dissatisfaction reason into an editable
+  behavior rule and apply the accepted rule to that same reroll. Compiler
+  failure must not block ordinary reroll.
+- Raw dissatisfaction notes and rejected replies are transient compiler
+  evidence only. They must not become behavior text, relationship memory,
+  current state, narrative truth, or tool policy.
+
 ## App Surfaces And Cross-App Information
 
 - `docs/APP_SURFACE_AND_MEMORY_INTEROP_CONTRACT.md` is the central routing

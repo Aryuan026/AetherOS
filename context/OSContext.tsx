@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { APIConfig, AppID, OSTheme, VirtualTime, CharacterProfile, ChatTheme, Toast, FullBackupData, UserProfile, ApiPreset, GroupProfile, SystemLog, Worldbook, NovelBook, SongSheet, Message, RealtimeConfig, AppearancePreset, MessageRelationshipScope } from '../types';
+import { APIConfig, AppID, OSTheme, VirtualTime, CharacterProfile, ChatTheme, Toast, FullBackupData, UserProfile, ApiPreset, GroupProfile, SystemLog, Worldbook, NovelBook, SongSheet, Message, RealtimeConfig, AppearancePreset, MessageRelationshipScope, AiRuntimeRoutingV1 } from '../types';
 import { DB } from '../utils/db';
 import { normalizeCharacterImpression } from '../utils/impression';
 import { loadAutoMemorySettings, loadMemoryDMSettings, runAutoMemoryPass, runMemoryDMPass } from '../utils/memoryCore';
@@ -41,6 +41,10 @@ import {
 import type { ConversationClipping, DailyArchiveDocument, DailyArchiveMessageRevision } from '../domain/dailyArchive/types';
 import type { PreparedHistoryArchiveSystemRestore } from '../utils/systemBackup/historyArchiveSnapshot';
 import { apiConfigForActivatedPreset } from '../utils/apiPresets';
+import {
+    DEFAULT_AI_RUNTIME_ROUTING,
+    normalizeAiRuntimeRouting,
+} from '../utils/aiRuntime';
 import { normalizeMessageRelationshipScope, strictRelationshipScopeForProfile } from '../utils/messageContext';
 import { synchronizeMountedWorldbooks } from '../utils/worldbookMounts';
 import {
@@ -209,6 +213,8 @@ interface OSContextType {
   addApiPreset: (name: string, config: APIConfig) => void;
   removeApiPreset: (id: string) => void;
   activateApiPreset: (id: string) => boolean;
+  aiRuntimeRouting: AiRuntimeRoutingV1;
+  updateAiRuntimeRouting: (routing: AiRuntimeRoutingV1) => void;
 
   // 实时配置（时间上下文 + 可选天气）
   realtimeConfig: RealtimeConfig;
@@ -1249,6 +1255,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [apiPresets, setApiPresets] = useState<ApiPreset[]>([]);
   const [activeApiPresetId, setActiveApiPresetId] = useState<string>('');
+  const [aiRuntimeRouting, setAiRuntimeRouting] = useState<AiRuntimeRoutingV1>(DEFAULT_AI_RUNTIME_ROUTING);
   const [realtimeConfig, setRealtimeConfig] = useState<RealtimeConfig>(defaultRealtimeConfig);
   const [customThemes, setCustomThemes] = useState<ChatTheme[]>([]);
   const [customIcons, setCustomIcons] = useState<Record<string, string>>({});
@@ -1423,6 +1430,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const savedModels = localStorage.getItem('os_available_models');
         const savedPresets = localStorage.getItem('os_api_presets');
         const savedActivePresetId = localStorage.getItem('os_active_api_preset_id');
+        const savedAiRuntimeRouting = localStorage.getItem('os_ai_runtime_routing_v1');
         
         let loadedTheme = { ...defaultTheme };
         if (savedThemeStr) {
@@ -1457,6 +1465,14 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (savedModels) setAvailableModels(JSON.parse(savedModels));
         if (savedPresets) setApiPresets(JSON.parse(savedPresets));
         if (savedActivePresetId) setActiveApiPresetId(savedActivePresetId);
+        if (savedAiRuntimeRouting) {
+            try {
+                setAiRuntimeRouting(normalizeAiRuntimeRouting(JSON.parse(savedAiRuntimeRouting)));
+            } catch (error) {
+                console.warn('AI runtime routing load error', error);
+                setAiRuntimeRouting(DEFAULT_AI_RUNTIME_ROUTING);
+            }
+        }
 
         // 加载实时配置
         const savedRealtimeConfig = localStorage.getItem('os_realtime_config');
@@ -2115,6 +2131,11 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       return true;
   };
   const savePresets = (presets: ApiPreset[]) => { setApiPresets(presets); localStorage.setItem('os_api_presets', JSON.stringify(presets)); };
+  const updateAiRuntimeRouting = (routing: AiRuntimeRoutingV1) => {
+      const normalized = normalizeAiRuntimeRouting(routing);
+      setAiRuntimeRouting(normalized);
+      localStorage.setItem('os_ai_runtime_routing_v1', JSON.stringify(normalized));
+  };
   const addCharacter = async () => { const name = 'New Character'; const newChar: CharacterProfile = { id: `char-${Date.now()}`, name: name, avatar: generateAvatar(name), description: '点击编辑设定...', systemPrompt: '', memories: [], contextLimit: 500 }; setCharacters(prev => normalizeCharactersForState([...prev, newChar])); setActiveCharacterId(newChar.id); await DB.saveCharacter(newChar); };
   const addPreparedCharacter = async (character: CharacterProfile) => {
       setCharacters(prev => (
@@ -2530,6 +2551,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
               apiConfig: (mode === 'text_only' || mode === 'full') ? apiConfig : undefined,
               apiPresets: (mode === 'text_only' || mode === 'full') ? apiPresets : undefined,
               activeApiPresetId: (mode === 'text_only' || mode === 'full') ? activeApiPresetId : undefined,
+              aiRuntimeRouting: (mode === 'text_only' || mode === 'full') ? aiRuntimeRouting : undefined,
               availableModels: (mode === 'text_only' || mode === 'full') ? availableModels : undefined,
               realtimeConfig: (mode === 'text_only' || mode === 'full') ? realtimeConfig : undefined,
               theme: theme, // Include theme in all modes (text/media)
@@ -2865,6 +2887,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
               setActiveApiPresetId(data.activeApiPresetId);
               localStorage.setItem('os_active_api_preset_id', data.activeApiPresetId);
           }
+          if (data.aiRuntimeRouting) updateAiRuntimeRouting(data.aiRuntimeRouting);
           if (data.realtimeConfig) updateRealtimeConfig(data.realtimeConfig); // 恢复实时感知配置
 
           if (data.customIcons !== undefined || data.appearancePresets !== undefined) {
@@ -3065,6 +3088,8 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     addApiPreset,
     removeApiPreset,
     activateApiPreset,
+    aiRuntimeRouting,
+    updateAiRuntimeRouting,
     realtimeConfig,
     updateRealtimeConfig,
     customThemes,

@@ -22,6 +22,16 @@ Companion material and historical voice reuse:
 - Publish historical analysis into an exact relationship-scoped material
   library without copying transcript text. Selection and prompt delivery keep
   separate receipts; both have `truthEffect: none`.
+- Keep original-source behavior baselines for built-in characters hidden and
+  non-verbatim. Expose only player-authored `行为边界` before memory and
+  relationship impressions. Preserve an expert `直接写要求` path verbatim and a
+  low-floor `分步填写` path with optional situation; direct resident
+  instructions use a separate bounded quota before at most two exact-scope,
+  scene-relevant calibrations. Player requirements belong to the character and
+  remain independent of provider, channel, API preset, and active model; any
+  future model-family adaptation belongs to one global layer rather than this
+  character surface. The parallel advisory slot cannot write facts, memories,
+  current motives, or tool policy.
 - Keep normal Chat limited to stable voice/base/relevant detail. Director and
   ScenePlan remain the only future owners that may turn a motive candidate into
   a current motive.
@@ -236,6 +246,59 @@ Deep-space chat appearance preset:
 - Keep `自定义` bubble controls as a child editor rather than a peer tab beside chat themes.
 - Keep avatar frame/accessory controls in a separate visible area, not inside bubble tuning.
 - Keep Telegram / Discord / QQ-style directions out of the chat appearance preset system.
+
+Dual AI runtime and system-director boundary:
+
+- Keep exactly two ordinary model roles at product level:
+  - `dialogue` owns visible character voice, relationship memory writing,
+    character-authored impressions, proactive contact, and emotionally situated
+    companion expression;
+  - `system_director` owns structured analysis, source classification, behavior
+    requirement compilation, editorial/OOC review, third-person story planning,
+    ScenePlan / DM decisions, and other model work that does not speak as the
+    companion.
+- Reuse saved API presets. `system_director` stores either
+  `inherit_dialogue` or one preset ID; it must not copy another URL/key/model
+  form into each App. A player who leaves it unset intentionally inherits the
+  current dialogue AI.
+- Resolve the model by typed task at one cross-App runtime seam. Apps submit
+  purpose, exact scope, bounded input, output schema, budget, and persistence
+  policy; they do not receive a raw second `APIConfig` and do not implement
+  their own fallback rules.
+- Inheritance applies only when the player left the system-director route unset.
+  If an explicitly selected preset is missing or fails, surface that failure
+  instead of silently sending the material to another provider; a visible
+  retry with the dialogue AI may be offered.
+- Route historical language-fingerprint / stable-detail / opening / scene
+  material analysis through `system_director`. This is character-material
+  compilation, not relationship-memory formation. Keep MemoryDM, daily/monthly
+  relationship summaries, character-authored user impressions, Journal
+  memories, Timebook notes, and other relationship-memory prose on `dialogue`.
+- Route current emotion-background classification through `system_director`,
+  while the next visible reply remains owned by `dialogue`. Replace the
+  per-character emotion API form with the global route; the per-character
+  setting retains only enablement and character-local state.
+- Split mixed model calls by responsibility before migration. A helper or App
+  named `Director` is not sufficient evidence: Group Chat currently renders
+  character speech, Social mixes news editing with character comments, TRPG
+  mixes GM state with companion dialogue and memory, LifeSim mixes world
+  planning with character turns, and Novel mixes structural analysis with
+  character-authored prose.
+- First high-confidence system-director consumers are history companion-material
+  analysis, behavior-boundary compilation / reroll-reason analysis, emotion
+  background evaluation, Info Station generation and editorial review,
+  narrative-history / ScenePlan analysis, and world/DM planning that has been
+  separated from character rendering. Generic browser simulation, study
+  structure and financial analytics may follow through the same registry.
+- MiniMax TTS/voice credentials, image providers, toolbox services, and other
+  non-chat media/tool transports are service adapters, not a third model role.
+- Keep an optional future owner-only `codex_observer` adapter in the plan for
+  the late server test phase. It may consume scoped diagnostic envelopes,
+  receipts, errors, timings, schema failures and explicitly submitted excerpts
+  through a read-only queued Codex CLI job. It must not be a public player API,
+  receive all raw chats by default, become the real-time dialogue model, or
+  write memory/current truth directly. AetherOS runtime must not depend on a
+  persistent Codex thread or unstable app-server protocol.
 
 ## Parallel Block
 

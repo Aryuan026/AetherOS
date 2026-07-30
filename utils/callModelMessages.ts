@@ -11,6 +11,7 @@ export const buildCallPrompt = (input: {
   voiceLang?: string;
   voiceLangLabel?: string;
   callScene?: string;
+  characterBehaviorBoundaryContext?: string;
   interactionQualityContext?: string;
 }): string => {
   const resolvedCharName = input.charName || '你的角色';
@@ -65,6 +66,7 @@ ${input.callScene || '通话已接通。'}
   return [
     input.coreContext,
     input.realityContext,
+    input.characterBehaviorBoundaryContext,
     input.interactionQualityContext,
     callPrompt,
     voiceLangPrompt,

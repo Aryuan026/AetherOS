@@ -1,5 +1,66 @@
 # AetherOS Public Sticker Schema
 
+## Dual AI Runtime Routing
+
+The current dialogue `APIConfig` remains the foreground connection. The second
+ordinary model role stores only a reference to the existing preset catalog:
+
+```ts
+type AiProviderBinding =
+  | { mode: 'inherit_dialogue' }
+  | { mode: 'preset'; presetId: string };
+
+interface AiRuntimeRoutingV1 {
+  version: 1;
+  systemDirector: AiProviderBinding;
+}
+```
+
+The local storage key is `os_ai_runtime_routing_v1`. Text and full device
+backups include `aiRuntimeRouting`; media-only backups do not.
+
+Every consumer resolves a typed `AiTaskId` through the shared registry. Provider
+refs and future receipts may contain role, binding, preset ID/name, base URL and
+model, but never the API key. `system_director` task definitions currently have
+`truthEffect: "none"`. Relationship-memory write tasks remain owned by
+`dialogue` even when a separate system-director preset is selected.
+
+Deleting an explicitly selected preset does not authorize an implicit provider
+change. Resolution returns `system_director_preset_missing` until the player
+chooses a new binding.
+
+### Character behavior compilation
+
+Player-authored behavior requirements are character-owned. Compilation may
+carry an exact relationship scope when invoked from Chat, but the character
+panel can compile before a persona relationship is linked.
+
+```ts
+interface CharacterBehaviorCompilationReceipt {
+  schemaVersion: 1;
+  id: string;
+  requestId: string;
+  taskId: 'behavior_boundary_compilation';
+  charId: string;
+  relationshipScope?: HistoryScope;
+  source: 'character_panel' | 'chat_reroll';
+  provider: AiTaskProviderRef;
+  inputHash: string;
+  outputHash: string;
+  ruleId?: string;
+  status: 'compiled' | 'no_stable_rule';
+  truthEffect: 'none';
+  memoryEffect: 'none';
+  currentStateEffect: 'none';
+  createdAt: number;
+}
+```
+
+The receipt never stores the raw player complaint, rejected reply, generated
+prompt, or API key. A compiled rule is editable player guidance and remains
+parallel to character canon, relationship memory, Character Life, narrative
+truth, and tool policy.
+
 ## Companion Material Retrieval
 
 Character material keeps reviewed semantic guidance separate from raw evidence:

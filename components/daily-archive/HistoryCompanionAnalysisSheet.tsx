@@ -23,7 +23,8 @@ interface HistoryCompanionAnalysisSheetProps {
   scope: HistoryScope;
   relationshipLabel: string;
   coverage?: DailyArchiveCoverage;
-  apiConfig: APIConfig;
+  apiConfig?: APIConfig;
+  apiErrorMessage?: string;
   onClose: () => void;
   onComplete?: (result: HistoryCompanionAnalysisRunResult) => void;
 }
@@ -51,6 +52,7 @@ const HistoryCompanionAnalysisSheet: React.FC<HistoryCompanionAnalysisSheetProps
   relationshipLabel,
   coverage,
   apiConfig,
+  apiErrorMessage,
   onClose,
   onComplete,
 }) => {
@@ -110,8 +112,8 @@ const HistoryCompanionAnalysisSheet: React.FC<HistoryCompanionAnalysisSheetProps
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const apiReady = Boolean(
-    apiConfig.baseUrl.trim()
-    && apiConfig.model.trim(),
+    apiConfig?.baseUrl.trim()
+    && apiConfig?.model.trim(),
   );
   const totalCalls = progress?.totalCalls || preview?.estimatedCalls || 0;
   const completedCalls = progress?.completedCalls || 0;
@@ -127,7 +129,7 @@ const HistoryCompanionAnalysisSheet: React.FC<HistoryCompanionAnalysisSheetProps
   };
 
   const start = async () => {
-    if (running || !preview?.executable || !apiReady) return;
+    if (running || !preview?.executable || !apiReady || !apiConfig) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
@@ -430,7 +432,7 @@ const HistoryCompanionAnalysisSheet: React.FC<HistoryCompanionAnalysisSheetProps
           {!running && !result && (
             <>
               <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50/85 px-3 py-2.5 text-[9px] leading-relaxed text-amber-800">
-                选定范围的原文片段会临时发送给当前已启用 API 分析；本机素材库不会保存原句。
+                选定范围的原文片段会临时发送给系统主持 AI 分析；本机素材库不会保存原句。
               </div>
               <button
                 type="button"
@@ -443,7 +445,7 @@ const HistoryCompanionAnalysisSheet: React.FC<HistoryCompanionAnalysisSheetProps
               </button>
               <p className="mt-2 text-center text-[8px] leading-relaxed text-slate-400">
                 {!apiReady
-                  ? '请先在设置里启用一个 API 配置。'
+                  ? apiErrorMessage || '请先在设置里启用一份可用的系统主持 AI。'
                   : preview?.blockedReason || '整理会分两遍完成，减少遗漏和误判。'}
               </p>
             </>

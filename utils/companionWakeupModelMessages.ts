@@ -8,6 +8,7 @@ export const buildCompanionWakeupModelMessages = (input: {
   worldlineContext?: string;
   realityContext?: string;
   companionMaterialContext?: string;
+  characterBehaviorBoundaryContext?: string;
   interactionQualityContext?: string;
   timeText: string;
   userName?: string;
@@ -20,6 +21,7 @@ export const buildCompanionWakeupModelMessages = (input: {
     input.worldlineContext,
     input.realityContext,
     input.companionMaterialContext,
+    input.characterBehaviorBoundaryContext,
     input.interactionQualityContext,
   ].filter(Boolean).join('\n\n');
   const systemPrompt = `${baseContext}

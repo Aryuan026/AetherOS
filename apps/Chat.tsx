@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
-import { ChatReplyMode, CompanionWakeupRule, Message, MessageType, MemoryFragment, Emoji, EmojiCategory } from '../types';
+import { CharacterProfile, ChatReplyMode, CompanionWakeupRule, Message, MessageType, MemoryFragment, Emoji, EmojiCategory } from '../types';
 import { processImage } from '../utils/file';
 import { safeResponseJson } from '../utils/safeApi';
 import { formatLifeSimResetCardForContext } from '../utils/lifeSimChatCard';
@@ -53,6 +53,11 @@ import {
 } from '../utils/chatPresentation';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 import AppHeader from '../components/shell/AppHeader';
+import { resolveAiTaskRoute } from '../utils/aiRuntime';
+import {
+    compilePlayerCharacterBehaviorBoundary,
+    integrateCompiledCharacterBehaviorRule,
+} from '../utils/characterBehaviorBoundary';
 
 const VOICE_LANG_LABELS: Record<string, string> = { en: 'English', ja: '日本語', ko: '한국어', fr: 'Français', es: 'Español' };
 
@@ -152,7 +157,7 @@ const dedupeStarterMessages = (messages: Message[]) => {
 };
 
 const Chat: React.FC = () => {
-    const { characters, activeCharacterId, setActiveCharacterId, updateCharacter, apiConfig, apiPresets, addApiPreset, closeApp, customThemes, addToast, userProfile, lastMsgTimestamp, groups, clearUnread, realtimeConfig, theme: rawOsTheme } = useOS();
+    const { characters, activeCharacterId, setActiveCharacterId, updateCharacter, apiConfig, apiPresets, aiRuntimeRouting, closeApp, customThemes, addToast, userProfile, lastMsgTimestamp, groups, clearUnread, realtimeConfig, theme: rawOsTheme } = useOS();
     const personaScope = useMemo(() => (
         resolvePersonaRouteScope(userProfile, characters, activeCharacterId)
     ), [activeCharacterId, characters, userProfile]);
@@ -165,6 +170,18 @@ const Chat: React.FC = () => {
     const unavailableRequestedCharacter = activeCharacterId
         ? characters.find(c => c.id === activeCharacterId)
         : undefined;
+    const emotionAnalysisRoute = useMemo(() => resolveAiTaskRoute({
+        taskId: 'emotion_background_evaluation',
+        dialogueConfig: apiConfig,
+        apiPresets,
+        routing: aiRuntimeRouting,
+    }), [aiRuntimeRouting, apiConfig, apiPresets]);
+    const behaviorCompilationRoute = useMemo(() => resolveAiTaskRoute({
+        taskId: 'behavior_boundary_compilation',
+        dialogueConfig: apiConfig,
+        apiPresets,
+        routing: aiRuntimeRouting,
+    }), [aiRuntimeRouting, apiConfig, apiPresets]);
     const [messages, setMessages] = useState<Message[]>([]);
     const [totalMsgCount, setTotalMsgCount] = useState(0);
     const [visibleCount, setVisibleCount] = useState(30);
@@ -204,6 +221,9 @@ const Chat: React.FC = () => {
     const [showReplyModeModal, setShowReplyModeModal] = useState(false);
     const [showEmotionModal, setShowEmotionModal] = useState(false);
     const [showExpandedComposer, setShowExpandedComposer] = useState(false);
+    const [showRerollReasonModal, setShowRerollReasonModal] = useState(false);
+    const [rerollReason, setRerollReason] = useState('');
+    const [isCompilingRerollReason, setIsCompilingRerollReason] = useState(false);
 
     // Archive Prompts State
     const [archivePrompts, setArchivePrompts] = useState<{id: string, name: string, content: string}[]>(DEFAULT_ARCHIVE_PROMPTS);
@@ -316,6 +336,8 @@ const Chat: React.FC = () => {
             : undefined,
         updateCharacter,
         chatReplyMode,
+        emotionApiConfig: emotionAnalysisRoute.ok ? emotionAnalysisRoute.config : undefined,
+        emotionApiErrorMessage: emotionAnalysisRoute.ok ? undefined : emotionAnalysisRoute.message,
     });
     const replySignalActive = companionWakeupActive;
 
@@ -933,7 +955,10 @@ const Chat: React.FC = () => {
         }
     };
 
-    const handleReroll = async () => {
+    const rerollLastReply = async (
+        transientBehaviorBoundaryRules: NonNullable<CharacterProfile['behaviorBoundaryRules']> = [],
+        transientBehaviorBoundaryQuery = '',
+    ) => {
         if (isTyping || messages.length === 0) return;
 
         const lastMsg = messages[messages.length - 1];
@@ -953,7 +978,105 @@ const Chat: React.FC = () => {
         setMessages(newHistory);
         addToast('回溯对话中...', 'info');
 
-        triggerAI(await withImportedHistoryContext(newHistory));
+        triggerAI(
+            await withImportedHistoryContext(newHistory),
+            undefined,
+            transientBehaviorBoundaryRules.length
+                ? {
+                    transientBehaviorBoundaryRules,
+                    transientBehaviorBoundaryQuery,
+                }
+                : undefined,
+        );
+    };
+
+    const handleReroll = () => {
+        if (isTyping || messages.length === 0) return;
+        if (messages[messages.length - 1].role !== 'assistant') return;
+        setRerollReason('');
+        setShowRerollReasonModal(true);
+    };
+
+    const handleConfirmReroll = async (rememberReason: boolean) => {
+        if (!char || isCompilingRerollReason) return;
+        const note = rerollReason.trim();
+        setShowRerollReasonModal(false);
+        if (!rememberReason || !note) {
+            setRerollReason('');
+            await rerollLastReply();
+            return;
+        }
+
+        setIsCompilingRerollReason(true);
+        addToast('系统主持正在整理这次原因…', 'info');
+        let transientRule: NonNullable<CharacterProfile['behaviorBoundaryRules']>[number] | null = null;
+        try {
+            if (!behaviorCompilationRoute.ok) {
+                throw new Error(behaviorCompilationRoute.message);
+            }
+            let index = messages.length - 1;
+            const rejectedParts: string[] = [];
+            while (index >= 0 && messages[index].role === 'assistant') {
+                rejectedParts.unshift(messages[index].content);
+                index -= 1;
+            }
+            const currentUserTurn = index >= 0 && messages[index].role === 'user'
+                ? messages[index].content
+                : undefined;
+            const now = Date.now();
+            const result = await compilePlayerCharacterBehaviorBoundary({
+                requestId: `chat-reroll-behavior:${char.id}:${now.toString(36)}`,
+                char,
+                source: 'chat_reroll',
+                playerNote: note,
+                currentUserTurn,
+                rejectedReply: rejectedParts.join('\n'),
+                relationshipScope: importedHistoryScope,
+                apiConfig: behaviorCompilationRoute.config,
+                provider: behaviorCompilationRoute.provider,
+                now,
+            });
+            let receipt = result.receipt;
+            let behaviorBoundaryRules = char.behaviorBoundaryRules || [];
+            if (result.rule) {
+                const integrated = integrateCompiledCharacterBehaviorRule({
+                    records: behaviorBoundaryRules,
+                    candidate: result.rule,
+                    now,
+                });
+                behaviorBoundaryRules = integrated.records;
+                transientRule = integrated.acceptedRule;
+                receipt = {
+                    ...receipt,
+                    ruleId: integrated.acceptedRule.id,
+                };
+            }
+            updateCharacter(char.id, {
+                behaviorBoundaryRules,
+                behaviorBoundaryCompilationReceipts: [
+                    ...(char.behaviorBoundaryCompilationReceipts || []),
+                    receipt,
+                ].slice(-100),
+            });
+            if (transientRule) {
+                addToast('这次原因已经整理成可编辑的行为要求', 'success');
+            } else {
+                addToast(
+                    result.candidate.diagnostic
+                        || '这次先重来；原因还不足以形成长期要求',
+                    'info',
+                );
+            }
+        } catch (error) {
+            addToast(
+                `${error instanceof Error ? error.message : '系统主持整理失败'}；这次仍会正常重来`,
+                'error',
+            );
+        } finally {
+            setIsCompilingRerollReason(false);
+            setRerollReason('');
+        }
+        await rerollLastReply(transientRule ? [transientRule] : [], note);
     };
 
     const handleImageSelect = async (file: File) => {
@@ -1900,14 +2023,53 @@ const Chat: React.FC = () => {
                 </Modal>
             )}
 
+            <Modal
+                isOpen={showRerollReasonModal}
+                title="这次要怎么重来？"
+                onClose={() => {
+                    if (isCompilingRerollReason) return;
+                    setShowRerollReasonModal(false);
+                    setRerollReason('');
+                }}
+                footer={(
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => void handleConfirmReroll(false)}
+                            className="flex-1 rounded-2xl bg-slate-100 py-3 text-xs font-bold text-slate-500 active:scale-95"
+                        >
+                            只重来
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!rerollReason.trim() || isCompilingRerollReason}
+                            onClick={() => void handleConfirmReroll(true)}
+                            className="flex-1 rounded-2xl bg-violet-500 py-3 text-xs font-bold text-white shadow-sm shadow-violet-200 disabled:opacity-40 active:scale-95"
+                        >
+                            重来并记住
+                        </button>
+                    </>
+                )}
+            >
+                <div className="space-y-3">
+                    <textarea
+                        value={rerollReason}
+                        onChange={event => setRerollReason(event.target.value)}
+                        placeholder="可不填。比如：他不能每次我一生气就立刻哭着道歉；这次应该先保留自己的判断。"
+                        className="h-28 w-full resize-none rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-700 outline-none focus:ring-2 focus:ring-violet-100"
+                    />
+                    <p className="px-1 text-[11px] leading-relaxed text-slate-400">
+                        写了原因后，系统主持会先整理成可编辑的行为要求，再让角色重新回答。原始原因和被放弃的回复不会存进行为要求。
+                    </p>
+                </div>
+            </Modal>
+
             {/* Emotion Settings Modal */}
             {char && (
                 <EmotionSettingsModal
                     isOpen={showEmotionModal}
                     onClose={() => setShowEmotionModal(false)}
                     char={char}
-                    apiPresets={apiPresets}
-                    addApiPreset={addApiPreset}
                     onSave={(config) => {
                         updateCharacter(char.id, { emotionConfig: config });
                         addToast(config.enabled ? '情绪感知已启用' : '情绪感知已关闭', config.enabled ? 'success' : 'info');

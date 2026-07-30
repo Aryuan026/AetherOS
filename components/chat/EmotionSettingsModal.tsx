@@ -1,14 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import Modal from '../os/Modal';
-import { CharacterProfile, ApiPreset, APIConfig, CharacterBuff } from '../../types';
+import { CharacterProfile, CharacterBuff } from '../../types';
 
 interface EmotionSettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
     char: CharacterProfile;
-    apiPresets: ApiPreset[];
-    addApiPreset: (name: string, config: APIConfig) => void;
     onSave: (config: NonNullable<CharacterProfile['emotionConfig']>) => void;
     onClearBuffs: () => void;
 }
@@ -26,43 +24,19 @@ const INTENSITY_DOTS = (n: number | undefined | null) => {
 };
 
 const EmotionSettingsModal: React.FC<EmotionSettingsModalProps> = ({
-    isOpen, onClose, char, apiPresets, addApiPreset, onSave, onClearBuffs
+    isOpen, onClose, char, onSave, onClearBuffs
 }) => {
     const [enabled, setEnabled] = useState(false);
-    const [url, setUrl] = useState('');
-    const [key, setKey] = useState('');
-    const [model, setModel] = useState('');
-    const [showSavePreset, setShowSavePreset] = useState(false);
-    const [newPresetName, setNewPresetName] = useState('');
 
     // Sync form from char whenever modal opens
     useEffect(() => {
         if (!isOpen) return;
         const s = char.emotionConfig;
         setEnabled(s?.enabled ?? false);
-        setUrl(s?.api?.baseUrl ?? '');
-        setKey(s?.api?.apiKey ?? '');
-        setModel(s?.api?.model ?? '');
-        setShowSavePreset(false);
-        setNewPresetName('');
     }, [isOpen, char.id, char.emotionConfig]);
 
-    const loadPreset = (preset: ApiPreset) => {
-        setUrl(preset.config.baseUrl);
-        setKey(preset.config.apiKey);
-        setModel(preset.config.model);
-    };
-
-    const handleSavePreset = () => {
-        if (!newPresetName.trim()) return;
-        addApiPreset(newPresetName.trim(), { baseUrl: url, apiKey: key, model });
-        setNewPresetName('');
-        setShowSavePreset(false);
-    };
-
     const handleSave = () => {
-        const api = url ? { baseUrl: url, apiKey: key, model } : undefined;
-        onSave({ enabled, api });
+        onSave({ enabled });
         onClose();
     };
 
@@ -81,7 +55,7 @@ const EmotionSettingsModal: React.FC<EmotionSettingsModalProps> = ({
         }>
             <div className="space-y-5">
                 <p className="text-xs text-slate-400 leading-relaxed">
-                    开启后，每次发送消息时与主API并行调用副API分析情绪，生成角色的情绪底色注入下一次回复。
+                    开启后，系统主持会从当前对话判断情绪底色，再交给角色用于下一次回复。使用哪份模型统一在“设置 → 系统主持 AI”管理。
                 </p>
 
                 {/* Enable Toggle */}
@@ -97,89 +71,6 @@ const EmotionSettingsModal: React.FC<EmotionSettingsModalProps> = ({
 
                 {enabled && (
                     <>
-                        {/* Preset chips */}
-                        {apiPresets.length > 0 && (
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block pl-1">我的预设</label>
-                                <div className="flex gap-2 flex-wrap">
-                                    {apiPresets.map(preset => (
-                                        <button
-                                            key={preset.id}
-                                            onClick={() => loadPreset(preset)}
-                                            className="flex items-center bg-white border border-slate-200 rounded-lg px-3 py-1 shadow-sm text-xs font-medium text-slate-600 hover:text-pink-500 hover:border-pink-200 active:scale-95 transition-all"
-                                        >
-                                            {preset.name}
-                                            <span className="ml-1.5 text-slate-300">{preset.config.model}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* API fields — always visible, same layout as Settings */}
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between mb-0.5">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">副 API 配置</label>
-                                <button
-                                    onClick={() => setShowSavePreset(!showSavePreset)}
-                                    className="text-[10px] bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-transform"
-                                >
-                                    保存为预设
-                                </button>
-                            </div>
-
-                            {showSavePreset && (
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={newPresetName}
-                                        onChange={e => setNewPresetName(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && handleSavePreset()}
-                                        placeholder="预设名称..."
-                                        className="flex-1 bg-white/50 border border-slate-200/60 rounded-xl px-3 py-2 text-sm focus:bg-white transition-all"
-                                        autoFocus
-                                    />
-                                    <button
-                                        onClick={handleSavePreset}
-                                        className="px-4 py-2 bg-pink-500 text-white text-sm font-bold rounded-xl active:scale-95 transition-transform"
-                                    >
-                                        保存
-                                    </button>
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">URL</label>
-                                <input
-                                    type="text"
-                                    value={url}
-                                    onChange={e => setUrl(e.target.value)}
-                                    placeholder="https://..."
-                                    className="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-sm font-mono focus:bg-white transition-all"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">Key</label>
-                                <input
-                                    type="password"
-                                    value={key}
-                                    onChange={e => setKey(e.target.value)}
-                                    placeholder="sk-..."
-                                    className="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-sm font-mono focus:bg-white transition-all"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block pl-1">Model</label>
-                                <input
-                                    type="text"
-                                    value={model}
-                                    onChange={e => setModel(e.target.value)}
-                                    placeholder="gemini-flash / gpt-4o-mini / ..."
-                                    className="w-full bg-white/50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-sm font-mono focus:bg-white transition-all"
-                                />
-                            </div>
-                        </div>
-
                         {/* Current buffs */}
                         {buffs.length > 0 ? (
                             <div>

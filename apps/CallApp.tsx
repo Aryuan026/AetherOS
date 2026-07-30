@@ -30,6 +30,7 @@ import { buildCallCompanionMaterialRequest } from '../utils/companionMaterial/re
 import {
   buildCompanionInteractionQualityProjection,
 } from '../utils/companionMaterial/interactionQuality';
+import { prepareCharacterBehaviorBoundaryProjection } from '../utils/characterBehaviorBoundary';
 import {
   buildCallModelFacingMessages,
   buildCallPrompt,
@@ -815,7 +816,20 @@ const CallApp: React.FC = () => {
     const previousCallUserBubble = qualityPreviousUserOverride === undefined
       ? [...bubbles].reverse().find(bubble => bubble.role === 'user')
       : qualityPreviousUserOverride || undefined;
+    const characterBehaviorBoundary = selectedChar && relationshipScope
+      ? prepareCharacterBehaviorBoundaryProjection({
+          requestId: `call-behavior-boundary:${currentSessionId}:${requestTime}`,
+          char: selectedChar,
+          scope: relationshipScope,
+          surface: 'call',
+          query: input,
+          previousQuery: previousCallUserBubble?.text,
+          maxItems: 2,
+          budgetChars: 520,
+        })
+      : null;
     const interactionQuality = selectedChar
+      && !characterBehaviorBoundary?.containsPlayerAuthoredInteractionPattern
       ? buildCompanionInteractionQualityProjection({
           charId: selectedChar.id,
           query: input,
@@ -839,6 +853,7 @@ const CallApp: React.FC = () => {
           voiceLang: voiceLang || undefined,
           voiceLangLabel,
           callScene: callScene || undefined,
+          characterBehaviorBoundaryContext: characterBehaviorBoundary?.markdown,
           interactionQualityContext: interactionQuality?.markdown,
         })
       : buildCallPrompt({

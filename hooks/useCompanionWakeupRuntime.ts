@@ -34,6 +34,7 @@ import {
     type PreparedCompanionMaterialPrompt,
 } from '../utils/companionMaterial';
 import { buildCompanionWakeupModelMessages } from '../utils/companionWakeupModelMessages';
+import { prepareCharacterBehaviorBoundaryProjection } from '../utils/characterBehaviorBoundary';
 
 const TICK_INTERVAL_MS = 60 * 1000;
 const SENT_WAKEUP_HISTORY_LIMIT = 500;
@@ -232,12 +233,27 @@ const renderWakeupWithAI = async (
     }
     const now = new Date();
     const timeText = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const characterBehaviorBoundary = prepareCharacterBehaviorBoundaryProjection({
+        requestId: `wakeup-behavior:${rule.id}:${requestTime}`,
+        char,
+        scope: relationshipScope,
+        surface: 'proactive_letter',
+        query: typeof latestVisibleUser?.content === 'string'
+            ? latestVisibleUser.content
+            : `${rule.title} ${rule.value || ''}`.trim(),
+        previousQuery: `${rule.title} ${rule.value || ''}`.trim(),
+        semanticSignals: rule.priority === 'care' ? ['care_needed'] : undefined,
+        maxItems: 2,
+        budgetChars: 420,
+    });
     const messages = buildCompanionWakeupModelMessages({
         coreContext: ContextBuilder.buildCoreContext(char, userProfile),
         worldlineContext: worldlineMemory.markdown,
         realityContext,
         companionMaterialContext: preparedCompanionMaterial?.markdown,
-        interactionQualityContext: buildCompanionInteractionQualityProjection({
+        characterBehaviorBoundaryContext: characterBehaviorBoundary?.markdown,
+        interactionQualityContext: !characterBehaviorBoundary?.containsPlayerAuthoredInteractionPattern
+          ? buildCompanionInteractionQualityProjection({
             charId: char.id,
             query: typeof latestVisibleUser?.content === 'string'
                 ? latestVisibleUser.content
@@ -246,7 +262,8 @@ const renderWakeupWithAI = async (
             mode: 'proactive_letter',
             purpose: 'proactive_intent',
             explicitSignals: rule.priority === 'care' ? ['care_needed'] : undefined,
-        })?.markdown,
+          })?.markdown
+          : undefined,
         timeText,
         userName: userProfile.name,
         ruleTitle: rule.title,
@@ -413,7 +430,13 @@ export const useCompanionWakeupRuntime = ({
         let cancelled = false;
 
         const processRule = async (rule: CompanionWakeupRule) => {
-            const { characters: currentCharacters, userProfile: currentUser, apiConfig: currentApi, groups: currentGroups, realtimeConfig: currentRealtime } = refs.current;
+            const {
+                characters: currentCharacters,
+                userProfile: currentUser,
+                apiConfig: currentApi,
+                groups: currentGroups,
+                realtimeConfig: currentRealtime,
+            } = refs.current;
             const char = currentCharacters.find(item => item.id === rule.charId);
             if (!char) return;
             const ruleScope = normalizeMessageRelationshipScope(rule.relationshipScope);
@@ -505,7 +528,15 @@ export const useCompanionWakeupRuntime = ({
             let message = '';
             try {
                 if (effectiveRule.mode === 'render') {
-                    message = await renderWakeupWithAI(effectiveRule, char, currentUser, currentApi, currentGroups, currentRealtime, ruleScope);
+                    message = await renderWakeupWithAI(
+                        effectiveRule,
+                        char,
+                        currentUser,
+                        currentApi,
+                        currentGroups,
+                        currentRealtime,
+                        ruleScope,
+                    );
                 }
                 const usedLines = await sentWakeupComparableSet(char.id);
                 if (!message && wakeupSettings.hiddenWordsEnabled) {

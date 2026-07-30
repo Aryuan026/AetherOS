@@ -119,6 +119,7 @@ const Settings: React.FC = () => {
       apiConfig, updateApiConfig, closeApp, availableModels, setAvailableModels,
       exportSystem, importSystem, addToast, resetSystem,
       apiPresets, activeApiPresetId, addApiPreset, removeApiPreset, activateApiPreset,
+      aiRuntimeRouting, updateAiRuntimeRouting,
       sysOperation, // Get progress state
       realtimeConfig, updateRealtimeConfig, // 实时感知配置
       characters, userProfile, updateTheme
@@ -481,6 +482,14 @@ const Settings: React.FC = () => {
   const olderMemoryReceipts = memoryReceipts.slice(1, 6);
   const latestAutoMemory = autoMemoryLedger[0];
   const olderAutoMemories = autoMemoryLedger.slice(1, 5);
+  const systemDirectorBinding = aiRuntimeRouting.systemDirector;
+  const selectedSystemDirectorPreset = systemDirectorBinding.mode === 'preset'
+      ? apiPresets.find(preset => preset.id === systemDirectorBinding.presetId)
+      : undefined;
+  const systemDirectorPresetMissing = (
+      systemDirectorBinding.mode === 'preset'
+      && !selectedSystemDirectorPreset
+  );
 
   return (
     <div className="h-full w-full bg-slate-50/50 flex flex-col font-light relative">
@@ -677,6 +686,92 @@ const Settings: React.FC = () => {
                     点预设名称只会放进编辑区；点“使用”或上方按钮，才会真正切换对话连接。
                 </p>
             </div>
+        </section>
+
+        {/* System director reuses the saved preset catalog. Apps must resolve
+            structured-analysis tasks through the shared task router instead
+            of growing their own raw URL/key/model forms. */}
+        <section
+            data-ai-runtime-routing
+            className="bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50"
+        >
+            <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100/70 text-violet-600">
+                    <Notebook size={18} weight="duotone" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-semibold tracking-wider text-slate-600">系统主持 AI</h2>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                        负责旧记录整理、情绪判断和剧情结构分析；不会替角色说话，也不直接写两个人的关系记忆。
+                    </p>
+                </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+                <button
+                    type="button"
+                    onClick={() => updateAiRuntimeRouting({
+                        version: 1,
+                        systemDirector: { mode: 'inherit_dialogue' },
+                    })}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left transition active:scale-[0.99] ${
+                        aiRuntimeRouting.systemDirector.mode === 'inherit_dialogue'
+                            ? 'border-violet-300 bg-violet-50 text-violet-700'
+                            : 'border-slate-100 bg-white/80 text-slate-600'
+                    }`}
+                >
+                    <span className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-bold">跟随对话 AI</span>
+                        {aiRuntimeRouting.systemDirector.mode === 'inherit_dialogue' && (
+                            <CheckCircle size={16} weight="fill" className="text-violet-500" />
+                        )}
+                    </span>
+                    <span className="mt-1 block truncate text-[10px] opacity-65">
+                        {apiConfig.model || '尚未启用对话模型'}
+                    </span>
+                </button>
+
+                {apiPresets.map(preset => {
+                    const selected = (
+                        aiRuntimeRouting.systemDirector.mode === 'preset'
+                        && aiRuntimeRouting.systemDirector.presetId === preset.id
+                    );
+                    return (
+                        <button
+                            type="button"
+                            key={`system-director-${preset.id}`}
+                            onClick={() => updateAiRuntimeRouting({
+                                version: 1,
+                                systemDirector: { mode: 'preset', presetId: preset.id },
+                            })}
+                            className={`w-full rounded-2xl border px-4 py-3 text-left transition active:scale-[0.99] ${
+                                selected
+                                    ? 'border-violet-300 bg-violet-50 text-violet-700'
+                                    : 'border-slate-100 bg-white/80 text-slate-600'
+                            }`}
+                        >
+                            <span className="flex items-center justify-between gap-3">
+                                <span className="min-w-0 truncate text-xs font-bold">{preset.name}</span>
+                                {selected && <CheckCircle size={16} weight="fill" className="shrink-0 text-violet-500" />}
+                            </span>
+                            <span className="mt-1 block truncate text-[10px] opacity-65">
+                                {preset.config.model || '未填写模型'}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {apiPresets.length === 0 && (
+                <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-[10px] leading-relaxed text-slate-400">
+                    暂时没有其他预设；系统主持会直接跟随上方的对话 AI。
+                </p>
+            )}
+            {systemDirectorPresetMissing && (
+                <p className="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-[10px] leading-relaxed text-rose-600">
+                    原先选择的系统主持预设已经不存在。涉及整理或分析时会明确停下，不会偷偷改用别的模型。
+                </p>
+            )}
         </section>
 
         {/* 主动来信设置区域 */}
