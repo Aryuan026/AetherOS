@@ -28,6 +28,19 @@
     `scrollTop=0`, header top at `0`, and the character name fully inside the
     header.
 
+- deployment:
+  - Public `Aryuan026/AetherOS main@5657896`; GitHub Pages run `30514723935`
+    completed successfully.
+  - The isolated static build contains 258 regular files and 91 valid gzip
+    sidecars. Local, staging, server and public-lab `index.html` SHA-256 is
+    `da1003ac8a2594ea4360d857919a77535866a531bfe9e658a5e5f41c7eee02fd`.
+  - Only `/srv/asherie/sites/science-demos/aetheros` was atomically replaced.
+    Rollback is
+    `/srv/asherie/backups/aetheros-identity-routing-5657896-20260730T044558Z/aetheros-static.previous`.
+  - Public GET is 200, POST is 403, retired `/sullyos/` remains 410 and the
+    hashed main asset is gzip + immutable. Nginx, Home and Bridge stayed active
+    with unchanged PID/restart counters; no service or Nginx reload ran.
+
 - boundary:
   - The public lab is healthy rather than crashed, but a read-only transfer
     probe observed the compressed 324 KB main bundle arriving at roughly
