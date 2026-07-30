@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
     buildHistoryIdentityBindingDraft,
+    findHistoryCharacterNameMatches,
     HISTORY_IDENTITY_BINDING_VERSION,
 } from '../domain/historyImport/identityBinding.ts';
 
@@ -51,6 +52,19 @@ const namedPlaceholderDraft = buildHistoryIdentityBindingDraft({
 });
 assert.equal(namedPlaceholderDraft.mask.label, '我的旧日线');
 assert.equal(namedPlaceholderDraft.character.label, '糯米');
+assert.deepEqual(
+    findHistoryCharacterNameMatches('  糯米  ', [
+        existingCharacter,
+        { id: 'char-other', label: '别人' },
+    ]),
+    [existingCharacter],
+    'placeholder names should offer an existing exact-name role without silently reusing it',
+);
+assert.deepEqual(
+    findHistoryCharacterNameMatches('新角色', [existingCharacter]),
+    [],
+    'a genuinely new role should stay on the no-question fast path',
+);
 
 const otherEmptyDraft = buildHistoryIdentityBindingDraft({ draftSeed: 'fixture-binding-002' });
 assert.notEqual(otherEmptyDraft.scope.personaMaskId, emptyDraft.scope.personaMaskId);
@@ -106,5 +120,5 @@ for (const forbidden of [
 }
 
 console.log(
-    `history identity binding OK: existing=${existingDraft.mask.kind}/${existingDraft.character.kind} placeholder=${emptyDraft.mask.kind}/${emptyDraft.character.kind} write=${emptyDraft.productionWriteAllowed}`,
+    `history identity binding OK: existing=${existingDraft.mask.kind}/${existingDraft.character.kind} placeholder=${emptyDraft.mask.kind}/${emptyDraft.character.kind} duplicate-name=offered write=${emptyDraft.productionWriteAllowed}`,
 );

@@ -44,6 +44,21 @@ export interface BuildHistoryIdentityBindingDraftInput {
     placeholderCharacterLabel?: string;
 }
 
+export const normalizeHistoryIdentityDisplayName = (value: unknown): string => (
+    String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
+);
+
+export const findHistoryCharacterNameMatches = (
+    name: string,
+    characters: readonly HistoryCharacterBindingCandidate[],
+): HistoryCharacterBindingCandidate[] => {
+    const normalizedName = normalizeHistoryIdentityDisplayName(name);
+    if (!normalizedName) return [];
+    return characters.filter(character => (
+        normalizeHistoryIdentityDisplayName(character.label) === normalizedName
+    ));
+};
+
 const requireId = (value: string, field: string): string => {
     const normalized = value.trim();
     if (!normalized) {

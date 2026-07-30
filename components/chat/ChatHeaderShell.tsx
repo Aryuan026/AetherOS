@@ -331,7 +331,12 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
 
     const renderCenteredInfo = () => (
         <div className="flex w-full min-w-0 max-w-full flex-col items-center justify-center text-center">
-            <div className={`${signatureText ? 'text-[18px] leading-none' : 'text-[16px] leading-none'} font-bold ${primaryTextClass}`}>{activeCharacter.name}</div>
+            <div
+                className={`${signatureText ? 'text-[18px]' : 'text-[16px]'} w-full truncate px-1 font-bold leading-[1.25] ${primaryTextClass}`}
+                title={activeCharacter.name}
+            >
+                {activeCharacter.name}
+            </div>
             {signatureText ? (
                 <div
                     data-chat-header-status={headerStatus.kind}
@@ -363,7 +368,12 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
                 alt="avatar"
             />
             <div className="flex-1 min-w-0 flex flex-col items-start text-left">
-                <div className={`${signatureText ? 'text-[22px] leading-none' : 'text-base'} font-bold ${primaryTextClass}`}>{activeCharacter.name}</div>
+                <div
+                    className={`${signatureText ? 'text-[22px]' : 'text-base'} w-full truncate font-bold leading-[1.25] ${primaryTextClass}`}
+                    title={activeCharacter.name}
+                >
+                    {activeCharacter.name}
+                </div>
                 <div className="flex items-center gap-2 flex-wrap min-w-0 max-w-full">
                     {signatureText ? (
                         <span

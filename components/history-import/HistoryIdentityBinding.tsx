@@ -3,6 +3,7 @@ import { ArrowRight, CheckCircle, PencilSimple, UserCircle } from '@phosphor-ico
 import type { CharacterProfile, UserProfile } from '../../types';
 import {
   buildHistoryIdentityBindingDraft,
+  findHistoryCharacterNameMatches,
   HISTORY_IDENTITY_PLACEHOLDER_CHOICE,
   type HistoryCharacterBindingCandidate,
   type HistoryIdentityBindingDraft,
@@ -86,6 +87,17 @@ const HistoryIdentityBinding: React.FC<HistoryIdentityBindingProps> = ({
       ? { id: selectedCharacter.id, label: selectedCharacter.name }
       : null
   ), [selectedCharacter]);
+
+  const duplicateCharacterMatches = useMemo(() => {
+    if (selectedCharacterId !== HISTORY_IDENTITY_PLACEHOLDER_CHOICE) return [];
+    const matches = findHistoryCharacterNameMatches(
+      newCharacterName,
+      characters.map(character => ({ id: character.id, label: character.name })),
+    );
+    return matches.map(match => characters.find(character => character.id === match.id)).filter(
+      (character): character is CharacterProfile => Boolean(character),
+    );
+  }, [characters, newCharacterName, selectedCharacterId]);
 
   const draft = useMemo(() => buildHistoryIdentityBindingDraft({
     draftSeed,
@@ -224,6 +236,26 @@ const HistoryIdentityBinding: React.FC<HistoryIdentityBindingProps> = ({
               </label>
             )}
           </div>
+          {duplicateCharacterMatches.length > 0 && (
+            <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2">
+              <div className="text-[9px] font-black text-amber-800">已经有同名角色</div>
+              <p className="mt-0.5 text-[8px] leading-relaxed text-amber-700">
+                如果就是同一个人，接到现有角色会保留原角色卡和已有素材。
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {duplicateCharacterMatches.map(character => (
+                  <button
+                    key={character.id}
+                    type="button"
+                    onClick={() => chooseCharacter(character.id)}
+                    className="rounded-lg bg-white px-2.5 py-1.5 text-[8px] font-black text-amber-800 shadow-sm"
+                  >
+                    接到“{character.name}”
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

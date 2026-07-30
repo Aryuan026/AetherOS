@@ -4,6 +4,7 @@ import type { CharacterProfile, UserProfile } from '../types.ts';
 import {
     buildPersonaScopePromptNote,
     filterCharactersForPersonaSurface,
+    linkCharacterToActivePersonaMask,
     resolvePersonaRouteScope,
 } from '../utils/personaRouteScope.ts';
 
@@ -43,6 +44,16 @@ assert.equal(linkedScope.preferredActiveCharacter?.id, 'linked', 'an unlinked ac
 assert.deepEqual(filterCharactersForPersonaSurface(characters, linkedScope, { surface: 'chat' }).map(item => item.id), ['linked']);
 assert.deepEqual(filterCharactersForPersonaSurface(characters, linkedScope, { surface: 'directory' }).map(item => item.id), ['linked', 'unlinked']);
 
+const linkedExplicitly = linkCharacterToActivePersonaMask(profile(['linked']), 'unlinked', 123);
+assert.equal(linkedExplicitly.status, 'linked');
+assert.deepEqual(
+    linkedExplicitly.profile.personaMasks?.[0]?.linkedCharacterIds,
+    ['linked', 'unlinked'],
+    'an explicit directory action must link the exact target to the active mask',
+);
+assert.equal(linkedExplicitly.profile.personaMasks?.[0]?.updatedAt, 123);
+assert.equal(linkCharacterToActivePersonaMask(linkedExplicitly.profile, 'unlinked').status, 'already_linked');
+
 const emptyScope = resolvePersonaRouteScope(profile([]), characters, 'unlinked');
 for (const surface of ['chat', 'group_chat', 'call', 'date', 'social', 'novel', 'guidebook', 'special_moments', 'timebook', 'companion_plan', 'study', 'journal', 'room', 'launcher'] as const) {
     assert.deepEqual(filterCharactersForPersonaSurface(characters, emptyScope, { surface }), [], `${surface} must fail closed without links`);
@@ -68,5 +79,33 @@ sourceContracts.forEach(([path, patterns]) => {
     assert.doesNotMatch(source, /showAll(?:Date|Call|Group)Characters|setShowAllGroupCandidates/);
     assert.doesNotMatch(source, /\|\|\s*characters\[0\]/);
 });
+
+const chatSource = readFileSync(new URL('../apps/Chat.tsx', import.meta.url), 'utf8');
+assert.doesNotMatch(
+    chatSource,
+    /chatScopedCharacters\.find\([^;]+\)\s*\|\|\s*chatScopedCharacters\[0\]/s,
+    'chat must never replace an unavailable requested character with another linked character',
+);
+assert.match(chatSource, /characters=\{chatScopedCharacters\}\s+activeCharacterId=/);
+assert.match(chatSource, /allCharacters=\{chatScopedCharacters\}/);
+
+const characterSource = readFileSync(new URL('../apps/Character.tsx', import.meta.url), 'utf8');
+assert.match(characterSource, /handleOpenChatForCharacter/);
+assert.match(characterSource, /linkCharacterToActivePersonaMask/);
+assert.doesNotMatch(
+    characterSource,
+    /setActiveCharacterId\(formData\.id\);\s*openApp\(AppID\.Chat\)/,
+    'the directory chat entry must link the exact target before opening Chat',
+);
+
+const chatHeaderSource = readFileSync(new URL('../components/chat/ChatHeaderShell.tsx', import.meta.url), 'utf8');
+assert.match(chatHeaderSource, /w-full truncate px-1 font-bold leading-\[1\.25\]/);
+
+const phoneShellSource = readFileSync(new URL('../components/PhoneShell.tsx', import.meta.url), 'utf8');
+assert.match(
+    phoneShellSource,
+    /relative w-full h-full overflow-clip/,
+    'the phone shell itself must not become a scroll container when a character switch item is brought into view',
+);
 
 console.log('persona life-surface fail-closed contract: OK');

@@ -739,7 +739,7 @@ export const runHistoryCompanionAnalysis = async (input: {
     stage: 'adjudicating',
     completedCalls: analysis.completedCalls,
     totalCalls: preview.estimatedCalls,
-    detail: '同一个模型正在做第二遍证据核对',
+    detail: '正在做第二遍核对',
   });
   const adjudicationPrompt = buildAdjudicationPrompt({
     packets,

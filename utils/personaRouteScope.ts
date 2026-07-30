@@ -28,6 +28,65 @@ export interface PersonaRouteScope {
     preferredActiveCharacter?: CharacterProfile;
 }
 
+export type PersonaCharacterLinkResult = {
+    status: 'linked' | 'already_linked' | 'rejected';
+    profile: UserProfile;
+    activeMaskId?: string;
+};
+
+/**
+ * Explicit relationship action used by directory entry points.
+ *
+ * Management surfaces may display unlinked characters, but life surfaces must
+ * never silently substitute another linked character. When the user explicitly
+ * asks to message or focus a directory character, link that exact character to
+ * the active mask first and let the destination continue with the same id.
+ */
+export const linkCharacterToActivePersonaMask = (
+    userProfile: UserProfile,
+    characterId: string,
+    now = Date.now(),
+): PersonaCharacterLinkResult => {
+    const normalized = normalizeUserPersonaProfile(userProfile);
+    const activeMask = getActivePersonaMask(normalized);
+    const targetId = characterId.trim();
+
+    if (!activeMask || !targetId) {
+        return {
+            status: 'rejected',
+            profile: normalized,
+            activeMaskId: activeMask?.id,
+        };
+    }
+
+    if ((activeMask.linkedCharacterIds || []).includes(targetId)) {
+        return {
+            status: 'already_linked',
+            profile: normalized,
+            activeMaskId: activeMask.id,
+        };
+    }
+
+    const nextProfile = normalizeUserPersonaProfile({
+        ...normalized,
+        personaMasks: (normalized.personaMasks || []).map(mask => (
+            mask.id === activeMask.id
+                ? {
+                    ...mask,
+                    linkedCharacterIds: [...new Set([...(mask.linkedCharacterIds || []), targetId])],
+                    updatedAt: now,
+                }
+                : mask
+        )),
+    });
+
+    return {
+        status: 'linked',
+        profile: nextProfile,
+        activeMaskId: activeMask.id,
+    };
+};
+
 export const resolvePersonaRouteScope = (
     userProfile: UserProfile,
     characters: CharacterProfile[],

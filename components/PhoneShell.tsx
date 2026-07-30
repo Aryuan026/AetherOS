@@ -542,7 +542,7 @@ const PhoneShell: React.FC = () => {
 
   return (
     <div
-      className="relative w-full h-full overflow-hidden bg-gradient-to-br from-pink-200 via-purple-200 to-indigo-200 text-slate-900 font-sans select-none overscroll-none"
+      className="relative w-full h-full overflow-clip bg-gradient-to-br from-pink-200 via-purple-200 to-indigo-200 text-slate-900 font-sans select-none overscroll-none"
       data-shell-chrome-mode={shellChromeMode}
       style={shellChromeStyle}
     >

@@ -70,6 +70,33 @@ const relationshipRecord: CompanionMaterialRecord = {
   }],
 };
 
+const reinforcedRelationshipRecord: CompanionMaterialRecord = {
+  ...relationshipRecord,
+  id: 'storage-relationship-opening-reinforcement',
+  sourceRefs: [{
+    storeFamily: 'private_review',
+    recordId: 'private-record-b-second-source',
+    revision: 2,
+    sourceFingerprint: 'private-fingerprint-b-second-source',
+  }],
+  createdAt: T0 + 2,
+  updatedAt: T0 + 2,
+};
+
+const alternateRelationshipRecord: CompanionMaterialRecord = {
+  ...relationshipRecord,
+  id: 'storage-relationship-opening-alternate',
+  guidance: '从一件刚刚发生的小事开口，让对方有自然接话或暂时不回的余地。',
+  sourceRefs: [{
+    storeFamily: 'private_review',
+    recordId: 'private-record-b-alternate',
+    revision: 1,
+    sourceFingerprint: 'private-fingerprint-b-alternate',
+  }],
+  createdAt: T0 + 3,
+  updatedAt: T0 + 3,
+};
+
 await saveCompanionMaterialLibrary({
   ownerScope: characterRecord.ownerScope,
   records: [characterRecord],
@@ -78,13 +105,31 @@ await saveCompanionMaterialLibrary({
 });
 await saveCompanionMaterialLibrary({
   ownerScope: relationshipRecord.ownerScope,
-  records: [relationshipRecord],
+  records: [
+    relationshipRecord,
+    reinforcedRelationshipRecord,
+    alternateRelationshipRecord,
+  ],
   revision: 4,
   updatedAt: T0 + 1,
 });
 
 const loaded = await loadCompanionMaterialRecords(scope);
-assert.deepEqual(loaded.map(record => record.id).sort(), [characterRecord.id, relationshipRecord.id].sort());
+assert.deepEqual(
+  loaded.map(record => record.id).sort(),
+  [characterRecord.id, relationshipRecord.id, alternateRelationshipRecord.id].sort(),
+  'runtime projection should coalesce exact reinforcement but preserve a distinct interpretation',
+);
+const reinforcedProjection = loaded.find(record => record.id === relationshipRecord.id);
+assert.equal(
+  reinforcedProjection?.sourceRefs.length,
+  2,
+  'coalesced runtime material must retain provenance from every source',
+);
+assert.deepEqual(
+  reinforcedProjection?.sourceRefs.map(sourceRef => sourceRef.recordId).sort(),
+  ['private-record-b', 'private-record-b-second-source'].sort(),
+);
 assert.equal('rawText' in loaded[0], false, 'runtime library records must not expose raw text');
 
 const rawPromotionRecord: CompanionMaterialRecord = {

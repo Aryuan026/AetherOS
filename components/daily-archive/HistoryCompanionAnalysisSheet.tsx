@@ -332,7 +332,7 @@ const HistoryCompanionAnalysisSheet: React.FC<HistoryCompanionAnalysisSheetProps
                       </div>
                     </div>
                     <p className="mt-2 text-[8px] leading-relaxed text-slate-400">
-                      已计入有硬上限的同模型二次核对；不同接口的实际 token 计算会略有差异。
+                      预计用量包含两遍整理，实际费用以你的 API 服务商为准。
                     </p>
                   </>
                 ) : !previewLoading && (
@@ -444,7 +444,7 @@ const HistoryCompanionAnalysisSheet: React.FC<HistoryCompanionAnalysisSheetProps
               <p className="mt-2 text-center text-[8px] leading-relaxed text-slate-400">
                 {!apiReady
                   ? '请先在设置里启用一个 API 配置。'
-                  : preview?.blockedReason || '第二遍核对使用同一个已启用模型，不冒充独立审稿。'}
+                  : preview?.blockedReason || '整理会分两遍完成，减少遗漏和误判。'}
               </p>
             </>
           )}

@@ -1,6 +1,7 @@
 export * from './types.ts';
 export * from './contract.ts';
 export * from './retrieval.ts';
+export * from './resolution.ts';
 export * from './selection.ts';
 export * from './deliveryReceipt.ts';
 export * from './semanticProjection.ts';

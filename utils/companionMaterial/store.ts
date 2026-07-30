@@ -11,6 +11,9 @@ import {
   builtInDeepspaceRetrievalCalibrationForCharacter,
 } from '../../domain/companionMaterial/builtInDeepspaceRetrievalCalibration.ts';
 import {
+  resolveCompanionMaterialRecordsForRuntime,
+} from '../../domain/companionMaterial/resolution.ts';
+import {
   getHistoryCompanionMaterialPass,
 } from '../historyImport/companionMaterial/indexedDbPasses.ts';
 import {
@@ -152,7 +155,7 @@ export const loadCompanionMaterialRecords = async (scope: {
     ) return;
     records.set(record.id, clone(record));
   });
-  return [...records.values()];
+  return resolveCompanionMaterialRecordsForRuntime([...records.values()]);
 };
 
 export const saveCompanionMaterialLibrary = async (params: {

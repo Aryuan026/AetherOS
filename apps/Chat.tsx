@@ -159,7 +159,12 @@ const Chat: React.FC = () => {
     const chatScopedCharacters = useMemo(() => (
         filterCharactersForPersonaSurface(characters, personaScope, { surface: 'chat' })
     ), [characters, personaScope]);
-    const char = chatScopedCharacters.find(c => c.id === activeCharacterId) || chatScopedCharacters[0];
+    const char = activeCharacterId
+        ? chatScopedCharacters.find(c => c.id === activeCharacterId)
+        : personaScope.preferredActiveCharacter;
+    const unavailableRequestedCharacter = activeCharacterId
+        ? characters.find(c => c.id === activeCharacterId)
+        : undefined;
     const [messages, setMessages] = useState<Message[]>([]);
     const [totalMsgCount, setTotalMsgCount] = useState(0);
     const [visibleCount, setVisibleCount] = useState(30);
@@ -539,6 +544,7 @@ const Chat: React.FC = () => {
     };
 
     const handleManualTts = async (msg: Message, autoTriggered = false) => {
+        if (!char) return;
         if (voiceDataMap[msg.id] || voiceLoading.has(msg.id)) return;
 
         // Check if message contains a <语音> tag (AI chose to send voice)
@@ -629,7 +635,7 @@ const Chat: React.FC = () => {
         prevIsTypingRef.current = isTyping;
         // Only trigger when AI just finished typing (wasTyping → !isTyping)
         if (!wasTyping || isTyping) return;
-        if (!char.chatVoiceEnabled) return;
+        if (!char?.chatVoiceEnabled) return;
         const voiceProfile = char.voiceProfile;
         if (!voiceProfile?.voiceId && (!voiceProfile?.timberWeights || voiceProfile.timberWeights.length === 0)) return;
         // Scan recent assistant messages for unprocessed <语音> tags
@@ -1136,6 +1142,7 @@ const Chat: React.FC = () => {
     };
 
     const handleBgUpload = async (file: File) => {
+        if (!char) return;
         try {
             const dataUrl = await processImage(file, { skipCompression: true });
             updateCharacter(char.id, { chatBackground: dataUrl });
@@ -1146,6 +1153,7 @@ const Chat: React.FC = () => {
     };
 
     const saveSettings = async () => {
+        if (!char) return;
         updateCharacter(char.id, {
             contextLimit: settingsContextLimit,
             hideSystemLogs: settingsHideSysLogs
@@ -1197,6 +1205,7 @@ const Chat: React.FC = () => {
     };
 
     const handleSetHistoryStart = (messageId: number | undefined) => {
+        if (!char) return;
         updateCharacter(char.id, { hideBeforeMessageId: messageId });
         setModalType('none');
         addToast(messageId ? '已隐藏历史消息' : '已恢复全部历史记录', 'success');
@@ -1340,7 +1349,7 @@ const Chat: React.FC = () => {
     };
 
     const handleReplyMessage = () => {
-        if (!selectedMessage) return;
+        if (!selectedMessage || !char) return;
         setReplyTarget({
             ...selectedMessage,
             metadata: { ...selectedMessage.metadata, senderName: selectedMessage.role === 'user' ? '我' : char.name }
@@ -1524,11 +1533,19 @@ const Chat: React.FC = () => {
     const chatChromeStyle = osTheme.chatChromeStyle || 'soft';
     const chatBackgroundStyle = osTheme.chatBackgroundStyle || 'plain';
     if (!char) {
+        const hasUnavailableTarget = Boolean(unavailableRequestedCharacter);
         return (
             <div className="flex h-full w-full flex-col bg-slate-50">
-                <AppHeader title="聊天" subtitle="当前面具还没有生活圈联系人" onBack={closeApp} center />
+                <AppHeader
+                    title={unavailableRequestedCharacter?.name || '聊天'}
+                    subtitle={hasUnavailableTarget ? '尚未加入当前面具' : '当前面具还没有生活圈联系人'}
+                    onBack={closeApp}
+                    center
+                />
                 <div className="flex flex-1 items-center justify-center px-8 text-center text-sm leading-7 text-slate-400">
-                    先在通讯录里把角色链接到当前面具，再从这里继续聊天。
+                    {hasUnavailableTarget
+                        ? `先在通讯录里把 ${unavailableRequestedCharacter?.name} 加入当前面具，再继续聊天。`
+                        : '先在通讯录里把角色链接到当前面具，再从这里继续聊天。'}
                 </div>
             </div>
         );
@@ -1616,7 +1633,7 @@ const Chat: React.FC = () => {
                 onSetHistoryStart={handleSetHistoryStart} onEnterSelectionMode={handleEnterSelectionMode}
                 onReplyMessage={handleReplyMessage} onEditMessageStart={() => { if (selectedMessage) { setEditContent(selectedMessage.content); setModalType('edit-message'); } }}
                 onConfirmEditMessage={confirmEditMessage} onDeleteMessage={handleDeleteMessage} onCopyMessage={handleCopyMessage} onDeleteEmoji={handleDeleteEmoji} onDeleteCategory={handleDeleteCategory}
-                allCharacters={characters} onSaveCategoryVisibility={handleSaveCategoryVisibility}
+                allCharacters={chatScopedCharacters} onSaveCategoryVisibility={handleSaveCategoryVisibility}
                 emojiCategories={categories}
                 onTogglePublicEmojiCategory={handleTogglePublicEmojiCategory}
                 translationEnabled={translationEnabled}
@@ -1782,7 +1799,7 @@ const Chat: React.FC = () => {
                     onForwardSelected={handleForwardSelected}
                     selectedCount={selectedMsgIds.size}
                     emojis={filteredEmojis}
-                    characters={characters} activeCharacterId={activeCharacterId}
+                    characters={chatScopedCharacters} activeCharacterId={activeCharacterId}
                     onCharSelect={handleCharSelectCallback}
                     onPanelAction={handlePanelAction}
                     onImageSelect={handleImageSelect}

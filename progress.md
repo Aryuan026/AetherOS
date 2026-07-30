@@ -1,5 +1,75 @@
 # AetherOS Progress
 
+## 2026-07-30 Exact Persona Chat Routing And Shell Position
+
+- done:
+  - Removed Chat's silent fallback from an unavailable requested character to
+    the first linked character. A stale or unlinked target now fails closed
+    under its own name instead of opening somebody else's conversation.
+  - Explicit `发消息` and `设为想见` actions in Contacts now link that exact
+    character to the active persona mask before changing the active character.
+    Chat's switcher and character-aware modals receive only the active mask's
+    linked character set.
+  - Changed the non-scrolling phone compositor from `overflow:hidden` to
+    `overflow:clip`. Bringing a lower switcher item into view can no longer
+    programmatically scroll the whole virtual phone and leave every app header
+    above the viewport.
+  - Chat character names now use a safe Chinese line height and bounded
+    truncation in both centered and avatar header layouts.
+
+- verified:
+  - Complete `npm run verify:health`, including history import, companion
+    material, memory, daily archive, narrative, shell chrome, persona scope,
+    typecheck and production build, is Green.
+  - Canonical 5174 browser path reproduced the original error first: opening
+    unlinked 黎深 entered 沈星回. After the fix, the same action entered 黎深
+    and linked him to the active mask.
+  - Switching from 黎深 to long-name `资讯站测试·星河` kept phone shell
+    `scrollTop=0`, header top at `0`, and the character name fully inside the
+    header.
+
+- boundary:
+  - The public lab is healthy rather than crashed, but a read-only transfer
+    probe observed the compressed 324 KB main bundle arriving at roughly
+    8.7 KB/s on this route. That slow network transfer is recorded separately
+    from the fixed role-routing and compositor defects.
+
+## 2026-07-29 Historical Fingerprint Reinforcement And Identity Reuse
+
+- done:
+  - Added a read-time Companion Material resolution layer. Runtime-equivalent
+    directions from separate immutable history passes now collapse to one
+    prompt candidate while retaining every source reference; the original pass
+    records remain untouched and queryable.
+  - Kept the coalescing key deliberately strict. Different route, purpose,
+    grounding, relationship floor, retrieval policy, tags, or guidance remains
+    a separate interpretation, so multi-source analysis cannot flatten a
+    character's expressive range or silently choose between conflicting
+    readings.
+  - When a new import placeholder uses the exact display name of an existing
+    character, the identity step now offers one-tap reuse of that character.
+    It never auto-links by name and never blocks a genuinely distinct same-name
+    role from being created.
+  - Replaced model-review implementation language in the Calendar analysis
+    sheet and progress state with short player-facing cost and two-pass
+    explanations. The external-API disclosure remains visible.
+
+- verified:
+  - `npm run verify:companion-material`
+  - `npm run verify:history-import`
+  - `npm run typecheck`
+  - Canonical 5174 browser flow: ordinary new-role entry remains unchanged;
+    entering an existing name shows the reuse card; choosing it selects the
+    existing character without writing an import.
+
+- boundary:
+  - This is exact runtime-meaning reinforcement, not lossy semantic rewriting.
+    Similar but non-identical directions continue through relevance, variation,
+    cooldown and diversity selection until a future evidence-backed semantic
+    consolidation policy exists.
+  - No character card, raw archive, immutable analysis pass, current state,
+    memory truth, narrative run or server deployment was changed.
+
 ## 2026-07-28 Companion Material Non-Vector Retrieval And Calendar Analysis
 
 - done:

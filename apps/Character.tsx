@@ -24,8 +24,7 @@ import { formatBondTimeLabelFromMessages } from '../utils/bondTime';
 import AppHeader, { AppHeaderAddButton, AppHeaderIconButton } from '../components/shell/AppHeader';
 import { resolveAvatarFramePreset } from '../utils/avatarFrames';
 import { getDeepSpaceWorldbookIdentityNotice } from '../utils/deepspaceIdentity';
-import { resolvePersonaRouteScope } from '../utils/personaRouteScope';
-import { normalizeUserPersonaProfile } from '../utils/userPersonaMasks';
+import { linkCharacterToActivePersonaMask, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 import { strictRelationshipScopeForProfile } from '../utils/messageContext';
 import type { MemoryProjectionPatch, MemoryProjectionView } from '../domain/memoryProjection';
 import {
@@ -274,37 +273,48 @@ const Character: React.FC = () => {
       openApp(AppID.DailyArchive);
   };
 
+  const ensureCharacterLinkedToActiveMask = (
+      char: CharacterProfile,
+      options: { announceExisting?: boolean; announceLinked?: boolean } = {},
+  ): boolean => {
+      const result = linkCharacterToActivePersonaMask(userProfile, char.id);
+      if (result.status === 'rejected') {
+          addToast('请先在个人档案中建立一个身份面具', 'info');
+          return false;
+      }
+      if (result.status === 'linked') {
+          updateUserProfile({ personaMasks: result.profile.personaMasks });
+          if (options.announceLinked !== false) {
+              addToast(`${char.name} 已加入当前面具关系网`, 'success');
+          }
+      } else if (options.announceExisting) {
+          addToast(`${char.name} 已经链接到当前面具`, 'info');
+      }
+      return true;
+  };
+
   const handleLinkCharacterToActiveMask = (char: CharacterProfile, e?: React.MouseEvent) => {
       e?.stopPropagation();
-      if (!personaScope.activeMaskId) {
-          addToast('请先在个人档案中建立一个身份面具', 'info');
-          return;
-      }
-      if (linkedCharacterIdSet.has(char.id)) {
-          addToast(`${char.name} 已经链接到当前面具`, 'info');
-          return;
-      }
-      const normalized = normalizeUserPersonaProfile(userProfile);
-      const nextMasks = (normalized.personaMasks || []).map(mask => (
-          mask.id === personaScope.activeMaskId
-              ? {
-                  ...mask,
-                  linkedCharacterIds: [...new Set([...(mask.linkedCharacterIds || []), char.id])],
-                  updatedAt: Date.now(),
-              }
-              : mask
-      ));
-      updateUserProfile({ personaMasks: nextMasks });
-      addToast(`${char.name} 已加入当前面具关系网`, 'success');
+      ensureCharacterLinkedToActiveMask(char, {
+          announceExisting: true,
+          announceLinked: true,
+      });
   };
 
   const handleSetWantedCharacter = (char: CharacterProfile) => {
+      if (!ensureCharacterLinkedToActiveMask(char, { announceLinked: false })) return;
       if (activeCharacterId === char.id) {
           addToast(`${char.name} 已经是首屏想见的人`, 'info');
           return;
       }
       setActiveCharacterId(char.id);
       addToast(`首屏想见的人已切换为 ${char.name}`, 'success');
+  };
+
+  const handleOpenChatForCharacter = (char: CharacterProfile) => {
+      if (!ensureCharacterLinkedToActiveMask(char, { announceLinked: false })) return;
+      setActiveCharacterId(char.id);
+      openApp(AppID.Chat);
   };
 
   const handleLoadMiniMaxVoices = async () => {
@@ -1228,7 +1238,7 @@ ${isInitialGeneration ? `
                                <Heart size={13} weight={formData.id === activeCharacterId ? 'fill' : 'bold'} />
                                {formData.id === activeCharacterId ? '想见' : '设为想见'}
                            </button>
-                           <button onClick={() => { setActiveCharacterId(formData.id); openApp(AppID.Chat); }} className="text-xs px-3 py-1.5 bg-primary text-white rounded-full font-bold shadow-sm shadow-primary/30 flex items-center gap-1 active:scale-95 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path d="M3.105 2.288a.75.75 0 0 0-.826.95l1.414 4.926H16.5a.75.75 0 0 1 0 1.5H3.693l-1.414 4.926a.75.75 0 0 0 .826.95 28.897 28.897 0 0 0 15.293-7.155.75.75 0 0 0 0-1.114A28.897 28.897 0 0 0 3.105 2.288Z" /></svg>发消息</button>
+                           <button onClick={() => handleOpenChatForCharacter(formData)} className="text-xs px-3 py-1.5 bg-primary text-white rounded-full font-bold shadow-sm shadow-primary/30 flex items-center gap-1 active:scale-95 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path d="M3.105 2.288a.75.75 0 0 0-.826.95l1.414 4.926H16.5a.75.75 0 0 1 0 1.5H3.693l-1.414 4.926a.75.75 0 0 0 .826.95 28.897 28.897 0 0 0 15.293-7.155.75.75 0 0 0 0-1.114A28.897 28.897 0 0 0 3.105 2.288Z" /></svg>发消息</button>
                        </div>
                    )}
                />
