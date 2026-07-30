@@ -37,6 +37,19 @@
   - The same resolver is covered for built-in, new, imported, explicitly
     overridden and legacy-custom characters across both Chat and Call.
 
+- deployment:
+  - Feature payload `549afb0` is on public `Aryuan026/AetherOS main`; GitHub
+    Pages run `30560899069` completed successfully.
+  - The isolated static build contains 260 regular files and 93 valid gzip
+    sidecars. Local, staging, server and public-lab `index.html` SHA-256 is
+    `556705c03bc5778c02a6926bc6678d6138d3bded877bd890368b8b66601c26b4`.
+  - Only `/srv/asherie/sites/science-demos/aetheros` was atomically replaced.
+    Rollback is
+    `/srv/asherie/backups/aetheros-live-header-549afb0-20260730T162230Z/aetheros-static.previous`.
+  - Public GET is 200, POST is 403, retired `/sullyos/` remains 410 and the
+    hashed main asset is gzip + immutable. Nginx, Home and Bridge stayed active
+    with unchanged PID/restart counters; no service or Nginx reload ran.
+
 - boundary:
   - Mood and presence are atmosphere, not memory truth or a permanent role
     trait. This change does not auto-publish Social posts or mutate the
