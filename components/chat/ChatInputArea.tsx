@@ -188,6 +188,9 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     };
 
     const isPixelStyle = inputStyle === 'pixel' || chromeStyle === 'pixel';
+    const compactControlHeightClass = 'h-[46px]';
+    const compactSquareControlClass = `${compactControlHeightClass} w-[46px]`;
+    const compactInputMinHeightClass = 'min-h-[46px]';
     const shellClass = chromeStyle === 'pixel'
         ? 'bg-[#eadfce] border-t-[3px] border-[#8f674a] shadow-[0_-4px_0_rgba(123,90,64,0.15)]'
         : chromeStyle === 'flat'
@@ -196,8 +199,8 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             ? 'bg-white/25 backdrop-blur-2xl border-t border-white/45 shadow-[0_-10px_24px_rgba(148,163,184,0.10)]'
             : 'bg-white/28 backdrop-blur-2xl border-t border-white/45 shadow-[0_-8px_22px_rgba(148,163,184,0.08)]';
     const actionButtonClass = isPixelStyle
-        ? 'w-11 h-11 shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#f8f0e0] flex items-center justify-center text-[#8f674a] hover:bg-[#fff7ed] transition-colors'
-        : 'w-11 h-11 shrink-0 rounded-full bg-white/35 backdrop-blur-md border border-white/45 flex items-center justify-center text-slate-500 hover:bg-white/55 transition-colors';
+        ? `${compactSquareControlClass} shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#f8f0e0] flex items-center justify-center text-[#8f674a] hover:bg-[#fff7ed] transition-colors`
+        : `${compactSquareControlClass} shrink-0 rounded-full bg-white/35 backdrop-blur-md border border-white/45 flex items-center justify-center text-slate-500 hover:bg-white/55 transition-colors`;
     const inputWrapClass =
         inputStyle === 'rounded'
             ? 'bg-white/38 border border-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] rounded-full'
@@ -237,15 +240,15 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     const sendButtonClass =
         sendButtonStyle === 'pill'
             ? isPixelStyle
-                ? 'h-11 min-w-[72px] shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] px-4 text-[11px] font-bold text-[#fff7ed]'
-                : `h-11 min-w-[72px] shrink-0 rounded-full px-4 text-[11px] font-bold ${sendButtonTone.pill}`
+                ? `${compactControlHeightClass} min-w-[72px] shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] px-4 text-[11px] font-bold text-[#fff7ed]`
+                : `${compactControlHeightClass} min-w-[72px] shrink-0 rounded-full px-4 text-[11px] font-bold ${sendButtonTone.pill}`
             : sendButtonStyle === 'minimal'
               ? isPixelStyle
-                ? 'w-11 h-11 shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] text-[#fff7ed] flex items-center justify-center'
-                : `w-11 h-11 shrink-0 rounded-full flex items-center justify-center ${sendButtonTone.minimal}`
+                ? `${compactSquareControlClass} shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] text-[#fff7ed] flex items-center justify-center`
+                : `${compactSquareControlClass} shrink-0 rounded-full flex items-center justify-center ${sendButtonTone.minimal}`
               : isPixelStyle
-                ? 'w-11 h-11 shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] text-[#fff7ed] flex items-center justify-center'
-                : `w-11 h-11 shrink-0 rounded-full flex items-center justify-center transition-all ${sendButtonTone.circle}`;
+                ? `${compactSquareControlClass} shrink-0 rounded-[4px] border-2 border-[#8f674a] bg-[#c99872] text-[#fff7ed] flex items-center justify-center`
+                : `${compactSquareControlClass} shrink-0 rounded-full flex items-center justify-center transition-all ${sendButtonTone.circle}`;
     const panelClass = isPixelStyle
         ? 'bg-[#f8f0e0] border-t-2 border-[#8f674a]'
         : 'bg-slate-50 border-t border-slate-200/60';
@@ -296,10 +299,18 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                 </div>
             ) : (
                 <div className="p-3 px-4 flex gap-3 items-end">
-                    <button onClick={() => setShowPanel(showPanel === 'actions' ? 'none' : 'actions')} className={actionButtonClass}>
-                        <Plus className="w-6 h-6" weight="bold" />
+                    <button
+                        onClick={() => setShowPanel(showPanel === 'actions' ? 'none' : 'actions')}
+                        aria-label="打开聊天操作"
+                        data-chat-composer-control="actions"
+                        className={actionButtonClass}
+                    >
+                        <Plus className="h-[22px] w-[22px]" weight="bold" />
                     </button>
-                    <div className={`flex-1 min-w-0 flex items-center px-1 transition-all ${useIOSStandaloneInputFix ? 'overflow-visible' : 'overflow-hidden'} ${inputWrapClass} ${isPixelStyle ? 'focus-within:bg-[#fff7ed]' : 'focus-within:bg-white/55 focus-within:border-white/80 focus-within:shadow-[0_8px_22px_rgba(148,163,184,0.14),inset_0_1px_0_rgba(255,255,255,0.75)]'}`}>
+                    <div
+                        data-chat-composer-control="input"
+                        className={`flex-1 min-w-0 ${compactInputMinHeightClass} flex items-center px-1 transition-all ${useIOSStandaloneInputFix ? 'overflow-visible' : 'overflow-hidden'} ${inputWrapClass} ${isPixelStyle ? 'focus-within:bg-[#fff7ed]' : 'focus-within:bg-white/55 focus-within:border-white/80 focus-within:shadow-[0_8px_22px_rgba(148,163,184,0.14),inset_0_1px_0_rgba(255,255,255,0.75)]'}`}
+                    >
                         <textarea 
                             ref={textareaRef}
                             rows={1} 
@@ -311,7 +322,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                             enterKeyHint="send"
                             autoCorrect="on"
                             autoCapitalize="sentences"
-                            className={`flex-1 min-w-0 bg-transparent px-4 py-3 ${useIOSStandaloneInputFix ? 'text-[16px]' : 'text-[15px]'} resize-none no-scrollbar ${isPixelStyle ? 'text-[#6a4c35] placeholder:text-[#9b8677]' : ''}`}
+                            className={`flex-1 min-w-0 bg-transparent px-4 py-[10px] leading-5 ${useIOSStandaloneInputFix ? 'text-[16px]' : 'text-[15px]'} resize-none no-scrollbar ${isPixelStyle ? 'text-[#6a4c35] placeholder:text-[#9b8677]' : ''}`}
                             placeholder="Message..." 
                             style={{ maxHeight: 72 }}
                         />
@@ -327,15 +338,17 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                             </button>
                         )}
                         <button onClick={() => setShowPanel(showPanel === 'emojis' ? 'none' : 'emojis')} className={`p-2 shrink-0 ${isPixelStyle ? 'text-[#8f674a] hover:text-[#a16207]' : 'text-slate-400 hover:text-primary'}`}>
-                            <Smiley className="w-6 h-6" weight="regular" />
+                            <Smiley className="h-[22px] w-[22px]" weight="regular" />
                         </button>
                     </div>
                     <button 
                         onClick={onSend} 
                         disabled={!input.trim()} 
+                        aria-label="发送消息"
+                        data-chat-composer-control="send"
                         className={`${sendButtonClass} ${input.trim() ? '' : 'opacity-45 shadow-none'}`}
                     >
-                        {sendButtonStyle === 'pill' ? <span>发送</span> : <PaperPlaneTilt className="w-5 h-5" weight="fill" />}
+                        {sendButtonStyle === 'pill' ? <span>发送</span> : <PaperPlaneTilt className="h-[19px] w-[19px]" weight="fill" />}
                     </button>
                 </div>
             )}

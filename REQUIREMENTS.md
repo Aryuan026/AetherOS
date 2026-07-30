@@ -154,6 +154,13 @@
 - The compact Chat header may sit `5px` below the shared header's content
   origin so the avatar/title group is optically centered; the message viewport
   must move with it instead of slipping underneath the header.
+- A centered Chat header expands a dedicated full-width status lane below the
+  title/action row only while a current mood or short-lived presence exists.
+  The status stays on one complete, non-ellipsized line at the supported 390px
+  and 430px phone widths. Once both time and turn lifetime clear the state, the
+  entire lane collapses and the title/actions return to compact height.
+- Built-in, imported and newly created characters share this projection and
+  layout contract without identity- or source-specific header branches.
 - The shared inner-detail header used by both `朋友圈` and `资讯站` must sit
   `3px` below the shared header content origin. This optical offset belongs only
   to the detail row; the ordinary Social feed header and global shell contract
@@ -511,11 +518,20 @@
   two visible lines, and reveals one expand affordance when text is multiline or
   overflows that height. Expanding opens a full-app editor over Chat rather than
   permanently enlarging the bottom bar.
+- In the empty and single-line composer, the actions button, input capsule, and
+  send button share one 46px outer height and bottom alignment at both 390px and
+  430px phone widths. The input capsule may grow for multiline drafts while the
+  side buttons remain anchored to its bottom edge.
 - Compact and expanded composers must edit the same draft and use the existing
   send path. Closing the editor preserves the draft; sending clears it through
   the ordinary Chat flow. Paragraph breaks remain intact, and no second message
   store or long-message record type is introduced.
-- The default chat appearance preset is `深空`.
+- Built-in AetherOS characters default to `深空`. Newly created, character-card
+  imported and history-imported characters default to `简约`. An explicit
+  player selection is stored on that character and wins over source defaults.
+- Chat and Call must resolve that same character preset; Call may not silently
+  fall back to a legacy per-character bubble ID while Chat uses the global OS
+  theme.
 - `深空` uses the existing concentrated chat layout instead of exposing free bubble height or shape controls.
 - Chat avatars are circular in `深空`.
 - Character bubbles are white by default.
@@ -524,6 +540,22 @@
 - Chat bubbles must not render a side-pointing tail or arrow.
 - The mobile chat header should be centered, with no header avatar and name/status sizing close to the screenshot reference.
 - The centered mobile chat header should stay compact; the name/status block must not create excessive top or bottom whitespace.
+- The centered header uses a 48px name/action row followed by a separate
+  full-width status lane only when a valid transient state exists. Back, name
+  and right actions remain on one horizontal axis.
+- Mood labels are limited to 8 visible graphemes; presence text is limited to
+  14. Overlong or malformed provider output is rejected instead of cut into a
+  broken half-sentence.
+- Mood and presence carry both `expiresAt` and `remainingTurns`. Missing,
+  malformed or exhausted lifetime fails closed. Same-state results refresh the
+  existing state instead of stacking duplicates.
+- A static character signature and the word `在线` must not keep the centered
+  status lane mounted. With no current state, the header shows the name only.
+- Transient-state analysis reuses `emotion_background_evaluation`, runs only
+  after enough new live dialogue/time/significant evidence, and never reads
+  historical import tails as current evidence. Its optional prompt injection
+  is a short acting undertone, not exact dialogue, plot outcome, affection
+  level, or tool policy.
 - In deep-space chat, the round in-message avatar diameter should match the default one-line bubble height.
 - The appearance editor should expose exactly four visible chat theme cards: `深空`, `简约`, `微信`, and `自定义`.
 - Built-in theme cards should not show explanatory helper text under the names.

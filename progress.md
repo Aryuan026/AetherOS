@@ -1,5 +1,50 @@
 # AetherOS Progress
 
+## 2026-07-30 Character Chat Appearance And Transient Header State
+
+- done:
+  - Integrated the shared elastic Chat header and 46px composer-control
+    baseline. The centered title, optional status lane and right action rail now
+    have independent layout space, so a short-lived status does not push the
+    character name upward or collide with controls.
+  - Made Chat appearance a per-character setting shared by Chat and Call.
+    Built-in Deep Space characters default to `deep-space`; newly created,
+    character-card and historical-import characters default to `minimal`.
+    An explicit player choice remains authoritative.
+  - Replaced the permanent `ONLINE`/signature header fallback with typed
+    short-lived mood and presence state. A role without an active state renders
+    only its name.
+  - Added dual expiry by wall-clock time and remaining live-conversation turns.
+    Missing or malformed expiry data fails closed, and expired state cannot
+    enter the header or prompt context.
+  - Reused the existing emotion-background evaluation route at low frequency.
+    It prefers the configured system-director AI and falls back to the dialogue
+    AI; failure never blocks the foreground reply. Generated acting undertone
+    is bounded and cannot prescribe exact dialogue, affection, plot outcomes or
+    tool use.
+  - Seeded each built-in role with one bounded initial presence while allowing
+    custom blank roles to remain visually quiet. Persistent activity still
+    belongs to Life/Social evidence rather than the Chat header.
+
+- verified:
+  - Complete `npm run verify:health` is Green, including public-release,
+    history import, Companion Material, behavior boundaries, daily archive,
+    narrative, memory, Chat header/live-state fixtures, typecheck and production
+    build.
+  - Canonical 5174 browser acceptance at 390 x 844 shows the role name centered,
+    the transient presence in its own lane and all three composer controls at
+    46px. There is no horizontal overflow and no console error.
+  - The same resolver is covered for built-in, new, imported, explicitly
+    overridden and legacy-custom characters across both Chat and Call.
+
+- boundary:
+  - Mood and presence are atmosphere, not memory truth or a permanent role
+    trait. This change does not auto-publish Social posts or mutate the
+    character card.
+  - Production build still reports the pre-existing stale Browserslist-data and
+    over-500KB chunk warnings. They are follow-up dependency/code-splitting
+    work, not regressions introduced by this feature.
+
 ## 2026-07-30 Exact Persona Chat Routing And Shell Position
 
 - done:

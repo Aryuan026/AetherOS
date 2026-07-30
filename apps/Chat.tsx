@@ -7,7 +7,7 @@ import { safeResponseJson } from '../utils/safeApi';
 import { formatLifeSimResetCardForContext } from '../utils/lifeSimChatCard';
 import MessageItem from '../components/chat/MessageItem';
 import ImportedHistoryTimeline from '../components/chat/ImportedHistoryTimeline';
-import { DEFAULT_CHAT_BACKGROUND_IMAGE, PRESET_THEMES, DEFAULT_ARCHIVE_PROMPTS, DEEP_SPACE_APPEARANCE_PRESET_ID, normalizeChatAppearancePresetId, resolveChatAppearanceTheme } from '../components/chat/ChatConstants';
+import { DEFAULT_CHAT_BACKGROUND_IMAGE, PRESET_THEMES, DEFAULT_ARCHIVE_PROMPTS, DEEP_SPACE_APPEARANCE_PRESET_ID, normalizeChatAppearancePresetId, resolveCharacterChatAppearanceTheme } from '../components/chat/ChatConstants';
 import ChatHeader from '../components/chat/ChatHeaderShell';
 import ChatInputArea from '../components/chat/ChatInputArea';
 import ExpandedChatComposer from '../components/chat/ExpandedChatComposer';
@@ -233,7 +233,10 @@ const Chat: React.FC = () => {
     // --- Multi-Select State ---
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedMsgIds, setSelectedMsgIds] = useState<Set<number>>(new Set());
-    const osTheme = useMemo(() => resolveChatAppearanceTheme(rawOsTheme), [rawOsTheme]);
+    const osTheme = useMemo(
+        () => resolveCharacterChatAppearanceTheme(rawOsTheme, char),
+        [rawOsTheme, char?.id, char?.isBuiltIn, char?.chatAppearancePreset, char?.bubbleStyle],
+    );
 
     // --- Translation State (per-character toggle, global language settings) ---
     const [translationEnabled, setTranslationEnabled] = useState(() => {
@@ -338,6 +341,9 @@ const Chat: React.FC = () => {
         chatReplyMode,
         emotionApiConfig: emotionAnalysisRoute.ok ? emotionAnalysisRoute.config : undefined,
         emotionApiErrorMessage: emotionAnalysisRoute.ok ? undefined : emotionAnalysisRoute.message,
+        emotionApiSource: emotionAnalysisRoute.ok && emotionAnalysisRoute.provider.binding === 'preset'
+            ? 'system-director'
+            : 'dialogue-ai',
     });
     const replySignalActive = companionWakeupActive;
 
@@ -823,7 +829,9 @@ const Chat: React.FC = () => {
                     const updated = all.find(c => c.id === activeCharacterId);
                     if (updated) updateCharacter(updated.id, {
                         activeBuffs: updated.activeBuffs,
-                        buffInjection: updated.buffInjection
+                        buffInjection: updated.buffInjection,
+                        chatPresenceStatus: updated.chatPresenceStatus,
+                        chatLiveStateEvaluation: updated.chatLiveStateEvaluation,
                     });
                 }).catch(() => {});
             }
@@ -2075,8 +2083,12 @@ const Chat: React.FC = () => {
                         addToast(config.enabled ? '情绪感知已启用' : '情绪感知已关闭', config.enabled ? 'success' : 'info');
                     }}
                     onClearBuffs={() => {
-                        updateCharacter(char.id, { activeBuffs: [], buffInjection: '' });
-                        addToast('情绪状态已清除', 'info');
+                        updateCharacter(char.id, {
+                            activeBuffs: [],
+                            buffInjection: '',
+                            chatPresenceStatus: undefined,
+                        });
+                        addToast('短期状态已清除', 'info');
                     }}
                 />
             )}

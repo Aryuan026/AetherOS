@@ -2,6 +2,7 @@
 import { CharacterProfile, UserProfile } from '../types';
 import { normalizeUserImpression } from './impression';
 import { buildDeepSpaceIdentityContext, DEEPSPACE_IDENTITY_MODE_LABELS, resolveDeepSpaceIdentityMode } from './deepspaceIdentity';
+import { activeCharacterBuffs } from './characterLiveState';
 
 /**
  * Memory Central
@@ -198,10 +199,11 @@ export const ContextBuilder = {
 
         // 6. 情绪底色 Buff (Emotion Buff Injection)
         // 放在角色设定之后，使所有调用 ContextBuilder 的 App 都能感知情绪状态
-        if (char.emotionConfig?.enabled && char.buffInjection) {
+        const currentEmotionBuffs = activeCharacterBuffs(char.activeBuffs);
+        if (char.emotionConfig?.enabled && char.buffInjection && currentEmotionBuffs.length > 0) {
             context += `${char.buffInjection}\n\n`;
             console.log(`🎭 [Context] Buff injected for ${char.name}:\n`, char.buffInjection);
-            console.log(`🎭 [Context] Active buffs:`, JSON.stringify(char.activeBuffs || [], null, 2));
+            console.log(`🎭 [Context] Active buffs:`, JSON.stringify(currentEmotionBuffs, null, 2));
         }
 
         // Debug: warn about missing context sections

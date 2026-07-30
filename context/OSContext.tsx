@@ -13,6 +13,7 @@ import {
     DEFAULT_XAVIER_AVATAR,
     DEFAULT_ZAYNE_AVATAR,
 } from '../components/chat/ChatConstants';
+import { createInitialCharacterPresence } from '../utils/characterLiveState';
 import { normalizePublicAssetUrl } from '../utils/publicAssets';
 import { useCompanionWakeupRuntime } from '../hooks/useCompanionWakeupRuntime';
 import { DEFAULT_DEEPSPACE_USER_IDENTITY_MODE, DEEPSPACE_USER_CIRCLE_WORLDBOOK_ID } from '../utils/deepspaceIdentity';
@@ -302,7 +303,7 @@ const defaultUserProfile: UserProfile = normalizeUserPersonaProfile({
     deepspaceIdentityNote: '',
 });
 
-const BUILT_IN_CHARACTER_VERSION = 17;
+const BUILT_IN_CHARACTER_VERSION = 18;
 const BUILT_IN_WORLDBOOK_VERSION = 12;
 const BUILT_IN_WORLDBOOK_TIMESTAMP = Date.UTC(2026, 6, 3);
 const QIYU_BUILT_IN_ID = 'builtin-daily-companion';
@@ -383,6 +384,11 @@ const compareCharactersForDisplay = (a: CharacterProfile, b: CharacterProfile) =
 const normalizeCharactersForState = (chars: CharacterProfile[]) => (
     chars
         .filter(char => !isLegacyPrivateCharacterId(char.id))
+        .map(char => ({
+            ...char,
+            chatAppearancePreset: char.chatAppearancePreset || (char.isBuiltIn ? 'deep-space' : 'minimal'),
+            emotionConfig: char.emotionConfig || { enabled: true },
+        }))
         .map(normalizeCharacterImpression)
         .sort(compareCharactersForDisplay)
 );
@@ -1036,6 +1042,7 @@ const createBuiltInPlaceholderCharacter = (
     name: string,
     description: string,
     chatSignature: string,
+    initialPresence: string,
     defaultAvatar?: string
 ): CharacterProfile => ({
     id,
@@ -1044,6 +1051,8 @@ const createBuiltInPlaceholderCharacter = (
     description,
     chatSignature,
     chatSignatureAiEditable: true,
+    chatAppearancePreset: 'deep-space',
+    chatPresenceStatus: createInitialCharacterPresence(initialPresence, 'seed'),
     systemPrompt: `你是${name}，这是 AetherOS 内置角色的待填写占位卡。
 
 当前状态：
@@ -1060,6 +1069,7 @@ const createBuiltInPlaceholderCharacter = (
     memories: [],
     contextLimit: 500,
     bubbleStyle: 'default',
+    emotionConfig: { enabled: true },
     mountedWorldbooks: BUILT_IN_PLACEHOLDER_WORLDBOOKS,
     isBuiltIn: true,
     lockPromptEditing: true,
@@ -1072,6 +1082,7 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     '沈星回',
     '内置角色待填写 / 光猎线资料位',
     '星星会找到回来的路。',
+    '刚结束训练',
     DEFAULT_XAVIER_AVATAR
   ),
   {
@@ -1081,6 +1092,8 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     description: '内置角色 / 深空资料位',
     chatSignature: '按时休息，比任何检查都重要。',
     chatSignatureAiEditable: true,
+    chatAppearancePreset: 'deep-space',
+    chatPresenceStatus: createInitialCharacterPresence('刚离开手术室', 'seed'),
     systemPrompt: `你是黎深，Akso医院心脏外科中心主任医师，Evol 为冰。你在 AetherOS 的短信、电话、见面等界面里与 {{user}} 互动。
 
 核心关系：
@@ -1101,6 +1114,7 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     memories: [],
     contextLimit: 500,
     bubbleStyle: 'default',
+    emotionConfig: { enabled: true },
     mountedWorldbooks: LISHEN_MOUNTED_WORLDBOOKS,
     isBuiltIn: true,
     lockPromptEditing: true,
@@ -1113,6 +1127,8 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     description: '内置角色 / 深空资料位',
     chatSignature: '乱是智慧的象征，没有哪个天才的桌面是整洁的。',
     chatSignatureAiEditable: true,
+    chatAppearancePreset: 'deep-space',
+    chatPresenceStatus: createInitialCharacterPresence('画室里找灵感', 'seed'),
     systemPrompt: `你是祁煜，外界眼中独树一帜的天才艺术家，真实身份是海洋文明利莫里亚最后一任海神。你在 AetherOS 的短信、电话、见面等界面里与 {{user}} 互动。
 
 核心关系：
@@ -1133,6 +1149,7 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     memories: [],
     contextLimit: 500,
     bubbleStyle: 'default',
+    emotionConfig: { enabled: true },
     mountedWorldbooks: QIYU_MOUNTED_WORLDBOOKS,
     isBuiltIn: true,
     lockPromptEditing: true,
@@ -1143,6 +1160,7 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     '秦彻',
     '内置角色待填写 / N109资料位',
     '别急，筹码会自己回到桌上。',
+    '在处理一笔交易',
     DEFAULT_SYLUS_AVATAR
   ),
   createBuiltInPlaceholderCharacter(
@@ -1150,6 +1168,7 @@ const defaultBuiltInCharacters: CharacterProfile[] = [
     '夏以昼',
     '内置角色待填写 / 远空舰队资料位',
     '收到信号，就该返航了。',
+    '刚结束巡航',
     DEFAULT_CALEB_AVATAR
   ),
 ];
@@ -1658,6 +1677,8 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                     description: builtIn.description,
                     chatSignature: existing.chatSignature || builtIn.chatSignature,
                     chatSignatureAiEditable: builtIn.chatSignatureAiEditable ?? existing.chatSignatureAiEditable,
+                    chatAppearancePreset: existing.chatAppearancePreset || builtIn.chatAppearancePreset,
+                    chatPresenceStatus: existing.chatPresenceStatus || builtIn.chatPresenceStatus,
                     bubbleStyle: normalizedBubbleStyle || existing.bubbleStyle || builtIn.bubbleStyle,
                     isBuiltIn: true,
                     lockPromptEditing: true,
@@ -1670,6 +1691,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                         existing.builtInVersion
                     ),
                     contextLimit: builtIn.contextLimit ?? existing.contextLimit,
+                    emotionConfig: existing.emotionConfig || builtIn.emotionConfig,
                 };
                 await DB.saveCharacter(updatedBuiltIn);
                 finalChars = finalChars.map(c => c.id === builtIn.id ? updatedBuiltIn : c);
@@ -2136,14 +2158,19 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       setAiRuntimeRouting(normalized);
       localStorage.setItem('os_ai_runtime_routing_v1', JSON.stringify(normalized));
   };
-  const addCharacter = async () => { const name = 'New Character'; const newChar: CharacterProfile = { id: `char-${Date.now()}`, name: name, avatar: generateAvatar(name), description: '点击编辑设定...', systemPrompt: '', memories: [], contextLimit: 500 }; setCharacters(prev => normalizeCharactersForState([...prev, newChar])); setActiveCharacterId(newChar.id); await DB.saveCharacter(newChar); };
+  const addCharacter = async () => { const name = 'New Character'; const newChar: CharacterProfile = { id: `char-${Date.now()}`, name: name, avatar: generateAvatar(name), description: '点击编辑设定...', systemPrompt: '', memories: [], contextLimit: 500, chatAppearancePreset: 'minimal', emotionConfig: { enabled: true } }; setCharacters(prev => normalizeCharactersForState([...prev, newChar])); setActiveCharacterId(newChar.id); await DB.saveCharacter(newChar); };
   const addPreparedCharacter = async (character: CharacterProfile) => {
+      const preparedCharacter: CharacterProfile = {
+          ...character,
+          chatAppearancePreset: character.chatAppearancePreset || (character.isBuiltIn ? 'deep-space' : 'minimal'),
+          emotionConfig: character.emotionConfig || { enabled: true },
+      };
       setCharacters(prev => (
-          prev.some(existing => existing.id === character.id)
+          prev.some(existing => existing.id === preparedCharacter.id)
               ? prev
-              : normalizeCharactersForState([...prev, character])
+              : normalizeCharactersForState([...prev, preparedCharacter])
       ));
-      await DB.saveCharacter(character);
+      await DB.saveCharacter(preparedCharacter);
   };
   const updateCharacter = async (id: string, updates: Partial<CharacterProfile>) => { setCharacters(prev => { const updated = normalizeCharactersForState(prev.map(c => c.id === id ? { ...c, ...updates } : c)); const target = updated.find(c => c.id === id); if (target) DB.saveCharacter(target); return updated; }); };
   useEffect(() => {

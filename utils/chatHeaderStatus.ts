@@ -1,6 +1,10 @@
 import type { CharacterProfile } from '../types.ts';
+import {
+    activeCharacterBuffs,
+    isActiveCharacterPresence,
+} from './characterLiveState.ts';
 
-export type ChatHeaderStatusKind = 'mood' | 'signature' | 'online';
+export type ChatHeaderStatusKind = 'mood' | 'presence' | 'none';
 
 export interface ChatHeaderStatusProjection {
     kind: ChatHeaderStatusKind;
@@ -14,13 +18,15 @@ const normalizeIntensity = (value: unknown): number => {
 
 /**
  * The Chat header is a projection, not another character-state writer.
- * Current emotion wins while it exists; the durable profile signature is the
- * quiet fallback, and online is only a presentation fallback.
+ * Current emotion wins while it exists, followed by a short-lived presence.
+ * Durable signatures and fake online labels are intentionally not projected:
+ * an expired transient state collapses the header back to the character name.
  */
 export const resolveChatHeaderStatus = (
-    character: Pick<CharacterProfile, 'activeBuffs' | 'chatSignature'>,
+    character: Pick<CharacterProfile, 'activeBuffs' | 'chatPresenceStatus'>,
+    now = Date.now(),
 ): ChatHeaderStatusProjection => {
-    const strongestMood = (character.activeBuffs || [])
+    const strongestMood = activeCharacterBuffs(character.activeBuffs, now)
         .map((buff, index) => ({
             buff,
             index,
@@ -42,7 +48,11 @@ export const resolveChatHeaderStatus = (
         };
     }
 
-    const signature = character.chatSignature?.trim();
-    if (signature) return { kind: 'signature', text: signature };
-    return { kind: 'online', text: '在线' };
+    if (isActiveCharacterPresence(character.chatPresenceStatus, now)) {
+        return {
+            kind: 'presence',
+            text: `近况 · ${character.chatPresenceStatus.text}`,
+        };
+    }
+    return { kind: 'none', text: '' };
 };

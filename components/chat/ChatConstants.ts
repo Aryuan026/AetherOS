@@ -1,6 +1,6 @@
 
 import type React from 'react';
-import { ChatTheme, OSTheme, BubbleStyle } from '../../types';
+import { ChatTheme, OSTheme, BubbleStyle, type CharacterProfile } from '../../types';
 import { publicAsset } from '../../utils/publicAssets';
 
 export const DEFAULT_CHAT_BACKGROUND_IMAGE = publicAsset('assets/aetheros/chat-default-bg.jpg');
@@ -14,7 +14,7 @@ export const CUSTOM_APPEARANCE_PRESET_ID = 'custom';
 const LEGACY_MOONLIT_PRESET_ID = 'moonlit';
 const LEGACY_SOFT_NOTE_PRESET_ID = 'soft-note';
 const LEGACY_PIXEL_SIGNAL_PRESET_ID = 'pixel-signal';
-type ChatAppearancePresetId = NonNullable<OSTheme['chatAppearancePreset']>;
+export type ChatAppearancePresetId = NonNullable<OSTheme['chatAppearancePreset']>;
 
 export const DEEP_SPACE_CHAT_APPEARANCE: Partial<OSTheme> = {
     chatAppearancePreset: DEEP_SPACE_APPEARANCE_PRESET_ID,
@@ -163,6 +163,44 @@ export const resolveChatAppearanceTheme = (theme: OSTheme): OSTheme => {
         ...DEEP_SPACE_CHAT_APPEARANCE,
         chatBackgroundImage: theme.chatBackgroundImage ?? DEFAULT_CHAT_BACKGROUND_IMAGE,
     };
+};
+
+export const resolveCharacterChatAppearancePresetId = (
+    character: Pick<CharacterProfile, 'isBuiltIn' | 'chatAppearancePreset' | 'bubbleStyle'> | null | undefined,
+): ChatAppearancePresetId => {
+    if (character?.chatAppearancePreset) {
+        return normalizeChatAppearancePresetId(character.chatAppearancePreset);
+    }
+    if (character?.isBuiltIn) return DEEP_SPACE_APPEARANCE_PRESET_ID;
+    if (character?.bubbleStyle && character.bubbleStyle !== 'default') return CUSTOM_APPEARANCE_PRESET_ID;
+    return 'minimal';
+};
+
+/**
+ * Character identity selects the preset while the global theme keeps shared
+ * custom details. This gives built-ins a Deep Space first run and user-created
+ * or imported characters a quiet minimal first run without forking Chat/Call.
+ */
+export const resolveCharacterChatAppearanceTheme = (
+    theme: OSTheme,
+    character: Pick<CharacterProfile, 'isBuiltIn' | 'chatAppearancePreset' | 'bubbleStyle'> | null | undefined,
+): OSTheme => {
+    const presetId = resolveCharacterChatAppearancePresetId(character);
+    if (presetId === CUSTOM_APPEARANCE_PRESET_ID) {
+        return resolveChatAppearanceTheme({
+            ...theme,
+            chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
+            chatBubbleThemeId: character?.bubbleStyle && character.bubbleStyle !== 'default'
+                ? character.bubbleStyle
+                : theme.chatBubbleThemeId,
+        });
+    }
+    const preset = CHAT_APPEARANCE_PRESETS.find(item => item.id === presetId);
+    return resolveChatAppearanceTheme({
+        ...theme,
+        ...preset?.config,
+        chatAppearancePreset: presetId,
+    });
 };
 
 type ChatBubbleVariant = NonNullable<OSTheme['chatBubbleStyle']>;

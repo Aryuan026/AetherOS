@@ -43,9 +43,9 @@ assert.equal(plan.character.name, '糯米');
 assert.equal(plan.character.chatSignature, '旧日记录已接回。');
 assert.equal(plan.character.chatSignatureAiEditable, true);
 assert.deepEqual(
-    resolveChatHeaderStatus(plan.character),
-    { kind: 'signature', text: '旧日记录已接回。' },
-    'a newly materialized history placeholder must keep its import handoff signature',
+    resolveChatHeaderStatus(plan.character, 1_700_000_000_000),
+    { kind: 'presence', text: '近况 · 旧日记录已接回' },
+    'a newly materialized history placeholder gets a short-lived import handoff status',
 );
 const createdMask = plan.profilePatch.personaMasks?.[
     (plan.profilePatch.personaMasks?.length || 1) - 1

@@ -10,7 +10,12 @@ import { ChatPrompts } from '../utils/chatPrompts';
 import { selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { buildRealitySyncContext } from '../utils/realitySync';
 import { Message, ChatTheme, CharacterProfile, VirtualTime, MessageRelationshipScope } from '../types';
-import { PRESET_THEMES } from '../components/chat/ChatConstants';
+import {
+  DEEP_SPACE_APPEARANCE_PRESET_ID,
+  PRESET_THEMES,
+  normalizeChatAppearancePresetId,
+  resolveCharacterChatAppearanceTheme,
+} from '../components/chat/ChatConstants';
 import AppHeader from '../components/shell/AppHeader';
 import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
 import {
@@ -368,7 +373,7 @@ const CallAppHeader: React.FC<{
   />
 );
 const CallApp: React.FC = () => {
-  const { closeApp, characters, activeCharacterId, addToast, apiConfig, userProfile, customThemes, realtimeConfig, virtualTime, suspendCall, suspendedCall, clearSuspendedCall } = useOS();
+  const { closeApp, characters, activeCharacterId, addToast, apiConfig, userProfile, customThemes, realtimeConfig, virtualTime, theme: rawOsTheme, suspendCall, suspendedCall, clearSuspendedCall } = useOS();
 
   const [viewMode, setViewMode] = useState<ViewMode>('role-select');
   const [selectedCharId, setSelectedCharId] = useState<string>(activeCharacterId || '');
@@ -428,10 +433,21 @@ const CallApp: React.FC = () => {
   const recordDetail = useMemo(() => callRecords.find(r => r.id === recordDetailId) || null, [callRecords, recordDetailId]);
   // 从角色聊天主题中提取强调色，用于通话界面的按钮和高亮
   const accentColor = useMemo(() => {
-    const themeId = selectedChar?.bubbleStyle || 'default';
+    const characterTheme = resolveCharacterChatAppearanceTheme(rawOsTheme, selectedChar);
+    const presetId = normalizeChatAppearancePresetId(characterTheme.chatAppearancePreset);
+    const themeId = characterTheme.chatBubbleThemeId || (
+      presetId === DEEP_SPACE_APPEARANCE_PRESET_ID ? 'default' : presetId
+    );
     const theme: ChatTheme | undefined = customThemes?.find((t: ChatTheme) => t.id === themeId) || PRESET_THEMES[themeId];
     return theme?.user?.backgroundColor || '#8b5cf6';
-  }, [selectedChar?.bubbleStyle, customThemes]);
+  }, [
+    selectedChar?.id,
+    selectedChar?.isBuiltIn,
+    selectedChar?.chatAppearancePreset,
+    selectedChar?.bubbleStyle,
+    customThemes,
+    rawOsTheme,
+  ]);
   const callScrollableRef = useRef<HTMLDivElement | null>(null);
   const resolveVoiceId = () => selectedChar?.voiceProfile?.voiceId?.trim() || '';
   const resolveModel = () => selectedChar?.voiceProfile?.model?.trim() || 'speech-2.8-hd';

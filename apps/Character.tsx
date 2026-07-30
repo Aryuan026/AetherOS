@@ -1237,6 +1237,10 @@ ${isInitialGeneration ? `
               const newChar: CharacterProfile = {
                   ...data,
                   id: `char-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
+                  chatAppearancePreset: data.chatAppearancePreset || (
+                      data.bubbleStyle && data.bubbleStyle !== 'default' ? 'custom' : 'minimal'
+                  ),
+                  emotionConfig: data.emotionConfig || { enabled: true },
                   memories: [],
                   refinedMemories: {},
                   activeMemoryMonths: [],

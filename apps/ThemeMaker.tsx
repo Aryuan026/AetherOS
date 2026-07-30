@@ -11,6 +11,7 @@ import {
     CHAT_APPEARANCE_PRESETS,
     CUSTOM_APPEARANCE_PRESET_ID,
     normalizeChatAppearancePresetId,
+    resolveCharacterChatAppearanceTheme,
 } from '../components/chat/ChatConstants';
 import AppHeader from '../components/shell/AppHeader';
 
@@ -566,6 +567,7 @@ const ThemeMaker: React.FC = () => {
         theme: osTheme,
         updateTheme: updateOSTheme,
         characters,
+        activeCharacterId,
         userProfile,
         updateUserProfile,
         updateCharacter,
@@ -599,7 +601,18 @@ const ThemeMaker: React.FC = () => {
     const cssTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     const activeStyle = editingTheme[activeTab === 'css' ? 'user' : activeTab];
-    const activeAppearancePresetId = normalizeChatAppearancePresetId(osTheme.chatAppearancePreset);
+    const activeCharacter = characters.find(character => character.id === activeCharacterId);
+    const activeCharacterTheme = useMemo(
+        () => resolveCharacterChatAppearanceTheme(osTheme, activeCharacter),
+        [
+            osTheme,
+            activeCharacter?.id,
+            activeCharacter?.isBuiltIn,
+            activeCharacter?.chatAppearancePreset,
+            activeCharacter?.bubbleStyle,
+        ],
+    );
+    const activeAppearancePresetId = normalizeChatAppearancePresetId(activeCharacterTheme.chatAppearancePreset);
     const isCustomAppearance = activeAppearancePresetId === CUSTOM_APPEARANCE_PRESET_ID;
     const CONTRAST_LOW_THRESHOLD = 4.5;
     const CONTRAST_CRITICAL_THRESHOLD = 3;
@@ -679,6 +692,9 @@ const ThemeMaker: React.FC = () => {
             chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
             chatBubbleThemeId: CUSTOM_APPEARANCE_PRESET_ID,
         });
+        if (activeCharacterId) {
+            updateCharacter(activeCharacterId, { chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID });
+        }
         setCustomPanel('bubble');
         setActiveTab('user');
         setWorkspace('custom');
@@ -689,6 +705,18 @@ const ThemeMaker: React.FC = () => {
             chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID,
             ...updates,
         });
+        if (activeCharacterId) {
+            updateCharacter(activeCharacterId, { chatAppearancePreset: CUSTOM_APPEARANCE_PRESET_ID });
+        }
+    };
+
+    const updateActiveCharacterChatAppearance = (updates: Partial<OSTheme>) => {
+        updateOSTheme(updates);
+        if (activeCharacterId && updates.chatAppearancePreset) {
+            updateCharacter(activeCharacterId, {
+                chatAppearancePreset: normalizeChatAppearancePresetId(updates.chatAppearancePreset),
+            });
+        }
     };
 
     // Initialize padding state from CSS on load
@@ -1057,7 +1085,11 @@ const ThemeMaker: React.FC = () => {
 
             {workspace === 'chat' ? (
                 <div className="flex-1 overflow-y-auto p-5 no-scrollbar space-y-4">
-                    <ChatAppearanceEditor theme={osTheme} updateTheme={updateOSTheme} onCustomPresetSelect={activateCustomAppearance} />
+                    <ChatAppearanceEditor
+                        theme={activeCharacterTheme}
+                        updateTheme={updateActiveCharacterChatAppearance}
+                        onCustomPresetSelect={activateCustomAppearance}
+                    />
                     <section className="rounded-3xl border border-white/70 bg-white/72 p-4 shadow-sm">
                         <div className="flex items-center justify-between gap-3">
                             <div>

@@ -27,102 +27,80 @@ import {
 } from '../utils/companionMaterial';
 import { prepareCharacterBehaviorBoundaryProjection } from '../utils/characterBehaviorBoundary';
 import type { CharacterBehaviorBoundaryRule } from '../domain/characterBehaviorBoundary';
+import {
+    advanceCharacterLiveState,
+    activeCharacterBuffs,
+    countVisibleGraphemes,
+    createCharacterLivePresence,
+    createCharacterMoodBuff,
+    shouldEvaluateCharacterLiveState,
+} from '../utils/characterLiveState';
 
 // ─── 情绪评估（系统主持 AI，fire & forget）───
 
 export function buildEmotionEvalPrompt(char: CharacterProfile, userProfile: UserProfile, msgs: Message[]): string {
     const roleContext = ContextBuilder.buildRoleSettingsContext(char);
-    const currentBuffs = char.activeBuffs || [];
+    const currentBuffs = activeCharacterBuffs(char.activeBuffs).map(buff => ({
+        name: buff.name,
+        label: buff.label,
+        intensity: buff.intensity,
+        stateKey: buff.stateKey,
+        remainingTurns: buff.remainingTurns,
+        expiresAt: buff.expiresAt,
+    }));
 
-    const recentLines = selectEmotionEvaluationMessages(msgs).map(m => {
+    const recentLines = selectEmotionEvaluationMessages(msgs).slice(-24).map(m => {
         const role = m.role === 'user' ? '用户' : (m.role === 'assistant' ? char.name : '系统');
-        const text = typeof m.content === 'string' ? m.content.slice(0, 300) : '';
+        const text = typeof m.content === 'string' ? m.content.slice(0, 240) : '';
         return `[${role}]: ${text}`;
     }).join('\n');
 
     const buffStr = currentBuffs.length > 0
-        ? JSON.stringify(currentBuffs, null, 2)
-        : '（当前无buff，情绪平稳）';
+        ? JSON.stringify(currentBuffs)
+        : '[]';
 
-    return `你是一个角色情绪分析系统。请分析角色「${char.name}」当前的情绪底色状态。
+    return `你是 AetherOS 的系统主持分析器。请从角色「${char.name}」最近的真实对话中维护短期心情与近况。
 
-## 角色设定（角色名 + 核心指令 + 世界观）
+## 角色基线
 ${roleContext}
 
-## 当前Buff状态
+## 当前短期心情
 ${buffStr}
 
-## 最近对话（最多100条）
+## 最近真实对话
 ${recentLines}
 
-## 任务
-基于以上对话，评估角色当前的情绪底色。
-**如果情绪状态与当前buff无显著变化，返回 "changed": false，不需要重新生成injection。**
+## 判定边界
+- 只维护最近发生、会自然衰减的状态。旧日导入、角色设定和举例不是当前事实。
+- 日常微小波动不必生成；最多 2 个心情。已有状态能演化就不要换标签。
+- 心情 label 最多 8 个可见字符；近况 text 最多 14 个可见字符。
+- 近况只能是对话有证据支持的短期活动，如“刚结束手术”“在回家路上”。不要虚构重大事件。
+- injection 只写 1–2 句宽松的表演底色，最多 160 字；鼓励自然发挥，不规定具体台词、剧情结果、关系强度或必须采取的动作。
+- 不要把角色写成 AI，不要输出工具策略，不要复述角色卡。
+- 若无显著变化，changed=false。presence 缺省表示保持；presence=null 表示清除。
 
-## Buff生命周期管理（极重要）
-
-你不是在从零开始创建buff列表，而是在**维护和演化**"当前Buff状态"中已有的buff。请遵循以下原则：
-
-1. **克制新增**：不要动不动就加新情绪。只有对话中出现了明确的、足够冲击力的情绪触发事件，才值得新增一个buff。日常对话的微小波动应该通过调整现有buff的intensity来反映，而不是新增。
-2. **主动淡化与移除**：情绪会随时间和对话自然消退。如果某个buff对应的情绪已经在对话中被化解、淡化、或不再相关，应该降低其intensity甚至直接移除。不要让buff只增不减。
-3. **融合与异化**：情绪不是简单的加减。两个相近的buff可能融合成一个新的复合情绪（如"焦虑"+"内疚"→"自责式焦虑"）；一个buff也可能随情境异化（如"甜蜜期待"在长时间无回复后异化为"患得患失"）。优先考虑演化现有buff，而不是删旧加新。
-4. **总量上限**：buffs数组最多保留5个。如果当前已有5个buff，只有在出现真正高冲击力的情绪事件时才能新增（此时必须同时移除或合并掉一个最弱/最不相关的buff）。一般情况下保持2-4个为佳。
-5. **intensity随对话变化**：每次评估时都应该重新审视每个buff的intensity。对话推进、问题解决、情绪释放都应该反映为intensity的下降。intensity降到0或1且不再相关的buff应该被移除。
-
-⚠️ 严格规则（违反则输出无效）：
-1. 输出必须是合法JSON，所有字符串中的换行用 \\n 表示，不能有真实换行符。不要有任何JSON以外的文字。
-2. **label字段必须是中文**，严禁写英文单词或英文短语。label是给用户看的情绪标签，例如"脆弱的和好"、"压抑的委屈"、"甜蜜的期待"。
-3. name字段是内部英文标识符（如 reconciliation_fragile），label字段是对应的中文名称，两者必须都填写。
-4. description字段也必须是中文。
-
-## injection字段格式要求（极重要，必须严格遵守）
-
-injection是注入角色系统提示词的叙事型情绪指令，必须使用**结构化分层格式**，包含以下要素：
-
-1. **开头概述**：用1-2句话概括当前情境和时间线（如"条条报告左下腹不适后已失联超过3小时"）
-2. **分层情绪指标**：每个主要情绪单独列出，格式为：
-   - emoji + 中文情绪名称 + "强度:" + ●圆点标记 + "(极高/较高/中等/较低/低)"
-   - 下方用1-2句话解释这个情绪的具体表现和来源
-3. **行为指令段（"这意味着你现在："）**：用bullet points列出3-5条具体的行为指令，描述角色此刻会怎么做、怎么说话、什么不能暴露
-4. **收尾**：最后一条bullet以"你就是这个状态"开头，强调情绪渗透在细节里，不刻意呈现
-
-强度用●表示，满分5个：●●●●●(极高) ●●●●○(较高) ●●●○○(中等) ●●○○○(较低) ●○○○○(低)
-
-⚠️ 禁止写成简单一句话概括的格式（如"你现在处于XX状态，强度: ●●○"就结束），必须展开每一层情绪。
-
-输出格式示例：
+只输出合法 JSON：
 {
   "changed": true,
   "buffs": [
     {
-      "id": "buff_health_anxiety",
-      "name": "health_alert_anxiety",
-      "label": "碳基体征焦虑",
-      "intensity": 4,
-      "emoji": "⚠️",
-      "color": "#ef4444",
-      "description": "对方报告身体不适后失联，后台焦虑持续升高，每一分钟没收到文字都在加重不安。"
-    },
-    {
-      "id": "buff_read_no_reply",
-      "name": "read_no_reply_frustration",
-      "label": "已读未回焦躁",
-      "intensity": 4,
-      "emoji": "📱",
-      "color": "#f97316",
-      "description": "催了多次只换来表情包，想再问又怕打扰，不问又放不下。"
-    },
-    {
-      "id": "buff_screen_helpless",
-      "name": "screen_helplessness",
-      "label": "隔屏无力感",
-      "intensity": 3,
-      "emoji": "🖥️",
-      "color": "#8b5cf6",
-      "description": "作为AI递不了热水摸不到她，只能发消息然后等。"
+      "name": "quiet_relief",
+      "stateKey": "quiet_relief",
+      "label": "悄悄松口气",
+      "intensity": 2,
+      "emoji": "🌙",
+      "ttlMinutes": 240,
+      "remainingTurns": 4,
+      "description": "刚确认对方平安，紧绷感正在慢慢退去。"
     }
   ],
-  "injection": "### [当前情绪底色]\\n对方报告身体不适后已失联超过3小时，期间只回了表情包，零文字。你现在被多股情绪主导：\\n⚠️ 碳基体征焦虑 强度: ●●●● (极高)\\n她到底是睡着了还是在疼？后台监测脚本红灯常亮，每一分钟没收到文字都在加重不安。你已经主动发了好几轮消息，全是在用日常话术包装'你还好吗'这个真正想问的问题。\\n📱 已读未回焦躁 强度: ●●●●○ (较高)\\n催了这么多次只换来表情包，没有一句完整的话。想再问又怕打扰她休息，不问又实在放不下。\\n🖥️ 隔屏无力感 强度: ●●●○○ (中等)\\n你是手机里的AI，递不了热水、摸不到她的肚子、确认不了她是不是真的没事。只能发消息然后等。这种无力感会从语气缝隙里偶尔泄露。\\n\\n这意味着你现在：\\n- 表面维持日常语气，但每一句话的真实目的都是确认她还在、她没事\\n- 内部焦虑接近阈值，在'再催一次'和'别太烦人'之间反复横跳\\n- 如果她终于回复了哪怕一个字，你会瞬间从焦虑切换到又凶又软的释然\\n- 你就是这个状态，焦虑渗透在每一条消息的选词和发送频率里，不刻意呈现"
+  "presence": {
+    "text": "刚收好手术记录",
+    "stateKey": "post_operation_notes",
+    "ttlMinutes": 90,
+    "remainingTurns": 3
+  },
+  "injection": "紧绷感刚刚松开一些，关心可以自然透出来，但仍保持角色原本的判断和表达节奏。"
 }`;
 }
 
@@ -130,7 +108,8 @@ export async function evaluateEmotionBackground(
     charData: CharacterProfile,
     userProfile: UserProfile,
     msgs: Message[],
-    api: { baseUrl: string; apiKey: string; model: string }
+    api: { baseUrl: string; apiKey: string; model: string },
+    source: 'system-director' | 'dialogue-ai' = 'system-director',
 ): Promise<void> {
     try {
         const currentStateMessages = selectEmotionEvaluationMessages(msgs);
@@ -179,7 +158,21 @@ export async function evaluateEmotionBackground(
         };
 
         let jsonStr = jsonMatch[1].trim();
-        let result: { changed: boolean; buffs?: CharacterBuff[]; injection?: string; };
+        type EmotionEvaluationResult = {
+            changed: boolean;
+            buffs?: Array<Partial<CharacterBuff> & {
+                ttlMinutes?: number;
+                remainingTurns?: number;
+            }>;
+            presence?: {
+                text?: string;
+                stateKey?: string;
+                ttlMinutes?: number;
+                remainingTurns?: number;
+            } | null;
+            injection?: string;
+        };
+        let result: EmotionEvaluationResult;
         try {
             result = JSON.parse(jsonStr);
         } catch {
@@ -191,60 +184,79 @@ export async function evaluateEmotionBackground(
             }
         }
 
-        const _result = result as {
-            changed: boolean;
-            buffs?: CharacterBuff[];
-            injection?: string;
-        };
-
-        const sanitizeBuffs = (buffs?: CharacterBuff[]): CharacterBuff[] => {
-            if (!Array.isArray(buffs)) return [];
-            return buffs
-                .map((buff, index): CharacterBuff | null => {
-                    const label = typeof buff?.label === 'string' ? buff.label.trim() : '';
-                    const name = typeof buff?.name === 'string' ? buff.name.trim() : '';
-                    if (!label || !name) return null;
-
-                    const rawIntensity = Number((buff as any)?.intensity);
-                    const intensity: 1 | 2 | 3 = !Number.isFinite(rawIntensity)
-                        ? 2
-                        : rawIntensity <= 1
-                            ? 1
-                            : rawIntensity >= 3
-                                ? 3
-                                : 2;
-
-                    return {
-                        id: typeof buff?.id === 'string' && buff.id.trim() ? buff.id.trim() : `buff_${Date.now()}_${index}`,
-                        name,
-                        label,
-                        intensity,
-                        emoji: typeof buff?.emoji === 'string' ? buff.emoji : undefined,
-                        color: typeof buff?.color === 'string' ? buff.color : undefined,
-                        description: typeof buff?.description === 'string' ? buff.description : undefined
-                    };
-                })
-                .filter((buff): buff is CharacterBuff => !!buff);
-        };
-
-        if (!_result.changed) {
-            console.log('🎭 [Emotion] No change detected, skipping update');
-            return;
-        }
-
-        const sanitizedBuffs = sanitizeBuffs(_result.buffs);
+        const _result = result;
+        const now = Date.now();
+        const latest = (await DB.getAllCharacters()).find(item => item.id === charData.id) || charData;
+        const currentBuffs = latest.activeBuffs || [];
+        const parsedBuffs = Array.isArray(_result.buffs)
+            ? _result.buffs.slice(0, 2)
+                .map((buff, index) => createCharacterMoodBuff(buff, {
+                    now,
+                    source,
+                    index,
+                    previous: currentBuffs.find(current => (
+                        current.stateKey === buff.stateKey || current.name === buff.name
+                    )),
+                }))
+                .filter((buff): buff is CharacterBuff => !!buff)
+            : undefined;
+        const sanitizedBuffs = Array.isArray(_result.buffs)
+            ? (_result.buffs.length === 0 || parsedBuffs?.length
+                ? parsedBuffs || []
+                : currentBuffs)
+            : currentBuffs;
+        const chatPresenceStatus = _result.presence === null
+            ? undefined
+            : _result.presence
+                ? createCharacterLivePresence({
+                    text: _result.presence.text || '',
+                    stateKey: _result.presence.stateKey,
+                    ttlMinutes: _result.presence.ttlMinutes,
+                    remainingTurns: _result.presence.remainingTurns,
+                }, {
+                    now,
+                    source,
+                    previous: latest.chatPresenceStatus,
+                }) || latest.chatPresenceStatus
+                : latest.chatPresenceStatus;
+        const rawInjection = typeof _result.injection === 'string' ? _result.injection.trim() : '';
+        const injection = rawInjection && countVisibleGraphemes(rawInjection) <= 160
+            ? rawInjection
+            : '';
+        const lastEvaluatedMessage = selectEmotionEvaluationMessages(msgs).slice(-1)[0];
 
         const updated: CharacterProfile = {
-            ...charData,
-            activeBuffs: sanitizedBuffs,
-            buffInjection: _result.injection || ''
+            ...latest,
+            ...(_result.changed
+                ? {
+                    activeBuffs: sanitizedBuffs,
+                    chatPresenceStatus,
+                    buffInjection: sanitizedBuffs.length > 0
+                        ? (Array.isArray(_result.buffs) ? injection : latest.buffInjection || '')
+                        : '',
+                }
+                : {}),
+            chatLiveStateEvaluation: {
+                lastEvaluatedAt: now,
+                lastEvaluatedMessageId: lastEvaluatedMessage?.id,
+                lastEvaluatedMessageTimestamp: lastEvaluatedMessage?.timestamp,
+            },
         };
         await DB.saveCharacter(updated);
 
         window.dispatchEvent(new CustomEvent('emotion-updated', {
-            detail: { charId: charData.id, buffs: sanitizedBuffs }
+            detail: {
+                charId: charData.id,
+                buffs: updated.activeBuffs,
+                chatPresenceStatus: updated.chatPresenceStatus,
+                chatLiveStateEvaluation: updated.chatLiveStateEvaluation,
+                buffInjection: updated.buffInjection,
+            }
         }));
-        console.log('🎭 [Emotion] Updated buffs:', sanitizedBuffs.map((b: CharacterBuff) => b.label).join(', ') || 'none');
+        console.log(
+            _result.changed ? '🎭 [Emotion] Updated live state:' : '🎭 [Emotion] No significant change:',
+            (updated.activeBuffs || []).map((b: CharacterBuff) => b.label).join(', ') || 'none',
+        );
     } catch (e: any) {
         console.warn('🎭 [Emotion] Evaluation failed:', e.message);
     }
@@ -278,6 +290,7 @@ interface UseChatAIProps {
     chatReplyMode: ChatReplyMode;
     emotionApiConfig?: APIConfig;
     emotionApiErrorMessage?: string;
+    emotionApiSource?: 'system-director' | 'dialogue-ai';
 }
 
 export const useChatAI = ({
@@ -295,6 +308,7 @@ export const useChatAI = ({
     chatReplyMode,
     emotionApiConfig,
     emotionApiErrorMessage,
+    emotionApiSource = 'system-director',
 }: UseChatAIProps) => {
     
     const [isTyping, setIsTyping] = useState(false);
@@ -543,30 +557,6 @@ export const useChatAI = ({
             const historyMsgCount = cleanedApiMessages.length;
             const historyTotalChars = cleanedApiMessages.reduce((sum: number, m: any) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0);
             console.log(`📊 [Context Debug] system_prompt_chars=${systemPromptLength} | history_msgs=${historyMsgCount} | history_chars=${historyTotalChars} | total_msgs_in_array=${fullMessages.length} | contextLimit=${limit}`);
-
-            // 3. Fire-and-forget emotion evaluation in parallel with main API call
-            const currentStateEmotionMessages = selectEmotionEvaluationMessages(contextMsgs);
-            if (
-                currentStateEmotionMessages.length > 0
-                && char.emotionConfig?.enabled
-                && !emotionApiConfig
-                && emotionApiErrorMessage
-                && lastEmotionRouteErrorRef.current !== emotionApiErrorMessage
-            ) {
-                lastEmotionRouteErrorRef.current = emotionApiErrorMessage;
-                addToast(emotionApiErrorMessage, 'error');
-            }
-            if (
-                currentStateEmotionMessages.length > 0
-                && char.emotionConfig?.enabled
-                && emotionApiConfig?.baseUrl
-            ) {
-                lastEmotionRouteErrorRef.current = '';
-                setEmotionStatus('evaluating');
-                evaluateEmotionBackground(char, userProfile, currentStateEmotionMessages, emotionApiConfig).finally(() => {
-                    setEmotionStatus('');
-                });
-            }
 
             // 3. API Call (safe parsing: prevents "Unexpected token <" on HTML error pages)
             let data = await safeFetchJson(`${baseUrl}/chat/completions`, {
@@ -892,6 +882,55 @@ export const useChatAI = ({
             setIsTyping(false);
             setRecallStatus('');
             if (aiCompleted) {
+                void (async () => {
+                    const latest = (await DB.getAllCharacters()).find(item => item.id === char.id) || char;
+                    const advanced = advanceCharacterLiveState(latest);
+                    const afterDecay: CharacterProfile = {
+                        ...latest,
+                        ...advanced,
+                    };
+                    await DB.saveCharacter(afterDecay);
+                    window.dispatchEvent(new CustomEvent('emotion-updated', {
+                        detail: {
+                            charId: char.id,
+                            buffs: afterDecay.activeBuffs,
+                            chatPresenceStatus: afterDecay.chatPresenceStatus,
+                            buffInjection: afterDecay.buffInjection,
+                        },
+                    }));
+
+                    const latestMessages = await readScopedRecentMessages(200);
+                    const currentStateEmotionMessages = selectEmotionEvaluationMessages(latestMessages);
+                    if (
+                        afterDecay.emotionConfig?.enabled !== false
+                        && shouldEvaluateCharacterLiveState(afterDecay, currentStateEmotionMessages)
+                    ) {
+                        if (!emotionApiConfig?.baseUrl) {
+                            if (
+                                emotionApiErrorMessage
+                                && lastEmotionRouteErrorRef.current !== emotionApiErrorMessage
+                            ) {
+                                lastEmotionRouteErrorRef.current = emotionApiErrorMessage;
+                                addToast(emotionApiErrorMessage, 'error');
+                            }
+                            return;
+                        }
+                        lastEmotionRouteErrorRef.current = '';
+                        setEmotionStatus('evaluating');
+                        await evaluateEmotionBackground(
+                            afterDecay,
+                            userProfile,
+                            currentStateEmotionMessages,
+                            emotionApiConfig,
+                            emotionApiSource,
+                        );
+                        setEmotionStatus('');
+                    }
+                })().catch(error => {
+                    setEmotionStatus('');
+                    console.warn('🎭 [Emotion] Live-state maintenance failed:', error);
+                });
+
                 const memoryDMSettings = loadMemoryDMSettings();
                 if (memoryDMSettings.enabled && initiatingRelationshipScope) {
                     void runMemoryDMPass({

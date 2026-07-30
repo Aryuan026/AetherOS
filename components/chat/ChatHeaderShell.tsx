@@ -5,6 +5,7 @@ import { AvatarFramePreset, CharacterBuff, CharacterProfile } from '../../types'
 import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_TOP_INSET } from '../shell/shellLayout';
 import AvatarWithFrame from '../common/AvatarWithFrame';
 import { resolveChatHeaderStatus } from '../../utils/chatHeaderStatus';
+import { activeCharacterBuffs } from '../../utils/characterLiveState';
 
 interface TokenBreakdown {
     prompt: number;
@@ -46,6 +47,11 @@ const COLLAPSED_BUFF_MIN = 2;
 const COLLAPSED_BUFF_MAX = 3;
 const CHIP_GAP_PX = 2;
 const CHAT_HEADER_VERTICAL_OFFSET_PX = 5;
+const CENTERED_HEADER_ACTION_RAIL_PX = 96;
+const CENTERED_HEADER_SIDE_RESERVE_PX = CENTERED_HEADER_ACTION_RAIL_PX + 4;
+const CENTERED_MOOD_VERTICAL_OFFSET_PX = 3;
+const CENTERED_MOOD_STATUS_PULL_UP_PX = 9;
+const CENTERED_SIGNED_HEADER_TOP_ROW_PX = 48;
 
 const normalizeIntensity = (n: number | undefined | null): 1 | 2 | 3 => {
     const parsed = Number.isFinite(n) ? Math.round(Number(n)) : 2;
@@ -85,7 +91,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     chromeStyle = 'soft',
     useHeaderBackgroundImage = false,
 }) => {
-    const buffs: CharacterBuff[] = activeCharacter.activeBuffs || [];
+    const buffs: CharacterBuff[] = activeCharacterBuffs(activeCharacter.activeBuffs);
     const [openBuff, setOpenBuff] = useState<CharacterBuff | null>(null);
     const [isBuffListExpanded, setIsBuffListExpanded] = useState(false);
     const [confirmDeleteBuff, setConfirmDeleteBuff] = useState<CharacterBuff | null>(null);
@@ -193,7 +199,10 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     const useCenteredLayout = headerAlign === 'center' || headerStyle === 'minimal';
     const avatarRadiusClass = avatarShape === 'square' ? 'rounded-sm' : avatarShape === 'rounded' ? 'rounded-xl' : 'rounded-full';
     const headerStatus = resolveChatHeaderStatus(activeCharacter);
-    const signatureText = headerStatus.kind === 'online' ? '' : headerStatus.text;
+    const signatureText = headerStatus.kind === 'none' ? '' : headerStatus.text;
+    const hasCenteredStatus = headerStatus.kind !== 'none';
+    const useStackedCenteredHeader = !selectionMode && useCenteredLayout && hasCenteredStatus;
+    const useCompactHeaderMetrics = useCenteredLayout || !!signatureText;
 
     const headerToneClass =
         headerStyle === 'minimal'
@@ -207,13 +216,13 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
                     : chromeStyle === 'floating'
                       ? 'bg-white/85 backdrop-blur-xl border-b border-white/70 shadow-sm'
                       : 'bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm';
-    const headerDensityClass = signatureText
+    const headerDensityClass = useCompactHeaderMetrics
         ? (headerDensity === 'airy' ? 'px-5 pb-2' : headerDensity === 'default' ? 'px-4 pb-1.5' : 'px-4 pb-1')
         : headerDensity === 'compact' ? 'px-4 pb-3' : headerDensity === 'airy' ? 'px-6 pb-5' : 'px-5 pb-4';
-    const headerBodyHeightPx = signatureText
+    const headerBodyHeightPx = useCompactHeaderMetrics
         ? (headerDensity === 'airy' ? 60 : headerDensity === 'default' ? 52 : 46)
         : headerDensity === 'compact' ? 48 : headerDensity === 'airy' ? 80 : 64;
-    const headerAlignClass = signatureText ? 'items-center' : 'items-end';
+    const headerAlignClass = useCompactHeaderMetrics ? 'items-center' : 'items-end';
     const headerBackgroundStyle: React.CSSProperties | undefined =
         useHeaderBackgroundImage
             ? {
@@ -241,22 +250,12 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     const headerShellStyle: React.CSSProperties = {
         ...headerBackgroundStyle,
         paddingTop: `calc(${SHELL_APP_HEADER_CONTENT_TOP} + ${CHAT_HEADER_VERTICAL_OFFSET_PX}px)`,
-        height: `calc(${SHELL_TOP_INSET} + ${headerBodyHeightPx + CHAT_HEADER_VERTICAL_OFFSET_PX}px)`,
+        height: useStackedCenteredHeader
+            ? 'auto'
+            : `calc(${SHELL_TOP_INSET} + ${headerBodyHeightPx + CHAT_HEADER_VERTICAL_OFFSET_PX}px)`,
     };
 
-    const onlineStatusNode =
-        statusStyle === 'pill' ? (
-            <div className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold border ${isPixelHeader ? 'bg-[#fff7ed] text-[#8f674a] border-[#8f674a]/25' : 'bg-emerald-50 text-emerald-500 border-emerald-100'}`}>
-                在线
-            </div>
-        ) : statusStyle === 'dot' ? (
-            <div className={`flex items-center gap-1 text-[10px] ${secondaryTextClass}`}>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span>在线</span>
-            </div>
-        ) : (
-            <div className={`text-[10px] ${secondaryTextClass}`}>在线</div>
-        );
+    const onlineStatusNode = null;
 
     const renderBuffRow = (centered: boolean) => {
         if (buffs.length === 0) return null;
@@ -329,31 +328,40 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
         </div>
     ) : null;
 
+    const renderCenteredName = () => (
+        <div
+            className={`text-[20px] w-full truncate px-1 font-bold leading-[1.25] text-center ${primaryTextClass}`}
+            title={activeCharacter.name}
+        >
+            {activeCharacter.name}
+        </div>
+    );
+
     const renderCenteredInfo = () => (
         <div className="flex w-full min-w-0 max-w-full flex-col items-center justify-center text-center">
-            <div
-                className={`${signatureText ? 'text-[18px]' : 'text-[16px]'} w-full truncate px-1 font-bold leading-[1.25] ${primaryTextClass}`}
-                title={activeCharacter.name}
-            >
-                {activeCharacter.name}
+            {renderCenteredName()}
+            <div className="mt-1 flex items-center justify-center gap-2 flex-wrap">
+                {onlineStatusNode}
             </div>
-            {signatureText ? (
-                <div
-                    data-chat-header-status={headerStatus.kind}
-                    className={`mt-1 max-w-[min(74vw,460px)] truncate text-[11px] leading-[1.2] font-semibold ${isPixelHeader ? 'text-[#f3ddc7]' : 'text-[#8fa0b4]'}`}
-                >
-                    {signatureText}
-                </div>
-            ) : (
-                <div className="mt-1 flex items-center justify-center gap-2 flex-wrap">
-                    {onlineStatusNode}
-                </div>
-            )}
-            {buffs.length > 0 && (
-                <div className="mt-1 h-[18px] w-full">
-                    {renderBuffRow(true)}
-                </div>
-            )}
+        </div>
+    );
+
+    const renderCenteredStatusLane = () => (
+        <div
+            data-chat-header-status-lane
+            onClick={onShowCharsPanel}
+            className="w-full cursor-pointer px-2 text-center"
+            style={{ marginTop: -CENTERED_MOOD_STATUS_PULL_UP_PX }}
+        >
+            <div
+                data-chat-header-status={headerStatus.kind}
+                className={`w-full whitespace-nowrap text-[12px] leading-4 font-semibold ${isPixelHeader ? 'text-[#f3ddc7]' : 'text-[#8fa0b4]'}`}
+                style={headerStatus.kind !== 'none'
+                    ? { transform: `translateY(${CENTERED_MOOD_VERTICAL_OFFSET_PX}px)` }
+                    : undefined}
+            >
+                {headerStatus.text}
+            </div>
         </div>
     );
 
@@ -383,7 +391,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
                         >
                             {signatureText}
                         </span>
-                    ) : onlineStatusNode}
+                    ) : null}
                     {lastTokenUsage && (
                         <div className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono border ${isPixelHeader ? 'bg-[#fff7ed] text-[#8f674a] border-[#8f674a]/20' : 'bg-slate-100 text-slate-400 border-slate-200'}`} title={tokenBreakdown ? `prompt: ${tokenBreakdown.prompt} | completion: ${tokenBreakdown.completion} | msgs: ${tokenBreakdown.msgCount} | pass: ${tokenBreakdown.pass}` : ''}>
                             {lastTokenUsage}
@@ -403,14 +411,19 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     );
 
     const renderReplyControls = () => (
-        <div className="flex items-center gap-0.5">
+        <div
+            data-chat-header-actions
+            className="flex shrink-0 items-center justify-end gap-0.5"
+            style={{ width: CENTERED_HEADER_ACTION_RAIL_PX }}
+        >
             <button
                 onClick={onTriggerAI}
                 disabled={isTyping}
-                className={`p-2 ${actionButtonClass} disabled:opacity-40 disabled:active:scale-100`}
+                data-chat-header-action="trigger"
+                className={`flex h-9 w-9 shrink-0 items-center justify-center ${actionButtonClass} disabled:opacity-40 disabled:active:scale-100`}
                 title={isTyping ? '正在回复' : '立即接话'}
             >
-                <Lightning className={`w-5 h-5 ${isTyping ? 'animate-pulse' : ''}`} weight="bold" />
+                <Lightning className={`h-[22px] w-[22px] ${isTyping ? 'animate-pulse' : ''}`} weight="bold" />
             </button>
             <button
                 onClick={onOpenReplyControls}
@@ -422,34 +435,75 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
             </button>
             <button
                 onClick={onOpenChatSettings}
-                className={`p-2 ${iconButtonClass}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center ${iconButtonClass}`}
                 title="聊天内部设置"
                 aria-label="聊天内部设置"
             >
-                <SlidersHorizontal className="h-5 w-5" weight="bold" />
+                <SlidersHorizontal className="h-[22px] w-[22px]" weight="bold" />
             </button>
         </div>
     );
 
     return (
-        <div data-shell-app-header className={`${headerDensityClass} flex ${headerAlignClass} shrink-0 z-30 sticky top-0 relative ${headerToneClass}`} style={headerShellStyle}>
+        <div
+            data-shell-app-header
+            data-chat-header-layout={useStackedCenteredHeader ? 'mood' : 'compact'}
+            className={`${headerDensityClass} flex ${headerAlignClass} shrink-0 z-30 sticky top-0 relative ${headerToneClass}`}
+            style={headerShellStyle}
+        >
             {selectionMode ? (
                 <div className="flex items-center justify-between w-full">
                     <button onClick={onCancelSelection} className={`text-sm font-bold px-2 py-1 ${secondaryTextClass}`}>取消</button>
                     <span className={`text-sm font-bold ${primaryTextClass}`}>已选 {selectedCount} 项</span>
                     <div className="w-10" />
                 </div>
+            ) : useStackedCenteredHeader ? (
+                <div className="w-full min-w-0">
+                    <div
+                        className="relative mt-1 w-full"
+                        style={{ height: CENTERED_SIGNED_HEADER_TOP_ROW_PX }}
+                    >
+                        <button
+                            onClick={onClose}
+                            className={`absolute left-0 top-1/2 -translate-y-1/2 p-2 ${iconButtonClass}`}
+                        >
+                            <CaretLeft className="h-[22px] w-[22px]" weight="bold" />
+                        </button>
+
+                        {floatingStatusNodes}
+
+                        <div
+                            onClick={onShowCharsPanel}
+                            data-chat-header-center
+                            className="absolute left-1/2 top-1/2 flex max-w-[420px] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
+                            style={{ width: `calc(100% - ${CENTERED_HEADER_SIDE_RESERVE_PX * 2}px)` }}
+                        >
+                            {renderCenteredName()}
+                        </div>
+
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2">
+                            {renderReplyControls()}
+                        </div>
+                    </div>
+
+                    {renderCenteredStatusLane()}
+                </div>
             ) : useCenteredLayout ? (
                 <div className={`relative w-full ${signatureText ? 'h-full min-h-0' : 'min-h-[56px]'}`}>
-                    <button onClick={onClose} className={`absolute left-0 top-1/2 -translate-y-1/2 p-2 ${iconButtonClass}`}>
-                        <CaretLeft className="w-5 h-5" weight="bold" />
+                    <button
+                        onClick={onClose}
+                        className={`absolute left-0 top-1/2 -translate-y-1/2 p-2 ${iconButtonClass}`}
+                    >
+                        <CaretLeft className="h-[22px] w-[22px]" weight="bold" />
                     </button>
 
                     {floatingStatusNodes}
 
                     <div
                         onClick={onShowCharsPanel}
-                        className="absolute left-1/2 top-1/2 flex w-[calc(100%-9rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
+                        data-chat-header-center
+                        className="absolute left-1/2 top-1/2 flex max-w-[420px] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
+                        style={{ width: `calc(100% - ${CENTERED_HEADER_SIDE_RESERVE_PX * 2}px)` }}
                     >
                         {renderCenteredInfo()}
                     </div>

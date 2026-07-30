@@ -10,6 +10,7 @@ import {
     createProgressBundleForMask,
     normalizeUserPersonaProfile,
 } from '../../utils/userPersonaMasks.ts';
+import { createInitialCharacterPresence } from '../../utils/characterLiveState.ts';
 
 const LEGACY_PLACEHOLDER_LABELS = new Set([
     '暂不绑定面具',
@@ -110,10 +111,13 @@ export const buildHistoryIdentityMaterializationPlan = (input: {
         systemPrompt: '',
         chatSignature: '旧日记录已接回。',
         chatSignatureAiEditable: true,
+        chatAppearancePreset: 'minimal',
+        chatPresenceStatus: createInitialCharacterPresence('旧日记录已接回', 'history-import', now),
         memories: [],
         refinedMemories: {},
         activeMemoryMonths: [],
         contextLimit: 500,
+        emotionConfig: { enabled: true },
     };
 
     return {

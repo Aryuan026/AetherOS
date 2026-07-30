@@ -307,6 +307,27 @@ export interface CharacterBuff {
   emoji?: string;
   color?: string;    // hex, e.g. '#f87171'
   description?: string;  // 用户可读的简短说明（给用户看的，不是给AI的）
+  /** Transient header/emotion state; absent timestamps fail closed in the live header. */
+  updatedAt?: number;
+  expiresAt?: number;
+  remainingTurns?: number;
+  stateKey?: string;
+  source?: 'system-director' | 'dialogue-ai' | 'seed' | 'history-import';
+}
+
+export interface CharacterLivePresence {
+  text: string;
+  stateKey: string;
+  updatedAt: number;
+  expiresAt: number;
+  remainingTurns: number;
+  source: 'system-director' | 'dialogue-ai' | 'seed' | 'history-import';
+}
+
+export interface CharacterLiveStateEvaluation {
+  lastEvaluatedAt: number;
+  lastEvaluatedMessageId?: number;
+  lastEvaluatedMessageTimestamp?: number;
 }
 
 // 实时上下文配置 - 让AI角色感知真实世界
@@ -797,6 +818,12 @@ export interface CharacterProfile {
   builtInVersion?: number;
   chatSignature?: string;
   chatSignatureAiEditable?: boolean;
+  /** Per-character chat preset. Unspecified built-ins use deep-space; other characters use minimal. */
+  chatAppearancePreset?: NonNullable<OSTheme['chatAppearancePreset']>;
+  /** Short-lived current activity shown below the chat title. */
+  chatPresenceStatus?: CharacterLivePresence;
+  /** Low-frequency analysis cursor; never injected into the character prompt. */
+  chatLiveStateEvaluation?: CharacterLiveStateEvaluation;
   memories: MemoryFragment[];
   refinedMemories?: Record<string, string>;
   activeMemoryMonths?: string[];

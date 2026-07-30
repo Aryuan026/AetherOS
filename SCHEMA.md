@@ -29,6 +29,52 @@ Deleting an explicitly selected preset does not authorize an implicit provider
 change. Resolution returns `system_director_preset_missing` until the player
 chooses a new binding.
 
+## Character Chat Appearance And Transient Header State
+
+Chat appearance has a global detail store plus a character-owned preset choice:
+
+```ts
+interface CharacterProfile {
+  chatAppearancePreset?: 'deep-space' | 'minimal' | 'wechat' | 'custom';
+  chatPresenceStatus?: CharacterLivePresence;
+  chatLiveStateEvaluation?: CharacterLiveStateEvaluation;
+  activeBuffs?: CharacterBuff[];
+}
+```
+
+An absent character preset resolves to `deep-space` for built-in characters and
+`minimal` for every other source. Explicit character choice wins. Chat and Call
+must use `resolveCharacterChatAppearanceTheme`; the legacy `bubbleStyle` field
+is only a custom-card theme hint.
+
+Header state is not a durable signature:
+
+```ts
+interface CharacterLivePresence {
+  text: string;                // <= 14 visible graphemes
+  stateKey: string;
+  updatedAt: number;
+  expiresAt: number;
+  remainingTurns: number;
+  source: 'system-director' | 'dialogue-ai' | 'seed' | 'history-import';
+}
+
+interface CharacterBuff {
+  label: string;               // <= 8 visible graphemes when shown as mood
+  updatedAt?: number;
+  expiresAt?: number;
+  remainingTurns?: number;
+  stateKey?: string;
+  source?: 'system-director' | 'dialogue-ai' | 'seed' | 'history-import';
+}
+```
+
+Both a valid future `expiresAt` and a positive `remainingTurns` are required.
+Read projection and prompt injection fail closed when either is absent,
+malformed or exhausted. One completed live dialogue turn decrements both state
+types. `emotion_background_evaluation` owns the low-frequency refresh cursor;
+history-import messages are excluded from its evidence.
+
 ### Character behavior compilation
 
 Player-authored behavior requirements are character-owned. Compilation may

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../os/Modal';
 import { CharacterProfile, CharacterBuff } from '../../types';
+import { activeCharacterBuffs, isActiveCharacterPresence } from '../../utils/characterLiveState';
 
 interface EmotionSettingsModalProps {
     isOpen: boolean;
@@ -32,7 +33,7 @@ const EmotionSettingsModal: React.FC<EmotionSettingsModalProps> = ({
     useEffect(() => {
         if (!isOpen) return;
         const s = char.emotionConfig;
-        setEnabled(s?.enabled ?? false);
+        setEnabled(s?.enabled ?? true);
     }, [isOpen, char.id, char.emotionConfig]);
 
     const handleSave = () => {
@@ -40,7 +41,10 @@ const EmotionSettingsModal: React.FC<EmotionSettingsModalProps> = ({
         onClose();
     };
 
-    const buffs: CharacterBuff[] = char.activeBuffs || [];
+    const buffs: CharacterBuff[] = activeCharacterBuffs(char.activeBuffs);
+    const presence = isActiveCharacterPresence(char.chatPresenceStatus)
+        ? char.chatPresenceStatus
+        : undefined;
 
     return (
         <Modal isOpen={isOpen} title="情绪感知" onClose={onClose} footer={
@@ -72,13 +76,19 @@ const EmotionSettingsModal: React.FC<EmotionSettingsModalProps> = ({
                 {enabled && (
                     <>
                         {/* Current buffs */}
-                        {buffs.length > 0 ? (
+                        {buffs.length > 0 || presence ? (
                             <div>
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">当前情绪状态</label>
                                     <button onClick={onClearBuffs} className="text-xs text-slate-400 hover:text-red-400 transition-colors">清除</button>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
+                                    {presence && (
+                                        <div className="flex items-center gap-1 rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1.5 text-xs font-bold text-sky-600">
+                                            <span>近况</span>
+                                            <span className="font-medium">{presence.text}</span>
+                                        </div>
+                                    )}
                                     {buffs.map(buff => (
                                         <div
                                             key={buff.id}
@@ -98,7 +108,7 @@ const EmotionSettingsModal: React.FC<EmotionSettingsModalProps> = ({
                             </div>
                         ) : (
                             <div className="text-xs text-slate-400 text-center py-2">
-                                暂无情绪状态 — 发几条消息后会自动生成
+                                暂无短期状态 — 对话积累到合适节点后会低频更新
                             </div>
                         )}
                     </>
