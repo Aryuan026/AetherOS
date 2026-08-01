@@ -6,6 +6,10 @@ import { ActiveMsgRuntime } from './utils/activeMsgRuntime';
 import { KeepAlive } from './utils/keepAlive';
 import { ProactiveChat } from './utils/proactiveChat';
 import { installIOSStandaloneWorkaround } from './utils/iosStandalone';
+import { initializePwaRuntime } from './utils/pwaRuntime';
+
+// Bind install/update lifecycle events before lazy Settings UI can mount.
+initializePwaRuntime();
 
 // Register the keep-alive Service Worker early so it's ready before any AI calls
 KeepAlive.init().then(() => {

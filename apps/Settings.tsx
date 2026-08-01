@@ -36,6 +36,7 @@ import {
 } from '../utils/memoryCore';
 import type { AutoMemoryLedgerEntry, MemoryDMSettings, WorldlineMemoryReceipt } from '../utils/memoryCore';
 import { createDefaultLauncherLayout } from '../utils/launcherLayout';
+import PwaInstallRow from '../components/settings/PwaInstallRow';
 
 const memoryReceiptModeLabel = (mode: WorldlineMemoryReceipt['mode']): string => {
   if (mode === 'remote_chat') return '聊天';
@@ -530,6 +531,8 @@ const Settings: React.FC = () => {
                 </button>
             </div>
         </section>
+
+        <PwaInstallRow />
         
         {/* 数据备份区域 */}
         <section className="order-10 bg-white/60 backdrop-blur-sm rounded-3xl p-5 shadow-sm border border-white/50">

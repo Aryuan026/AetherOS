@@ -1,5 +1,54 @@
 # AetherOS Progress
 
+## 2026-08-01 Online-First Desktop Install And Backup Gate
+
+- done:
+  - Added a Settings-owned `添加到桌面` surface over one shared PWA runtime.
+    Android/desktop browsers may use the captured install prompt; iOS receives
+    the manual Safari home-screen steps. Installed state is observed rather
+    than fabricated.
+  - Kept the product explicitly online-first. The release descriptor records
+    `shellMode: "online-first"` and `offlineShell: false`; neither the worker nor
+    the update path creates or reads a static CacheStorage shell.
+  - Added startup, focus and visible-state release probes. They may expose an
+    available version, but only the explicit human update action reloads the
+    page; worker activation itself does not start a reload loop.
+  - Kept browser storage origin-bound. The lab origin and GitHub Pages origin
+    do not share IndexedDB, and neither one can automatically transfer its data
+    into a future Capacitor APK container.
+  - Fixed whole-device export so `companion_wakeups` and
+    `companion_wakeup_logs` map to `companionWakeupRules` and
+    `companionWakeupLogs`, matching the existing import contract.
+  - Registered all 29 `AetherOS_Data` stores in one backup contract. The new
+    gate compares that registry with concrete `STORE_*` declarations, so a new
+    store without an explicit backup decision fails verification.
+
+- verified locally:
+  - `node --import tsx scripts/verify-whole-device-backup-roundtrip.ts` writes,
+    exports, clears and restores companion wakeup rules/logs through the real
+    IndexedDB adapter, and verifies the 29-store registry.
+  - `node --import tsx scripts/verify-online-first-release.ts` verifies
+    relocatable `/aetheros/` resources, local manifest MIME, one current worker,
+    no CacheStorage path, no startup data deletion and no automatic reload.
+  - Typecheck, production build, public-release sanitization and the shared PWA
+    runtime contract are Green. The current local release descriptor and worker
+    share the same reproducible build ID.
+
+- deployment: pending
+  - The Nginx template now contains an exact AetherOS manifest location with
+    `application/manifest+json` and revalidation caching, but it has not been
+    deployed or accepted on the public lab in this block.
+  - `scripts/verify-deployed-online-first.mjs` remains the required post-deploy
+    check for public HTML/assets, manifest/SW MIME, release identity and the
+    online-first storage-safety boundary.
+
+- boundary:
+  - Data remains in the current browser container. Adding AetherOS to the
+    desktop changes its launch surface, not its storage origin.
+  - Browser/PWA to APK continuity is not automatic and is not Green yet. A
+    future APK release must pass an explicit whole-device backup export -> APK
+    restore acceptance before the lab origin can retire.
+
 ## 2026-08-01 Subpath Startup Repair
 
 - cause:

@@ -2,6 +2,7 @@
 
 import { installReiSW } from '@rei-standard/amsg-sw';
 
+const AETHEROS_BUILD_ID = import.meta.env.VITE_AETHEROS_BUILD_ID || 'aetheros-development';
 const PING_INTERVAL = 15_000;
 const MAX_MANUAL_ALIVE_MS = 5 * 60_000;
 const ACTIVE_MSG_DB_NAME = 'ActiveMsg';
@@ -253,5 +254,8 @@ sw.addEventListener('install', () => {
 });
 
 sw.addEventListener('activate', (event: ExtendableEvent) => {
-  event.waitUntil(sw.clients.claim());
+  event.waitUntil((async () => {
+    await sw.clients.claim();
+    await notifyClients({ type: 'aetheros-shell-controller-ready', buildId: AETHEROS_BUILD_ID });
+  })());
 });

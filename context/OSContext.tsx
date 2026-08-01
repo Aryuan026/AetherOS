@@ -54,6 +54,11 @@ import {
     discardPreparedHistoryArchiveSystemRestore,
     prepareHistoryArchiveSystemRestore,
 } from '../utils/systemBackup/historyArchiveSnapshot';
+import {
+    assignMainDatabaseBackupStore,
+    MAIN_DATABASE_BACKUP_STORES,
+    type MainDatabaseBackupStore,
+} from '../utils/systemBackup/mainDatabaseBackupContract';
 
 
 type JSZipLike = {
@@ -2549,14 +2554,8 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           );
 
           // 1. Define Stores to Process based on Mode
-          let storesToProcess: string[] = [];
-          const allStores = [
-              'characters', 'messages', 'themes', 'emojis', 'emoji_categories', 'assets', 'gallery',
-              'user_profile', 'diaries', 'tasks', 'anniversaries', 'room_todos',
-              'room_notes', 'groups', 'journal_stickers', 'social_posts', 'courses', 'games', 'worldbooks', 'novels', 'songs',
-              'bank_transactions', 'bank_data',
-              'quizzes', 'guidebook', 'scheduled_messages', 'companion_wakeups', 'companion_wakeup_logs', 'life_sim'
-          ];
+          let storesToProcess: MainDatabaseBackupStore[] = [];
+          const allStores = [...MAIN_DATABASE_BACKUP_STORES];
 
           if (mode === 'full') {
               storesToProcess = allStores; // Include everything
@@ -2701,44 +2700,12 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                   processedData = processObject(rawData);
               }
 
-              // Assign to Backup Data
-              switch(storeName) {
-                  case 'characters': if(mode !== 'media_only') backupData.characters = processedData; break;
-                  case 'messages': backupData.messages = processedData; break;
-                  case 'themes': backupData.customThemes = processedData; break;
-                  case 'emojis': backupData.savedEmojis = processedData; break;
-                  case 'emoji_categories': backupData.emojiCategories = processedData; break;
-                  case 'assets': backupData.assets = processedData; break;
-                  case 'gallery': backupData.galleryImages = processedData; break;
-                  case 'user_profile': if (processedData[0]) backupData.userProfile = processedData[0]; break;
-                  case 'diaries': backupData.diaries = processedData; break;
-                  case 'tasks': backupData.tasks = processedData; break;
-                  case 'anniversaries': backupData.anniversaries = processedData; break;
-                  case 'room_todos': backupData.roomTodos = processedData; break;
-                  case 'room_notes': backupData.roomNotes = processedData; break;
-                  case 'groups': backupData.groups = processedData; break;
-                  case 'journal_stickers': backupData.savedJournalStickers = processedData; break;
-                  case 'social_posts': backupData.socialPosts = processedData; break;
-                  case 'courses': backupData.courses = processedData; break;
-                  case 'games': backupData.games = processedData; break;
-                  case 'worldbooks': backupData.worldbooks = processedData; break;
-                  case 'novels': backupData.novels = processedData; break;
-                  case 'songs': backupData.songs = processedData; break;
-                  case 'bank_transactions': backupData.bankTransactions = processedData; break;
-                  case 'bank_data': {
-                      if (Array.isArray(processedData)) {
-                          const mainState = processedData.find((d: any) => d.id === 'main_state');
-                          const dollhouseRecord = processedData.find((d: any) => d.id === 'dollhouse_state');
-                          backupData.bankState = mainState ? { ...mainState, id: undefined } : undefined;
-                          backupData.bankDollhouse = dollhouseRecord?.data || undefined;
-                      }
-                      break;
-                  }
-                  case 'quizzes': backupData.quizSessions = processedData; break;
-                  case 'guidebook': backupData.guidebookSessions = processedData; break;
-                  case 'scheduled_messages': backupData.scheduledMessages = processedData; break;
-                  case 'life_sim': backupData.lifeSimState = Array.isArray(processedData) ? (processedData[0] || null) : (processedData || null); break;
-              }
+              assignMainDatabaseBackupStore(
+                  backupData,
+                  storeName,
+                  processedData,
+                  mode,
+              );
 
               await new Promise(resolve => setTimeout(resolve, 10));
           }

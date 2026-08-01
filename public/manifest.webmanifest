@@ -1,6 +1,7 @@
 {
   "short_name": "AetherOS",
   "name": "AetherOS",
+  "id": "./",
   "display": "standalone",
   "theme_color": "#17133d",
   "background_color": "#080719",
