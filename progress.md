@@ -1,5 +1,38 @@
 # AetherOS Progress
 
+## 2026-08-01 Android PWA Header Balance
+
+- done:
+  - Split top-spacing policy by runtime surface instead of shrinking every App
+    header. Ordinary browsers keep the reviewed breathing room; iOS retains its
+    notch safe area; Capacitor keeps its native boundary.
+  - Android standalone PWA now treats the visible system status bar as already
+    reserved, removes a duplicate top safe-area, changes the shared header
+    breathing space from 8 px to 4 px and the Chat-only vertical offset from
+    5 px to 2 px. The Chat title area is therefore about 7 px shorter without
+    returning the ordinary browser layout to its earlier cramped state.
+  - Kept feature Apps lazy-loaded. First open may download one App chunk; later
+    opens reuse normal browser HTTP cache. No offline shell or eager all-App
+    startup bundle was added just to conceal the first-open cost.
+
+- verification and deployment:
+  - Full `npm run verify:health` is Green. The shell gate explicitly covers
+    normal web, Android standalone, iOS standalone and future native runtime
+    projections; ordinary browser Chat kept its existing 5 px offset and
+    rendered with a clean console.
+  - Deployed `main@b063523` with build ID
+    `aetheros-2.0.0-9e6999ca79b3d59f`: 261 regular files and 94 verified gzip
+    sidecars. Public online-first verification and a real browser startup are
+    Green.
+  - Public GET is 200, POST is 403 and retired `/sullyos/` remains 410. Home
+    stayed PID `368299`, Bridge PID `344776` and Nginx PID `226154`; all remain
+    active with `NRestarts=0`. No service reload or restart ran.
+  - Rollback is
+    `/srv/asherie/backups/aetheros-pwa-header-b063523-20260801T083925Z/aetheros-static.previous`.
+  - Final visual acceptance of the condensed Android standalone header remains
+    a real-device checkpoint because desktop browser emulation cannot reproduce
+    the phone vendor's external status-bar composition exactly.
+
 ## 2026-08-01 Settings Action-Only Refinement
 
 - done:
