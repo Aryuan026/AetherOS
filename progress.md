@@ -34,13 +34,24 @@
     runtime contract are Green. The current local release descriptor and worker
     share the same reproducible build ID.
 
-- deployment: pending
-  - The Nginx template now contains an exact AetherOS manifest location with
-    `application/manifest+json` and revalidation caching, but it has not been
-    deployed or accepted on the public lab in this block.
-  - `scripts/verify-deployed-online-first.mjs` remains the required post-deploy
-    check for public HTML/assets, manifest/SW MIME, release identity and the
+- deployment: accepted on the public lab
+  - Deployed public `main@b7a594e` with build ID
+    `aetheros-2.0.0-c248111ec384cb03`: 261 regular files plus 94 valid gzip
+    sidecars. Local/staging/server/public `index.html` SHA-256 is
+    `b1073566f412a5d20a3894965da9832aa13e564ea66e6eb411206877af3ea831`.
+  - The exact manifest route now returns `application/manifest+json` with the
+    required revalidation policy, and `verify-deployed-online-first.mjs` is
+    Green for public HTML/assets, manifest/SW release identity and the
     online-first storage-safety boundary.
+  - Public GET is 200, POST is 403 and retired `/sullyos/` remains 410. A real
+    public browser first detected the new release; after the human clicked
+    update, the Settings row settled to the `browser-menu` state with zero
+    console errors or warnings.
+  - Rollback is
+    `/srv/asherie/backups/aetheros-pwa-b7a594e-20260801T070603Z/aetheros-static.previous`;
+    the Nginx backup is in the same backup directory under `nginx/`.
+  - Only Nginx was reloaded. Home remained PID `361070`, `NRestarts=0`, and
+    Bridge remained PID `344776`, `NRestarts=0`.
 
 - boundary:
   - Data remains in the current browser container. Adding AetherOS to the
