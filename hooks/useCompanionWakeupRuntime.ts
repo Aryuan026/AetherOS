@@ -17,7 +17,7 @@ import {
     resolveCompanionWakeupMode,
     scheduleNextCompanionWakeup,
 } from '../utils/companionWakeups';
-import { pickVoiceDirectWakeupLine, selectWorldlineMemoryContext } from '../utils/memoryCore';
+import { pickVoiceDirectWakeupCandidate, selectWorldlineMemoryContext } from '../utils/memoryCore';
 import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule } from '../utils/companionWakeupRules';
 import {
     filterCurrentStateMessages,
@@ -78,12 +78,14 @@ const hashText = (value: string): number => {
 
 const sentWakeupComparableSet = async (
     charId: string,
+    relationshipScope?: MessageRelationshipScope,
 ): Promise<Set<string>> => {
     const recent = await DB.getRecentMessagesByCharId(charId, SENT_WAKEUP_HISTORY_LIMIT);
     return new Set(recent
         .filter(message => (
             message.role === 'assistant'
             && message.metadata?.source === 'companion_wakeup'
+            && (!relationshipScope || messageMatchesRelationshipScope(message, relationshipScope))
         ))
         .map(message => normalizeWakeupComparable(String(message.content || '')))
         .filter(Boolean));
@@ -93,11 +95,12 @@ const isRecentWakeupDuplicate = async (
     charId: string,
     message: string,
     now = Date.now(),
+    relationshipScope?: MessageRelationshipScope,
 ): Promise<boolean> => {
     const comparable = normalizeWakeupComparable(message);
     if (!comparable) return false;
     void now;
-    return (await sentWakeupComparableSet(charId)).has(comparable);
+    return (await sentWakeupComparableSet(charId, relationshipScope)).has(comparable);
 };
 
 const pickFreshDirectWakeupLine = async (
@@ -106,6 +109,7 @@ const pickFreshDirectWakeupLine = async (
     userProfile: UserProfile,
     lines: string[] | undefined,
     now = Date.now(),
+    relationshipScope?: MessageRelationshipScope,
 ): Promise<string> => {
     const pool = (lines?.length ? lines : DEFAULT_DIRECT_LINES)
         .map(line => normalizeWakeupText(line))
@@ -115,11 +119,31 @@ const pickFreshDirectWakeupLine = async (
         .filter(Boolean);
     if (!pool.length) return '';
 
-    const used = await sentWakeupComparableSet(char.id);
+    const used = await sentWakeupComparableSet(char.id, relationshipScope);
     const pickPool = pool.filter(line => !used.has(normalizeWakeupComparable(line)));
     if (!pickPool.length) return '';
     const index = hashText(`${rule.id}:${now}:${rule.title}`) % pickPool.length;
     return pickPool[index] || '';
+};
+
+const voiceDirectDeliveryHistory = async (
+    charId: string,
+    relationshipScope: MessageRelationshipScope,
+): Promise<Map<string, number[]>> => {
+    const history = new Map<string, number[]>();
+    const logs = await DB.getCompanionWakeupLogsByCharId(charId);
+    logs.forEach(log => {
+        if (
+            log.status !== 'sent'
+            || !log.voiceLineId
+            || !log.relationshipScope
+            || !sameMessageRelationshipScope(log.relationshipScope, relationshipScope)
+        ) return;
+        const deliveredAt = history.get(log.voiceLineId) || [];
+        deliveredAt.push(log.triggeredAt);
+        history.set(log.voiceLineId, deliveredAt);
+    });
+    return history;
 };
 
 const latestSentWakeupAt = async (
@@ -186,6 +210,7 @@ const renderWakeupWithAI = async (
     groups: GroupProfile[],
     realtimeConfig: RealtimeConfig,
     relationshipScope: MessageRelationshipScope,
+    hiddenWordsEnabled: boolean,
 ): Promise<string> => {
     if (!apiConfig.baseUrl) return '';
 
@@ -226,6 +251,7 @@ const renderWakeupWithAI = async (
             occurredAt: requestTime,
             carePriority: rule.priority === 'care',
             ruleKind: rule.kind,
+            hiddenWordsEnabled,
           }),
         );
     } catch (error) {
@@ -312,6 +338,7 @@ const saveWakeupMessage = async (
     char: CharacterProfile,
     message: string,
     relationshipScope: MessageRelationshipScope,
+    voiceLineId?: string,
 ): Promise<string> => {
     const parts = ChatParser.splitResponse(message);
     const previewChunks: string[] = [];
@@ -335,6 +362,7 @@ const saveWakeupMessage = async (
                     wakeupRuleId: rule.id,
                     wakeupKind: rule.kind,
                     wakeupMode: rule.mode,
+                    wakeupVoiceLineId: voiceLineId,
                 },
             });
             previewChunks.push(fallbackText);
@@ -363,6 +391,7 @@ const saveWakeupMessage = async (
                     wakeupRuleId: rule.id,
                     wakeupKind: rule.kind,
                     wakeupMode: rule.mode,
+                    wakeupVoiceLineId: voiceLineId,
                 },
             });
             previewChunks.push(chunk);
@@ -526,34 +555,69 @@ export const useCompanionWakeupRuntime = ({
             }
 
             let message = '';
+            let voiceLineId: string | undefined;
             try {
                 if (effectiveRule.mode === 'render') {
-                    message = await renderWakeupWithAI(
+                    try {
+                        message = await renderWakeupWithAI(
+                            effectiveRule,
+                            char,
+                            currentUser,
+                            currentApi,
+                            currentGroups,
+                            currentRealtime,
+                            ruleScope,
+                            wakeupSettings.hiddenWordsEnabled,
+                        );
+                    } catch (error) {
+                        console.warn('Companion wakeup render unavailable; trying local direct warehouse:', error);
+                        message = '';
+                    }
+                }
+                const usedLines = await sentWakeupComparableSet(char.id, ruleScope);
+                if (!message && wakeupSettings.hiddenWordsEnabled) {
+                    const picked = await pickVoiceDirectWakeupCandidate(
                         effectiveRule,
                         char,
                         currentUser,
-                        currentApi,
-                        currentGroups,
-                        currentRealtime,
-                        ruleScope,
+                        now,
+                        usedLines,
+                        await voiceDirectDeliveryHistory(char.id, ruleScope),
                     );
-                }
-                const usedLines = await sentWakeupComparableSet(char.id);
-                if (!message && wakeupSettings.hiddenWordsEnabled) {
-                    message = await pickVoiceDirectWakeupLine(effectiveRule, char, currentUser, now, usedLines);
+                    message = picked?.text || '';
+                    voiceLineId = picked?.line.id;
                 }
                 if (!message && wakeupSettings.hiddenWordsEnabled && directLines?.length) {
-                    message = await pickFreshDirectWakeupLine(effectiveRule, char, currentUser, directLines, now);
+                    message = await pickFreshDirectWakeupLine(
+                        effectiveRule,
+                        char,
+                        currentUser,
+                        directLines,
+                        now,
+                        ruleScope,
+                    );
+                    voiceLineId = undefined;
                 }
                 message = normalizeWakeupText(message);
                 if (!message) throw new Error('empty wakeup message');
-                if (await isRecentWakeupDuplicate(char.id, message, now)) {
+                if (await isRecentWakeupDuplicate(char.id, message, now, ruleScope)) {
                     const alternative = directLines?.length
-                        ? await pickFreshDirectWakeupLine(effectiveRule, char, currentUser, directLines, now + 1)
+                        ? await pickFreshDirectWakeupLine(
+                            effectiveRule,
+                            char,
+                            currentUser,
+                            directLines,
+                            now + 1,
+                            ruleScope,
+                        )
                         : '';
                     const normalizedAlternative = normalizeWakeupText(alternative);
-                    if (normalizedAlternative && !(await isRecentWakeupDuplicate(char.id, normalizedAlternative, now))) {
+                    if (
+                        normalizedAlternative
+                        && !(await isRecentWakeupDuplicate(char.id, normalizedAlternative, now, ruleScope))
+                    ) {
                         message = normalizedAlternative;
+                        voiceLineId = undefined;
                     } else {
                         const nextTriggerAt = scheduleNextCompanionWakeup(effectiveRule, now + COMPANION_WAKEUP_DUPLICATE_DEFER_MS);
                         await DB.saveCompanionWakeupRule({ ...effectiveRule, nextTriggerAt, updatedAt: now });
@@ -571,7 +635,13 @@ export const useCompanionWakeupRuntime = ({
                     }
                 }
 
-                const preview = await saveWakeupMessage(effectiveRule, char, message, ruleScope);
+                const preview = await saveWakeupMessage(
+                    effectiveRule,
+                    char,
+                    message,
+                    ruleScope,
+                    voiceLineId,
+                );
                 const nextTriggerAt = effectiveRule.repeat === 'daily'
                     ? scheduleNextCompanionWakeup(effectiveRule, now + TICK_INTERVAL_MS)
                     : undefined;
@@ -591,6 +661,8 @@ export const useCompanionWakeupRuntime = ({
                     mode: effectiveRule.mode,
                     kind: effectiveRule.kind,
                     message: preview || message.slice(0, 120),
+                    relationshipScope: ruleScope,
+                    voiceLineId,
                 });
                 window.dispatchEvent(new CustomEvent(COMPANION_WAKEUP_EVENT, {
                     detail: { charId: char.id, charName: char.name, body: preview || message.slice(0, 120), ruleId: effectiveRule.id },

@@ -1136,6 +1136,10 @@ export interface CompanionWakeupLog {
     kind: CompanionWakeupKind;
     message?: string;
     reason?: string;
+    /** Exact relationship that received the letter; absent on legacy logs. */
+    relationshipScope?: MessageRelationshipScope;
+    /** Stable built-in/user voice-line id when a direct candidate was sent. */
+    voiceLineId?: string;
 }
 
 export interface SocialComment {

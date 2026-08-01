@@ -111,6 +111,8 @@ export interface CharacterVoiceLine {
   text: string;
   tags?: string[];
   source?: 'user_import' | 'built_in' | 'manual';
+  cooldownMs?: number;
+  maxDeliveries?: number;
   createdAt: number;
   updatedAt: number;
 }

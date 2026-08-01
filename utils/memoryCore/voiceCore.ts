@@ -3,6 +3,9 @@ import type {
   CompanionWakeupRule,
   UserProfile,
 } from '../../types';
+import {
+  builtInDeepspaceIdleDirectLinesForCharacter,
+} from '../../domain/companionMaterial/builtInDeepspaceIdleOpeners.ts';
 import { renderTemplateLine } from '../companionWakeups';
 import { DB } from '../db';
 import { extractMemorySearchTerms } from './deliveryProfile';
@@ -52,6 +55,16 @@ const normalizeLine = (
     text,
     tags: normalizeTags(data.tags),
     source: data.source === 'built_in' || data.source === 'manual' ? data.source : 'user_import',
+    cooldownMs: data.cooldownMs !== undefined
+      && data.cooldownMs !== null
+      && Number.isFinite(Number(data.cooldownMs))
+      ? Math.max(0, Number(data.cooldownMs))
+      : undefined,
+    maxDeliveries: data.maxDeliveries !== undefined
+      && data.maxDeliveries !== null
+      && Number.isFinite(Number(data.maxDeliveries))
+      ? Math.max(1, Math.floor(Number(data.maxDeliveries)))
+      : undefined,
     createdAt: Number(data.createdAt) || now,
     updatedAt: Number(data.updatedAt) || now,
   };
@@ -107,20 +120,61 @@ const normalizeVoiceCore = (charId: string, raw: unknown): CharacterVoiceCore | 
 };
 
 export const loadCharacterVoiceCore = async (charId: string): Promise<CharacterVoiceCore | null> => {
+  let localCore: CharacterVoiceCore | null = null;
   try {
     const raw = await DB.getAssetRaw(`${VOICE_CORE_ASSET_PREFIX}${charId}`);
-    const normalized = normalizeVoiceCore(charId, raw);
-    if (normalized) return normalized;
+    localCore = normalizeVoiceCore(charId, raw);
   } catch {
     // Voice packs are optional. Missing/corrupt imports should never block chat.
   }
 
-  try {
-    const raw = await DB.getAssetRaw(`${LEGACY_VOICE_CORE_ASSET_PREFIX}${charId}`);
-    return normalizeVoiceCore(charId, raw);
-  } catch {
-    return null;
+  if (!localCore) {
+    try {
+      const raw = await DB.getAssetRaw(`${LEGACY_VOICE_CORE_ASSET_PREFIX}${charId}`);
+      localCore = normalizeVoiceCore(charId, raw);
+    } catch {
+      localCore = null;
+    }
   }
+
+  return localCore;
+};
+
+/**
+ * Built-in idle openers are a direct-send warehouse, not ordinary prompt
+ * examples. Keep them out of loadCharacterVoiceCore() so render-mode prompts
+ * cannot repeatedly anchor on a few ready-made sentences.
+ */
+export const loadCharacterDirectWakeupCore = async (
+  charId: string,
+): Promise<CharacterVoiceCore | null> => {
+  const builtInLines: CharacterVoiceLine[] = builtInDeepspaceIdleDirectLinesForCharacter(charId).map(line => ({
+    id: line.id,
+    charId,
+    kind: 'direct_message',
+    text: line.text,
+    tags: [line.openerClass, line.semanticCluster].filter(Boolean),
+    source: 'built_in',
+    cooldownMs: line.cooldownMs,
+    maxDeliveries: line.maxDeliveries,
+    createdAt: Date.UTC(2026, 7, 1),
+    updatedAt: Date.UTC(2026, 7, 1),
+  }));
+  const localCore = await loadCharacterVoiceCore(charId);
+  const merged = new Map<string, CharacterVoiceLine>();
+  builtInLines.forEach(line => merged.set(line.id, line));
+  (localCore?.lines || [])
+    .filter(line => line.kind === 'direct_message')
+    .forEach(line => merged.set(line.id, line));
+  if (!merged.size) return null;
+  return {
+    charId,
+    lines: [...merged.values()],
+    updatedAt: Math.max(
+      localCore?.updatedAt || 0,
+      ...[...merged.values()].map(line => line.updatedAt || 0),
+    ),
+  };
 };
 
 const lineScore = (line: CharacterVoiceLine, queryTerms: string[], mode: WorldlinePromptMode): number => {
@@ -199,29 +253,93 @@ export const formatVoiceCorePrompt = (
   return { markdown, usedLines: [...fingerprints, ...directLines, ...rewriteSeeds] };
 };
 
+export interface VoiceDirectWakeupPick {
+  line: CharacterVoiceLine;
+  text: string;
+}
+
+export type VoiceDirectWakeupDeliveryHistory = ReadonlyMap<string, readonly number[]>;
+
+export const normalizeVoiceDirectWakeupComparable = (
+  value: string,
+  char: CharacterProfile,
+  userProfile: UserProfile,
+): string => (
+  renderTemplateLine(value, char, userProfile)
+    .replace(/[，。！？、,.!?；;：:\s"'“”‘’]/g, '')
+    .toLowerCase()
+    .trim()
+);
+
+export const pickVoiceDirectWakeupCandidateFromCore = (
+  core: CharacterVoiceCore | null,
+  rule: CompanionWakeupRule,
+  char: CharacterProfile,
+  userProfile: UserProfile,
+  seed = Date.now(),
+  usedComparables?: Set<string>,
+  deliveryHistory: VoiceDirectWakeupDeliveryHistory = new Map(),
+): VoiceDirectWakeupPick | null => {
+  const directLines = (core?.lines.filter(line => line.kind === 'direct_message') || [])
+    .filter(line => {
+      if (usedComparables?.has(normalizeVoiceDirectWakeupComparable(line.text, char, userProfile))) return false;
+      const deliveredAt = deliveryHistory.get(line.id) || [];
+      if (line.maxDeliveries && deliveredAt.length >= line.maxDeliveries) return false;
+      const lastDeliveredAt = deliveredAt.reduce((latest, value) => Math.max(latest, value), 0);
+      if (line.cooldownMs && lastDeliveredAt && seed - lastDeliveredAt < line.cooldownMs) return false;
+      return true;
+    });
+  if (directLines.length === 0) return null;
+
+  const queryTerms = extractMemorySearchTerms(`${rule.title} ${rule.value}`);
+  const ranked = [...directLines].sort((a, b) => (
+    lineScore(b, queryTerms, 'proactive_letter') - lineScore(a, queryTerms, 'proactive_letter')
+  ));
+  const bestScore = ranked[0] ? lineScore(ranked[0], queryTerms, 'proactive_letter') : 0;
+  const equallyRelevant = ranked.filter(line => (
+    Math.abs(lineScore(line, queryTerms, 'proactive_letter') - bestScore) < 0.000001
+  ));
+  const pool = equallyRelevant.length ? equallyRelevant : ranked.slice(0, Math.min(8, ranked.length));
+  const picked = pool[hashText(`${rule.id}:${seed}:${rule.title}`) % Math.max(1, pool.length)];
+  return picked
+    ? { line: picked, text: renderTemplateLine(picked.text, char, userProfile) }
+    : null;
+};
+
+export const pickVoiceDirectWakeupCandidate = async (
+  rule: CompanionWakeupRule,
+  char: CharacterProfile,
+  userProfile: UserProfile,
+  seed = Date.now(),
+  usedComparables?: Set<string>,
+  deliveryHistory: VoiceDirectWakeupDeliveryHistory = new Map(),
+): Promise<VoiceDirectWakeupPick | null> => (
+  pickVoiceDirectWakeupCandidateFromCore(
+    await loadCharacterDirectWakeupCore(char.id),
+    rule,
+    char,
+    userProfile,
+    seed,
+    usedComparables,
+    deliveryHistory,
+  )
+);
+
 export const pickVoiceDirectWakeupLine = async (
   rule: CompanionWakeupRule,
   char: CharacterProfile,
   userProfile: UserProfile,
   seed = Date.now(),
   usedComparables?: Set<string>,
+  deliveryHistory: VoiceDirectWakeupDeliveryHistory = new Map(),
 ): Promise<string> => {
-  const core = await loadCharacterVoiceCore(char.id);
-  const normalizeComparable = (value: string) => (
-    renderTemplateLine(value, char, userProfile)
-      .replace(/[，。！？、,.!?；;：:\s"'“”‘’]/g, '')
-      .toLowerCase()
-      .trim()
+  const picked = await pickVoiceDirectWakeupCandidate(
+    rule,
+    char,
+    userProfile,
+    seed,
+    usedComparables,
+    deliveryHistory,
   );
-  const directLines = (core?.lines.filter(line => line.kind === 'direct_message') || [])
-    .filter(line => !usedComparables?.has(normalizeComparable(line.text)));
-  if (directLines.length === 0) return '';
-
-  const queryTerms = extractMemorySearchTerms(`${rule.title} ${rule.value}`);
-  const ranked = [...directLines].sort((a, b) => (
-    lineScore(b, queryTerms, 'proactive_letter') - lineScore(a, queryTerms, 'proactive_letter')
-  ));
-  const pool = ranked.slice(0, Math.min(8, ranked.length));
-  const picked = pool[hashText(`${rule.id}:${seed}:${rule.title}`) % Math.max(1, pool.length)];
-  return picked ? renderTemplateLine(picked.text, char, userProfile) : '';
+  return picked?.text || '';
 };

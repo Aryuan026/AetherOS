@@ -99,6 +99,14 @@
 - Ordinary Chat receives at most one relevant material item and allows NONE.
   Only a successful, non-empty consumer result may write a delivery receipt;
   failed selection/provider/normalization does not spend cooldown.
+- Reviewed built-in `藏好的话` must preserve two independent exits. Finished
+  direct lines are local one-shot wakeups scoped to one exact relationship and
+  must not become recurring render-prompt examples. Rewrite guidance may reach
+  only the proactive-letter material selector and must rotate through canonical
+  success receipts and cooldown. Neither exit may carry review instructions,
+  source prose, placeholders, current facts, relationship truth or tool policy.
+  Turning `藏好的话` off must close both ports even when `此刻的话` keeps the
+  AI-rendered proactive-letter path enabled.
 
 ## Post-import Daily Archive Curation
 

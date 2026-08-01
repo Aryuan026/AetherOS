@@ -11,6 +11,9 @@ import {
   builtInDeepspaceRetrievalCalibrationForCharacter,
 } from '../../domain/companionMaterial/builtInDeepspaceRetrievalCalibration.ts';
 import {
+  builtInDeepspaceIdleRewriteMaterialForCharacter,
+} from '../../domain/companionMaterial/builtInDeepspaceIdleOpeners.ts';
+import {
   resolveCompanionMaterialRecordsForRuntime,
 } from '../../domain/companionMaterial/resolution.ts';
 import {
@@ -114,6 +117,9 @@ export const loadCompanionMaterialRecords = async (scope: {
   ]);
   const records = new Map<string, CompanionMaterialRecord>();
   builtInDeepspaceRetrievalCalibrationForCharacter(scope.charId).forEach(record => {
+    records.set(record.id, clone(record));
+  });
+  builtInDeepspaceIdleRewriteMaterialForCharacter(scope.charId).forEach(record => {
     records.set(record.id, clone(record));
   });
   (characterLibrary?.records || []).forEach(record => {

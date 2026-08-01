@@ -749,6 +749,8 @@ interface CharacterVoiceLine {
   text: string;
   tags?: string[];
   source?: 'user_import' | 'built_in' | 'manual';
+  cooldownMs?: number;
+  maxDeliveries?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -760,6 +762,24 @@ not be sent as quotes; they are compact role-voice calibration notes covering
 habits, boundaries, care style, humor, attitude, and non-negotiable personality
 points. Current code reads this from `assets/aetheros_voice_core_${charId}` and
 also accepts `assets/character_voice_core_${charId}` as a compatibility key.
+
+Reviewed built-in idle openers use two deliberately separate runtime ports:
+
+- finished `direct_message` lines enter only the direct wakeup warehouse. They
+  are one-shot per exact `progressBundleId + personaMaskId + charId` scope and
+  are not inserted as repeated examples in ordinary model prompts;
+- non-verbatim `rewrite_seed` guidance enters the typed companion-material
+  selector only for `proactive_letter / proactive_intent`. A successful model
+  result writes the normal delivery receipt and spends that seed's cooldown;
+  failed or empty generation does not.
+
+Both ports require the relationship's `藏好的话` switch. The rewrite port uses
+an opaque, short-lived `wakeup_rule / hidden_words_enabled` grounding ref so
+keeping `此刻的话` enabled cannot silently re-enable the reviewed warehouse.
+
+The public runtime pack contains no reviewed source dialogue, title, URL, local
+path or private evidence pointer. Its compiler rejects review prose and empty
+placeholders before a generated pack can enter verification.
 
 Future hot-state rows should be short-lived and per character:
 

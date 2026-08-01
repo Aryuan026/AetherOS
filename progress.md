@@ -1,5 +1,40 @@
 # AetherOS Progress
 
+## 2026-08-02 Reviewed Hidden-Words Runtime Pack
+
+- done:
+  - Closed the 909-source private review into two intentionally separate
+    proactive-letter exits. The public runtime contains 18 one-shot direct
+    fallbacks and 140 model rewrite directions; it contains no reviewed source
+    dialogue, title, URL, local path or private evidence pointer.
+  - Direct lines are consumed only after model generation is unavailable or
+    empty, and only when `藏好的话` is enabled. Each line is one-shot per exact
+    `progressBundleId + personaMaskId + charId` relationship; its stable id is
+    written to the visible message metadata and wakeup log.
+  - Rewrite directions stay in typed companion material, can reach only
+    `proactive_letter / proactive_intent`, require both the active wakeup rule
+    and the `藏好的话` grounding ref, and enter cooldown only after a non-empty
+    model result produces a canonical prompt-consumer receipt.
+  - Kept the direct warehouse out of ordinary Chat voice prompts and kept both
+    exits out of current mood, relationship truth, current motives and tool
+    policy. Turning `藏好的话` off closes both ports without disabling the
+    independent `此刻的话` model path.
+
+- verification:
+  - The private 909-source ledger is source-conserving and has zero model
+    failures. Its runtime-content and five-character API-view audits report no
+    raw-text inclusion or opaque sample issue.
+  - Public compiler gates reject review prose, product placeholders, direct
+    system actions, invented current facts, pseudo-continuity, prewritten
+    dialogue and player-as-prompt-object wording before generation.
+  - `verify-built-in-deepspace-idle-openers` covers per-character counts,
+    privacy, exact-scope one-shot delivery, model-first fallback, switch gates
+    and canonical receipt behavior. Full repository verification is required
+    again immediately before release.
+  - Capability truth at this checkpoint is `available + selected + fixture
+    delivered`; natural player behavior remains an observation checkpoint,
+    not something inferred from a Green build.
+
 ## 2026-08-01 Date Presentation And Mobile Header Refinement
 
 - done:

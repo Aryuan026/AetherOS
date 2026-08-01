@@ -194,10 +194,18 @@ Worldline memory architecture:
 - Keep `ContextBuilder` as the synchronous role/user/worldbook base-context builder.
 - Add `utils/memoryCore/` as the first memory bus: it selects sparse worldline intersections from existing data before prompt assembly.
 - Use `docs/MEMORY_DELIVERY_CONTRACT.md` as the implementation contract before adding more memory code. Each AI-facing surface should declare which stable base, character voice core, worldline hot state, memory packet, story packet, and token budget it receives.
-- Treat the planned `藏好的话` voice warehouse as part of stable character identity:
-  - directly-sendable lines may feed proactive-letter direct mode;
-  - rewrite seeds may guide model-written proactive messages or scenes;
-  - language fingerprints are not sent raw and should calibrate role voice, boundaries, habits, care style, and non-negotiable attitudes.
+- Keep the implemented `藏好的话` idle-opener warehouse behind two separate
+  proactive-letter ports:
+  - reviewed direct lines are local one-shot fallbacks per exact relationship;
+    they never become recurring examples in ordinary or proactive model prompts;
+  - concrete non-verbatim rewrite seeds may guide only model-written proactive
+    letters, rotate through canonical success receipts, and do not spend their
+    cooldown when selection, provider access or normalization fails;
+  - language fingerprints remain a separate stable calibration layer and are
+    never reconstructed from the direct-line warehouse;
+  - neither port may assert current facts, relationship truth, current motives,
+    tool policy or source prose. The public pack contains no private evidence
+    pointer, title, URL or local path.
 - Add a short-lived per-character hot-state layer later, so chat/proactive/date/call surfaces can feel connected to the character's ongoing parallel-world life instead of only recalling archived memories.
 - First slice is read-only and compatibility-first: reuse existing messages, anniversaries, first-contact assets, and a tiny recent slice of `char.memories` before adding new IndexedDB stores.
 - Wire the first selector into chat, meeting/date mode, and proactive-letter generation so UI work later has real code interfaces behind it.

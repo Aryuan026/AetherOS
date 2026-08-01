@@ -143,6 +143,7 @@ export const buildWakeupCompanionMaterialRequest = (input: {
   occurredAt: number;
   carePriority: boolean;
   ruleKind: string;
+  hiddenWordsEnabled?: boolean;
 }): RuntimeRequest => base({
   requestId: input.requestId,
   scope: input.scope,
@@ -153,15 +154,26 @@ export const buildWakeupCompanionMaterialRequest = (input: {
   semanticTags: input.carePriority
     ? ['proactive_intent', 'care_needed', 'proactive_care', input.ruleKind]
     : ['proactive_intent', 'opening', input.ruleKind],
-  groundingRefs: [{
-    kind: 'wakeup_rule',
-    claimKey: 'proactive_intent',
-    refId: input.ruleRefId,
-    revision: 1,
-    scope: { ...input.scope },
-    occurredAt: input.occurredAt,
-    validUntil: input.occurredAt + (5 * 60 * 1000),
-  }],
+  groundingRefs: [
+    {
+      kind: 'wakeup_rule',
+      claimKey: 'proactive_intent',
+      refId: input.ruleRefId,
+      revision: 1,
+      scope: { ...input.scope },
+      occurredAt: input.occurredAt,
+      validUntil: input.occurredAt + (5 * 60 * 1000),
+    },
+    ...(input.hiddenWordsEnabled ? [{
+      kind: 'wakeup_rule' as const,
+      claimKey: 'hidden_words_enabled',
+      refId: `${input.ruleRefId}:hidden-words`,
+      revision: 1,
+      scope: { ...input.scope },
+      occurredAt: input.occurredAt,
+      validUntil: input.occurredAt + (5 * 60 * 1000),
+    }] : []),
+  ],
   budgetChars: 600,
   maxItems: 2,
   now: input.occurredAt,

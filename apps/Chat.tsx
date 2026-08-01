@@ -51,6 +51,10 @@ import {
     getPresentationSourceMessageIds,
     mergeAssistantRepliesForPresentation,
 } from '../utils/chatPresentation';
+import {
+    normalizeVoiceDirectWakeupComparable,
+    pickVoiceDirectWakeupCandidate,
+} from '../utils/memoryCore';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 import AppHeader from '../components/shell/AppHeader';
 import { resolveAiTaskRoute } from '../utils/aiRuntime';
@@ -494,7 +498,42 @@ const Chat: React.FC = () => {
         };
         await DB.saveCompanionWakeupRule(effectiveRule);
 
-        const content = pickDirectWakeupLine(effectiveRule, char, userProfile, now);
+        let voiceLineId: string | undefined;
+        let content = '';
+        if (settings.hiddenWordsEnabled && importedHistoryScope) {
+            const recentWakeups = (await DB.getRecentMessagesByCharId(char.id, 500))
+                .filter(message => (
+                    message.role === 'assistant'
+                    && message.metadata?.source === 'companion_wakeup'
+                    && messageMatchesRelationshipScope(message, importedHistoryScope)
+                ));
+            const usedComparables = new Set(recentWakeups.map(message => (
+                normalizeVoiceDirectWakeupComparable(String(message.content || ''), char, userProfile)
+            )).filter(Boolean));
+            const deliveryHistory = new Map<string, number[]>();
+            (await DB.getCompanionWakeupLogsByCharId(char.id)).forEach(log => {
+                if (
+                    log.status !== 'sent'
+                    || !log.voiceLineId
+                    || !log.relationshipScope
+                    || !sameMessageRelationshipScope(log.relationshipScope, importedHistoryScope)
+                ) return;
+                const deliveredAt = deliveryHistory.get(log.voiceLineId) || [];
+                deliveredAt.push(log.triggeredAt);
+                deliveryHistory.set(log.voiceLineId, deliveredAt);
+            });
+            const picked = await pickVoiceDirectWakeupCandidate(
+                effectiveRule,
+                char,
+                userProfile,
+                now,
+                usedComparables,
+                deliveryHistory,
+            );
+            content = picked?.text || '';
+            voiceLineId = picked?.line.id;
+        }
+        if (!content) content = pickDirectWakeupLine(effectiveRule, char, userProfile, now);
         const messagePayload: Omit<Message, 'id'> = {
             charId: char.id,
             role: 'assistant',
@@ -512,6 +551,7 @@ const Chat: React.FC = () => {
                 wakeupKind: effectiveRule.kind,
                 wakeupMode: 'probe',
                 wakeupProbe: true,
+                wakeupVoiceLineId: voiceLineId,
             },
         };
         const messageId = await DB.saveMessage(messagePayload);
@@ -524,6 +564,8 @@ const Chat: React.FC = () => {
             mode: effectiveRule.mode,
             kind: effectiveRule.kind,
             message: content.slice(0, 120),
+            relationshipScope: importedHistoryScope || undefined,
+            voiceLineId,
         });
 
         setCompanionWakeupActive(true);
