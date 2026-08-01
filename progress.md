@@ -21,13 +21,25 @@
     public route is unreachable, the current page remains mounted and Settings
     shows a retryable message.
 
-- local verification:
+- verification and deployment:
   - Full `npm run verify:health` is Green, including shell chrome, transient
     Chat header, TypeScript, production build, relocatable online-first release
     and PWA runtime gates. The release identity is
     `aetheros-2.0.0-511547ff0d4121b0`.
-  - Public deployment and final Android visual acceptance remain pending in
-    this entry; they must not be inferred from local contract tests.
+  - Deployed public `main@9d1679d`: 261 regular files and 94 verified gzip
+    sidecars. Local and server `index.html` SHA-256 is
+    `b0d1bf36b9ccb0a362541aea56e4124e4dee7f745b5c65c3eae4960d09e56be6`;
+    the public online-first verifier is Green for the real HTML, startup assets,
+    manifest, descriptor and worker.
+  - A cache-busted cold browser reached the real AetherOS lock screen after the
+    truthful slow-network state. Public GET is 200, POST is 403 and retired
+    `/sullyos/` remains 410. Nginx stayed PID `226154` and Bridge stayed PID
+    `344776`; neither was restarted or reloaded.
+  - Rollback is
+    `/srv/asherie/backups/aetheros-pwa-real-device-9d1679d-20260801T090428Z/aetheros-static.previous`.
+  - Final Android installed-App visual acceptance remains an owner-device
+    checkpoint. Deployment Green proves the intended code is public, not that
+    the vendor status-bar composition has already been visually accepted.
 
 ## 2026-08-01 Android PWA Header Balance
 
