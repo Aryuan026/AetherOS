@@ -1,5 +1,35 @@
 # AetherOS Progress
 
+## 2026-08-01 Compact System Notice Overlay
+
+- done:
+  - Kept the real-device-approved Android installed Chat header unchanged.
+    Global success/info/error notices no longer inherit the condensed header's
+    zero top breathing room; the overlay stack keeps an independent 8 px inset
+    below the real device status bar.
+  - Reduced the shared toast from `px-4 py-3 / rounded-2xl / gap-3` to
+    `px-3.5 py-2 / rounded-xl / gap-2`, with an 8 px status dot and lighter
+    shadow. This applies to every `addToast` caller rather than special-casing
+    the Chat auto-reply confirmation.
+
+- verification and deployment:
+  - Full `npm run verify:health` is Green. The shell gate fixes the independent
+    overlay inset and rejects restoring the old `py-3` toast on the canonical
+    `data-shell-toast` projection.
+  - Deployed public `main@e101791` with build ID
+    `aetheros-2.0.0-d257e3c5ab063aa6`: 261 regular files and 94 verified gzip
+    sidecars. Local/server `index.html` SHA-256 is
+    `3897e09e9a21bd01af49c7ba47308fa72ec5625084f1ebc0d6086551d165043d`;
+    the public online-first verifier is Green.
+  - Public GET is 200, POST is 403 and retired `/sullyos/` remains 410. Nginx
+    stayed PID `226154` and Bridge stayed PID `344776`; neither was restarted
+    or reloaded.
+  - Rollback is
+    `/srv/asherie/backups/aetheros-toast-e101791-20260801T092912Z/aetheros-static.previous`.
+  - Final visual density remains an owner-device checkpoint; deployment Green
+    proves the shared style is public, not that the physical toast has already
+    received device acceptance.
+
 ## 2026-08-01 Android PWA Header Real-device Correction
 
 - corrected after device evidence:
