@@ -75,6 +75,7 @@ assert.equal(androidStandaloneStyle['--shell-chat-header-extra-top'], '0px');
 assert.equal(androidStandaloneStyle['--shell-chat-header-row-height'], '42px');
 assert.equal(softwareStyle['--shell-chat-header-row-height'], '48px');
 assert.equal(softwareStyle['--shell-chat-header-extra-top'], '5px');
+assert.equal(androidStandaloneStyle['--shell-overlay-top'], 'calc(var(--shell-top-inset) + 0.5rem)');
 
 const phoneShell = read('components/PhoneShell.tsx');
 const appearance = read('apps/Appearance.tsx');
@@ -89,6 +90,9 @@ assert.doesNotMatch(appearance, /hideStatusBar|隐藏顶部时间栏|状态栏 \
 assert.match(phoneShell, /data-shell-chrome-mode/);
 assert.match(phoneShell, /data-shell-runtime-surface/);
 assert.match(phoneShell, /data-shell-overlay-stack/);
+assert.match(phoneShell, /data-shell-toast/);
+assert.match(phoneShell, /px-3\.5 py-2 rounded-xl/);
+assert.doesNotMatch(phoneShell, /data-shell-toast[^\n]+py-3/);
 assert.match(phoneShell, /const shellIsStandalone = isStandaloneDisplayMode\(\)/);
 assert.match(phoneShell, /const shellIsIOS = isIOSDevice\(\)/);
 assert.match(phoneShell, /const shellIsNative = Capacitor\.isNativePlatform\(\)/);
