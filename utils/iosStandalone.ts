@@ -1,6 +1,12 @@
 let hasInstalledIOSStandaloneWorkaround = false;
 let stableStandaloneHeight = 0;
 
+export const STANDALONE_DISPLAY_MODE_QUERIES = [
+    '(display-mode: standalone)',
+    '(display-mode: fullscreen)',
+    '(display-mode: minimal-ui)',
+] as const;
+
 const readSafeAreaInset = (edge: 'top' | 'right' | 'bottom' | 'left'): number => {
     if (typeof document === 'undefined') return 0;
 
@@ -27,7 +33,12 @@ export const isIOSDevice = (): boolean => {
 
 export const isStandaloneDisplayMode = (): boolean => {
     if (typeof window === 'undefined') return false;
-    return window.matchMedia?.('(display-mode: standalone)').matches || !!(window.navigator as Navigator & { standalone?: boolean }).standalone;
+    const installedDisplayMode = STANDALONE_DISPLAY_MODE_QUERIES
+        .some((query) => window.matchMedia?.(query).matches);
+    const iosStandalone = !!(window.navigator as Navigator & { standalone?: boolean }).standalone;
+    const androidInstalledReferrer = typeof document !== 'undefined'
+        && document.referrer.startsWith('android-app://');
+    return installedDisplayMode || iosStandalone || androidInstalledReferrer;
 };
 
 export const isIOSStandaloneWebApp = (): boolean => isIOSDevice() && isStandaloneDisplayMode();

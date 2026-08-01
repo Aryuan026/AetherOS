@@ -14,16 +14,21 @@ const PwaInstallRow: React.FC = () => {
     getPwaRuntimeSnapshot,
   );
   const [pendingAction, setPendingAction] = useState<'install' | 'update' | null>(null);
+  const [actionError, setActionError] = useState('');
   const presentation = resolvePwaInstallRowPresentation(snapshot);
 
   if (!presentation) return null;
 
   const runAction = async () => {
     if (!presentation.action || pendingAction) return;
+    setActionError('');
     setPendingAction(presentation.action);
     try {
       if (presentation.action === 'update') {
-        await applyPwaUpdate();
+        const outcome = await applyPwaUpdate();
+        if (outcome === 'unavailable') {
+          setActionError('连接还没准备好，当前页面已保留，请稍后再试');
+        }
       } else {
         await requestPwaInstall();
       }
@@ -47,7 +52,7 @@ const PwaInstallRow: React.FC = () => {
             {presentation.title}
           </h2>
           <p className="mt-0.5 break-words text-[10px] leading-[1.55] text-slate-400">
-            {presentation.description}
+            {actionError || presentation.description}
           </p>
         </div>
 

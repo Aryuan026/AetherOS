@@ -2,7 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CaretLeft, Lightning, SlidersHorizontal } from '@phosphor-icons/react';
 import { AvatarFramePreset, CharacterBuff, CharacterProfile } from '../../types';
-import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_CHAT_HEADER_EXTRA_TOP, SHELL_TOP_INSET } from '../shell/shellLayout';
+import {
+    SHELL_APP_HEADER_CONTENT_TOP,
+    SHELL_CHAT_HEADER_EXTRA_TOP,
+    SHELL_CHAT_HEADER_ROW_HEIGHT,
+    SHELL_TOP_INSET,
+} from '../shell/shellLayout';
 import AvatarWithFrame from '../common/AvatarWithFrame';
 import { resolveChatHeaderStatus } from '../../utils/chatHeaderStatus';
 import { activeCharacterBuffs } from '../../utils/characterLiveState';
@@ -50,7 +55,6 @@ const CENTERED_HEADER_ACTION_RAIL_PX = 96;
 const CENTERED_HEADER_SIDE_RESERVE_PX = CENTERED_HEADER_ACTION_RAIL_PX + 4;
 const CENTERED_MOOD_VERTICAL_OFFSET_PX = 3;
 const CENTERED_MOOD_STATUS_PULL_UP_PX = 9;
-const CENTERED_SIGNED_HEADER_TOP_ROW_PX = 48;
 
 const normalizeIntensity = (n: number | undefined | null): 1 | 2 | 3 => {
     const parsed = Number.isFinite(n) ? Math.round(Number(n)) : 2;
@@ -460,7 +464,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
                 <div className="w-full min-w-0">
                     <div
                         className="relative mt-1 w-full"
-                        style={{ height: CENTERED_SIGNED_HEADER_TOP_ROW_PX }}
+                        style={{ height: SHELL_CHAT_HEADER_ROW_HEIGHT }}
                     >
                         <button
                             onClick={onClose}

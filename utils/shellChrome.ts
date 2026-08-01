@@ -62,8 +62,8 @@ export const buildShellChromeStyle = (
 ): ShellChromeStyle => {
     const condenseStandaloneTop = shouldCondenseStandaloneTop(environment);
     const worldStripHeight = mode === 'virtual_city' ? '34px' : '0px';
-    const headerBreathingSpace = condenseStandaloneTop ? '0.25rem' : '0.5rem';
-    const nonPhoneHeaderHeight = condenseStandaloneTop ? '3.25rem' : '3.5rem';
+    const headerBreathingSpace = condenseStandaloneTop ? '0px' : '0.5rem';
+    const nonPhoneHeaderHeight = condenseStandaloneTop ? '3rem' : '3.5rem';
     const topInset = mode === 'simulated_phone'
         ? 'calc(max(12px, var(--shell-safe-area-top)) + 20px)'
         : mode === 'virtual_city'
@@ -80,7 +80,8 @@ export const buildShellChromeStyle = (
         '--shell-header-height': mode === 'simulated_phone'
             ? 'calc(var(--shell-top-inset) + 3rem)'
             : `calc(var(--shell-top-inset) + ${nonPhoneHeaderHeight})`,
-        '--shell-chat-header-extra-top': condenseStandaloneTop ? '2px' : '5px',
+        '--shell-chat-header-extra-top': condenseStandaloneTop ? '0px' : '5px',
+        '--shell-chat-header-row-height': condenseStandaloneTop ? '42px' : '48px',
         '--shell-overlay-top': `calc(var(--shell-top-inset) + ${headerBreathingSpace})`,
     };
 };

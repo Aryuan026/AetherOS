@@ -1,6 +1,10 @@
 import { Capacitor } from '@capacitor/core';
 import { KeepAlive } from './keepAlive';
-import { isIOSDevice, isStandaloneDisplayMode } from './iosStandalone';
+import {
+  isIOSDevice,
+  isStandaloneDisplayMode,
+  STANDALONE_DISPLAY_MODE_QUERIES,
+} from './iosStandalone';
 
 export type PwaRuntimeSnapshot = {
   platform: 'ios' | 'other';
@@ -27,6 +31,8 @@ type ReleaseDescriptor = {
   offlineShell: false;
 };
 
+export type PwaUpdateOutcome = 'reloading' | 'not-needed' | 'unavailable';
+
 const CURRENT_BUILD_ID = import.meta.env.VITE_AETHEROS_BUILD_ID || 'aetheros-development';
 const RELEASE_DESCRIPTOR_FILE = import.meta.env.VITE_AETHEROS_RELEASE_DESCRIPTOR || 'aetheros-release.json';
 const listeners = new Set<PwaRuntimeListener>();
@@ -34,7 +40,6 @@ const listeners = new Set<PwaRuntimeListener>();
 let initialized = false;
 let installPrompt: BeforeInstallPromptEvent | null = null;
 let releaseProbe: Promise<void> | null = null;
-let serviceWorkerHadController = false;
 
 const readSnapshotEnvironment = (): Pick<PwaRuntimeSnapshot, 'platform' | 'standalone' | 'isCapacitor'> => ({
   platform: isIOSDevice() ? 'ios' : 'other',
@@ -79,24 +84,29 @@ const releaseDescriptorUrl = () => {
   return new URL(RELEASE_DESCRIPTOR_FILE, baseUrl).toString();
 };
 
+const fetchReleaseDescriptor = async (): Promise<ReleaseDescriptor | null> => {
+  try {
+    const response = await fetch(releaseDescriptorUrl(), {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return null;
+    return normalizeReleaseDescriptor(await response.json());
+  } catch {
+    return null;
+  }
+};
+
 const probeForRelease = async () => {
   // The release descriptor is a production-build artifact. Skipping the
   // probe in Vite dev avoids a meaningless 404 without changing production
   // update checks or adding a second development-only descriptor server.
   if (import.meta.env.DEV || Capacitor.isNativePlatform()) return;
 
-  const descriptorRequest = fetch(releaseDescriptorUrl(), {
-    method: 'GET',
-    cache: 'no-store',
-    credentials: 'same-origin',
-    headers: { Accept: 'application/json' },
-  }).then(async (response) => {
-    if (!response.ok) return null;
-    return normalizeReleaseDescriptor(await response.json());
-  }).catch(() => null);
-
   const [descriptor] = await Promise.all([
-    descriptorRequest,
+    fetchReleaseDescriptor(),
     KeepAlive.checkForUpdate(),
   ]);
   if (descriptor && descriptor.buildId !== CURRENT_BUILD_ID) {
@@ -133,16 +143,13 @@ const handleDisplayModeChange = () => {
 };
 
 const handleControllerChange = () => {
-  const replacedExistingController = serviceWorkerHadController;
-  serviceWorkerHadController = true;
-  if (replacedExistingController) publishSnapshot({ updateAvailable: true });
+  void requestReleaseProbe();
 };
 
 export const initializePwaRuntime = (): void => {
   if (initialized || typeof window === 'undefined' || typeof document === 'undefined') return;
   initialized = true;
   snapshot = { ...snapshot, ...readSnapshotEnvironment() };
-  serviceWorkerHadController = Boolean(navigator.serviceWorker?.controller);
 
   window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   window.addEventListener('appinstalled', handleInstalled);
@@ -157,8 +164,9 @@ export const initializePwaRuntime = (): void => {
   });
   navigator.serviceWorker?.addEventListener('controllerchange', handleControllerChange);
 
-  const displayMode = window.matchMedia?.('(display-mode: standalone)');
-  displayMode?.addEventListener?.('change', handleDisplayModeChange);
+  STANDALONE_DISPLAY_MODE_QUERIES.forEach((query) => {
+    window.matchMedia?.(query).addEventListener?.('change', handleDisplayModeChange);
+  });
   void requestReleaseProbe();
 };
 
@@ -189,7 +197,36 @@ export const requestPwaInstall = async (): Promise<'accepted' | 'dismissed' | 'm
   }
 };
 
-export const applyPwaUpdate = (): void => {
-  if (!snapshot.updateAvailable || snapshot.isCapacitor) return;
-  window.location.reload();
+export const applyPwaUpdate = async (): Promise<PwaUpdateOutcome> => {
+  if (!snapshot.updateAvailable || snapshot.isCapacitor) return 'not-needed';
+
+  const descriptor = await fetchReleaseDescriptor();
+  if (!descriptor) return 'unavailable';
+  if (descriptor.buildId === CURRENT_BUILD_ID) {
+    publishSnapshot({ updateAvailable: false });
+    return 'not-needed';
+  }
+
+  const baseUrl = new URL(import.meta.env.BASE_URL || './', window.location.href);
+  baseUrl.searchParams.set('__aetheros_release', descriptor.buildId);
+
+  try {
+    const shellResponse = await fetch(baseUrl.toString(), {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: { Accept: 'text/html' },
+    });
+    if (!shellResponse.ok) return 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+
+  await Promise.race([
+    KeepAlive.checkForUpdate(),
+    new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2500)),
+  ]);
+  publishSnapshot({ updateAvailable: false });
+  window.location.replace(baseUrl.toString());
+  return 'reloading';
 };

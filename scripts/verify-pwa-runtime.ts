@@ -20,6 +20,7 @@ const keepAliveSource = read('utils/keepAlive.ts');
 const workerSource = read('worker/sw-keep-alive.ts');
 const viteSource = read('vite.config.ts');
 const installRowSource = read('components/settings/PwaInstallRow.tsx');
+const standaloneSource = read('utils/iosStandalone.ts');
 
 const runtimeSnapshot = (patch: Partial<PwaRuntimeSnapshot> = {}): PwaRuntimeSnapshot => ({
   platform: 'other',
@@ -56,6 +57,7 @@ for (const runtimeExport of [
   'subscribePwaRuntime',
   'requestPwaInstall',
   'applyPwaUpdate',
+  'PwaUpdateOutcome',
 ]) {
   assert.ok(runtimeSource.includes(runtimeExport), `missing stable PWA API: ${runtimeExport}`);
 }
@@ -69,11 +71,17 @@ assert.match(runtimeSource, /cache:\s*'no-store'/);
 assert.match(runtimeSource, /updateAvailable:\s*true/);
 assert.match(runtimeSource, /getPwaRuntimeSnapshot\s*=\s*\(\): PwaRuntimeSnapshot => snapshot/);
 assert.match(runtimeSource, /installedThisSession:\s*true, installPromptAvailable:\s*false/);
-assert.equal(
-  runtimeSource.match(/window\.location\.reload\(\)/g)?.length,
-  1,
-  'only the explicit applyPwaUpdate action may reload the page',
-);
+assert.doesNotMatch(runtimeSource, /window\.location\.reload\(\)/);
+assert.match(runtimeSource, /window\.location\.replace\(baseUrl\.toString\(\)\)/);
+assert.match(runtimeSource, /__aetheros_release/);
+assert.match(runtimeSource, /headers:\s*\{ Accept:\s*'text\/html' \}/);
+assert.match(runtimeSource, /return 'unavailable'/);
+assert.match(installRowSource, /当前页面已保留/);
+assert.match(standaloneSource, /display-mode: standalone/);
+assert.match(standaloneSource, /display-mode: fullscreen/);
+assert.match(standaloneSource, /display-mode: minimal-ui/);
+assert.match(standaloneSource, /android-app:\/\//);
+assert.match(runtimeSource, /STANDALONE_DISPLAY_MODE_QUERIES\.forEach/);
 
 assert.match(keepAliveSource, /updateViaCache:\s*'none'/);
 assert.match(keepAliveSource, /registration\.update\(\)/);

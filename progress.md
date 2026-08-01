@@ -1,5 +1,34 @@
 # AetherOS Progress
 
+## 2026-08-01 Android PWA Header Real-device Correction
+
+- corrected after device evidence:
+  - The first standalone trim at `b063523` was contract-Green but did not make
+    a visible enough difference on the owner's Android PWA. That deployment is
+    retained as history, not treated as final visual acceptance.
+  - Installed-surface detection now covers `standalone`, `fullscreen`,
+    `minimal-ui`, iOS standalone and Android App referrers. The live shell also
+    exposes a non-user-facing `data-shell-runtime-surface` marker so a future
+    device report can distinguish browser, installed Android, installed iOS and
+    native projections without adding a settings/test control.
+  - Android installed Chat removes the remaining 4 px shell breathing space,
+    2 px Chat-only offset and 6 px of the stacked title row. This is 12 px
+    shorter than the first attempted fix and 19 px shorter than ordinary web;
+    ordinary browsers and iOS/native safe-area policy remain unchanged.
+  - Explicit update no longer performs a blind `reload()`. It must first fetch
+    the canonical release descriptor and a cache-busted HTML shell, then gives
+    the online-first worker a bounded update check before navigating. If the
+    public route is unreachable, the current page remains mounted and Settings
+    shows a retryable message.
+
+- local verification:
+  - Full `npm run verify:health` is Green, including shell chrome, transient
+    Chat header, TypeScript, production build, relocatable online-first release
+    and PWA runtime gates. The release identity is
+    `aetheros-2.0.0-511547ff0d4121b0`.
+  - Public deployment and final Android visual acceptance remain pending in
+    this entry; they must not be inferred from local contract tests.
+
 ## 2026-08-01 Android PWA Header Balance
 
 - done:

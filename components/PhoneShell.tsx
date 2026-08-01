@@ -414,10 +414,18 @@ const PhoneShell: React.FC = () => {
   const shellChromeMode = requestedShellChromeMode === 'virtual_city'
     ? (virtualWorld.context ? 'virtual_city' : 'software')
     : requestedShellChromeMode;
+  const shellIsStandalone = isStandaloneDisplayMode();
+  const shellIsIOS = isIOSDevice();
+  const shellIsNative = Capacitor.isNativePlatform();
+  const shellRuntimeSurface = shellIsNative
+    ? 'native'
+    : shellIsStandalone
+      ? (shellIsIOS ? 'ios-installed' : 'android-installed')
+      : 'browser';
   const shellChromeStyle = buildShellChromeStyle(shellChromeMode, {
-    standalone: isStandaloneDisplayMode(),
-    ios: isIOSDevice(),
-    native: Capacitor.isNativePlatform(),
+    standalone: shellIsStandalone,
+    ios: shellIsIOS,
+    native: shellIsNative,
   });
   const baseShellTone = activeApp === AppID.Launcher
     ? 'launcher'
@@ -442,6 +450,7 @@ const PhoneShell: React.FC = () => {
         }}
         className="relative w-full h-full bg-cover bg-center cursor-pointer overflow-hidden group font-light select-none overscroll-none"
         data-shell-chrome-mode={shellChromeMode}
+        data-shell-runtime-surface={shellRuntimeSurface}
         style={{ ...shellChromeStyle, backgroundImage: bgImageValue, color: contentColor }}
       >
         <div className="absolute inset-0 bg-black/5 transition-colors duration-700 group-hover:bg-transparent" />
@@ -548,6 +557,7 @@ const PhoneShell: React.FC = () => {
     <div
       className="relative w-full h-full overflow-clip bg-gradient-to-br from-pink-200 via-purple-200 to-indigo-200 text-slate-900 font-sans select-none overscroll-none"
       data-shell-chrome-mode={shellChromeMode}
+      data-shell-runtime-surface={shellRuntimeSurface}
       style={shellChromeStyle}
     >
        {/* Optimized Background Layer */}
