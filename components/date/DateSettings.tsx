@@ -222,6 +222,29 @@ const DateSettings: React.FC<DateSettingsProps> = ({ char, onBack }) => {
                 </section>
 
                 <section className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-3">默认见面视图</h3>
+                    <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+                        {[
+                            { value: 'auto', label: '自动推荐' },
+                            { value: 'visual', label: '场景' },
+                            { value: 'reading', label: '阅读' },
+                        ].map(({ value, label }) => {
+                            const active = (char.datePresentationPreference || 'auto') === value;
+                            return (
+                                <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() => updateCharacter(char.id, { datePresentationPreference: value as CharacterProfile['datePresentationPreference'] })}
+                                    className={`min-h-9 rounded-lg px-1 text-[11px] font-bold transition-colors ${active ? 'bg-white text-primary shadow-sm' : 'text-slate-400 active:text-slate-600'}`}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </section>
+
+                <section className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-xs font-bold text-slate-400 uppercase">浅色阅读模式</h3>

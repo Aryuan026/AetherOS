@@ -67,6 +67,9 @@ export const buildShellChromeStyle = (
     // header itself is condensed to the top edge.
     const overlayBreathingSpace = '0.5rem';
     const nonPhoneHeaderHeight = condenseStandaloneTop ? '3rem' : '3.5rem';
+    // A single centered name has asymmetric glyph bounds. This keeps its
+    // visual center aligned to the action rail in both browser and Android PWA chrome.
+    const emptyChatHeaderTitleOffset = condenseStandaloneTop ? '2.5px' : '-4px';
     const topInset = mode === 'simulated_phone'
         ? 'calc(max(12px, var(--shell-safe-area-top)) + 20px)'
         : mode === 'virtual_city'
@@ -85,6 +88,7 @@ export const buildShellChromeStyle = (
             : `calc(var(--shell-top-inset) + ${nonPhoneHeaderHeight})`,
         '--shell-chat-header-extra-top': condenseStandaloneTop ? '0px' : '5px',
         '--shell-chat-header-row-height': condenseStandaloneTop ? '42px' : '48px',
+        '--shell-chat-header-empty-title-offset': emptyChatHeaderTitleOffset,
         '--shell-overlay-top': `calc(var(--shell-top-inset) + ${overlayBreathingSpace})`,
     };
 };

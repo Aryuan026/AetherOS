@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { CharacterProfile, Message, DateState, DialogueItem, UserProfile, MessageRelationshipScope } from '../../types';
+import type { DatePresentationMode } from '../../types';
 import Modal from '../../components/os/Modal';
 import { useOS } from '../../context/OSContext';
 import { DB } from '../../utils/db';
@@ -88,10 +89,11 @@ interface DateSessionProps {
     messages: Message[]; // The DB messages for history/novel mode
     peekStatus: string;  // Initial text from the Peek phase
     initialState?: DateState; // Resume state
+    initialPresentationMode: DatePresentationMode;
     sessionId?: string;
     relationshipScope?: MessageRelationshipScope;
-    onSendMessage: (text: string) => Promise<string>; // Returns AI content
-    onReroll: () => Promise<string>;
+    onSendMessage: (text: string, presentationMode: DatePresentationMode) => Promise<string>; // Returns AI content
+    onReroll: (presentationMode: DatePresentationMode) => Promise<string>;
     onExit: (currentState: DateState) => void;
     onEditMessage: (msg: Message) => void;
     onDeleteMessage: (msg: Message) => void;
@@ -106,6 +108,7 @@ const DateSession: React.FC<DateSessionProps> = ({
     messages, 
     peekStatus, 
     initialState,
+    initialPresentationMode,
     sessionId,
     relationshipScope,
     onSendMessage, 
@@ -120,7 +123,9 @@ const DateSession: React.FC<DateSessionProps> = ({
     const { addToast, registerBackHandler, apiConfig, updateCharacter, virtualTime } = useOS();
     
     // Core VN State
-    const [isNovelMode, setIsNovelMode] = useState(false);
+    const [isNovelMode, setIsNovelMode] = useState(() => (
+        initialState?.isNovelMode ?? initialPresentationMode === 'reading'
+    ));
     const [bgImage, setBgImage] = useState<string>(char.dateBackground || '');
     const [currentSprite, setCurrentSprite] = useState<string>('');
     const [spriteConfig, setSpriteConfig] = useState(char.spriteConfig || { scale: 1, x: 0, y: 0 });
@@ -331,6 +336,7 @@ const DateSession: React.FC<DateSessionProps> = ({
             setDialogueBatch(initialState.dialogueBatch);
             setIsNovelMode(initialState.isNovelMode);
         } else {
+            setIsNovelMode(initialPresentationMode === 'reading');
             // New Session - pick initial sprite from active skin set or default sprites
             const initPortrait = resolveDateDefaultPortrait(char);
             setCurrentSprite(initPortrait.portrait || '');
@@ -445,7 +451,7 @@ const DateSession: React.FC<DateSessionProps> = ({
         setIsShowingOpening(false); // First user interaction - opening phase is over
 
         try {
-            const aiContent = await onSendMessage(text);
+            const aiContent = await onSendMessage(text, isNovelMode ? 'reading' : 'visual');
             // Parse new content
             const items = parseDialogue(aiContent, 'normal');
             setDialogueBatch(items);
@@ -465,7 +471,7 @@ const DateSession: React.FC<DateSessionProps> = ({
         if (isTyping) return;
         setIsTyping(true);
         try {
-            const aiContent = await onReroll();
+            const aiContent = await onReroll(isNovelMode ? 'reading' : 'visual');
             const items = parseDialogue(aiContent, 'normal');
             setDialogueBatch(items);
             setDialogueQueue(items);
@@ -655,8 +661,14 @@ const DateSession: React.FC<DateSessionProps> = ({
         return () => window.clearTimeout(timer);
     }, [isNovelMode, isTyping, isTextAnimating, showInputBox, currentText, dialogueQueue.length, dialogueBatch.length]);
 
+    const readingOpening = cleanTextForDisplay(peekStatus || currentText);
+
     return (
-            <div className="h-full w-full relative bg-black overflow-hidden font-sans select-none" onClick={handleScreenClick}>
+            <div
+                className="h-full w-full relative bg-black overflow-hidden font-sans select-none"
+                data-date-presentation={isNovelMode ? 'reading' : 'visual'}
+                onClick={handleScreenClick}
+            >
 
             {/* Background Layer */}
             {resolvedBgImage ? (
@@ -672,7 +684,7 @@ const DateSession: React.FC<DateSessionProps> = ({
                             background: `radial-gradient(circle at 50% 30%, ${fallbackMood.glow} 0%, transparent 34%), linear-gradient(160deg, ${fallbackMood.from} 0%, ${fallbackMood.via} 56%, ${fallbackMood.to} 145%)`,
                         }}
                     />
-                    <img src={char.avatar} alt="" className={`absolute inset-0 h-full w-full object-cover blur-3xl scale-125 transition-opacity duration-1000 ${isNovelMode ? 'opacity-10' : 'opacity-20'}`} />
+                    {!isNovelMode && <img src={char.avatar} alt="" className="absolute inset-0 h-full w-full object-cover blur-3xl scale-125 transition-opacity duration-1000 opacity-20" />}
                     <div className="absolute inset-0 bg-black/35" />
                 </>
             )}
@@ -755,6 +767,7 @@ const DateSession: React.FC<DateSessionProps> = ({
                 <>
                 <div
                     ref={novelScrollRef}
+                    data-date-reading-view
                     className={`absolute inset-0 z-20 overflow-y-auto no-scrollbar pb-32 px-6 overscroll-contain ${char.dateLightReading ? 'bg-[#faf8f5]' : 'bg-black/90 backdrop-blur-sm'}`}
                     style={{ paddingTop: DATE_NOVEL_TOP_GUTTER, scrollPaddingTop: DATE_NOVEL_TOP_GUTTER }}
                     onClick={(e) => { e.stopPropagation(); }}
@@ -774,9 +787,9 @@ const DateSession: React.FC<DateSessionProps> = ({
                                     >删除选中</button>
                                 </div>
                             )}
-                            {sessionMessages.length === 0 && peekStatus && (
+                            {sessionMessages.length === 0 && readingOpening && (
                                 <div className={`italic text-center text-[13px] mb-8 px-4 ${char.dateLightReading ? 'text-stone-400' : 'text-slate-200/50'}`}>
-                                    {cleanTextForDisplay(peekStatus).split('\n').map((line, idx) => line.trim() && <p key={idx} className="whitespace-pre-wrap leading-relaxed tracking-wide my-2">{line}</p>)}
+                                    {readingOpening.split('\n').map((line, idx) => line.trim() && <p key={idx} className="whitespace-pre-wrap leading-relaxed tracking-wide my-2">{line}</p>)}
                                 </div>
                             )}
                             {sessionMessages.map((msg) => (
@@ -892,18 +905,7 @@ const DateSession: React.FC<DateSessionProps> = ({
                                 style={{ filter: showInputBox ? 'brightness(1)' : (isTextAnimating ? 'brightness(1.05)' : 'brightness(1)'), transform: `translate(${spriteConfig.x}%, ${spriteConfig.y}%) scale(${isTextAnimating ? spriteConfig.scale * 1.02 : spriteConfig.scale})` }}
                                 alt={char.name}
                             />
-                        ) : (
-                            <div className="mb-[42vh] flex flex-col items-center opacity-95 transition-all duration-500">
-                                <div className="relative h-36 w-36">
-                                    <div className="absolute inset-0 rounded-full blur-3xl opacity-80" style={{ backgroundColor: fallbackMood.glow }} />
-                                    <div className="absolute inset-3 rounded-full border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl" />
-                                    <img src={char.avatar} alt={char.name} className="absolute inset-6 h-24 w-24 rounded-full object-cover border border-white/30 shadow-xl" />
-                                </div>
-                                <div className="mt-4 rounded-full border border-white/15 bg-black/25 px-4 py-1.5 text-xs font-bold tracking-[0.18em] text-white/70 backdrop-blur-md">
-                                    {char.name}
-                                </div>
-                            </div>
-                        )}
+                        ) : null}
                     </div>
 
                     {!isTyping && currentText && !currentLineIsDialogue && (

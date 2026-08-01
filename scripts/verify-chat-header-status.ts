@@ -85,12 +85,16 @@ assert.match(headerSource, /CENTERED_HEADER_SIDE_RESERVE_PX = CENTERED_HEADER_AC
 assert.match(headerSource, /CENTERED_MOOD_VERTICAL_OFFSET_PX = 3/u);
 assert.match(headerSource, /CENTERED_MOOD_STATUS_PULL_UP_PX = 9/u);
 assert.match(headerSource, /SHELL_CHAT_HEADER_ROW_HEIGHT/u);
+assert.match(headerSource, /SHELL_CHAT_HEADER_EMPTY_TITLE_OFFSET/u);
 assert.match(headerSource, /style=\{\{ height: SHELL_CHAT_HEADER_ROW_HEIGHT \}\}/u);
 assert.match(headerSource, /const hasCenteredStatus = headerStatus\.kind !== 'none'/u);
 assert.match(headerSource, /useStackedCenteredHeader = !selectionMode && useCenteredLayout && hasCenteredStatus/u);
+assert.match(headerSource, /useCenteredEmptyHeader = !selectionMode && useCenteredLayout && !hasCenteredStatus/u);
 assert.match(headerSource, /data-chat-header-layout=\{useStackedCenteredHeader \? 'mood' : 'compact'\}/u);
 assert.match(headerSource, /data-chat-header-actions/u);
 assert.match(headerSource, /data-chat-header-center/u);
+assert.match(headerSource, /\{onlineStatusNode \? \(/u);
+assert.match(headerSource, /marginTop: useCenteredEmptyHeader \? SHELL_CHAT_HEADER_EMPTY_TITLE_OFFSET : undefined/u);
 assert.match(headerSource, /marginTop: -CENTERED_MOOD_STATUS_PULL_UP_PX/u);
 assert.match(headerSource, /data-chat-header-status-lane/u);
 assert.match(headerSource, /h-\[22px\] w-\[22px\]/u);

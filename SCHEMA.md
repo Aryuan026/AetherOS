@@ -75,6 +75,34 @@ malformed or exhausted. One completed live dialogue turn decrements both state
 types. `emotion_background_evaluation` owns the low-frequency refresh cursor;
 history-import messages are excluded from its evidence.
 
+## Character Date Presentation
+
+The default opening surface is a character-owned preference, while the active
+or resumed session keeps its own presentation state:
+
+```ts
+type DatePresentationPreference = 'auto' | 'visual' | 'reading';
+type DatePresentationMode = 'visual' | 'reading';
+
+interface CharacterProfile {
+  datePresentationPreference?: DatePresentationPreference; // absent = auto
+  dateLightReading?: boolean; // reading palette only
+  savedDateState?: DateState;
+}
+
+interface DateState {
+  isNovelMode: boolean; // true = reading, false = visual
+}
+```
+
+`auto` and explicit `visual` resolve to `visual` only when
+`resolveDateDefaultPortrait` reports a dedicated date portrait; otherwise they
+resolve to `reading`. This resolution applies to new sessions only.
+`savedDateState.isNovelMode` is authoritative when resuming an unfinished
+session. The visual and reading model-output contracts are selected from the
+current session mode for both send and reroll; `dateLightReading` never changes
+that contract.
+
 ### Character behavior compilation
 
 Player-authored behavior requirements are character-owned. Compilation may

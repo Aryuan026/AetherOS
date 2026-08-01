@@ -636,6 +636,9 @@ export interface SongSheet {
 }
 
 // --- DATE APP TYPES ---
+export type DatePresentationPreference = 'auto' | 'visual' | 'reading';
+export type DatePresentationMode = Exclude<DatePresentationPreference, 'auto'>;
+
 export interface DialogueItem {
     text: string;
     emotion?: string;
@@ -849,6 +852,8 @@ export interface CharacterProfile {
   sprites?: Record<string, string>;
   spriteConfig?: SpriteConfig;
   customDateSprites?: string[]; // User-added custom emotion names for date mode (per-character)
+  /** Preferred opening surface for new date sessions. Existing session saves keep their own view. */
+  datePresentationPreference?: DatePresentationPreference;
   dateLightReading?: boolean;   // Light reading mode for novel/text view in date
   dateSkinSets?: SkinSet[];     // Multiple skin sets for portrait mode
   activeSkinSetId?: string;     // Currently active skin set ID

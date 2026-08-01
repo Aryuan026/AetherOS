@@ -19,6 +19,7 @@ import {
   buildCallPrompt,
 } from '../utils/callModelMessages.ts';
 import { buildCompanionWakeupModelMessages } from '../utils/companionWakeupModelMessages.ts';
+import { buildDateSessionOutputContract } from '../utils/datePresentation.ts';
 
 const CHARACTERS = [
   BUILT_IN_DEEPSPACE_QIYU_ID,
@@ -371,9 +372,16 @@ const wakeupMessages = buildCompanionWakeupModelMessages({
 assert.equal(String(wakeupMessages[0]?.content).includes(careWakeup?.markdown || ''), true);
 assert.equal(String(wakeupMessages[1]?.content).includes('今天有点忙'), true);
 
-const dateAppSource = readFileSync(new URL('../apps/DateApp.tsx', import.meta.url), 'utf8');
-assert.match(dateAppSource, /动作与叙述是可选的/u);
-assert.equal(/不要整段只用一个情绪|每一行动作\/叙述都应该|让每一行都有/u.test(dateAppSource), false);
+const dateVisualContract = buildDateSessionOutputContract('visual', ['normal', 'happy']);
+const dateReadingContract = buildDateSessionOutputContract('reading');
+for (const contract of [dateVisualContract, dateReadingContract]) {
+  assert.match(contract.systemPrompt, /动作与叙述是可选的/u);
+  assert.equal(
+    /不要整段只用一个情绪|每一行动作\/叙述都应该|让每一行都有|每轮都必须写动作/u.test(contract.systemPrompt),
+    false,
+    `${contract.mode} date contract keeps scene detail optional rather than procedural`,
+  );
+}
 const wakeupRuntimeSource = readFileSync(new URL('../hooks/useCompanionWakeupRuntime.ts', import.meta.url), 'utf8');
 assert.match(
   wakeupRuntimeSource,

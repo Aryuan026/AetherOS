@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { CaretLeft, CaretRight, PencilSimple, Sparkle, Trash } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, PencilSimple, Plus, Sparkle, Trash } from '@phosphor-icons/react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { Anniversary, AppID } from '../types';
 import Modal from '../components/os/Modal';
-import AppHeader, { AppHeaderAddButton } from '../components/shell/AppHeader';
+import AppHeader from '../components/shell/AppHeader';
 import { ContextBuilder } from '../utils/context';
 import { safeResponseJson } from '../utils/safeApi';
-import { SHELL_APP_HEADER_CONTENT_TOP } from '../components/shell/shellLayout';
+import { SHELL_OVERLAY_TOP } from '../components/shell/shellLayout';
 import {
     buildAnniversaryThoughtPrompt,
     getDaysUntilTimebookDate,
@@ -500,18 +500,24 @@ const ScheduleApp: React.FC = () => {
             <button
                 onClick={closeApp}
                 className="absolute left-5 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/30 text-[#5d544b] shadow-sm backdrop-blur-md transition active:scale-95"
-                style={{ top: SHELL_APP_HEADER_CONTENT_TOP }}
+                style={{ top: SHELL_OVERLAY_TOP }}
                 aria-label="返回"
+                data-timebook-top-control="back"
             >
                 <CaretLeft size={23} weight="bold" />
             </button>
 
-            <AppHeaderAddButton
+            <button
+                type="button"
                 onClick={() => setShowAnniModal(true)}
-                className="absolute right-5 z-30 bg-[#fff8ed]/62 text-[#9a6a53] shadow-sm backdrop-blur-md"
-                style={{ top: SHELL_APP_HEADER_CONTENT_TOP }}
+                className="absolute right-5 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-[#fff8ed]/62 text-[#9a6a53] shadow-sm backdrop-blur-md transition active:scale-95"
+                style={{ top: SHELL_OVERLAY_TOP }}
+                aria-label="添加回忆"
                 title="添加回忆"
-            />
+                data-timebook-top-control="add"
+            >
+                <Plus size={22} weight="bold" />
+            </button>
 
             <main
                 className="absolute z-20 overflow-hidden rounded-[18px] border border-white/28 bg-[#fffaf0]/26 shadow-[0_10px_22px_rgba(74,48,28,0.055)] backdrop-blur-[0.75px]"

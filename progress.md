@@ -1,5 +1,33 @@
 # AetherOS Progress
 
+## 2026-08-01 Date Presentation And Mobile Header Refinement
+
+- done:
+  - Added a per-character `auto / visual / reading` default for new `见面`
+    sessions. Auto and unavailable visual preferences fall back to the real
+    reading layout when there is no dedicated date portrait; avatar orbs no
+    longer impersonate portrait assets.
+  - Kept unfinished session recovery authoritative through
+    `savedDateState.isNovelMode`; the session toggle does not mutate the saved
+    character default.
+  - Split Date send/reroll output contracts by the current presentation. Visual
+    keeps parser-facing emotion/line structure; reading uses natural paragraphs
+    without mechanical tags. Both retain the existing daily-scene boundary and
+    treat action/narration as optional rather than mandatory performance.
+  - Reused the shared shell safe-area for the `时光簿` back/add controls and
+    aligned both 40 px targets. Empty Chat headers no longer reserve a hidden
+    status row and use runtime-aware vertical centering.
+
+- verification:
+  - `verify:date-presentation`, `verify:shell-chrome`,
+    `verify:chat-header-status`, typecheck and production build are Green.
+  - A 390 px browser fixture confirms a new no-portrait character opens the
+    reading surface without an avatar orb. Android standalone Date remains a
+    physical-device checkpoint because the local standalone simulation was
+    intercepted by the existing runtime error page.
+  - Full `verify:health` additionally protects the pre-existing companion
+    interaction-quality contract after the Date output helper extraction.
+
 ## 2026-08-01 Compact System Notice Overlay
 
 - done:

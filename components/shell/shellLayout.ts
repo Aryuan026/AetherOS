@@ -8,6 +8,7 @@ export const SHELL_APP_HEADER_CONTENT_TOP = `var(--shell-header-content-top, cal
 export const SHELL_APP_HEADER_ROW_HEIGHT = '3rem';
 export const SHELL_CHAT_HEADER_EXTRA_TOP = 'var(--shell-chat-header-extra-top, 5px)';
 export const SHELL_CHAT_HEADER_ROW_HEIGHT = 'var(--shell-chat-header-row-height, 48px)';
+export const SHELL_CHAT_HEADER_EMPTY_TITLE_OFFSET = 'var(--shell-chat-header-empty-title-offset, 0px)';
 export const SHELL_OVERLAY_TOP = `var(--shell-overlay-top, calc(${SHELL_TOP_INSET} + 0.5rem))`;
 
 export const APP_HEADER_BASE_CLASS =

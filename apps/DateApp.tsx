@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useOS } from '../context/OSContext';
 import { DB } from '../utils/db';
 import { CharacterProfile, Message, DateState } from '../types';
+import type { DatePresentationMode } from '../types';
 import type { HistoryScope } from '../domain/historyImport/types';
 import { ContextBuilder } from '../utils/context';
 import { safeResponseJson } from '../utils/safeApi';
@@ -17,6 +18,7 @@ import { useVirtualWorldClock } from '../hooks/useVirtualWorldClock';
 import { BookOpen } from '@phosphor-icons/react';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 import { DATE_EXPERIENCE_BOUNDARY, getBuiltInDateBackgroundForHour, getDateFallbackMood, resolveDateDefaultPortrait } from '../utils/dateExperience';
+import { buildDateSessionOutputContract, resolveDatePresentationMode } from '../utils/datePresentation';
 import {
     prepareCompanionMaterialPrompt,
     recordPreparedCompanionMaterialPromptDelivery,
@@ -262,7 +264,7 @@ const DateApp: React.FC = () => {
         if (c.savedDateState) {
             setPendingSessionChar(c);
         } else {
-            startPeek(c);
+            startDateSession(c);
         }
     };
 
@@ -288,7 +290,7 @@ const DateApp: React.FC = () => {
     const handleStartNewSession = () => {
         if (!pendingSessionChar) return;
         updateCharacter(pendingSessionChar.id, { savedDateState: undefined });
-        startPeek(pendingSessionChar);
+        startDateSession(pendingSessionChar);
         setPendingSessionChar(null);
     };
 
@@ -334,6 +336,38 @@ const DateApp: React.FC = () => {
         // 2. 切换模式并刷新数据
         setMode('session');
         await loadDateMessages();
+    };
+
+    const resolveDefaultPresentation = (c: CharacterProfile): DatePresentationMode => (
+        resolveDatePresentationMode(
+            c.datePresentationPreference,
+            resolveDateDefaultPortrait(c).hasDedicatedPortrait,
+        )
+    );
+
+    const startReadingSession = (c: CharacterProfile) => {
+        const relationshipScope = strictRelationshipScopeForProfile(c.id, userProfile);
+        if (!relationshipScope) {
+            addToast('请先把当前面具与角色关系连接好。', 'info');
+            return;
+        }
+        dateRelationshipScopeRef.current = relationshipScope;
+        dateSessionIdRef.current = createDateSessionId();
+        setActiveCharacterId(c.id);
+        setPeekLoading(false);
+        setHasSavedOpening(false);
+        // Reading is a real session surface, not an empty visual peek. This quiet line
+        // gives a new meeting a readable first beat without pretending to be a portrait.
+        setPeekStatus('这次见面刚刚开始。');
+        setMode('session');
+    };
+
+    const startDateSession = (c: CharacterProfile) => {
+        if (resolveDefaultPresentation(c) === 'reading') {
+            startReadingSession(c);
+            return;
+        }
+        startPeek(c);
     };
 
     // --- Peek (Generation) Logic ---
@@ -455,7 +489,7 @@ const DateApp: React.FC = () => {
     };
 
     // --- Session API Logic ---
-    const handleSendMessage = async (text: string): Promise<string> => {
+    const handleSendMessage = async (text: string, presentationMode: DatePresentationMode): Promise<string> => {
         if (!char) throw new Error("No char");
         const requestTime = Date.now();
         const relationshipScope = dateRelationshipScopeRef.current;
@@ -575,28 +609,9 @@ const DateApp: React.FC = () => {
               })?.markdown
               : undefined,
         ].filter(Boolean).join('\n');
-        const REQUIRED_EMOTIONS = ['normal', 'happy', 'angry', 'sad', 'shy'];
-        const dateEmotions = [...REQUIRED_EMOTIONS, ...(char.customDateSprites || [])];
-
-        // Explicitly tell AI about the scene
-        systemPrompt += `${DATE_EXPERIENCE_BOUNDARY}
-
-### [Visual Novel Mode: 视觉小说脚本模式]
-你正在与用户进行**面对面**的互动。这不是聊天，是一场真实的见面。
-
-### 核心规则：一行一念 (One Line per Beat)
-前端解析器基于**换行符**来分割气泡。
-1. **禁止混写**: 严禁在同一行里既写动作又写带引号的台词。
-2. **情绪标签**: **每一行都必须以** \`[emotion]\` **开头**，表示该行的表情立绘。标签随内容选择，连续多行可以使用同一标签；仅限使用以下情绪: ${dateEmotions.join(', ')}。
-3. **格式**: 台词用双引号 **"..."**，动作/叙述直接写（不加引号）。
-
-### ⭐ 动作与叙述行的写法
-动作与叙述是可选的：一句台词、一次停顿或短暂沉默都可以构成完整回应。出现动作时，让它具体、单纯而有节奏；场景需要时再使用感官细节，回应长度、镜头密度和情绪变化服从角色卡与本轮现场。
-
-### 场景上下文
-1. **Location**: 你们现在**面对面**。
-2. **Context**: 参考历史记录。如果刚刚才看到开场白（Opening），请自然接话。
-`;
+        const dateEmotions = ['normal', 'happy', 'angry', 'sad', 'shy', ...(char.customDateSprites || [])];
+        const outputContract = buildDateSessionOutputContract(presentationMode, dateEmotions);
+        systemPrompt += `${DATE_EXPERIENCE_BOUNDARY}\n\n${outputContract.systemPrompt}`;
 
         const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
             method: 'POST',
@@ -606,7 +621,7 @@ const DateApp: React.FC = () => {
                 messages: [
                     { role: 'system', content: systemPrompt },
                     ...historyMsgs,
-                    { role: 'user', content: `${text}\n\n(System Note: 保持 VN 的行首情绪标签与台词/叙述分行格式；内容长度、是否使用动作、立场与停顿服从角色卡、本轮互动参考和现场。)` }
+                    { role: 'user', content: `${text}\n\n${outputContract.userPrompt}` }
                 ],
                 temperature: 0.85
             })
@@ -658,7 +673,7 @@ const DateApp: React.FC = () => {
         return content;
     };
 
-    const handleReroll = async (): Promise<string> => {
+    const handleReroll = async (presentationMode: DatePresentationMode): Promise<string> => {
         if (!char || dateMessages.length === 0) throw new Error("No context");
         const requestTime = Date.now();
         
@@ -761,21 +776,9 @@ const DateApp: React.FC = () => {
               })?.markdown
               : undefined,
         ].filter(Boolean).join('\n');
-        const REQUIRED_EMOTIONS_R = ['normal', 'happy', 'angry', 'sad', 'shy'];
-        const dateEmotionsR = [...REQUIRED_EMOTIONS_R, ...(char.customDateSprites || [])];
-        systemPrompt += `${DATE_EXPERIENCE_BOUNDARY}
-
-### [Visual Novel Mode: 视觉小说脚本模式]
-你正在与用户进行**面对面**的互动。
-
-### 格式规则
-1. **禁止混写**: 严禁在同一行里既写动作又写带引号的台词。
-2. **情绪标签**: \`[emotion]\` (放在行首)。**仅限使用以下情绪**: ${dateEmotionsR.join(', ')}。不要使用不在列表中的标签。
-3. **格式**: 台词用双引号 **"..."**，动作/叙述直接写。
-
-### ⭐ 动作与叙述行的写法
-动作与叙述是可选的；一句台词或一次停顿也可以成立。出现动作时保持具体与节奏，感官细节只在场景确实需要时使用。
-`;
+        const dateEmotions = ['normal', 'happy', 'angry', 'sad', 'shy', ...(char.customDateSprites || [])];
+        const outputContract = buildDateSessionOutputContract(presentationMode, dateEmotions);
+        systemPrompt += `${DATE_EXPERIENCE_BOUNDARY}\n\n${outputContract.systemPrompt}`;
 
         const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
             method: 'POST',
@@ -785,7 +788,7 @@ const DateApp: React.FC = () => {
                 messages: [
                     { role: 'system', content: systemPrompt },
                     ...historyMsgs,
-                    { role: 'user', content: `${lastUserMsg.content}\n\n(System Note: Reroll. 换一个仍符合角色卡、互动参考与现场的有效角度；保持 VN 的行首标签和分行格式。)` }
+                    { role: 'user', content: `${lastUserMsg.content}\n\n${outputContract.userPrompt}` }
                 ],
                 temperature: 0.9 
             })
@@ -1307,6 +1310,7 @@ const DateApp: React.FC = () => {
                     messages={dateMessages}
                     peekStatus={peekStatus.startsWith('(无法感知状态:') ? '' : peekStatus}
                     initialState={char.savedDateState}
+                    initialPresentationMode={resolveDefaultPresentation(char)}
                     sessionId={dateSessionIdRef.current || undefined}
                     relationshipScope={dateRelationshipScopeRef.current || undefined}
                     onSendMessage={handleSendMessage}

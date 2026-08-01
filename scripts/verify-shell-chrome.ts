@@ -73,14 +73,17 @@ assert.equal(androidStandaloneStyle['--shell-header-content-top'], 'calc(var(--s
 assert.equal(androidStandaloneStyle['--shell-header-height'], 'calc(var(--shell-top-inset) + 3rem)');
 assert.equal(androidStandaloneStyle['--shell-chat-header-extra-top'], '0px');
 assert.equal(androidStandaloneStyle['--shell-chat-header-row-height'], '42px');
+assert.equal(androidStandaloneStyle['--shell-chat-header-empty-title-offset'], '2.5px');
 assert.equal(softwareStyle['--shell-chat-header-row-height'], '48px');
 assert.equal(softwareStyle['--shell-chat-header-extra-top'], '5px');
+assert.equal(softwareStyle['--shell-chat-header-empty-title-offset'], '-4px');
 assert.equal(androidStandaloneStyle['--shell-overlay-top'], 'calc(var(--shell-top-inset) + 0.5rem)');
 
 const phoneShell = read('components/PhoneShell.tsx');
 const appearance = read('apps/Appearance.tsx');
 const launcher = read('apps/Launcher.tsx');
 const socialApp = read('apps/SocialApp.tsx');
+const scheduleApp = read('apps/ScheduleApp.tsx');
 const chatHeaderShell = read('components/chat/ChatHeaderShell.tsx');
 const shellLayout = read('components/shell/shellLayout.ts');
 const simulatedStatusBar = read('components/os/SimulatedPhoneStatusBar.tsx');
@@ -128,7 +131,17 @@ assert.match(socialApp, /SOCIAL_DETAIL_HEADER_VERTICAL_OFFSET_PX = 3/);
 assert.match(socialApp, /SHELL_APP_HEADER_CONTENT_TOP} \+ \${SOCIAL_DETAIL_HEADER_VERTICAL_OFFSET_PX}px/);
 assert.match(shellLayout, /--shell-header-content-top/);
 assert.match(shellLayout, /--shell-chat-header-extra-top/);
+assert.match(shellLayout, /--shell-chat-header-empty-title-offset/);
 assert.match(shellLayout, /--shell-overlay-top/);
+assert.match(scheduleApp, /SHELL_OVERLAY_TOP/);
+assert.match(
+    scheduleApp,
+    /className="[^"]*h-10 w-10[^"]*"[\s\S]*?style=\{\{ top: SHELL_OVERLAY_TOP \}\}[\s\S]*?data-timebook-top-control="back"/,
+);
+assert.match(
+    scheduleApp,
+    /className="[^"]*h-10 w-10[^"]*"[\s\S]*?style=\{\{ top: SHELL_OVERLAY_TOP \}\}[\s\S]*?data-timebook-top-control="add"/,
+);
 
 const requiredVariableConsumers = [
     'components/shell/AppHeader.tsx',
@@ -157,7 +170,7 @@ const requiredVariableConsumers = [
 requiredVariableConsumers.forEach((path) => {
     assert.match(
         read(path),
-        /SHELL_APP_HEADER_(?:CONTENT_TOP|HEIGHT)|SHELL_TOP_INSET/,
+        /SHELL_APP_HEADER_(?:CONTENT_TOP|HEIGHT)|SHELL_TOP_INSET|SHELL_OVERLAY_TOP/,
         `${path} must consume the shared top coordinate source`,
     );
 });

@@ -654,13 +654,19 @@
   or React unmount, but it must not call the parent exit/navigation path.
   Showing “进度已保存” and returning to selection should happen only after the
   explicit “保存并退出” action.
-- `见面` should default to an embodied visual-scene player rather than a
-  question-answer text page: the user first sees the character "present" in the
-  scene, then approaches, then advances short scene beats.
-- If a character has no dedicated date portrait or generated background, `见面`
-  must still avoid black empty screens by using an avatar-based presence card,
-  blurred color mood, and nameplate fallback. Generating per-character back
-  views should remain optional, not a requirement for self-insert/original
+- Each character may store a default `见面` presentation preference:
+  `auto / visual / reading`. `auto` is the absent-field default. A new session
+  resolves `auto` to visual only when the character has a dedicated date
+  portrait; otherwise it opens directly in the real reading surface. Explicit
+  visual preference must also fall back to reading when no dedicated portrait
+  exists.
+- A resumed `savedDateState` must restore that session's saved `isNovelMode`.
+  Changing the character default affects later new sessions only. The existing
+  in-session visual/reading toggle is temporary and must not silently rewrite
+  the character default.
+- `见面` must not use a profile avatar, avatar orb, empty sprite frame, or
+  nameplate as a substitute for a dedicated date portrait. Generating or
+  uploading per-character portraits remains optional for self-insert/original
   character players.
 - The fallback presence mood should respond to virtual time with distinct
   dawn/day/dusk/night light, so custom characters without backgrounds do not
@@ -674,6 +680,14 @@
   transient floating text over the scene, while quoted speech belongs in the
   bottom dialogue box. The long-text page is a reading/record mode, not the
   primary interaction mode.
+- Model output format follows the current session presentation. Visual mode may
+  require parser-facing emotion tags and separate dialogue/action lines, while
+  reading mode uses natural dialogue, action and observable narration
+  paragraphs without emotion tags, system prefixes or mechanical script
+  markers. Actions and narration remain optional in both modes: format rules
+  must not force every reply into the same performance pattern. Neither
+  presentation may change the role card, imitate the player's language style,
+  or promote a daily meeting into an irreversible mainline event.
 - Visual-scene mode should reserve three safe zones: a lowered compact top
   control row, a high presence/sprite zone, and a bottom text/input zone.
   Avatar-only fallbacks should sit around 44-46% of screen height rather than

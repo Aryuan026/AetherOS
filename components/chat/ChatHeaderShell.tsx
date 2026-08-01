@@ -4,6 +4,7 @@ import { CaretLeft, Lightning, SlidersHorizontal } from '@phosphor-icons/react';
 import { AvatarFramePreset, CharacterBuff, CharacterProfile } from '../../types';
 import {
     SHELL_APP_HEADER_CONTENT_TOP,
+    SHELL_CHAT_HEADER_EMPTY_TITLE_OFFSET,
     SHELL_CHAT_HEADER_EXTRA_TOP,
     SHELL_CHAT_HEADER_ROW_HEIGHT,
     SHELL_TOP_INSET,
@@ -205,6 +206,7 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     const signatureText = headerStatus.kind === 'none' ? '' : headerStatus.text;
     const hasCenteredStatus = headerStatus.kind !== 'none';
     const useStackedCenteredHeader = !selectionMode && useCenteredLayout && hasCenteredStatus;
+    const useCenteredEmptyHeader = !selectionMode && useCenteredLayout && !hasCenteredStatus;
     const useCompactHeaderMetrics = useCenteredLayout || !!signatureText;
 
     const headerToneClass =
@@ -343,9 +345,11 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
     const renderCenteredInfo = () => (
         <div className="flex w-full min-w-0 max-w-full flex-col items-center justify-center text-center">
             {renderCenteredName()}
-            <div className="mt-1 flex items-center justify-center gap-2 flex-wrap">
-                {onlineStatusNode}
-            </div>
+            {onlineStatusNode ? (
+                <div className="mt-1 flex items-center justify-center gap-2 flex-wrap">
+                    {onlineStatusNode}
+                </div>
+            ) : null}
         </div>
     );
 
@@ -506,7 +510,10 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
                         onClick={onShowCharsPanel}
                         data-chat-header-center
                         className="absolute left-1/2 top-1/2 flex max-w-[420px] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
-                        style={{ width: `calc(100% - ${CENTERED_HEADER_SIDE_RESERVE_PX * 2}px)` }}
+                        style={{
+                            width: `calc(100% - ${CENTERED_HEADER_SIDE_RESERVE_PX * 2}px)`,
+                            marginTop: useCenteredEmptyHeader ? SHELL_CHAT_HEADER_EMPTY_TITLE_OFFSET : undefined,
+                        }}
                     >
                         {renderCenteredInfo()}
                     </div>
