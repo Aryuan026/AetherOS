@@ -102,6 +102,26 @@ for (const forbiddenStartupDependency of [
 }
 assert.match(read('styles.css'), /@tailwind utilities;/, 'Tailwind must be compiled into the release CSS');
 assert.match(startupHtml, /id="aetheros-boot"/, 'startup HTML must retain a visible failure fallback');
+assert.match(
+    read('vite.config.ts'),
+    /base:\s*['"]\.\/['"]/,
+    'every production build must use relocatable asset URLs for subpath hosting',
+);
+assert.doesNotMatch(
+    read('vite.config.ts'),
+    /process\.env\.GITHUB_PAGES\s*\?\s*['"]\.\/['"]\s*:\s*['"]\/['"]/,
+    'the ordinary server build must not fall back to root-absolute asset URLs',
+);
+assert.match(
+    startupHtml,
+    /网络有点慢，正在继续打开/,
+    'slow startup must remain visibly in progress instead of becoming a false failure',
+);
+assert.doesNotMatch(
+    startupHtml,
+    /setTimeout\(showFailure/,
+    'elapsed time alone must never mark startup as failed',
+);
 
 const optimizedAssets = [
     ['public/brand/aetheros-starcore.jpg', 400_000],

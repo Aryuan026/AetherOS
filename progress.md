@@ -1,5 +1,32 @@
 # AetherOS Progress
 
+## 2026-08-01 Subpath Startup Repair
+
+- cause:
+  - The isolated `/aetheros/` server received an ordinary Vite build whose
+    generated entrypoints were root-absolute `/assets/*` URLs. The static files
+    existed under `/aetheros/assets/*`, but the browser's real requests received
+    404 and the app never mounted.
+  - The 12-second boot timer also treated slow transfer as a crash. On the
+    observed public route the compressed 335 KB entry bundle took about 40
+    seconds, so a valid but slow load could display a false failure state.
+
+- done:
+  - Made every production build relocatable with `base: './'`; GitHub Pages,
+    `/aetheros/`, Capacitor and other static directories now use the same
+    subpath-safe artifact contract.
+  - Changed the timer-only boot state to “network is slow, still opening”. Only
+    a real resource/runtime error marks startup failed.
+  - Added public-release guards against restoring the conditional root-absolute
+    build and against timeout-only failure.
+
+- acceptance:
+  - The built HTML must reference `./assets/*`; the exact URLs extracted from
+    the deployed HTML must return 200 before the server swap is accepted.
+  - Browser acceptance must prove the boot fallback is removed by the real App,
+    with no console error. Checking that files merely exist on disk is not
+    sufficient.
+
 ## 2026-07-30 Character Chat Appearance And Transient Header State
 
 - done:

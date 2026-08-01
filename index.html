@@ -140,9 +140,15 @@
           boot.setAttribute('data-state', 'failed');
         };
 
-        window.addEventListener('error', showFailure, { once: true });
+        const showSlowLoading = () => {
+          if (!boot || !boot.isConnected || boot.dataset.state === 'failed') return;
+          const text = boot.querySelector('span');
+          if (text) text.textContent = '网络有点慢，正在继续打开…';
+        };
+
+        window.addEventListener('error', showFailure, { once: true, capture: true });
         window.addEventListener('unhandledrejection', showFailure, { once: true });
-        window.setTimeout(showFailure, 12000);
+        window.setTimeout(showSlowLoading, 12000);
       })();
     </script>
     <script type="module" src="/index.tsx"></script>
