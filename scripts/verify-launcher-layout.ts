@@ -7,6 +7,7 @@ import {
   DEFAULT_LAUNCHER_DOCK_APP_IDS,
   LAUNCHER_APPS_PER_PAGE,
   createDefaultLauncherLayout,
+  isDefaultLauncherLayout,
   moveLauncherApp,
   normalizeLauncherLayout,
   normalizeLauncherLayoutForCatalog,
@@ -20,6 +21,8 @@ assert.deepEqual(defaults.appOrder, DEFAULT_LAUNCHER_APP_ORDER);
 assert.deepEqual(defaults.dockAppIds, DEFAULT_LAUNCHER_DOCK_APP_IDS);
 assert.deepEqual(defaults.hiddenAppIds, []);
 assert.ok(defaults.dockAppIds.includes(AppID.Settings));
+assert.equal(isDefaultLauncherLayout(undefined), true);
+assert.equal(isDefaultLauncherLayout(defaults), true);
 
 const omittedCurrentApp = defaults.appOrder[defaults.appOrder.length - 1];
 const normalized = normalizeLauncherLayout({
@@ -36,6 +39,7 @@ assert.deepEqual(normalized.hiddenAppIds, [AppID.Appearance]);
 
 const hidden = setLauncherAppHidden(defaults, AppID.Appearance, true);
 assert.ok(hidden.hiddenAppIds.includes(AppID.Appearance));
+assert.equal(isDefaultLauncherLayout(hidden), false);
 const restored = setLauncherAppHidden(hidden, AppID.Appearance, false);
 assert.ok(!restored.hiddenAppIds.includes(AppID.Appearance));
 const settingsCannotHide = setLauncherAppHidden(defaults, AppID.Settings, true);
@@ -46,6 +50,7 @@ const firstGridApp = defaults.appOrder[0];
 const secondGridApp = defaults.appOrder[1];
 const movedGrid = moveLauncherApp(defaults, firstGridApp, 1);
 assert.deepEqual(movedGrid.appOrder.slice(0, 2), [secondGridApp, firstGridApp]);
+assert.equal(isDefaultLauncherLayout(movedGrid), false);
 const movedDock = moveLauncherApp(defaults, AppID.Settings, -1);
 assert.equal(movedDock.dockAppIds.indexOf(AppID.Settings), defaults.dockAppIds.indexOf(AppID.Settings) - 1);
 
@@ -109,5 +114,7 @@ assert.match(layoutEditorSource, /个 App 页/);
 assert.match(layoutEditorSource, /固定日历页不参与排序/);
 assert.match(settingsSource, /data-launcher-layout-recovery/);
 assert.match(settingsSource, /createDefaultLauncherLayout\(\)/);
+assert.match(settingsSource, /hasCustomizedLauncherLayout\s*&&\s*<section/);
+assert.match(settingsSource, /!isDefaultLauncherLayout\(theme\.launcherLayout\)/);
 
 console.log('launcher layout contract: OK — shared pagination, visibility, Dock recovery, and registry-driven new apps are guarded');

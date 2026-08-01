@@ -100,6 +100,19 @@ export const normalizeLauncherLayout = (value: unknown): LauncherLayoutV1 => (
   normalizeLauncherLayoutForCatalog(value, currentLauncherCatalog)
 );
 
+const sameAppOrder = (left: readonly AppID[], right: readonly AppID[]): boolean => (
+  left.length === right.length && left.every((appId, index) => appId === right[index])
+);
+
+/** Settings only needs a recovery row after the human has changed the layout. */
+export const isDefaultLauncherLayout = (value: unknown): boolean => {
+  const layout = normalizeLauncherLayout(value);
+  const defaults = createDefaultLauncherLayout();
+  return sameAppOrder(layout.appOrder, defaults.appOrder)
+    && sameAppOrder(layout.dockAppIds, defaults.dockAppIds)
+    && sameAppOrder(layout.hiddenAppIds, defaults.hiddenAppIds);
+};
+
 /** Launcher and Appearance share this projection so page boundaries cannot drift. */
 export const paginateLauncherAppIds = (value: unknown): AppID[][] => {
   const layout = normalizeLauncherLayout(value);

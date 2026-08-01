@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolvePwaInstallRowPresentation } from '../utils/pwaInstallPresentation.ts';
+import type { PwaRuntimeSnapshot } from '../utils/pwaRuntime.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -17,6 +19,30 @@ const runtimeSource = read('utils/pwaRuntime.ts');
 const keepAliveSource = read('utils/keepAlive.ts');
 const workerSource = read('worker/sw-keep-alive.ts');
 const viteSource = read('vite.config.ts');
+const installRowSource = read('components/settings/PwaInstallRow.tsx');
+
+const runtimeSnapshot = (patch: Partial<PwaRuntimeSnapshot> = {}): PwaRuntimeSnapshot => ({
+  platform: 'other',
+  standalone: false,
+  installedThisSession: false,
+  installPromptAvailable: false,
+  updateAvailable: false,
+  isCapacitor: false,
+  ...patch,
+});
+
+assert.equal(resolvePwaInstallRowPresentation(runtimeSnapshot()), null);
+assert.equal(resolvePwaInstallRowPresentation(runtimeSnapshot({ standalone: true })), null);
+assert.equal(resolvePwaInstallRowPresentation(runtimeSnapshot({ installedThisSession: true })), null);
+assert.equal(resolvePwaInstallRowPresentation(runtimeSnapshot({ isCapacitor: true })), null);
+assert.equal(resolvePwaInstallRowPresentation(runtimeSnapshot({ installPromptAvailable: true }))?.key, 'prompt');
+assert.equal(resolvePwaInstallRowPresentation(runtimeSnapshot({ platform: 'ios' }))?.key, 'ios-manual');
+assert.equal(
+  resolvePwaInstallRowPresentation(runtimeSnapshot({ standalone: true, updateAvailable: true }))?.key,
+  'update',
+  'an installed desktop app must still expose a real release action',
+);
+assert.doesNotMatch(installRowSource, /已从手机桌面打开|已添加到手机桌面|browser-menu/);
 
 assert.ok(
   indexSource.indexOf('initializePwaRuntime();') < indexSource.indexOf('ReactDOM.createRoot'),

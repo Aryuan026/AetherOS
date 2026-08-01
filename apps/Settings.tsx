@@ -35,7 +35,7 @@ import {
   saveWorldlineMemoryReceiptSettings,
 } from '../utils/memoryCore';
 import type { AutoMemoryLedgerEntry, MemoryDMSettings, WorldlineMemoryReceipt } from '../utils/memoryCore';
-import { createDefaultLauncherLayout } from '../utils/launcherLayout';
+import { createDefaultLauncherLayout, isDefaultLauncherLayout } from '../utils/launcherLayout';
 import PwaInstallRow from '../components/settings/PwaInstallRow';
 
 const memoryReceiptModeLabel = (mode: WorldlineMemoryReceipt['mode']): string => {
@@ -123,8 +123,10 @@ const Settings: React.FC = () => {
       aiRuntimeRouting, updateAiRuntimeRouting,
       sysOperation, // Get progress state
       realtimeConfig, updateRealtimeConfig, // 实时感知配置
-      characters, userProfile, updateTheme
+      characters, userProfile, theme, updateTheme
   } = useOS();
+
+  const hasCustomizedLauncherLayout = !isDefaultLauncherLayout(theme.launcherLayout);
   
   const [localKey, setLocalKey] = useState(apiConfig.apiKey);
   const [localUrl, setLocalUrl] = useState(apiConfig.baseUrl);
@@ -515,8 +517,8 @@ const Settings: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6 no-scrollbar pb-20">
 
         {/* Settings is normalization-locked into the Dock, so this recovery
-            action remains reachable even if Appearance or other apps are hidden. */}
-        <section data-launcher-layout-recovery className="order-first rounded-3xl border border-violet-100 bg-violet-50/70 p-4 shadow-sm">
+            action appears here as soon as Appearance changes the layout. */}
+        {hasCustomizedLauncherLayout && <section data-launcher-layout-recovery className="order-first rounded-3xl border border-violet-100 bg-violet-50/70 p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                     <h2 className="text-[13px] font-semibold text-slate-600">桌面 App</h2>
@@ -530,7 +532,7 @@ const Settings: React.FC = () => {
                     恢复默认布局
                 </button>
             </div>
-        </section>
+        </section>}
 
         <PwaInstallRow />
         
@@ -682,7 +684,7 @@ const Settings: React.FC = () => {
                     </div>
                 </div>
                 
-                <button onClick={handleSaveApi} className="w-full py-3 rounded-2xl font-bold text-white shadow-lg shadow-primary/20 bg-primary active:scale-95 transition-all mt-2">
+                <button onClick={handleSaveApi} className="mt-2 w-full rounded-2xl bg-primary py-3 text-[11px] font-bold text-white shadow-lg shadow-primary/20 transition-all active:scale-95">
                     {statusMsg || '保存并启用当前填写'}
                 </button>
                 <p className="text-[11px] text-slate-400 text-center leading-relaxed">
