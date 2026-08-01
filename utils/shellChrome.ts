@@ -36,24 +36,51 @@ export const migrateStoredShellChromeTheme = (
 
 export type ShellChromeStyle = CSSProperties & Record<`--shell-${string}`, string>;
 
-export const buildShellChromeStyle = (mode: ShellChromeMode): ShellChromeStyle => {
+export type ShellChromeRuntimeEnvironment = {
+    standalone?: boolean;
+    ios?: boolean;
+    native?: boolean;
+};
+
+export const shouldCondenseStandaloneTop = (
+    environment: ShellChromeRuntimeEnvironment = {},
+): boolean => !!(
+    environment.standalone && !environment.ios && !environment.native
+);
+
+export const resolveShellSafeAreaTop = (
+    environment: ShellChromeRuntimeEnvironment = {},
+): string => (
+    shouldCondenseStandaloneTop(environment)
+        ? '0px'
+        : 'env(safe-area-inset-top, 0px)'
+);
+
+export const buildShellChromeStyle = (
+    mode: ShellChromeMode,
+    environment: ShellChromeRuntimeEnvironment = {},
+): ShellChromeStyle => {
+    const condenseStandaloneTop = shouldCondenseStandaloneTop(environment);
     const worldStripHeight = mode === 'virtual_city' ? '34px' : '0px';
+    const headerBreathingSpace = condenseStandaloneTop ? '0.25rem' : '0.5rem';
+    const nonPhoneHeaderHeight = condenseStandaloneTop ? '3.25rem' : '3.5rem';
     const topInset = mode === 'simulated_phone'
         ? 'calc(max(12px, var(--shell-safe-area-top)) + 20px)'
         : mode === 'virtual_city'
             ? 'calc(var(--shell-safe-area-top) + 34px)'
             : 'var(--shell-safe-area-top)';
     return {
-        '--shell-safe-area-top': 'env(safe-area-inset-top, 0px)',
+        '--shell-safe-area-top': resolveShellSafeAreaTop(environment),
         '--shell-world-strip-height': worldStripHeight,
         '--shell-top-strip-height': mode === 'software' ? '0px' : topInset,
         '--shell-top-inset': topInset,
         '--shell-header-content-top': mode === 'simulated_phone'
             ? 'var(--shell-top-inset)'
-            : 'calc(var(--shell-top-inset) + 0.5rem)',
+            : `calc(var(--shell-top-inset) + ${headerBreathingSpace})`,
         '--shell-header-height': mode === 'simulated_phone'
             ? 'calc(var(--shell-top-inset) + 3rem)'
-            : 'calc(var(--shell-top-inset) + 3.5rem)',
-        '--shell-overlay-top': 'calc(var(--shell-top-inset) + 0.5rem)',
+            : `calc(var(--shell-top-inset) + ${nonPhoneHeaderHeight})`,
+        '--shell-chat-header-extra-top': condenseStandaloneTop ? '2px' : '5px',
+        '--shell-overlay-top': `calc(var(--shell-top-inset) + ${headerBreathingSpace})`,
     };
 };

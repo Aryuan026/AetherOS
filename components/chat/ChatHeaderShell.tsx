@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CaretLeft, Lightning, SlidersHorizontal } from '@phosphor-icons/react';
 import { AvatarFramePreset, CharacterBuff, CharacterProfile } from '../../types';
-import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_TOP_INSET } from '../shell/shellLayout';
+import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_CHAT_HEADER_EXTRA_TOP, SHELL_TOP_INSET } from '../shell/shellLayout';
 import AvatarWithFrame from '../common/AvatarWithFrame';
 import { resolveChatHeaderStatus } from '../../utils/chatHeaderStatus';
 import { activeCharacterBuffs } from '../../utils/characterLiveState';
@@ -46,7 +46,6 @@ interface ChatHeaderShellProps {
 const COLLAPSED_BUFF_MIN = 2;
 const COLLAPSED_BUFF_MAX = 3;
 const CHIP_GAP_PX = 2;
-const CHAT_HEADER_VERTICAL_OFFSET_PX = 5;
 const CENTERED_HEADER_ACTION_RAIL_PX = 96;
 const CENTERED_HEADER_SIDE_RESERVE_PX = CENTERED_HEADER_ACTION_RAIL_PX + 4;
 const CENTERED_MOOD_VERTICAL_OFFSET_PX = 3;
@@ -249,10 +248,10 @@ const ChatHeaderShell: React.FC<ChatHeaderShellProps> = ({
           : 'bg-slate-300 shadow-[0_0_0_3px_rgba(148,163,184,0.12)]';
     const headerShellStyle: React.CSSProperties = {
         ...headerBackgroundStyle,
-        paddingTop: `calc(${SHELL_APP_HEADER_CONTENT_TOP} + ${CHAT_HEADER_VERTICAL_OFFSET_PX}px)`,
+        paddingTop: `calc(${SHELL_APP_HEADER_CONTENT_TOP} + ${SHELL_CHAT_HEADER_EXTRA_TOP})`,
         height: useStackedCenteredHeader
             ? 'auto'
-            : `calc(${SHELL_TOP_INSET} + ${headerBodyHeightPx + CHAT_HEADER_VERTICAL_OFFSET_PX}px)`,
+            : `calc(${SHELL_TOP_INSET} + ${headerBodyHeightPx}px + ${SHELL_CHAT_HEADER_EXTRA_TOP})`,
     };
 
     const onlineStatusNode = null;

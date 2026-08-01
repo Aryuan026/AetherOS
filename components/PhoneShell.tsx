@@ -14,7 +14,7 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar as CapStatusBar, Style as StatusBarStyle } from '@capacitor/status-bar';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
-import { isIOSStandaloneWebApp } from '../utils/iosStandalone';
+import { isIOSDevice, isIOSStandaloneWebApp, isStandaloneDisplayMode } from '../utils/iosStandalone';
 import AppErrorBoundary from './os/AppErrorBoundary';
 import { publicAsset } from '../utils/publicAssets';
 import { buildShellChromeStyle, resolveShellChromeMode } from '../utils/shellChrome';
@@ -414,7 +414,11 @@ const PhoneShell: React.FC = () => {
   const shellChromeMode = requestedShellChromeMode === 'virtual_city'
     ? (virtualWorld.context ? 'virtual_city' : 'software')
     : requestedShellChromeMode;
-  const shellChromeStyle = buildShellChromeStyle(shellChromeMode);
+  const shellChromeStyle = buildShellChromeStyle(shellChromeMode, {
+    standalone: isStandaloneDisplayMode(),
+    ios: isIOSDevice(),
+    native: Capacitor.isNativePlatform(),
+  });
   const baseShellTone = activeApp === AppID.Launcher
     ? 'launcher'
     : activeApp === AppID.Call || activeApp === AppID.CheckPhone
