@@ -1,5 +1,35 @@
 # AetherOS Progress
 
+## 2026-08-01 Settings Action-Only Refinement
+
+- done:
+  - `桌面 App / 恢复默认布局` remains the independent rescue path required by
+    the launcher contract, but Settings now shows it only after App visibility
+    or ordering differs from the current default layout.
+  - The PWA row is action-only. A real update still takes priority, Android /
+    desktop install prompts and iOS manual installation remain supported, while
+    standalone launch, same-session install success and browsers without an
+    available install action no longer leave a permanent status card.
+  - Normalized `保存并启用当前填写` to the Settings control scale at 11 px.
+
+- verification and deployment:
+  - Full `npm run verify:health` is Green, including launcher layout, TypeScript,
+    production build, online-first release and PWA runtime gates. The runtime
+    presentation fixture covers update, install, iOS, standalone, installed,
+    unavailable and Capacitor states.
+  - Deployed `main@eebf909` with build ID
+    `aetheros-2.0.0-b1a9a2a0f3c9b260`: 261 regular files and 94 verified gzip
+    sidecars. Local, staging and public release checks are Green.
+  - A real public browser observed `新版本可用`, completed the explicit update,
+    then reopened Settings with neither an install-status placeholder nor the
+    default-layout recovery card. The API save button rendered at 11 px and the
+    browser console remained clean.
+  - Public GET is 200, POST is 403 and retired `/sullyos/` remains 410. Home
+    stayed PID `368299`, Bridge PID `344776` and Nginx PID `226154`; all remain
+    active with `NRestarts=0`. No service reload or restart ran.
+  - Rollback is
+    `/srv/asherie/backups/aetheros-settings-eebf909-20260801T081215Z/aetheros-static.previous`.
+
 ## 2026-08-01 Online-First Desktop Install And Backup Gate
 
 - done:
