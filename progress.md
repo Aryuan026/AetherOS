@@ -27,6 +27,29 @@
     with no console error. Checking that files merely exist on disk is not
     sufficient.
 
+- deployment:
+  - Public `Aryuan026/AetherOS main@3763965`; GitHub Pages run `30685029793`
+    completed successfully.
+  - The release contains 260 regular files and 93 valid gzip sidecars. Local,
+    staging, server and public-lab `index.html` SHA-256 is
+    `1651618b4d8e5dd02677ca919ef55436aa2d290df3b6466c64708bd6120be2e3`.
+  - Only `/srv/asherie/sites/science-demos/aetheros` was atomically replaced.
+    Rollback is
+    `/srv/asherie/backups/aetheros-subpath-3763965-20260801T050210Z/aetheros-static.previous`.
+  - The URLs extracted verbatim from public HTML resolve under `/aetheros/`:
+    the main JS and CSS both returned 200. Public GET is 200, POST is 403 and
+    retired `/sullyos/` remains 410.
+  - A cold public browser showed the slow-loading state after 12 seconds, then
+    reached the real AetherOS lock screen with zero console errors. Nginx, Home
+    and Bridge remained active with unchanged PID/restart counters; no service
+    reload or restart ran.
+
+- remaining performance note:
+  - The corrected main bundle is about 335 KB compressed and took roughly 29.5
+    seconds on the observed route. Startup is correct and no longer lies about
+    a crash, but route speed and bundle splitting remain separate performance
+    work rather than part of this availability repair.
+
 ## 2026-07-30 Character Chat Appearance And Transient Header State
 
 - done:
