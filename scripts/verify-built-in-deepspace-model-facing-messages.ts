@@ -55,6 +55,7 @@ const QUALITY_CASES = [
   { id: 'agency_and_refusal', query: '这次我不想去，也不用劝我。' },
   { id: 'care_without_control', query: '今天有点头疼，但我还能聊。' },
   { id: 'pause_and_reentry', query: '先不说了，我们换个话题。' },
+  { id: 'conversational_agency', query: '嗯。' },
 ] as const;
 
 const memoryStorage = new Map<string, string>();
@@ -474,5 +475,5 @@ const dateExperienceModule = await import('../utils/dateExperience.ts') as unkno
     cases: snapshots,
   }, null, 2)}\n`, 'utf8');
 console.log(
-  `built-in model-facing messages: green cases=35 provider=not-called receipt=none output=${OUTPUT}`,
+  `built-in model-facing messages: green cases=40 provider=not-called receipt=none output=${OUTPUT}`,
 );

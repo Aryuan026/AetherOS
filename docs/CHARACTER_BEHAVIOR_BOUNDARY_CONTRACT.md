@@ -59,6 +59,9 @@ expressionEffect: advisory
 - Evidence comes from reviewed, non-verbatim source clusters.
 - Shared interaction qualities remain in
   `domain/companionMaterial/interactionQuality.ts` and are stored once.
+- Reviewed source clusters back the five character realizations. An
+  owner-reviewed conversation method may add a product-level shared operator,
+  but it cannot masquerade as character evidence or become character truth.
 - Fine-grained embodied, prop, routine, and space anchors live in
   `domain/characterBehaviorBoundary/builtInReviewed.ts`.
 - Micro anchors are relevance-required and scene-only. They do not enter

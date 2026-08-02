@@ -13,6 +13,7 @@ export const normalizeCompanionMaterialSignal = (value: unknown): string => (
 
 const PHATIC_PATTERNS = [
   /^(?:嗨|你好|在吗|在不在|早|早安|晚安|哈喽|hello|hi|嗯+|哦+|啊+|好+|okk?)[呀啊嘛吗呢～~！!。.\s]*$/i,
+  /^(?:[?？!！…。.、~～]+|哈{1,8}|呵{1,8}|诶+|欸+|唔+|em+|h+m+)[呀啊嘛吗呢吧～~！!。.\s]*$/i,
 ];
 
 const TECHNICAL_META_PATTERNS = [

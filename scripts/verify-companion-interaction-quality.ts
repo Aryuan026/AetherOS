@@ -38,6 +38,7 @@ const CASES: readonly {
   { query: '先不说了，换个话题吧。', expected: 'pause_and_reentry' },
   { query: '我回来了，刚才去做了点别的。', expected: 'pause_and_reentry' },
   { query: '我只想聊聊天，不要给我建议。', expected: 'agency_and_refusal' },
+  { query: '嗯。', expected: 'conversational_agency' },
 ] as const;
 
 const projections = CHARACTERS.flatMap(charId => CASES.map(fixture => {
@@ -72,13 +73,19 @@ const projections = CHARACTERS.flatMap(charId => CASES.map(fixture => {
   return projection;
 }));
 
-assert.equal(COMPANION_INTERACTION_QUALITY_PRINCIPLES.length, 3);
+assert.equal(COMPANION_INTERACTION_QUALITY_PRINCIPLES.length, 4);
 assert.equal(builtInCompanionInteractionQualityRealizations().length, 5);
 assert.equal(
   new Set(builtInCompanionInteractionQualityRealizations()
     .map(item => item.byQualityId.agency_and_refusal)).size,
   5,
   'the five leads must realize the shared baseline differently',
+);
+assert.equal(
+  new Set(builtInCompanionInteractionQualityRealizations()
+    .map(item => item.byQualityId.conversational_agency)).size,
+  5,
+  'the five leads must continue a thin topic in character-specific ways',
 );
 for (const realization of builtInCompanionInteractionQualityRealizations()) {
   for (const [qualityId, text] of Object.entries(realization.byQualityId)) {
@@ -109,6 +116,45 @@ const noAdviceWinsCare = buildCompanionInteractionQualityProjection({
   purpose: 'stable_context',
 });
 assert.equal(noAdviceWinsCare?.qualityId, 'agency_and_refusal');
+
+for (const query of ['？', '……', '哈哈']) {
+  assert.equal(
+    buildCompanionInteractionQualityProjection({
+      charId: BUILT_IN_DEEPSPACE_QIYU_ID,
+      query,
+      surface: 'chat',
+      mode: 'remote_chat',
+      purpose: 'stable_context',
+    })?.qualityId,
+    'conversational_agency',
+    `a short low-information turn may receive one character-owned side branch: ${query}`,
+  );
+}
+assert.equal(
+  buildCompanionInteractionQualityProjection({
+    charId: BUILT_IN_DEEPSPACE_QIYU_ID,
+    query: '哈哈这个反光很好看。',
+    surface: 'chat',
+    mode: 'remote_chat',
+    purpose: 'stable_context',
+  }),
+  null,
+  'a concrete laughing share remains ordinary chat rather than a low-signal repair',
+);
+assert.equal(
+  buildCompanionInteractionQualityProjection({
+    charId: BUILT_IN_DEEPSPACE_QIYU_ID,
+    query: '嗯。',
+    previousQuery: '？',
+    surface: 'chat',
+    mode: 'remote_chat',
+    purpose: 'stable_context',
+    occurredAt: 20 * 60 * 1000,
+    previousOccurredAt: 10 * 60 * 1000,
+  }),
+  null,
+  'adjacent low-information turns must not stack the same continuation operator',
+);
 
 const customRole = buildCompanionInteractionQualityProjection({
   charId: 'custom-role',
@@ -395,5 +441,5 @@ assert.match(callAppSource, /qualityPreviousUserOverride/u);
 assert.match(callAppSource, /bubbles\.slice\(0, idx - 1\)/u);
 
 console.log(
-  `companion interaction quality: green projections=${projections.length} shared=3 realizations=5 provider-consumers=chat,call,date-turn,wakeup storydesk=HOLD`,
+  `companion interaction quality: green projections=${projections.length} shared=4 realizations=5 provider-consumers=chat,call,date-turn,wakeup storydesk=HOLD`,
 );

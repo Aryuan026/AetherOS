@@ -1,5 +1,42 @@
 # AetherOS Progress
 
+## 2026-08-02 Positive Conversation Initiative Calibration
+
+- done:
+  - Absorbed the useful conversational method as positive, advisory behavior
+    rather than importing its absolute-priority or hard-ban wording. Ordinary
+    Chat keeps one thin baseline: a role may contribute an observation,
+    preference, life fragment or unfinished thread instead of only answering.
+  - Added a sparse `conversational_agency` operator for genuinely low-information
+    live turns such as `嗯`, punctuation-only replies and short laughter. It is
+    delivered only to Chat/Call, never creates current state or relationship
+    truth, and adjacent repeats within 30 minutes do not stack the same block.
+  - Kept method authority separate from character evidence. The shared operator
+    is owner-reviewed product method; the five distinct realizations still come
+    from the existing reviewed character support network. Custom roles fall back
+    to their own card rather than inheriting one built-in lead's mannerisms.
+  - Made proactive letters carry one concrete observation, preference, life
+    detail, unfinished thread or genuinely new question from reliable context,
+    so the message itself supplies a response handle.
+
+- verification:
+  - `npm run verify:health`
+  - `npm run verify:companion-material`
+  - `npm run typecheck`
+  - `node --import tsx scripts/verify-chat-reply-mode.ts`
+  - `npm run build:quiet`
+  - Model-facing audit now covers 40 payloads across five built-in roles. The
+    low-signal delta remains one bounded system block; live/history messages,
+    tool policy and truth effects remain unchanged.
+
+- boundary:
+  - This is a conversational affordance, not a promise that every provider will
+    always open a good side thread. Natural multi-turn variety and repetition
+    remain a small-circle observation checkpoint.
+  - No tutorial source text or private source pointer enters the repository or
+    model context. No UI, provider configuration, deployment or memory
+    promotion behavior changed in this checkpoint.
+
 ## 2026-08-02 Reviewed Hidden-Words Runtime Pack
 
 - done:

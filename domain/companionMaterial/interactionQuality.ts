@@ -21,11 +21,12 @@ export const COMPANION_INTERACTION_QUALITY_ADJACENT_WINDOW_MS = 30 * 60 * 1000;
 export type CompanionInteractionQualityId =
   | 'agency_and_refusal'
   | 'care_without_control'
-  | 'pause_and_reentry';
+  | 'pause_and_reentry'
+  | 'conversational_agency';
 
 export interface CompanionInteractionQualityEvidenceSummary {
   sourceGroupCountByCharacter: Readonly<Record<string, number>>;
-  authority: 'reviewed_private_sms_support_network';
+  authority: 'reviewed_private_sms_support_network' | 'owner_reviewed_conversation_method';
 }
 
 export interface CompanionInteractionQualityPrinciple {
@@ -85,6 +86,11 @@ const DELIVERED_RELATIONAL_SURFACES: readonly CompanionMaterialSurface[] = [
   'proactive_letter',
 ];
 
+const LIVE_CONVERSATION_SURFACES: readonly CompanionMaterialSurface[] = [
+  'chat',
+  'call',
+];
+
 /**
  * One product-level baseline, supported across all five reviewed leads. It is
  * deliberately not copied into five character fingerprints.
@@ -139,6 +145,16 @@ readonly CompanionInteractionQualityPrinciple[] = [
       authority: 'reviewed_private_sms_support_network',
     },
   },
+  {
+    id: 'conversational_agency',
+    positiveOperator: '当对方只留下很短的回应或话题暂时变薄时，角色可以从自己的观察、偏好、生活片段或一条未完线索里带入一个具体侧枝。陈述、判断、玩笑、分享与留白都可以成为继续方式，让回应自身带着一点新信息。',
+    eligibleSignals: ['low_signal'],
+    applicableSurfaces: LIVE_CONVERSATION_SURFACES,
+    evidence: {
+      sourceGroupCountByCharacter: {},
+      authority: 'owner_reviewed_conversation_method',
+    },
+  },
 ];
 
 const REALIZATIONS: readonly (CompanionInteractionQualityRealization & { id: string })[] = [
@@ -149,6 +165,7 @@ const REALIZATIONS: readonly (CompanionInteractionQualityRealization & { id: str
       agency_and_refusal: '他可以在眼前细节上停住、轻巧转向、暂放未完画面，或保留自己的立场再说一句；感官与创作只是其中一条路径。',
       care_without_control: '他可以留在一项具体观察里，递出小物或感官支持，在对方接得住时用一点趣味减压，也可以只陪在现场。',
       pause_and_reentry: '他可以让话题像未完成的画面一样暂放；重新接线时，从新的观察、好奇、旧线索或完全不同的话题进入。',
+      conversational_agency: '他可以抓住眼前一个有画面的细节，顺手带出自己的联想、偏好或小发现；侧枝可以轻巧转弯、留一点未说尽的空间，或在对方愿意时继续玩下去。',
     },
     distinctiveness: '感官与创作性转弯；不把拒绝改写成邀约。',
     evidenceSourceGroupCount: 47,
@@ -161,6 +178,7 @@ const REALIZATIONS: readonly (CompanionInteractionQualityRealization & { id: str
       agency_and_refusal: '他可以简短确认后停住，保留标准或异议，做一次真正必要的窄澄清，或直接转到另一件具体事情。',
       care_without_control: '他可以确认可观察事实、问清需要、给一项可调整的小步骤，也可以在信息不足时保持简短在场。',
       pause_and_reentry: '他可以把未完内容留成开放线索、平静换题，或在重连时从新事实进入；旧讨论由对方重新带回时再继续。',
+      conversational_agency: '他可以补上一项具体观察、清楚判断或自己正在处理的小事；侧枝保持有来由、有信息，也可以在一句话后安静收住。',
     },
     distinctiveness: '事实敏感的确认与清晰节奏；不是每次都发问，也不是医疗建议模板。',
     evidenceSourceGroupCount: 61,
@@ -173,6 +191,7 @@ const REALIZATIONS: readonly (CompanionInteractionQualityRealization & { id: str
       agency_and_refusal: '他可以低幅确认后停下、保持安静、用并行的低压力活动维持连接，或把注意转向外部环境与新探索。',
       care_without_control: '他可以提供安静共处、给出可自行靠近的移动或观察空间、询问陪伴距离，也可以把节奏完整留给对方。',
       pause_and_reentry: '他可以让间隔真实存在；再次展开时，从身边环境、新发现、旧线索或一段安静的并行活动重新接线。',
+      conversational_agency: '他可以从周围环境、刚发现的事或一段安静活动带回一个低压力侧枝；可以说一点自己的感受、留下探索入口，或让短暂停顿继续存在。',
     },
     distinctiveness: '低压陪伴、静默观察与向外探索；不是固定的疏离或单一意象口癖。',
     evidenceSourceGroupCount: 32,
@@ -185,6 +204,7 @@ const REALIZATIONS: readonly (CompanionInteractionQualityRealization & { id: str
       agency_and_refusal: '他可以明确保留判断、只说明一次条件或后果、结束协商并转题，或留下一个真正不同且可反转的备选。',
       care_without_control: '他可以指出风险、表达真实担心、递出有分量而可选择的资源，或说清决策门槛后把决定交还。',
       pause_and_reentry: '他可以停在未解判断上，从新证据或行动契机重开，也可以完全换一条路线，让间隔成为张力之外的留白。',
+      conversational_agency: '他可以抛出一个有立场的观察、带代价的小选择或正在推进的事情；侧枝可以形成新的筹码、反转或行动入口，也可以短促地停在判断上。',
     },
     distinctiveness: '立场、筹码与可协商的张力；不是持续压迫、控制或每轮反问。',
     evidenceSourceGroupCount: 41,
@@ -197,6 +217,7 @@ const REALIZATIONS: readonly (CompanionInteractionQualityRealization & { id: str
       agency_and_refusal: '他可以直接承认选择、短暂保留自己的看法、转入具体日常话题，或在关系阶段允许时用一点轻松感缓冲。',
       care_without_control: '他可以直接确认状态、提供一项轻量日常支持、在对方有余力时用玩笑减压，也可以简短收住。',
       pause_and_reentry: '他可以自然接受离线，从眼前日常、新话题或对方重新带回的旧玩笑开始，让熟悉感服从可靠关系阶段。',
+      conversational_agency: '他可以带入一件具体日常、小玩笑或熟悉的共同细节；侧枝可以自然接到行动、轻松选择或自己的近况，也可以利落地留给对方接住。',
     },
     distinctiveness: '具体日常与利落的亲近感；不预设家庭称谓、强行照护或当前行程。',
     evidenceSourceGroupCount: 38,
@@ -271,6 +292,7 @@ const chooseQualityId = (
   if (signals.has('pause_or_redirect')) return 'pause_and_reentry';
   if (signals.has('care_needed') || signals.has('mild_discomfort')) return 'care_without_control';
   if (signals.has('reentry')) return 'pause_and_reentry';
+  if (signals.has('low_signal')) return 'conversational_agency';
   return undefined;
 };
 
@@ -291,6 +313,9 @@ const liveSignalBelongsToUser = (
       || DIRECT_USER_BOUNDARY_PATTERNS.some(pattern => pattern.test(query))
       || features.signals.includes('reentry');
   }
+  if (qualityId === 'conversational_agency') {
+    return features.signals.includes('low_signal');
+  }
   return true;
 };
 
@@ -300,6 +325,9 @@ const genericRealization = (qualityId: CompanionInteractionQualityId): string =>
   }
   if (qualityId === 'care_without_control') {
     return '角色卡可以把它实现为观察、询问、陪伴、趣味缓冲或一项支持；强度、距离与形式随现场变化。';
+  }
+  if (qualityId === 'conversational_agency') {
+    return '角色卡可以把它实现为一项具体观察、自己的近况、一个有新角度的问题、玩笑或留白；选择最贴合自身节奏的一处。';
   }
   return '角色卡可以按自己的生活节奏安静续接、换一个新话题、保留未完线索，或从新的眼前内容进入。';
 };
@@ -355,10 +383,13 @@ export const buildCompanionInteractionQualityProjection = (
     ...features.signals,
     ...(request.explicitSignals || []).map(normalizeSignal),
   ].filter(signal => principle.eligibleSignals.includes(signal)))];
+  const operatorBoundary = qualityId === 'conversational_agency'
+    ? '回应长度、情绪、立场与主动程度继续服从角色卡和现场；可用动作与工具权限保持原样。'
+    : '回应长度、情绪、立场与主动程度继续服从角色卡和现场；可用动作以当前入口真实提供的能力为准，本条保持工具权限原样，用户本轮明确排除的建议、安排或提醒继续作为当前行动边界。';
   const markdown = [
     '### 本轮互动参考',
     `${principle.positiveOperator} 对这个角色而言，${characterRealization}`,
-    '从这些路径里取此刻最自然的一处即可，也可以按角色自己的判断找到别的出口。回应长度、情绪、立场与主动程度继续服从角色卡和现场；可用动作以当前入口真实提供的能力为准，本条保持工具权限原样，用户本轮明确排除的建议、安排或提醒继续作为当前行动边界。',
+    `从这些路径里取此刻最自然的一处即可，也可以按角色自己的判断找到别的出口。${operatorBoundary}`,
   ].join('\n');
   return {
     schemaVersion: COMPANION_INTERACTION_QUALITY_SCHEMA_VERSION,
