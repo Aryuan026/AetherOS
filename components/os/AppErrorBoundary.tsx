@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo } from 'react';
+import { recoverFromStaleAppChunk } from '../../utils/pwaRuntime';
 
 const ERROR_COPY_LABEL = '\u590d\u5236\u62a5\u9519\u4fe1\u606f';
 const ERROR_COPIED_LABEL = '\u5df2\u590d\u5236';
@@ -37,6 +38,9 @@ class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundary
 
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
         console.error('App Crash:', error, errorInfo);
+        void recoverFromStaleAppChunk(error).catch((recoveryError) => {
+            console.error('Stale app chunk recovery failed:', recoveryError);
+        });
     }
 
     componentDidUpdate(prevProps: AppErrorBoundaryProps) {

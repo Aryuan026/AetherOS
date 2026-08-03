@@ -65,6 +65,8 @@ assert.deepEqual(rootWorker, hashedWorker, 'root service worker must be the curr
 const startupPaths = [
   'index.tsx',
   'utils/keepAlive.ts',
+  'utils/pwaRuntime.ts',
+  'utils/pwaChunkRecovery.ts',
   'worker/sw-keep-alive.ts',
   'public/sw-keep-alive.js',
 ] as const;

@@ -1,5 +1,38 @@
 # AetherOS Progress
 
+## 2026-08-03 Stale Lazy-Chunk Recovery
+
+- done:
+  - Reproduced the public PWA failure where an older installed shell requested
+    `Chat-kYEvvcGu.js` only when Chat was first opened after a static release.
+    The current shell and release descriptor were healthy; the retired hashed
+    chunk and its dependency graph had been removed by the atomic directory
+    replacement.
+  - Added a narrow stale dynamic-import classifier and connected it to both
+    Vite's `vite:preloadError` event and the per-App React error boundary.
+  - Recovery fetches the release descriptor and target HTML with `no-store`,
+    requires a real build-id mismatch, and uses a session-scoped target marker
+    before one cache-busted `location.replace`. API/network failures with no
+    dynamic-import signature stay on the existing visible error path.
+  - Kept recovery independent of user data. It does not clear or rewrite
+    localStorage, IndexedDB, CacheStorage, messages, characters or memory.
+  - Restored the complete adjacent 09db hashed-asset graph to the current lab
+    without overwriting the 2ac release, so pre-recovery installed shells can
+    open Chat immediately. Future static swaps must carry at least the adjacent
+    release assets into staging before the atomic replacement.
+
+- verification:
+  - `npm run typecheck`
+  - `npm run build:quiet`
+  - `node --import tsx scripts/verify-pwa-runtime.ts`
+  - `node --import tsx scripts/verify-online-first-release.ts`
+  - Public probes return 200 for the formerly missing Chat chunk and its old
+    shared entry dependency.
+
+- boundary:
+  - This repairs stale deploy assets, not ordinary provider/API connectivity.
+    It deliberately does not turn AetherOS into an offline shell.
+
 ## 2026-08-02 Positive Conversation Initiative Calibration
 
 - done:

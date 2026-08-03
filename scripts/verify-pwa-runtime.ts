@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolvePwaInstallRowPresentation } from '../utils/pwaInstallPresentation.ts';
+import { buildChunkRecoveryUrl, isStaleDynamicImportError } from '../utils/pwaChunkRecovery.ts';
 import type { PwaRuntimeSnapshot } from '../utils/pwaRuntime.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -21,6 +22,25 @@ const workerSource = read('worker/sw-keep-alive.ts');
 const viteSource = read('vite.config.ts');
 const installRowSource = read('components/settings/PwaInstallRow.tsx');
 const standaloneSource = read('utils/iosStandalone.ts');
+const chunkRecoverySource = read('utils/pwaChunkRecovery.ts');
+const appErrorBoundarySource = read('components/os/AppErrorBoundary.tsx');
+
+assert.equal(
+  isStaleDynamicImportError(new TypeError('Failed to fetch dynamically imported module: https://example.test/assets/Chat-old.js')),
+  true,
+);
+assert.equal(isStaleDynamicImportError('ChunkLoadError: Loading chunk Chat failed'), true);
+assert.equal(isStaleDynamicImportError({ reason: 'Importing a module script failed' }), true);
+assert.equal(isStaleDynamicImportError(new TypeError('Failed to fetch')), false);
+assert.equal(isStaleDynamicImportError(new Error('API request returned 503')), false);
+assert.equal(
+  buildChunkRecoveryUrl(
+    'https://lab.asherie.cloud/aetheros/?old=1',
+    './',
+    'aetheros-2.0.0-new',
+  ),
+  'https://lab.asherie.cloud/aetheros/?__aetheros_release=aetheros-2.0.0-new',
+);
 
 const runtimeSnapshot = (patch: Partial<PwaRuntimeSnapshot> = {}): PwaRuntimeSnapshot => ({
   platform: 'other',
@@ -57,6 +77,7 @@ for (const runtimeExport of [
   'subscribePwaRuntime',
   'requestPwaInstall',
   'applyPwaUpdate',
+  'recoverFromStaleAppChunk',
   'PwaUpdateOutcome',
 ]) {
   assert.ok(runtimeSource.includes(runtimeExport), `missing stable PWA API: ${runtimeExport}`);
@@ -64,6 +85,7 @@ for (const runtimeExport of [
 
 assert.match(runtimeSource, /addEventListener\('beforeinstallprompt'/);
 assert.match(runtimeSource, /addEventListener\('appinstalled'/);
+assert.match(runtimeSource, /addEventListener\('vite:preloadError'/);
 assert.match(runtimeSource, /addEventListener\('focus'/);
 assert.match(runtimeSource, /addEventListener\('visibilitychange'/);
 assert.match(runtimeSource, /import\.meta\.env\.DEV\s*\|\|\s*Capacitor\.isNativePlatform\(\)/);
@@ -72,8 +94,8 @@ assert.match(runtimeSource, /updateAvailable:\s*true/);
 assert.match(runtimeSource, /getPwaRuntimeSnapshot\s*=\s*\(\): PwaRuntimeSnapshot => snapshot/);
 assert.match(runtimeSource, /installedThisSession:\s*true, installPromptAvailable:\s*false/);
 assert.doesNotMatch(runtimeSource, /window\.location\.reload\(\)/);
-assert.match(runtimeSource, /window\.location\.replace\(baseUrl\.toString\(\)\)/);
-assert.match(runtimeSource, /__aetheros_release/);
+assert.match(runtimeSource, /window\.location\.replace\(targetUrl\)/);
+assert.match(chunkRecoverySource, /__aetheros_release/);
 assert.match(runtimeSource, /headers:\s*\{ Accept:\s*'text\/html' \}/);
 assert.match(runtimeSource, /return 'unavailable'/);
 assert.match(installRowSource, /当前页面已保留/);
@@ -82,6 +104,10 @@ assert.match(standaloneSource, /display-mode: fullscreen/);
 assert.match(standaloneSource, /display-mode: minimal-ui/);
 assert.match(standaloneSource, /android-app:\/\//);
 assert.match(runtimeSource, /STANDALONE_DISPLAY_MODE_QUERIES\.forEach/);
+assert.match(runtimeSource, /descriptor\.buildId === CURRENT_BUILD_ID/);
+assert.match(runtimeSource, /CHUNK_RECOVERY_SESSION_KEY/);
+assert.match(appErrorBoundarySource, /recoverFromStaleAppChunk\(error\)/);
+assert.match(chunkRecoverySource, /failed to fetch dynamically imported module/i);
 
 assert.match(keepAliveSource, /updateViaCache:\s*'none'/);
 assert.match(keepAliveSource, /registration\.update\(\)/);
@@ -100,6 +126,7 @@ for (const [label, source] of [
   ['PWA runtime', runtimeSource],
   ['keep-alive registration', keepAliveSource],
   ['keep-alive worker', workerSource],
+  ['stale chunk matcher', chunkRecoverySource],
 ] as const) {
   for (const forbidden of [
     /caches\.(?:open|delete|keys|match)/,

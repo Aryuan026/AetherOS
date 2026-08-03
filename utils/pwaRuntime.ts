@@ -5,6 +5,7 @@ import {
   isStandaloneDisplayMode,
   STANDALONE_DISPLAY_MODE_QUERIES,
 } from './iosStandalone';
+import { buildChunkRecoveryUrl, isStaleDynamicImportError } from './pwaChunkRecovery';
 
 export type PwaRuntimeSnapshot = {
   platform: 'ios' | 'other';
@@ -35,11 +36,13 @@ export type PwaUpdateOutcome = 'reloading' | 'not-needed' | 'unavailable';
 
 const CURRENT_BUILD_ID = import.meta.env.VITE_AETHEROS_BUILD_ID || 'aetheros-development';
 const RELEASE_DESCRIPTOR_FILE = import.meta.env.VITE_AETHEROS_RELEASE_DESCRIPTOR || 'aetheros-release.json';
+const CHUNK_RECOVERY_SESSION_KEY = 'aetheros_chunk_recovery_target_v1';
 const listeners = new Set<PwaRuntimeListener>();
 
 let initialized = false;
 let installPrompt: BeforeInstallPromptEvent | null = null;
 let releaseProbe: Promise<void> | null = null;
+let chunkRecoveryProbe: Promise<boolean> | null = null;
 
 const readSnapshotEnvironment = (): Pick<PwaRuntimeSnapshot, 'platform' | 'standalone' | 'isCapacitor'> => ({
   platform: isIOSDevice() ? 'ios' : 'other',
@@ -99,6 +102,75 @@ const fetchReleaseDescriptor = async (): Promise<ReleaseDescriptor | null> => {
   }
 };
 
+const canReachReleaseShell = async (targetUrl: string): Promise<boolean> => {
+  try {
+    const response = await fetch(targetUrl, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: { Accept: 'text/html' },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+const readChunkRecoveryTarget = (): string | null => {
+  try {
+    return window.sessionStorage.getItem(CHUNK_RECOVERY_SESSION_KEY);
+  } catch {
+    return null;
+  }
+};
+
+const writeChunkRecoveryTarget = (value: string): void => {
+  try {
+    window.sessionStorage.setItem(CHUNK_RECOVERY_SESSION_KEY, value);
+  } catch {
+    // Some privacy modes deny sessionStorage. The build mismatch and shared
+    // in-memory probe still keep the ordinary recovery path bounded.
+  }
+};
+
+const performStaleChunkRecovery = async (): Promise<boolean> => {
+  const descriptor = await fetchReleaseDescriptor();
+  if (!descriptor || descriptor.buildId === CURRENT_BUILD_ID) return false;
+
+  const recoveryTarget = `${CURRENT_BUILD_ID}->${descriptor.buildId}`;
+  if (readChunkRecoveryTarget() === recoveryTarget) return false;
+
+  const targetUrl = buildChunkRecoveryUrl(
+    window.location.href,
+    import.meta.env.BASE_URL || './',
+    descriptor.buildId,
+  );
+  if (!await canReachReleaseShell(targetUrl)) return false;
+
+  await Promise.race([
+    KeepAlive.checkForUpdate(),
+    new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2500)),
+  ]);
+  writeChunkRecoveryTarget(recoveryTarget);
+  window.location.replace(targetUrl);
+  return true;
+};
+
+export const recoverFromStaleAppChunk = async (error: unknown): Promise<boolean> => {
+  if (
+    typeof window === 'undefined'
+    || import.meta.env.DEV
+    || Capacitor.isNativePlatform()
+    || !isStaleDynamicImportError(error)
+  ) return false;
+
+  if (chunkRecoveryProbe) return chunkRecoveryProbe;
+  chunkRecoveryProbe = performStaleChunkRecovery().finally(() => {
+    chunkRecoveryProbe = null;
+  });
+  return chunkRecoveryProbe;
+};
+
 const probeForRelease = async () => {
   // The release descriptor is a production-build artifact. Skipping the
   // probe in Vite dev avoids a meaningless 404 without changing production
@@ -146,6 +218,11 @@ const handleControllerChange = () => {
   void requestReleaseProbe();
 };
 
+const handlePreloadError = (event: Event) => {
+  const payload = (event as Event & { payload?: unknown }).payload;
+  void recoverFromStaleAppChunk(payload);
+};
+
 export const initializePwaRuntime = (): void => {
   if (initialized || typeof window === 'undefined' || typeof document === 'undefined') return;
   initialized = true;
@@ -153,6 +230,7 @@ export const initializePwaRuntime = (): void => {
 
   window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   window.addEventListener('appinstalled', handleInstalled);
+  window.addEventListener('vite:preloadError', handlePreloadError);
   window.addEventListener('focus', () => {
     handleDisplayModeChange();
     void requestReleaseProbe();
@@ -207,26 +285,18 @@ export const applyPwaUpdate = async (): Promise<PwaUpdateOutcome> => {
     return 'not-needed';
   }
 
-  const baseUrl = new URL(import.meta.env.BASE_URL || './', window.location.href);
-  baseUrl.searchParams.set('__aetheros_release', descriptor.buildId);
-
-  try {
-    const shellResponse = await fetch(baseUrl.toString(), {
-      method: 'GET',
-      cache: 'no-store',
-      credentials: 'same-origin',
-      headers: { Accept: 'text/html' },
-    });
-    if (!shellResponse.ok) return 'unavailable';
-  } catch {
-    return 'unavailable';
-  }
+  const targetUrl = buildChunkRecoveryUrl(
+    window.location.href,
+    import.meta.env.BASE_URL || './',
+    descriptor.buildId,
+  );
+  if (!await canReachReleaseShell(targetUrl)) return 'unavailable';
 
   await Promise.race([
     KeepAlive.checkForUpdate(),
     new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2500)),
   ]);
   publishSnapshot({ updateAvailable: false });
-  window.location.replace(baseUrl.toString());
+  window.location.replace(targetUrl);
   return 'reloading';
 };
