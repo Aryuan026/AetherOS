@@ -26,6 +26,7 @@ import {
     type PreparedCompanionMaterialPrompt,
 } from '../utils/companionMaterial';
 import { prepareCharacterBehaviorBoundaryProjection } from '../utils/characterBehaviorBoundary';
+import { prepareChatConversationContinuity } from '../utils/conversationContinuity';
 import type { CharacterBehaviorBoundaryRule } from '../domain/characterBehaviorBoundary';
 import {
     advanceCharacterLiveState,
@@ -358,12 +359,18 @@ export const useChatAI = ({
             : undefined;
         const selectorRelationshipScope = initiatingRelationshipScope
             || strictRelationshipScopeForProfile(char.id, userProfile);
-        const readScopedRecentMessages = async (limit: number): Promise<Message[]> => {
+        const readScopedAllMessages = async (): Promise<Message[]> => {
             if (!selectorRelationshipScope) return [];
             const allMessages = await DB.getMessagesByCharId(char.id);
             return allMessages
                 .filter(message => messageMatchesRelationshipScope(message, selectorRelationshipScope))
-                .slice(-limit);
+                .filter(message => message.metadata?.hidden !== true)
+                .filter(message => message.metadata?.proactiveHint !== true)
+                .filter(message => message.metadata?.source !== 'date' && message.metadata?.source !== 'call')
+                .filter(message => !char.hideBeforeMessageId || message.id >= char.hideBeforeMessageId);
+        };
+        const readScopedRecentMessages = async (limit: number): Promise<Message[]> => {
+            return (await readScopedAllMessages()).slice(-limit);
         };
         const assistantResponseId = createAssistantResponseId();
         const historyTailBatchIds = [...new Set(importedHistoryMessages
@@ -517,29 +524,59 @@ export const useChatAI = ({
 </翻译>`;
             }
 
-            // 2. Build Message History
-            // CRITICAL: Load full message history from DB up to contextLimit,
-            // not from React state which is capped at 200 for rendering performance
+            // 2. Build Message History. The player-facing message limit remains
+            // the latest point at which Chat must compact; the runtime also
+            // compacts early when the estimated input budget is reached.
             const limit = char.contextLimit || 500;
-            let contextMsgs = currentMsgs;
             const importedHistoryTail = currentMsgs.filter(message => (
                 message.metadata?.source === 'history_import_tail'
             ));
             const providedLiveMessages = currentMsgs.filter(message => (
                 message.metadata?.source !== 'history_import_tail'
+                && message.metadata?.hidden !== true
+                && message.metadata?.proactiveHint !== true
+                && message.metadata?.source !== 'date'
+                && message.metadata?.source !== 'call'
+                && (!char.hideBeforeMessageId || message.id >= char.hideBeforeMessageId)
             ));
-            if (limit > providedLiveMessages.length && char.id) {
+            let deliveredLiveMessages = providedLiveMessages.slice(-limit);
+            if (selectorRelationshipScope && char.id) {
                 try {
-                    const fullHistory = await readScopedRecentMessages(limit);
-                    if (fullHistory.length > providedLiveMessages.length) {
-                        console.log(`📊 [Context] Loaded ${fullHistory.length} live msgs from DB (React state had ${providedLiveMessages.length}, imported tail=${importedHistoryTail.length}, contextLimit=${limit})`);
-                        contextMsgs = [...importedHistoryTail, ...fullHistory];
+                    const fullHistory = await readScopedAllMessages();
+                    const continuity = await prepareChatConversationContinuity({
+                        scope: selectorRelationshipScope,
+                        messages: fullHistory,
+                        promptText: systemPrompt,
+                        messageLimit: limit,
+                        apiConfig: effectiveApi,
+                        userName: userProfile.name,
+                        characterName: char.name,
+                    });
+                    deliveredLiveMessages = continuity.recentMessages;
+                    if (continuity.markdown) {
+                        systemPrompt += `\n\n${continuity.markdown}\n`;
                     }
+                    console.log(
+                        `🧶 [Chat Continuity] trigger=${continuity.diagnostic.trigger}`
+                        + ` estimator=${continuity.diagnostic.estimatorId}`
+                        + ` estimated_input_tokens=${continuity.diagnostic.estimatedInputTokens}`
+                        + ` raw_msgs=${continuity.diagnostic.rawMessageCount}`
+                        + ` delivered_msgs=${continuity.diagnostic.deliveredMessageCount}`
+                        + ` summary_passes=${continuity.diagnostic.summaryPasses}`
+                        + ` fallback=${continuity.diagnostic.fallback}`,
+                    );
                 } catch (e) {
-                    console.error('Failed to load full history from DB, using React state:', e);
+                    console.error('Failed to prepare Chat continuity, using the current bounded tail:', e);
                 }
             }
-            const { apiMessages, historySlice } = ChatPrompts.buildMessageHistory(contextMsgs, limit, char, userProfile, emojis);
+            const contextMsgs = [...importedHistoryTail, ...deliveredLiveMessages];
+            const { apiMessages, historySlice } = ChatPrompts.buildMessageHistory(
+                contextMsgs,
+                Math.max(1, contextMsgs.length),
+                char,
+                userProfile,
+                emojis,
+            );
 
             // 2.5 Build the exact provider-facing payload through the same
             // pure builder used by the model-context audit.
@@ -556,7 +593,7 @@ export const useChatAI = ({
             const systemPromptLength = systemPrompt.length;
             const historyMsgCount = cleanedApiMessages.length;
             const historyTotalChars = cleanedApiMessages.reduce((sum: number, m: any) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0);
-            console.log(`📊 [Context Debug] system_prompt_chars=${systemPromptLength} | history_msgs=${historyMsgCount} | history_chars=${historyTotalChars} | total_msgs_in_array=${fullMessages.length} | contextLimit=${limit}`);
+            console.log(`📊 [Context Debug] system_prompt_chars=${systemPromptLength} | history_msgs=${historyMsgCount} | history_chars=${historyTotalChars} | total_msgs_in_array=${fullMessages.length} | compact_after_messages=${limit}`);
 
             // 3. API Call (safe parsing: prevents "Unexpected token <" on HTML error pages)
             let data = await safeFetchJson(`${baseUrl}/chat/completions`, {

@@ -1,5 +1,50 @@
 # AetherOS Progress
 
+## 2026-08-09 Conversation Continuity And Cross-App Handoff
+
+- done:
+  - Replaced Chat's raw fixed-tail-only behavior with an exact-relationship
+    continuity capsule. The latest ten complete user-led turns remain verbatim;
+    split assistant bubbles stay in the same turn.
+  - Compaction starts at the existing player-configured message ceiling or when
+    the named local estimator reaches 12,000 input tokens. Only newly displaced
+    turns are merged into the capsule, so the whole relationship is not
+    summarized again on every message.
+  - Stored capsules are rebuildable derived assets. Their source fingerprint
+    covers message content, revision and relationship scope; editing, deleting,
+    restoring or moving compacted source invalidates the old capsule.
+  - Excluded imported historical tails, Date/Call evidence, hidden tool logs and
+    proactive selector hints from the Chat capsule. `hideBeforeMessageId` is
+    also honored before compaction, so hidden history cannot leak back through
+    a derived summary.
+  - Fixed typed insertion slots and owners for Chat, proactive letters, Call,
+    Date, story mainline, story IF and bounded scenes. Only Chat is runtime-wired
+    in this checkpoint; every other surface is explicit HOLD and may not borrow
+    Chat's private capsule.
+  - Updated the player-facing setting copy from a vague raw-context count to a
+    continuity organization ceiling, including the ten-turn preservation rule.
+
+- verification:
+  - `npm run verify:conversation-continuity`
+  - `npm run verify:chat-reply-mode`
+  - `npm run verify:history-import`
+  - `npm run typecheck`
+  - `npm run build:quiet`
+  - Full `npm run verify:health` is Green, including history import, companion
+    material, behavior boundaries, narrative, memory evidence/promotion,
+    whole-device backup, build and PWA runtime gates.
+
+- boundary:
+  - The capsule is foreground handoff, not durable memory, current Life,
+    behavior policy, narrative truth or a destructive replacement for source
+    messages. Summary failure keeps the last valid capsule plus unsummarized
+    delta, or the previous bounded raw tail when no capsule exists.
+  - Provider prompt caching is a separate adapter concern. This checkpoint does
+    not claim cache hits, cached-input billing, or cross-provider cache reuse.
+    The deferred stable/dynamic PromptEnvelope, provider capability, per-App
+    lane and usage-observation plan is recorded in `docs/PROMPT_CACHE_PLAN.md`.
+  - No GitHub push or public deployment is part of this local checkpoint yet.
+
 ## 2026-08-03 Stale Lazy-Chunk Recovery
 
 - done:

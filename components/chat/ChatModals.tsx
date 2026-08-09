@@ -241,9 +241,10 @@ const ChatModals: React.FC<ChatModalsProps> = ({
                          {activeCharacter.chatBackground && <button onClick={onRemoveBg} className="text-[10px] text-red-400 mt-1">移除背景</button>}
                      </div>
                      <div>
-                         <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">上下文条数 ({settingsContextLimit})</label>
+                         <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">接续整理上限 ({settingsContextLimit} 条)</label>
                          <input type="range" min="20" max="5000" step="10" value={settingsContextLimit} onChange={e => setSettingsContextLimit(parseInt(e.target.value))} className="w-full h-2 bg-slate-200 rounded-full appearance-none accent-primary" />
-                         <div className="flex justify-between text-[10px] text-slate-400 mt-1"><span>20 (省流)</span><span>5000 (超长记忆)</span></div>
+                         <div className="flex justify-between text-[10px] text-slate-400 mt-1"><span>20（更早整理）</span><span>5000（较晚整理）</span></div>
+                         <p className="mt-2 text-[10px] leading-relaxed text-slate-400">输入过长时也会提前整理：保留最近 10 轮原文，更早内容折成接续便签，聊天记录不会删除。</p>
                      </div>
 
                      <div className="pt-2 border-t border-slate-100">

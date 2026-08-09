@@ -40,6 +40,10 @@ This is the maintained AetherOS work copy for A-Yuan.
 
 - Follow `docs/APP_SURFACE_AND_MEMORY_INTEROP_CONTRACT.md` when adding,
   splitting, connecting, or removing a virtual App.
+- Follow `docs/CONVERSATION_CONTINUITY_CONTRACT.md` for foreground Chat
+  compaction and cross-App handoff. A continuity capsule is rebuildable prompt
+  state, never memory, current Life, narrative truth or permission to read a
+  different App's private store.
 - An App owns its interaction and assigned records; it must not become the
   private owner of relationship, memory, world time/location, narrative, or
   current-life truth merely because it displays those facts.
