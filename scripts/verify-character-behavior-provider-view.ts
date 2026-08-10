@@ -43,7 +43,7 @@ const chatModule = await import('../utils/chatPrompts.ts') as unknown as {
 };
 const contextModule = await import('../utils/context.ts') as unknown as {
   ContextBuilder: {
-    buildCoreContext: (
+    buildCanonicalCoreContext: (
       char: Record<string, unknown>,
       user: Record<string, unknown>,
       includeDetailedMemories?: boolean,
@@ -187,7 +187,7 @@ for (const fixture of CASES) {
     );
   }
 
-  const coreContext = contextModule.ContextBuilder.buildCoreContext(
+  const coreContext = contextModule.ContextBuilder.buildCanonicalCoreContext(
     char,
     userProfile,
     false,

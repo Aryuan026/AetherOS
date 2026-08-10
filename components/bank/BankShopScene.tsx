@@ -101,7 +101,7 @@ const BankShopScene: React.FC<Props> = ({
         setIsInviting(true);
         try {
             const char = characters[Math.floor(Math.random() * characters.length)];
-            const context = ContextBuilder.buildCoreContext(char, userProfile, true);
+            const context = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, userProfile, true);
 
             // Load recent chat history for richer context
             const recentMsgs = await DB.getRecentMessagesByCharId(char.id, 40);

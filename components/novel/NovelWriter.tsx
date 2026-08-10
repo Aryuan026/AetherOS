@@ -4,12 +4,19 @@ import { NovelBook, NovelSegment, CharacterProfile, UserProfile } from '../../ty
 import {
     NOVEL_THEMES, GenerationOptions, extractWritingTags,
     analyzeWriterPersonaSimple, generateWriterPersonaDeep,
-    buildPrompt, parsePersonaMarkdown
+    buildPlainNovelPrompt, buildPrompt, parsePersonaMarkdown
 } from '../../utils/novelUtils';
 import Modal from '../os/Modal';
 import ConfirmDialog from '../os/ConfirmDialog';
 import { useOS } from '../../context/OSContext';
 import { safeResponseJson } from '../../utils/safeApi';
+import { strictRelationshipScopeForProfile } from '../../utils/messageContext';
+import {
+    prepareWorldbookRuntimeProjection,
+    recordWorldbookRuntimeProjectionDelivery,
+    type PreparedWorldbookRuntimeProjection,
+} from '../../utils/worldbookRuntime';
+import type { WorldbookContinuityRef, WorldbookProjectionConsumerRef } from '../../domain/worldbook';
 
 interface NovelWriterProps {
     activeBook: NovelBook;
@@ -23,6 +30,17 @@ interface NovelWriterProps {
     setTargetCharId: (id: string) => void;
     targetCharId: string | null;
     onOpenSettings: () => void;
+    activeNarrativeScene?: {
+        id: string;
+        title: string;
+        location?: string;
+        objective?: string;
+        constraints: string[];
+    };
+    activeNarrativeContinuity?: WorldbookContinuityRef;
+    lockedNarrativeSceneIds?: readonly string[];
+    onOpenStoryDesk?: () => void;
+    onTypingStateChange?: (isTyping: boolean) => void;
 }
 
 // Extracted Component: PersonaPanel
@@ -91,10 +109,13 @@ const PersonaPanel: React.FC<PersonaPanelProps> = ({
 const NovelWriter: React.FC<NovelWriterProps> = ({ 
     activeBook, updateNovel, characters, userProfile, 
     apiConfig, onBack, updateCharacter, collaborators,
-    targetCharId, setTargetCharId, onOpenSettings
+    targetCharId, setTargetCharId, onOpenSettings,
+    activeNarrativeScene, lockedNarrativeSceneIds = [], onOpenStoryDesk, onTypingStateChange,
+    activeNarrativeContinuity,
 }) => {
-    const { addToast } = useOS();
+    const { addToast, loadWorldbookWorkspace } = useOS();
     const activeTheme = useMemo(() => NOVEL_THEMES.find(t => t.id === activeBook.coverStyle) || NOVEL_THEMES[0], [activeBook.coverStyle]);
+    const isPlainNovel = activeBook.writingMode === 'plain_novel';
     
     // State
     const [genOptions, setGenOptions] = useState<GenerationOptions>({ write: true, comment: false, analyze: false });
@@ -125,6 +146,10 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
     }, [activeBook.segments]);
 
     useEffect(() => {
+        onTypingStateChange?.(isTyping);
+    }, [isTyping, onTypingStateChange]);
+
+    useEffect(() => {
         if (scrollRef.current && !isEditModalOpen) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
@@ -132,7 +157,13 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
 
     const chapterCount = useMemo(() => segments.filter(s => s.focus === 'chapter_summary').length + 1, [segments]);
     const targetChar = characters.find(c => c.id === targetCharId);
-    const canReroll = segments.length > 0 && segments[segments.length - 1].authorId !== 'user';
+    const lockedSceneIds = useMemo(() => new Set(lockedNarrativeSceneIds), [lockedNarrativeSceneIds]);
+    const lastSegment = segments[segments.length - 1];
+    const canReroll = Boolean(
+        lastSegment
+        && lastSegment.authorId !== 'user'
+        && (!lastSegment.meta?.narrativeSceneId || !lockedSceneIds.has(lastSegment.meta.narrativeSceneId)),
+    );
 
     const displaySegments = useMemo(() => {
         let lastSummaryIdx = -1;
@@ -167,7 +198,17 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
 
     // --- Actions ---
 
-    const runGeneration = async (char: CharacterProfile, userPrompt: string, contextSegments: NovelSegment[]) => {
+    const persistSegments = async (next: NovelSegment[]) => {
+        await updateNovel(activeBook.id, { segments: next });
+        setSegments(next);
+    };
+
+    const runGeneration = async (
+        char: CharacterProfile | undefined,
+        userPrompt: string,
+        contextSegments: NovelSegment[],
+        capturedSceneId?: string,
+    ) => {
         setIsTyping(true);
         setLastTokenUsage(null);
 
@@ -179,7 +220,7 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
                 currentChapterStart = contextSegments.findIndex(s => s.id === lastSummary.id) + 1;
             }
             const currentChapterSegs = contextSegments.slice(currentChapterStart).filter(s => s.role === 'writer' || s.type === 'story');
-            
+
             let storyContext = '';
             if (allSummaries.length > 0) {
                 storyContext += '【前情回顾 / Chapter Recaps】\n';
@@ -188,14 +229,66 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
             } else {
                 storyContext += '【当前章节 / Current Chapter】\n';
             }
-            
             currentChapterSegs.forEach(s => {
-                const authorName = s.authorId === 'user' ? userProfile.name : (characters.find(c => c.id === s.authorId)?.name || 'AI');
+                const authorName = s.authorId === 'user' ? userProfile.name : (characters.find(c => c.id === s.authorId)?.name || '创作 AI');
                 storyContext += `\n[${authorName}]: ${s.content}\n`;
             });
 
-            const prompt = buildPrompt(char, userProfile, activeBook, userPrompt, storyContext, genOptions, contextSegments, characters);
-            const traits = char.impression?.personality_core.observed_traits || [];
+            let preparedWorldbook: PreparedWorldbookRuntimeProjection | null = null;
+            let worldbookConsumer: WorldbookProjectionConsumerRef | null = null;
+            if (char) {
+                const scope = strictRelationshipScopeForProfile(char.id, userProfile);
+                if (scope) {
+                    try {
+                        const workspace = await loadWorldbookWorkspace();
+                        worldbookConsumer = isPlainNovel
+                            ? { kind: 'world_director', id: `novel-prose:${activeBook.id}`, revision: 'plain-novel-v1' }
+                            : activeNarrativeContinuity?.lane === 'if_line'
+                                ? { kind: 'story_if', id: `novel-roleplay:${activeBook.id}`, revision: 'character-cowriter-v2' }
+                                : activeNarrativeContinuity?.lane === 'mainline'
+                                    ? { kind: 'story_mainline', id: `novel-roleplay:${activeBook.id}`, revision: 'character-cowriter-v2' }
+                                    : { kind: 'other', id: `novel-roleplay:${activeBook.id}`, revision: 'character-cowriter-v2' };
+                        preparedWorldbook = prepareWorldbookRuntimeProjection({
+                            requestId: `novel-prose:${activeBook.id}:${Date.now()}`,
+                            library: workspace.entries,
+                            character: char,
+                            scope,
+                            consumer: worldbookConsumer,
+                            knowledgeSubjects: isPlainNovel
+                                ? [{ kind: 'narrator', id: `novel:${activeBook.id}` }, { kind: 'character', id: char.id }]
+                                : [{ kind: 'character', id: char.id }],
+                            continuity: activeNarrativeContinuity,
+                            query: [
+                                activeBook.summary,
+                                activeBook.worldSetting,
+                                activeNarrativeScene?.title,
+                                activeNarrativeScene?.objective,
+                                userPrompt,
+                                storyContext.slice(-4_000),
+                            ].filter(Boolean).join('\n'),
+                            budget: { maxTotalChars: 1_800, maxEntries: 4, maxEntryChars: 650 },
+                        });
+                    } catch (error) {
+                        console.warn('[novel] Worldbook projection unavailable', error);
+                        addToast('世界书这轮没有读取成功，手稿仍会继续写', 'info');
+                    }
+                }
+            }
+
+            const prompt = isPlainNovel
+                ? buildPlainNovelPrompt({
+                    activeBook,
+                    userText: userPrompt,
+                    storyContext,
+                    worldbookContext: preparedWorldbook?.markdown,
+                    acceptedScene: activeNarrativeScene,
+                })
+                : buildPrompt(
+                    char!, userProfile, activeBook, userPrompt, storyContext,
+                    genOptions, contextSegments, characters, activeNarrativeScene,
+                    preparedWorldbook?.markdown,
+                );
+            const traits = char?.impression?.personality_core.observed_traits || [];
             let temperature = 0.85;
             if (traits.some(t => t.includes('电波') || t.includes('疯'))) temperature = 0.98;
             if (traits.some(t => t.includes('理性') || t.includes('冷') || t.includes('逻辑'))) temperature = 0.6;
@@ -203,77 +296,102 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
             const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiConfig.apiKey}` },
-                body: JSON.stringify({ model: apiConfig.model, messages: [{ role: "user", content: prompt }], temperature, max_tokens: 8000 })
+                body: JSON.stringify({ model: apiConfig.model, messages: [{ role: 'user', content: prompt }], temperature, max_tokens: 8000 }),
             });
+            if (!response.ok) throw new Error(`API Error: ${response.status}`);
 
-            if (response.ok) {
-                const data = await safeResponseJson(response);
-                if (data.usage?.total_tokens) setLastTokenUsage(data.usage.total_tokens);
+            const data = await safeResponseJson(response);
+            if (data.usage?.total_tokens) setLastTokenUsage(data.usage.total_tokens);
+            let content = data.choices?.[0]?.message?.content?.trim() || '';
+            if (!content) throw new Error('模型没有返回可写入的正文');
+            const originalRaw = content;
+            const newAiSegments: NovelSegment[] = [];
+            const baseTime = Date.now();
 
-                let content = data.choices[0].message.content.trim();
-                const originalRaw = content; 
+            if (isPlainNovel) {
+                const prose = content.replace(/^```(?:text|markdown)?\s*/iu, '').replace(/```$/u, '').trim();
+                if (!prose) throw new Error('模型没有返回可写入的正文');
+                newAiSegments.push({
+                    id: `seg-${baseTime}-w`, role: 'writer', type: 'story', authorId: 'system',
+                    content: prose, meta: { narrativeSceneId: capturedSceneId }, timestamp: baseTime + 2,
+                });
+            } else {
                 content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');
                 const jsonMatch = content.match(/\{[\s\S]*\}/);
                 if (jsonMatch) content = jsonMatch[0];
-                
                 let res;
                 try { res = JSON.parse(content); } catch (e) { res = { writer: { content: originalRaw } }; }
-
-                const newAiSegments: NovelSegment[] = [];
-                const baseTime = Date.now();
-
                 if (res.analysis && (res.analysis.critique || res.analysis.reaction)) {
-                    newAiSegments.push({ id: `seg-${baseTime}-a`, role: 'analyst', type: 'analysis', authorId: char.id, content: res.analysis.critique || JSON.stringify(res.analysis), focus: res.analysis.focus, meta: { reaction: res.analysis.reaction }, timestamp: baseTime + 1 });
+                    newAiSegments.push({ id: `seg-${baseTime}-a`, role: 'analyst', type: 'analysis', authorId: char!.id, content: res.analysis.critique || JSON.stringify(res.analysis), focus: res.analysis.focus, meta: { reaction: res.analysis.reaction }, timestamp: baseTime + 1 });
                 }
                 if (res.writer && res.writer.content) {
-                    newAiSegments.push({ id: `seg-${baseTime}-w`, role: 'writer', type: 'story', authorId: char.id, content: res.writer.content, meta: { ...(res.meta || {}), technique: res.writer.technique, mood: res.writer.mood }, timestamp: baseTime + 2 });
+                    newAiSegments.push({ id: `seg-${baseTime}-w`, role: 'writer', type: 'story', authorId: char!.id, content: res.writer.content, meta: { ...(res.meta || {}), technique: res.writer.technique, mood: res.writer.mood, narrativeSceneId: capturedSceneId }, timestamp: baseTime + 2 });
                 }
                 if (res.comment && res.comment.content) {
-                    newAiSegments.push({ id: `seg-${baseTime}-c`, role: 'commenter', type: 'discussion', authorId: char.id, content: res.comment.content, timestamp: baseTime + 3 });
+                    newAiSegments.push({ id: `seg-${baseTime}-c`, role: 'commenter', type: 'discussion', authorId: char!.id, content: res.comment.content, timestamp: baseTime + 3 });
                 }
-
-                setSegments(prev => {
-                    const next = [...prev, ...newAiSegments];
-                    updateNovel(activeBook.id, { segments: next });
-                    return next;
-                });
-            } else { throw new Error(`API Error: ${response.status}`); }
-        } catch (e: any) { addToast('请求失败: ' + e.message, 'error'); } finally { setIsTyping(false); }
+            }
+            if (!newAiSegments.length) throw new Error('模型返回的内容无法写入手稿');
+            await persistSegments([...contextSegments, ...newAiSegments]);
+            if (preparedWorldbook?.projection.items.length && preparedWorldbook.markdown && worldbookConsumer) {
+                try {
+                    await recordWorldbookRuntimeProjectionDelivery({ prepared: preparedWorldbook, consumer: worldbookConsumer });
+                } catch (error) {
+                    console.warn('[novel] Worldbook delivery receipt unavailable', error);
+                }
+            }
+        } catch (e: any) {
+            addToast('请求失败: ' + e.message, 'error');
+        } finally {
+            setIsTyping(false);
+        }
     };
 
     const handleSend = async () => {
-        if (!targetCharId) { addToast('请先选择一个角色', 'error'); return; }
+        if (!isPlainNovel && !targetCharId) { addToast('请先选择一个角色', 'error'); return; }
         const selectedChar = characters.find(c => c.id === targetCharId);
-        if (!selectedChar) return;
+        if (!isPlainNovel && !selectedChar) return;
 
-        let currentSegments = segments;
-        if (inputText.trim()) {
-            const userSegment: NovelSegment = { id: `seg-${Date.now()}`, role: 'writer', type: 'story', authorId: 'user', content: inputText, timestamp: Date.now() };
-            currentSegments = [...segments, userSegment];
-            setSegments(currentSegments);
-            updateNovel(activeBook.id, { segments: currentSegments });
+        try {
+            let currentSegments = segments;
+            if (!isPlainNovel && inputText.trim()) {
+                const userSegment: NovelSegment = { id: `seg-${Date.now()}`, role: 'writer', type: 'story', authorId: 'user', content: inputText, timestamp: Date.now(), meta: { narrativeSceneId: activeNarrativeScene?.id } };
+                currentSegments = [...segments, userSegment];
+                await persistSegments(currentSegments);
+            }
+            const userPrompt = inputText;
+            setInputText('');
+            await runGeneration(selectedChar, userPrompt, currentSegments, activeNarrativeScene?.id);
+        } catch (reason) {
+            addToast(reason instanceof Error ? reason.message : '这段手稿没有保存成功', 'error');
         }
-        const userPrompt = inputText;
-        setInputText('');
-        await runGeneration(selectedChar, userPrompt, currentSegments);
     };
 
     const handleReroll = async () => {
-        if (!targetCharId) return;
+        if (!isPlainNovel && !targetCharId) return;
         const selectedChar = characters.find(c => c.id === targetCharId);
-        if (!selectedChar) return;
+        if (!isPlainNovel && !selectedChar) return;
 
         let newSegments = [...segments];
         let deletedCount = 0;
         while (newSegments.length > 0) {
             const last = newSegments[newSegments.length - 1];
-            if (last.authorId !== 'user') { newSegments.pop(); deletedCount++; } else { break; }
+            if (last.authorId !== 'user') {
+                newSegments.pop();
+                deletedCount++;
+                if (isPlainNovel) break;
+            } else {
+                break;
+            }
         }
         if (deletedCount === 0) { addToast('没有可重随的 AI 内容', 'info'); return; }
-        setSegments(newSegments);
-        updateNovel(activeBook.id, { segments: newSegments });
-        addToast('正在重随...', 'info');
-        await runGeneration(selectedChar, "", newSegments);
+        try {
+            await persistSegments(newSegments);
+            addToast('正在重随...', 'info');
+            await runGeneration(selectedChar, "", newSegments, activeNarrativeScene?.id);
+        } catch (reason) {
+            addToast(reason instanceof Error ? reason.message : '重随前的手稿没有保存成功', 'error');
+        }
     };
 
     const handleEditSegment = (seg: NovelSegment) => {
@@ -282,13 +400,16 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
         setIsEditModalOpen(true);
     };
 
-    const saveSegmentEdit = () => {
+    const saveSegmentEdit = async () => {
         if (!editingSegment) return;
         const newSegments = segments.map(s => s.id === editingSegment.id ? { ...s, content: editSegmentContent } : s);
-        setSegments(newSegments);
-        updateNovel(activeBook.id, { segments: newSegments });
-        setIsEditModalOpen(false);
-        setEditingSegment(null);
+        try {
+            await persistSegments(newSegments);
+            setIsEditModalOpen(false);
+            setEditingSegment(null);
+        } catch (reason) {
+            addToast(reason instanceof Error ? reason.message : '修改没有保存成功', 'error');
+        }
     };
 
     const handleDeleteSegment = (id: string) => {
@@ -297,11 +418,14 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
             title: '删除段落',
             message: '确定要删除这个段落吗？',
             variant: 'danger',
-            onConfirm: () => {
+            onConfirm: async () => {
                 const newSegments = segments.filter(s => s.id !== id);
-                setSegments(newSegments);
-                updateNovel(activeBook.id, { segments: newSegments });
-                setConfirmDialog(null);
+                try {
+                    await persistSegments(newSegments);
+                    setConfirmDialog(null);
+                } catch (reason) {
+                    addToast(reason instanceof Error ? reason.message : '这段内容没有删除成功', 'error');
+                }
             }
         });
     };
@@ -367,23 +491,10 @@ ${chapterText.substring(0, 200000)}
     const confirmChapterSummary = async () => {
         const summarySeg: NovelSegment = { id: `seg-summary-${Date.now()}`, role: 'analyst', type: 'analysis', authorId: 'system', content: summaryContent, focus: 'chapter_summary', timestamp: Date.now(), meta: { reaction: '本章结束', suggestion: '新章节开始' } };
         const newSegments = [...segments, summarySeg];
-        setSegments(newSegments);
-        await updateNovel(activeBook.id, { segments: newSegments });
-        
-        const currentDate = new Date().toISOString().split('T')[0];
-        const chapterNum = newSegments.filter(s => s.focus === 'chapter_summary').length;
-        const collabNames = collaborators.map(c => c.name).join('、');
-
-        for (const cId of activeBook.collaboratorIds) {
-            const char = characters.find(c => c.id === cId);
-            if (char) {
-                const memory = { id: `mem-${Date.now()}-${Math.random()}`, date: currentDate, summary: `与${collabNames}一起为《${activeBook.title}》创作了第${chapterNum}章，已完成归档。`, mood: 'creative' };
-                updateCharacter(char.id, { memories: [...(char.memories || []), memory] });
-            }
-        }
+        await persistSegments(newSegments);
         setShowSummaryModal(false);
         setSummaryContent('');
-        addToast('章节已归档，记忆已同步', 'success');
+        addToast('章节已归档在手稿中', 'success');
     };
 
     return (
@@ -410,19 +521,29 @@ ${chapterText.substring(0, 200000)}
                         <button onClick={handleGenerateChapterSummary} disabled={isTyping} className={`p-2 rounded-full hover:bg-black/5 transition-colors ${activeTheme.text}`} title="结束本章"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg></button>
                     </div>
                 </div>
-                <div className="px-4 pb-3 flex gap-3 overflow-x-auto no-scrollbar">
-                    {collaborators.map(c => (
-                        <button key={c.id} onClick={() => setTargetCharId(c.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all relative ${targetCharId === c.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white/50 border-black/5 hover:bg-white text-slate-600'}`}>
-                            <img src={c.avatar} className="w-6 h-6 rounded-full object-cover" />
-                            <span className="text-xs font-bold whitespace-nowrap">{c.name}</span>
-                            {c.writerPersona && <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full border border-white"></span>}
-                        </button>
-                    ))}
-                </div>
+                {!isPlainNovel && (
+                    <div className="px-4 pb-3 flex gap-3 overflow-x-auto no-scrollbar">
+                        {collaborators.map(c => (
+                            <button key={c.id} onClick={() => setTargetCharId(c.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all relative ${targetCharId === c.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white/50 border-black/5 hover:bg-white text-slate-600'}`}>
+                                <img src={c.avatar} className="w-6 h-6 rounded-full object-cover" />
+                                <span className="text-xs font-bold whitespace-nowrap">{c.name}</span>
+                                {c.writerPersona && <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full border border-white"></span>}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
+            {activeNarrativeScene && (
+                <div className="shrink-0 border-b border-emerald-100 bg-emerald-50/95 px-4 py-2.5 font-sans text-xs text-emerald-800 flex items-center gap-3">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
+                    <div className="min-w-0 flex-1"><span className="text-emerald-600">正在写这一幕</span><div className="truncate font-bold">{activeNarrativeScene.title}</div></div>
+                    {onOpenStoryDesk && <button type="button" disabled={isTyping} onClick={onOpenStoryDesk} className="shrink-0 rounded-full border border-emerald-200 bg-white px-3 py-1.5 font-bold disabled:opacity-40">{isTyping ? '正在写' : '回故事线'}</button>}
+                </div>
+            )}
+
             {/* Style Bar (Non-sticky to prevent overlap) */}
-            <div className={`z-10 ${activeTheme.bg}/95 backdrop-blur-md border-b border-black/5 shadow-sm`}>
+            {!isPlainNovel && <div className={`z-10 ${activeTheme.bg}/95 backdrop-blur-md border-b border-black/5 shadow-sm`}>
                 <div className="px-4 py-2 flex items-center justify-between">
                     <div className="flex items-center gap-3 overflow-x-auto no-scrollbar flex-1 mr-4">
                         <div className="flex items-center gap-2 shrink-0">
@@ -454,7 +575,7 @@ ${chapterText.substring(0, 200000)}
                         updateCharacter={updateCharacter}
                     /> : <div className="p-4 text-center text-xs text-slate-400">请先选择一个角色</div>}
                 </div>
-            </div>
+            </div>}
 
             {/* Content Stream */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar pb-40" ref={scrollRef}>
@@ -462,8 +583,10 @@ ${chapterText.substring(0, 200000)}
                 {displaySegments.map(seg => {
                     const isUser = seg.authorId === 'user';
                     const char = !isUser ? characters.find(c => c.id === seg.authorId) : null;
+                    const writerLabel = isUser ? '我' : (char?.name || '创作 AI');
                     const role = seg.role || (seg.type === 'story' ? 'writer' : (seg.type === 'analysis' ? 'analyst' : 'commenter'));
-                    const hoverMenu = (
+                    const isLockedSceneSegment = Boolean(seg.meta?.narrativeSceneId && lockedSceneIds.has(seg.meta.narrativeSceneId));
+                    const hoverMenu = isLockedSceneSegment ? null : (
                         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10 bg-white/80 backdrop-blur rounded-lg p-1 shadow-sm border border-slate-100">
                             <button onClick={() => handleEditSegment(seg)} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-indigo-500"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" /></svg></button>
                             <button onClick={() => handleDeleteSegment(seg.id)} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-red-500"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.52.149.023a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clipRule="evenodd" /></svg></button>
@@ -474,7 +597,7 @@ ${chapterText.substring(0, 200000)}
                         <div key={seg.id} className={`p-6 rounded-sm shadow-sm leading-loose text-justify text-[17px] relative group transition-all ${activeTheme.paper} ${activeTheme.text} ${isUser ? 'border-l-4 border-slate-300' : ''}`}>
                             {hoverMenu}
                             <div className="absolute -top-3 left-4 bg-white/90 border border-black/5 px-2 py-0.5 rounded text-[9px] font-sans font-bold uppercase tracking-wider text-slate-500 shadow-sm flex items-center gap-1.5">
-                                {isUser ? null : <img src={char?.avatar} className="w-3 h-3 rounded-full object-cover" />}<span>{isUser ? '我 (User)' : char?.name} 执笔</span>{!isUser && seg.meta?.mood && <span className="bg-slate-100 px-1.5 rounded text-[9px] text-slate-600 normal-case">{seg.meta.mood}</span>}
+                                {!isUser && char?.avatar ? <img src={char.avatar} className="w-3 h-3 rounded-full object-cover" /> : null}<span>{writerLabel} 执笔</span>{!isUser && seg.meta?.mood && <span className="bg-slate-100 px-1.5 rounded text-[9px] text-slate-600 normal-case">{seg.meta.mood}</span>}
                             </div>
                             <div className="whitespace-pre-wrap">{seg.content}</div>
                         </div>
@@ -498,15 +621,15 @@ ${chapterText.substring(0, 200000)}
 
             {/* Input */}
             <div className={`absolute bottom-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 z-30 transition-transform duration-300 font-sans shadow-[0_-5px_20px_rgba(0,0,0,0.05)] pb-safe`}>
-                <div className="flex gap-2 px-4 py-2 text-xs border-b border-slate-100 overflow-x-auto no-scrollbar">
+                {!isPlainNovel && <div className="flex gap-2 px-4 py-2 text-xs border-b border-slate-100 overflow-x-auto no-scrollbar">
                     <button onClick={() => setGenOptions({...genOptions, write: !genOptions.write})} className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${genOptions.write ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>续写正文</button>
                     <button onClick={() => setGenOptions({...genOptions, comment: !genOptions.comment})} className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${genOptions.comment ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>角色吐槽</button>
                     <button onClick={() => setGenOptions({...genOptions, analyze: !genOptions.analyze})} className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${genOptions.analyze ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>深度分析</button>
-                </div>
+                </div>}
                 <div className="p-3 flex gap-2 items-end">
-                    <textarea value={inputText} onChange={e => setInputText(e.target.value)} placeholder={genOptions.write ? (inputText.trim() ? "输入剧情大纲..." : "输入指令或留空AI续写...") : "输入讨论内容..."} className="flex-1 bg-slate-100 rounded-2xl px-4 py-3 text-sm text-slate-700 outline-none resize-none max-h-32 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200 transition-all" rows={1} style={{ minHeight: '44px' }} />
+                    <textarea value={inputText} onChange={e => setInputText(e.target.value)} placeholder={isPlainNovel ? '写本轮要求，或留空继续正文…' : (genOptions.write ? (inputText.trim() ? "输入剧情大纲..." : "输入指令或留空AI续写...") : "输入讨论内容...")} className="flex-1 bg-slate-100 rounded-2xl px-4 py-3 text-sm text-slate-700 outline-none resize-none max-h-32 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200 transition-all" rows={1} style={{ minHeight: '44px' }} />
                     {canReroll && !isTyping && !inputText.trim() && <button onClick={handleReroll} className={`w-11 h-11 rounded-full flex items-center justify-center text-slate-500 bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all shrink-0`}><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg></button>}
-                    <button onClick={handleSend} disabled={isTyping || (!inputText.trim() && !genOptions.write)} className={`w-11 h-11 rounded-full flex items-center justify-center text-white shadow-md active:scale-95 transition-all shrink-0 ${inputText.trim() || genOptions.write ? activeTheme.button : 'bg-slate-300'}`}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" /></svg></button>
+                    <button onClick={handleSend} disabled={isTyping || (!inputText.trim() && !isPlainNovel && !genOptions.write)} className={`w-11 h-11 rounded-full flex items-center justify-center text-white shadow-md active:scale-95 transition-all shrink-0 ${inputText.trim() || isPlainNovel || genOptions.write ? activeTheme.button : 'bg-slate-300'}`}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" /></svg></button>
                 </div>
             </div>
 
@@ -544,7 +667,7 @@ ${chapterText.substring(0, 200000)}
                                     <div key={seg.id} className={`${activeTheme.paper} p-5 rounded-sm leading-loose text-justify text-[15px] ${activeTheme.text} ${isUser ? 'border-l-4 border-slate-300' : ''}`}>
                                         <div className="text-[9px] font-sans font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
                                             {!isUser && char && <img src={char.avatar} className="w-3 h-3 rounded-full object-cover" />}
-                                            <span>{isUser ? '我' : char?.name} 执笔</span>
+                                            <span>{isUser ? '我' : (char?.name || '创作 AI')} 执笔</span>
                                         </div>
                                         <div className="whitespace-pre-wrap font-serif">{seg.content}</div>
                                     </div>

@@ -32,8 +32,8 @@ type EditorStep = 'closed' | 'draft' | 'review';
 
 const DIRECTIVE_STATUS_LABELS = {
     pending: '待采纳',
-    activated: '已建线路',
-    played: '已游玩',
+    activated: '已建故事线',
+    played: '已经发生',
     archived: '已归档',
     discarded: '已舍弃',
 } as const;
@@ -236,7 +236,7 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
                             <span className="block text-sm font-black">写一个剧情方向</span>
                             <span className="mt-0.5 block text-[10px] text-current opacity-60">
                                 {!progressBundleId
-                                    ? '先建立当前身份的进度包'
+                                    ? '当前身份还没有准备好'
                                     : availableCharacters.length === 0
                                         ? '先给当前身份链接至少一位角色'
                                         : '只存为待采纳方向，不会自动开演'}
@@ -252,7 +252,7 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
                     <div className="flex items-start justify-between gap-3">
                         <div>
                             <div className="text-[10px] font-black tracking-[0.16em] text-slate-400 uppercase">
-                                {step === 'review' ? 'Review before saving' : editingDirectiveId ? 'Edit direction' : 'New direction'}
+                                {step === 'review' ? '保存前确认' : editingDirectiveId ? '修改方向' : '新方向'}
                             </div>
                             <h4 className="mt-1 font-black text-base">
                                 {step === 'review' ? '确认这只是一个方向' : editingDirectiveId ? '修改待演方向' : '把想去的地方写下来'}
@@ -348,7 +348,7 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
                     ) : (
                         <div className="mt-4 space-y-3" data-testid="story-direction-review-card">
                             <div className={`rounded-2xl p-4 ${draft.lane === 'if_line' ? 'bg-violet-50 text-violet-900' : 'bg-amber-50 text-amber-950'}`}>
-                                <div className="text-[9px] font-black tracking-wider opacity-50">{draft.lane === 'if_line' ? 'IF LINE' : 'MAINLINE CANDIDATE'}</div>
+                                <div className="text-[9px] font-black tracking-wider opacity-50">{draft.lane === 'if_line' ? 'IF 线' : '主线方向'}</div>
                                 <div className="mt-1 font-black text-base">{draft.title.trim()}</div>
                                 <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed opacity-75">{draft.summary.trim()}</p>
                                 <div className="mt-3 text-[10px] font-bold opacity-60">
@@ -356,7 +356,7 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
                                 </div>
                             </div>
                             <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs leading-relaxed text-emerald-800">
-                                保存后仍只是“待采纳方向”：不会启动剧情、不会推进角色时间，也不会写入任何角色记忆。
+                                保存后会留在“待演方向”里，等你决定是否建立故事线。
                             </div>
                             {error && <div className="text-xs leading-relaxed text-rose-600">{error}</div>}
                             <div className="grid grid-cols-2 gap-2">
@@ -401,7 +401,7 @@ export const StoryDeskDirectivePanel: React.FC<StoryDeskDirectivePanelProps> = (
                             editable ? (
                                 isConfirmingDiscard ? (
                                     <div className="mt-3 rounded-xl bg-rose-50 p-3">
-                                        <p className="text-[10px] leading-relaxed text-rose-700">只舍弃这条待演方向；正文、线路和记忆都不会被删除。</p>
+                                        <p className="text-[10px] leading-relaxed text-rose-700">只舍弃这个待演方向；正文、故事线和记忆都不会被删除。</p>
                                         <div className="mt-2 flex justify-end gap-2">
                                             <button type="button" onClick={() => setDiscardingDirectiveId(undefined)} className="rounded-lg px-3 py-1.5 text-[10px] font-bold text-slate-500">先留着</button>
                                             <button type="button" onClick={() => discardDirection(directive)} disabled={isSaving} className="rounded-lg bg-rose-600 px-3 py-1.5 text-[10px] font-bold text-white disabled:opacity-50">确认舍弃</button>

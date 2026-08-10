@@ -273,7 +273,7 @@ const renderWakeupWithAI = async (
         budgetChars: 420,
     });
     const messages = buildCompanionWakeupModelMessages({
-        coreContext: ContextBuilder.buildCoreContext(char, userProfile),
+        coreContext: ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, userProfile),
         worldlineContext: worldlineMemory.markdown,
         realityContext,
         companionMaterialContext: preparedCompanionMaterial?.markdown,

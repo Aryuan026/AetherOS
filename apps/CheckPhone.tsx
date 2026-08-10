@@ -190,7 +190,7 @@ const CheckPhone: React.FC = () => {
 
         try {
             // Include full memory details for accuracy
-            const context = ContextBuilder.buildCoreContext(targetChar, userProfile, true);
+            const context = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(targetChar, userProfile, true);
             const msgs = await DB.getMessagesByCharId(targetChar.id);
             
             const lastMsg = msgs[msgs.length - 1];
@@ -324,7 +324,7 @@ const CheckPhone: React.FC = () => {
         setIsLoading(true);
 
         try {
-            const context = ContextBuilder.buildCoreContext(targetChar, userProfile, true); // Enable detailed context
+            const context = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(targetChar, userProfile, true); // Enable detailed context
             const prompt = `${context}
 
 ### [Task: Continue Conversation]

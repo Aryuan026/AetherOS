@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { APIConfig, AppID, OSTheme, VirtualTime, CharacterProfile, ChatTheme, Toast, FullBackupData, UserProfile, ApiPreset, GroupProfile, SystemLog, Worldbook, NovelBook, SongSheet, Message, RealtimeConfig, AppearancePreset, MessageRelationshipScope, AiRuntimeRoutingV1 } from '../types';
+import { APIConfig, AppID, OSTheme, VirtualTime, CharacterProfile, ChatTheme, Toast, FullBackupData, UserProfile, ApiPreset, GroupProfile, SystemLog, Worldbook, WorldbookGroupAssignment, NovelBook, SongSheet, Message, RealtimeConfig, AppearancePreset, MessageRelationshipScope, AiRuntimeRoutingV1, WorldGrowthCandidate, WorldGrowthCandidatePlayerReview } from '../types';
 import { DB } from '../utils/db';
 import { normalizeCharacterImpression } from '../utils/impression';
 import { loadAutoMemorySettings, loadMemoryDMSettings, runAutoMemoryPass, runMemoryDMPass } from '../utils/memoryCore';
@@ -49,11 +49,30 @@ import {
 import { normalizeMessageRelationshipScope, strictRelationshipScopeForProfile } from '../utils/messageContext';
 import { synchronizeMountedWorldbooks } from '../utils/worldbookMounts';
 import {
+    archiveWorldbookEntry,
+    acceptWorldGrowthCandidate,
+    createWorldbookEntry,
+    deferOrIgnoreWorldGrowthCandidate,
+    getActiveWorldbookRevision,
+    isWorldbookPublished,
+    refreshBuiltInWorldbookEntry,
+    restoreWorldbookRevision,
+    reviseWorldbookEntry,
+} from '../domain/worldbook';
+import { indexedDbWorldbookPersistence } from '../utils/worldbookPersistence';
+import { createNovelUpdateCoordinator } from '../utils/novelPersistence';
+import {
     activatePreparedHistoryArchiveSystemRestore,
     buildHistoryArchiveSystemBackupFiles,
     discardPreparedHistoryArchiveSystemRestore,
     prepareHistoryArchiveSystemRestore,
 } from '../utils/systemBackup/historyArchiveSnapshot';
+import type { WorldbookImportDraft } from '../utils/worldbookImport';
+import {
+    createWorldbookGroupAssignment,
+    isBuiltInWorldbook,
+    listWorldbookGroupAssignments,
+} from '../utils/worldbookGroups';
 import {
     assignMainDatabaseBackupStore,
     MAIN_DATABASE_BACKUP_STORES,
@@ -179,20 +198,36 @@ interface OSContextType {
   addCharacter: () => void;
   addPreparedCharacter: (character: CharacterProfile) => Promise<void>;
   updateCharacter: (id: string, updates: Partial<CharacterProfile>) => void;
-  deleteCharacter: (id: string) => void;
+  deleteCharacter: (id: string) => Promise<void>;
   setActiveCharacterId: (id: string) => void;
   
   // Worldbooks
   worldbooks: Worldbook[];
-  addWorldbook: (wb: Worldbook) => void;
+  worldbookGroups: WorldbookGroupAssignment[];
+  createWorldbookGroup: (group: WorldbookGroupAssignment) => Promise<WorldbookGroupAssignment>;
+  updateWorldbookGroupLayout: (groups: readonly WorldbookGroupAssignment[]) => Promise<void>;
+  addWorldbook: (wb: Worldbook, group: WorldbookGroupAssignment) => Promise<void>;
+  addImportedWorldbooks: (entries: WorldbookImportDraft[], group: WorldbookGroupAssignment) => Promise<Worldbook[]>;
+  addPlayerWorldbooks: (entries: WorldbookImportDraft[], group: WorldbookGroupAssignment) => Promise<Worldbook[]>;
+  addWorldbookSupplement: (builtInEntryId: string, entry: Pick<Worldbook, 'title' | 'content' | 'category'>, group: WorldbookGroupAssignment) => Promise<void>;
+  copyWorldbookToGroup: (entryId: string, group: WorldbookGroupAssignment) => Promise<Worldbook>;
   updateWorldbook: (id: string, updates: Partial<Worldbook>) => Promise<void>;
-  deleteWorldbook: (id: string) => void;
+  archiveWorldbook: (id: string) => Promise<void>;
+  archiveWorldbookGroup: (groupId: string) => Promise<void>;
+  assignUnassignedWorldbooks: (entryIds: readonly string[], group: WorldbookGroupAssignment) => Promise<void>;
+  archiveUnassignedWorldbooks: (entryIds: readonly string[]) => Promise<void>;
+  deleteArchivedWorldbooks: (entryIds: readonly string[], groupId?: string) => Promise<void>;
+  restoreWorldbookGroup: (groupId: string) => Promise<void>;
+  loadWorldbookWorkspace: () => Promise<{ entries: Worldbook[]; candidates: WorldGrowthCandidate[] }>;
+  restoreWorldbookVersion: (entryId: string, revisionId: string) => Promise<void>;
+  acceptWorldGrowthCandidateReview: (candidateId: string, review: WorldGrowthCandidatePlayerReview) => Promise<void>;
+  setWorldGrowthCandidateDisposition: (candidateId: string, status: 'deferred' | 'ignored') => Promise<void>;
 
   // Novels (NEW)
   novels: NovelBook[];
-  addNovel: (novel: NovelBook) => void;
+  addNovel: (novel: NovelBook) => Promise<void>;
   updateNovel: (id: string, updates: Partial<NovelBook>) => Promise<void>;
-  deleteNovel: (id: string) => void;
+  deleteNovel: (id: string) => Promise<void>;
 
   // Songs (Songwriting)
   songs: SongSheet[];
@@ -391,6 +426,7 @@ const normalizeCharactersForState = (chars: CharacterProfile[]) => (
         .filter(char => !isLegacyPrivateCharacterId(char.id))
         .map(char => ({
             ...char,
+            mountedWorldbookGroupIds: [...new Set(char.mountedWorldbookGroupIds || [])],
             chatAppearancePreset: char.chatAppearancePreset || (char.isBuiltIn ? 'deep-space' : 'minimal'),
             emotionConfig: char.emotionConfig || { enabled: true },
         }))
@@ -1270,7 +1306,21 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   
   const [groups, setGroups] = useState<GroupProfile[]>([]); 
   const [worldbooks, setWorldbooks] = useState<Worldbook[]>([]); 
+  const [worldbookGroups, setWorldbookGroups] = useState<WorldbookGroupAssignment[]>([]);
   const [novels, setNovels] = useState<NovelBook[]>([]); // New
+  const novelsRef = useRef<NovelBook[]>([]);
+  const replaceNovelsState = useCallback((next: NovelBook[]) => {
+      novelsRef.current = next;
+      setNovels(next);
+  }, []);
+  const novelUpdateCoordinatorRef = useRef<ReturnType<typeof createNovelUpdateCoordinator> | null>(null);
+  if (!novelUpdateCoordinatorRef.current) {
+      novelUpdateCoordinatorRef.current = createNovelUpdateCoordinator({
+          readSnapshot: () => novelsRef.current,
+          persist: novel => DB.saveNovel(novel),
+          commitSnapshot: replaceNovelsState,
+      });
+  }
   const [songs, setSongs] = useState<SongSheet[]>([]);
 
   const [userProfile, setUserProfile] = useState<UserProfile>(defaultUserProfile);
@@ -1606,6 +1656,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             dbThemes,
             dbUser,
             dbGroups,
+            dbWorldbookGroups,
             dbWorldbooks,
             dbNovels,
             dbSongs,
@@ -1616,6 +1667,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             DB.getThemes(),
             DB.getUserProfile(),
             DB.getGroups(),
+            DB.getAllWorldbookGroups(),
             DB.getAllWorldbooks(),
             DB.getAllNovels(),
             DB.getAllSongs(),
@@ -1640,19 +1692,37 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         let finalChars = dbChars.filter(c => !isLegacyPrivateCharacterId(c.id));
         let finalWorldbooks = dbWorldbooks;
+        let finalWorldbookGroups = dbWorldbookGroups;
+        const universalWorldbookGroup = createWorldbookGroupAssignment({
+            name: '通用区',
+            owner: { kind: 'universal' },
+        });
+        if (!finalWorldbookGroups.some(group => group.id === universalWorldbookGroup.id)) {
+            await DB.saveWorldbookGroup(universalWorldbookGroup);
+            finalWorldbookGroups = [...finalWorldbookGroups, universalWorldbookGroup];
+        }
 
         for (const builtInWorldbook of DEEPSPACE_BUILT_IN_LIBRARY_WORLDBOOKS) {
             const existingBook = finalWorldbooks.find(wb => wb.id === builtInWorldbook.id);
-            if (
-                !existingBook ||
-                !existingBook.isBuiltIn ||
-                !existingBook.lockEditing ||
-                existingBook.builtInVersion !== builtInWorldbook.builtInVersion
+            if (!existingBook) {
+                const createdBuiltIn = createWorldbookEntry({ book: builtInWorldbook });
+                await DB.saveWorldbookRevision(createdBuiltIn, null);
+                finalWorldbooks = [...finalWorldbooks, createdBuiltIn];
+            } else if (
+                existingBook.isBuiltIn
+                && existingBook.lockEditing
+                && existingBook.builtInVersion !== builtInWorldbook.builtInVersion
             ) {
-                await DB.saveWorldbook(builtInWorldbook);
-                finalWorldbooks = existingBook
-                    ? finalWorldbooks.map(wb => wb.id === builtInWorldbook.id ? builtInWorldbook : wb)
-                    : [...finalWorldbooks, builtInWorldbook];
+                const refreshedBuiltIn = refreshBuiltInWorldbookEntry({
+                    current: existingBook,
+                    incoming: builtInWorldbook,
+                });
+                await DB.saveWorldbookRevision(refreshedBuiltIn, existingBook.activeRevisionId!);
+                finalWorldbooks = finalWorldbooks.map(wb => (
+                    wb.id === builtInWorldbook.id ? refreshedBuiltIn : wb
+                ));
+            } else if (!existingBook.isBuiltIn || !existingBook.lockEditing) {
+                console.warn(`Skipped built-in Worldbook id collision: ${builtInWorldbook.id}`);
             }
         }
 
@@ -1704,18 +1774,34 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             }
         }
 
+        const groupsRecoveredFromEntries = listWorldbookGroupAssignments(
+            finalWorldbooks.filter(entry => !isBuiltInWorldbook(entry)),
+        ).filter(group => !finalWorldbookGroups.some(existing => existing.id === group.id));
+        for (const group of groupsRecoveredFromEntries) {
+            await DB.saveWorldbookGroup(group);
+            finalWorldbookGroups = [...finalWorldbookGroups, group];
+        }
+
+        const charactersNeedingWorldbookCacheRefresh: CharacterProfile[] = [];
         finalChars = finalChars.map(char => {
             if (!char.mountedWorldbooks?.length) return char;
 
-            const { mountedWorldbooks, changed } = synchronizeMountedWorldbooks(
+            const synchronized = synchronizeMountedWorldbooks(
                 char.mountedWorldbooks,
                 finalWorldbooks,
             );
+            const mountedWorldbooks = synchronized.mountedWorldbooks.filter(mounted => (
+                isBuiltInWorldbook(finalWorldbooks.find(entry => entry.id === mounted.id))
+            ));
+            const changed = synchronized.changed || mountedWorldbooks.length !== synchronized.mountedWorldbooks.length;
             if (!changed) return char;
             const updatedChar = { ...char, mountedWorldbooks };
-            DB.saveCharacter(updatedChar);
+            charactersNeedingWorldbookCacheRefresh.push(updatedChar);
             return updatedChar;
         });
+        await Promise.all(charactersNeedingWorldbookCacheRefresh.map(character => (
+            DB.saveCharacter(character)
+        )));
 
         finalChars = normalizeCharactersForState(finalChars);
 
@@ -1737,8 +1823,9 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
 
         setGroups(dbGroups);
-        setWorldbooks(finalWorldbooks);
-        setNovels(dbNovels);
+        setWorldbookGroups(finalWorldbookGroups);
+        setWorldbooks(finalWorldbooks.filter(isWorldbookPublished));
+        replaceNovelsState(dbNovels);
         setSongs(dbSongs);
         setCustomThemes(dbThemes);
         if (dbUser) setUserProfile(normalizeUserPersonaProfile(dbUser));
@@ -2239,7 +2326,40 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           document.removeEventListener('visibilitychange', onVisible);
       };
   }, [isDataLoaded, characters, userProfile, activeCharacterId, apiConfig]);
-  const deleteCharacter = async (id: string) => { setCharacters(prev => { const remaining = normalizeCharactersForState(prev.filter(c => c.id !== id)); if (remaining.length > 0 && activeCharacterId === id) { setActiveCharacterId(remaining[0].id); } return remaining; }); await DB.deleteCharacter(id); };
+  const deleteCharacter = async (id: string) => {
+      const ownedGroups = worldbookGroups.filter(group => (
+          group.owner.kind === 'character' && group.owner.charId === id
+      ));
+      const ownedEntries = worldbooks.filter(entry => (
+          entry.group?.owner.kind === 'character' && entry.group.owner.charId === id
+      ));
+      const archivedAt = Date.now();
+      const archivedEntries = ownedEntries.map((entry, index) => ({
+          expectedActiveRevisionId: getActiveWorldbookRevision(entry).id,
+          entry: archiveWorldbookEntry({
+              current: entry,
+              sourceRef: {
+                  kind: 'player',
+                  refId: `character-delete:${id}:${archivedAt}:${index}`,
+              },
+              archivedAt: archivedAt + index,
+          }),
+      }));
+      await DB.deleteCharacterAndArchiveOwnedWorldbooks({
+          charId: id,
+          groups: ownedGroups,
+          entries: archivedEntries,
+      });
+      setWorldbookGroups(previous => previous.filter(group => !ownedGroups.some(owned => owned.id === group.id)));
+      setWorldbooks(previous => previous.filter(entry => !ownedEntries.some(owned => owned.id === entry.id)));
+      setCharacters(previous => {
+          const remaining = normalizeCharactersForState(previous.filter(character => character.id !== id));
+          if (remaining.length > 0 && activeCharacterId === id) {
+              setActiveCharacterId(remaining[0].id);
+          }
+          return remaining;
+      });
+  };
   
   // Group Methods
   const createGroup = async (name: string, members: string[]) => {
@@ -2269,77 +2389,413 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   };
 
   // Worldbook Methods
-  const addWorldbook = async (wb: Worldbook) => {
-      setWorldbooks(prev => [...prev, wb]);
-      await DB.saveWorldbook(wb);
+  const reloadWorldbookOwnerState = async (): Promise<Worldbook[]> => {
+      const [entries, storedCharacters, storedWorldbookGroups] = await Promise.all([
+          indexedDbWorldbookPersistence.listEntries(),
+          DB.getAllCharacters(),
+          DB.getAllWorldbookGroups(),
+      ]);
+      setWorldbooks(entries.filter(isWorldbookPublished));
+      setWorldbookGroups(storedWorldbookGroups);
+      if (storedCharacters.length) setCharacters(normalizeCharactersForState(storedCharacters));
+      return entries;
+  };
+
+  const createWorldbookGroup = async (
+      group: WorldbookGroupAssignment,
+  ): Promise<WorldbookGroupAssignment> => {
+      await DB.saveWorldbookGroup(group);
+      setWorldbookGroups(previous => (
+          previous.some(existing => existing.id === group.id)
+              ? previous.map(existing => existing.id === group.id ? group : existing)
+              : [...previous, group]
+      ));
+      return group;
+  };
+
+  const updateWorldbookGroupLayout = async (
+      groups: readonly WorldbookGroupAssignment[],
+  ): Promise<void> => {
+      await DB.saveWorldbookGroupLayout(groups);
+      const byId = new Map(groups.map(group => [group.id, group]));
+      setWorldbookGroups(previous => previous.map(group => byId.get(group.id) || group));
+  };
+
+  const addWorldbook = async (wb: Worldbook, group: WorldbookGroupAssignment) => {
+      await createWorldbookGroup(group);
+      const entry = createWorldbookEntry({ book: { ...wb, category: group.name, group } });
+      const changedCharacters = await DB.saveWorldbookRevision(entry, null);
+      setWorldbooks(prev => [...prev, entry]);
+      if (changedCharacters.length) {
+          const changedById = new Map(changedCharacters.map(character => [character.id, character]));
+          setCharacters(previous => normalizeCharactersForState(previous.map(character => (
+              changedById.get(character.id) || character
+          ))));
+      }
+  };
+
+  const addWorldbookBatch = async (
+      entries: WorldbookImportDraft[],
+      group: WorldbookGroupAssignment,
+      sourceKind: 'import' | 'player',
+  ) => {
+      if (!entries.length) throw new Error('没有可导入的世界书条目');
+      await createWorldbookGroup(group);
+      const sessionId = `worldbook-${sourceKind}:${Date.now()}`;
+      const createdEntries = entries.map((draft, index) => {
+          if (!draft.title.trim()) throw new Error(`第 ${index + 1} 条世界书缺少标题`);
+          const now = Date.now() + index;
+          return createWorldbookEntry({
+              book: {
+                  id: `${sessionId}:entry:${index + 1}`,
+                  title: draft.title.trim(),
+                  content: draft.content,
+                  category: group.name,
+                  group,
+                  activationHint: draft.activationHint,
+                  createdAt: now,
+                  updatedAt: now,
+              },
+              aliases: draft.aliases,
+              publicationStatus: draft.publicationStatus,
+              sourceRef: { kind: sourceKind, refId: sessionId, revision: 1 },
+          });
+      });
+      await indexedDbWorldbookPersistence.createEntries(createdEntries);
+      setWorldbooks(previous => [
+          ...previous,
+          ...createdEntries.filter(isWorldbookPublished),
+      ]);
+      return createdEntries;
+  };
+
+  const addImportedWorldbooks = async (
+      entries: WorldbookImportDraft[],
+      group: WorldbookGroupAssignment,
+  ) => addWorldbookBatch(entries, group, 'import');
+
+  const addPlayerWorldbooks = async (
+      entries: WorldbookImportDraft[],
+      group: WorldbookGroupAssignment,
+  ) => addWorldbookBatch(entries, group, 'player');
+
+  const addWorldbookSupplement = async (
+      builtInEntryId: string,
+      draft: Pick<Worldbook, 'title' | 'content' | 'category'>,
+      group: WorldbookGroupAssignment,
+  ) => {
+      await createWorldbookGroup(group);
+      const builtIn = worldbooks.find(entry => entry.id === builtInEntryId);
+      if (!builtIn || (!builtIn.isBuiltIn && !builtIn.lockEditing)) {
+          throw new Error('只能给只读的内置世界书添加补充');
+      }
+      if (!draft.title.trim()) throw new Error('补充条目需要标题');
+      const now = Date.now();
+      const entry = createWorldbookEntry({
+          book: {
+              id: `wb-supplement:${builtInEntryId}:${now}`,
+              title: draft.title.trim(),
+              content: draft.content,
+              category: group.name,
+              group,
+              createdAt: now,
+              updatedAt: now,
+          },
+          supplementsEntryIds: [builtInEntryId],
+          sourceRef: { kind: 'player', refId: `worldbook-supplement:${builtInEntryId}:${now}` },
+      });
+      await indexedDbWorldbookPersistence.createEntry(entry);
+      setWorldbooks(previous => [...previous, entry]);
+  };
+
+  const copyWorldbookToGroup = async (
+      entryId: string,
+      group: WorldbookGroupAssignment,
+  ): Promise<Worldbook> => {
+      await createWorldbookGroup(group);
+      const source = worldbooks.find(entry => entry.id === entryId);
+      if (!source || source.isBuiltIn || source.lockEditing) {
+          throw new Error('只能复制自己的世界书条目');
+      }
+      const now = Date.now();
+      const copy = createWorldbookEntry({
+          book: {
+              id: `wb-copy:${entryId}:${now}`,
+              title: source.title,
+              content: source.content,
+              category: group.name,
+              group,
+              activationHint: source.activationHint,
+              createdAt: now,
+              updatedAt: now,
+          },
+          aliases: getActiveWorldbookRevision(source).aliases,
+          sourceRefs: [
+              ...getActiveWorldbookRevision(source).sourceRefs,
+              { kind: 'player', refId: `worldbook-copy:${entryId}:${group.id}:${now}` },
+          ],
+      });
+      await indexedDbWorldbookPersistence.createEntry(copy);
+      setWorldbooks(previous => [...previous, copy]);
+      return copy;
   };
 
   const updateWorldbook = async (id: string, updates: Partial<Worldbook>) => {
       const currentBook = worldbooks.find(book => book.id === id);
       if (!currentBook) return;
-
-      const fullUpdatedWb: Worldbook = {
-          ...currentBook,
-          ...updates,
-          id: currentBook.id,
-          updatedAt: Date.now(),
-      };
-
-      await DB.saveWorldbook(fullUpdatedWb);
-      setWorldbooks(prev => prev.map(book => book.id === id ? fullUpdatedWb : book));
-
-      const nextLibrary = worldbooks.map(book => book.id === id ? fullUpdatedWb : book);
-      const updatedChars: CharacterProfile[] = [];
-      const nextCharacters = characters.map(char => {
-          const synchronized = synchronizeMountedWorldbooks(char.mountedWorldbooks, nextLibrary);
-          if (!synchronized.changed) return char;
-          const updatedChar = { ...char, mountedWorldbooks: synchronized.mountedWorldbooks };
-          updatedChars.push(updatedChar);
-          return updatedChar;
+      const group = updates.group || currentBook.group;
+      const previousRevisionId = getActiveWorldbookRevision(currentBook).id;
+      const now = Date.now();
+      const fullUpdatedWb = reviseWorldbookEntry({
+          current: currentBook,
+          patch: {
+              title: updates.title,
+              content: updates.content,
+              category: group?.name || updates.category,
+              activationHint: updates.activationHint,
+          },
+          sourceRef: { kind: 'player', refId: `worldbook-edit:${id}:${now}` },
+          updatedAt: now,
       });
-
-      if (updatedChars.length > 0) {
-          await Promise.all(updatedChars.map(char => DB.saveCharacter(char)));
-          setCharacters(normalizeCharactersForState(nextCharacters));
+      const groupedUpdatedWb = group ? { ...fullUpdatedWb, group, category: group.name } : fullUpdatedWb;
+      const changedCharacters = await DB.saveWorldbookRevision(groupedUpdatedWb, previousRevisionId);
+      setWorldbooks(prev => prev.map(book => book.id === id ? groupedUpdatedWb : book));
+      if (changedCharacters.length) {
+          const changedById = new Map(changedCharacters.map(character => [character.id, character]));
+          setCharacters(previous => normalizeCharactersForState(previous.map(character => (
+              changedById.get(character.id) || character
+          ))));
       }
   };
 
-  const deleteWorldbook = async (id: string) => {
-      setWorldbooks(prev => prev.filter(wb => wb.id !== id));
-      await DB.deleteWorldbook(id);
-      
-      // Sync delete: Remove from characters
-      const updatedChars = characters.map(char => {
-          if (char.mountedWorldbooks?.some(m => m.id === id)) {
-              const newMounted = char.mountedWorldbooks.filter(m => m.id !== id);
-              const newChar = { ...char, mountedWorldbooks: newMounted };
-              DB.saveCharacter(newChar);
-              return newChar;
-          }
-          return char;
+  const archiveWorldbook = async (id: string) => {
+      const currentBook = worldbooks.find(book => book.id === id);
+      if (!currentBook) return;
+      const previousRevisionId = getActiveWorldbookRevision(currentBook).id;
+      const now = Date.now();
+      const archived = archiveWorldbookEntry({
+          current: currentBook,
+          sourceRef: { kind: 'player', refId: `worldbook-archive:${id}:${now}` },
+          archivedAt: now,
       });
-      setCharacters(normalizeCharactersForState(updatedChars));
-      addToast('世界书已删除 (同步移除角色挂载)', 'success');
+      const changedCharacters = await DB.saveWorldbookRevision(archived, previousRevisionId);
+      setWorldbooks(prev => prev.filter(wb => wb.id !== id));
+      if (changedCharacters.length) {
+          const changedById = new Map(changedCharacters.map(character => [character.id, character]));
+          setCharacters(previous => normalizeCharactersForState(previous.map(character => (
+              changedById.get(character.id) || character
+          ))));
+      }
+      addToast('已从当前书架归档，版本记录仍保留', 'success');
+  };
+
+  const archiveWorldbookGroup = async (groupId: string) => {
+      const group = worldbookGroups.find(item => item.id === groupId);
+      if (!group) throw new Error('这个分组已经不存在');
+      if (group.owner.kind !== 'character') {
+          throw new Error('通用区不能整组归档，请单独整理其中的条目');
+      }
+      const currentEntries = worldbooks.filter(entry => (
+          !isBuiltInWorldbook(entry) && entry.group?.id === group.id
+      ));
+      const archivedAt = Date.now();
+      const archivedEntries = currentEntries.map((entry, index) => ({
+          expectedActiveRevisionId: getActiveWorldbookRevision(entry).id,
+          entry: archiveWorldbookEntry({
+              current: entry,
+              sourceRef: {
+                  kind: 'player',
+                  refId: `worldbook-group-archive:${group.id}:${archivedAt}:${index}`,
+              },
+              archivedAt: archivedAt + index,
+          }),
+      }));
+      const changedCharacters = await DB.archiveWorldbookGroup({
+          group,
+          entries: archivedEntries,
+      });
+      const archivedIds = new Set(currentEntries.map(entry => entry.id));
+      setWorldbooks(previous => previous.filter(entry => !archivedIds.has(entry.id)));
+      setWorldbookGroups(previous => previous.filter(item => item.id !== group.id));
+      if (changedCharacters.length) {
+          const changedById = new Map(changedCharacters.map(character => [character.id, character]));
+          setCharacters(previous => normalizeCharactersForState(previous.map(character => (
+              changedById.get(character.id) || character
+          ))));
+      }
+      addToast(
+          currentEntries.length
+              ? `已归档“${group.name}”及 ${currentEntries.length} 条资料`
+              : `已删除空分组“${group.name}”`,
+          'success',
+      );
+  };
+
+  const assignUnassignedWorldbooks = async (
+      entryIds: readonly string[],
+      group: WorldbookGroupAssignment,
+  ) => {
+      const selectedIds = new Set(entryIds);
+      const selectedEntries = worldbooks.filter(entry => (
+          selectedIds.has(entry.id) && !entry.group && !isBuiltInWorldbook(entry)
+      ));
+      if (!entryIds.length || selectedEntries.length !== selectedIds.size) {
+          throw new Error('待归组内容已经发生变化，请刷新后再试');
+      }
+      await DB.assignUnassignedWorldbooks({
+          group,
+          entries: selectedEntries.map(entry => ({
+              entryId: entry.id,
+              expectedActiveRevisionId: getActiveWorldbookRevision(entry).id,
+          })),
+          assignedAt: Date.now(),
+      });
+      await reloadWorldbookOwnerState();
+  };
+
+  const archiveUnassignedWorldbooks = async (entryIds: readonly string[]) => {
+      const selectedIds = new Set(entryIds);
+      const selectedEntries = worldbooks.filter(entry => (
+          selectedIds.has(entry.id) && !entry.group && !isBuiltInWorldbook(entry)
+      ));
+      if (!entryIds.length || selectedEntries.length !== selectedIds.size) {
+          throw new Error('待归组内容已经发生变化，请刷新后再试');
+      }
+      await DB.archiveUnassignedWorldbooks({
+          entries: selectedEntries.map(entry => ({
+              entryId: entry.id,
+              expectedActiveRevisionId: getActiveWorldbookRevision(entry).id,
+          })),
+          archivedAt: Date.now(),
+      });
+      await reloadWorldbookOwnerState();
+  };
+
+  const deleteArchivedWorldbooks = async (
+      entryIds: readonly string[],
+      groupId?: string,
+  ) => {
+      await DB.deleteArchivedWorldbooks({ entryIds, groupId });
+      await reloadWorldbookOwnerState();
+  };
+
+  const loadWorldbookWorkspace = async () => {
+      const [entries, candidates] = await Promise.all([
+          indexedDbWorldbookPersistence.listEntries(),
+          indexedDbWorldbookPersistence.listGrowthCandidates(),
+      ]);
+      return { entries, candidates };
+  };
+
+  const restoreWorldbookGroup = async (groupId: string) => {
+      const entries = await indexedDbWorldbookPersistence.listEntries();
+      const archivedEntries = entries.filter(entry => (
+          entry.group?.id === groupId && !isWorldbookPublished(entry)
+      ));
+      if (!archivedEntries.length) throw new Error('这组世界书已经没有可恢复的资料');
+      const group = archivedEntries[0].group;
+      if (!group || archivedEntries.some(entry => entry.group?.id !== group.id)) {
+          throw new Error('归档分组信息不完整，请刷新后再试');
+      }
+      const baseTime = Math.max(
+          Date.now(),
+          ...archivedEntries.map(entry => entry.updatedAt + 1),
+      );
+      const restoredEntries = archivedEntries.map((entry, index) => {
+          const latestPublished = [...(entry.revisionSnapshots || [])]
+              .filter(revision => revision.publicationStatus === 'published')
+              .sort((left, right) => right.revision - left.revision)[0];
+          const restoreSource = latestPublished || getActiveWorldbookRevision(entry);
+          return {
+              expectedActiveRevisionId: getActiveWorldbookRevision(entry).id,
+              entry: restoreWorldbookRevision({
+                  current: entry,
+                  revisionId: restoreSource.id,
+                  restoredAt: baseTime + index,
+              }),
+          };
+      });
+      await DB.restoreWorldbookGroup({ group, entries: restoredEntries });
+      await reloadWorldbookOwnerState();
+      addToast(`已恢复“${group.name}”及 ${restoredEntries.length} 条资料`, 'success');
+  };
+
+  const restoreWorldbookVersion = async (entryId: string, revisionId: string) => {
+      const entries = await indexedDbWorldbookPersistence.listEntries();
+      const current = entries.find(entry => entry.id === entryId);
+      if (!current) throw new Error('这条世界书已经不存在，请返回书架刷新后再试');
+      const expectedActiveRevisionId = getActiveWorldbookRevision(current).id;
+      const restored = restoreWorldbookRevision({
+          current,
+          revisionId,
+          restoredAt: Math.max(Date.now(), current.updatedAt + 1),
+      });
+      if (current.group && !worldbookGroups.some(group => group.id === current.group?.id)) {
+          await createWorldbookGroup(current.group);
+      }
+      await indexedDbWorldbookPersistence.restoreRevision(restored, expectedActiveRevisionId);
+      await reloadWorldbookOwnerState();
+  };
+
+  const acceptWorldGrowthCandidateReview = async (
+      candidateId: string,
+      review: WorldGrowthCandidatePlayerReview,
+  ) => {
+      await createWorldbookGroup(review.group);
+      const [entries, candidates] = await Promise.all([
+          indexedDbWorldbookPersistence.listEntries(),
+          indexedDbWorldbookPersistence.listGrowthCandidates(),
+      ]);
+      const candidate = candidates.find(item => item.id === candidateId);
+      if (!candidate) throw new Error('这条故事生长候选已经不存在，请返回刷新后再试');
+      const currentEntry = candidate.targetEntryId
+          ? entries.find(entry => entry.id === candidate.targetEntryId)
+          : undefined;
+      const acceptedAt = Math.max(Date.now(), candidate.updatedAt + 1, (currentEntry?.updatedAt || 0) + 1);
+      const accepted = acceptWorldGrowthCandidate({
+          candidate,
+          currentEntry,
+          newEntryId: candidate.targetEntryId ? undefined : `wb-growth:${candidate.id}`,
+          reviewedDraft: review,
+          acceptedAt,
+      });
+      await indexedDbWorldbookPersistence.commitAcceptedCandidate({
+          ...accepted,
+          reviewedDraft: review,
+          expectedBaseRevisionId: candidate.baseRevisionId ?? null,
+          expectedCandidateUpdatedAt: candidate.updatedAt,
+      });
+      await reloadWorldbookOwnerState();
+  };
+
+  const setWorldGrowthCandidateDisposition = async (
+      candidateId: string,
+      status: 'deferred' | 'ignored',
+  ) => {
+      const candidates = await indexedDbWorldbookPersistence.listGrowthCandidates();
+      const candidate = candidates.find(item => item.id === candidateId);
+      if (!candidate) throw new Error('这条故事生长候选已经不存在，请返回刷新后再试');
+      const updated = deferOrIgnoreWorldGrowthCandidate({
+          candidate,
+          status,
+          updatedAt: Math.max(Date.now(), candidate.updatedAt + 1),
+      });
+      await indexedDbWorldbookPersistence.saveGrowthCandidate(updated);
   };
 
   // Novel Methods (New)
   const addNovel = async (novel: NovelBook) => {
-      setNovels(prev => [novel, ...prev]);
       await DB.saveNovel(novel);
+      replaceNovelsState([novel, ...novelsRef.current.filter(entry => entry.id !== novel.id)]);
   };
 
   const updateNovel = async (id: string, updates: Partial<NovelBook>) => {
-      setNovels(prev => {
-          const next = prev.map(n => n.id === id ? { ...n, ...updates, lastActiveAt: Date.now() } : n);
-          const target = next.find(n => n.id === id);
-          if (target) DB.saveNovel(target);
-          return next;
-      });
+      await novelUpdateCoordinatorRef.current!.update(id, updates);
   };
 
   const deleteNovel = async (id: string) => {
-      setNovels(prev => prev.filter(n => n.id !== id));
       await DB.deleteNovel(id);
+      replaceNovelsState(novelsRef.current.filter(n => n.id !== id));
   };
 
   // Song Methods
@@ -2936,6 +3392,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           const themes = await DB.getThemes();
           const user = await DB.getUserProfile();
           const books = await DB.getAllWorldbooks();
+          const restoredWorldbookGroups = await DB.getAllWorldbookGroups();
           const novelList = await DB.getAllNovels();
           const songList = await DB.getAllSongs();
           
@@ -2962,8 +3419,9 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           if (groupsList.length > 0) setGroups(groupsList);
           if (themes.length > 0) setCustomThemes(themes);
           if (user) setUserProfile(normalizeUserPersonaProfile(user));
-          if (books.length > 0) setWorldbooks(books);
-          if (novelList.length > 0) setNovels(novelList);
+          setWorldbooks(books.filter(isWorldbookPublished));
+          setWorldbookGroups(restoredWorldbookGroups);
+          if (novelList.length > 0) replaceNovelsState(novelList);
           if (songList.length > 0) setSongs(songList);
           
           setSysOperation({ status: 'idle', message: '', progress: 100 });
@@ -3058,9 +3516,25 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     deleteCharacter,
     setActiveCharacterId: handleSetActiveCharacter,
     worldbooks,
+    worldbookGroups,
+    createWorldbookGroup,
+    updateWorldbookGroupLayout,
     addWorldbook,
+    addImportedWorldbooks,
+    addPlayerWorldbooks,
+    addWorldbookSupplement,
+    copyWorldbookToGroup,
     updateWorldbook,
-    deleteWorldbook,
+    archiveWorldbook,
+    archiveWorldbookGroup,
+    assignUnassignedWorldbooks,
+    archiveUnassignedWorldbooks,
+    deleteArchivedWorldbooks,
+    restoreWorldbookGroup,
+    loadWorldbookWorkspace,
+    restoreWorldbookVersion,
+    acceptWorldGrowthCandidateReview,
+    setWorldGrowthCandidateDisposition,
     novels,
     addNovel,
     updateNovel,

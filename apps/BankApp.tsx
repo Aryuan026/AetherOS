@@ -541,7 +541,7 @@ const BankApp: React.FC = () => {
             const randomChar = pool[Math.floor(Math.random() * pool.length)];
 
             // 2. Build Context
-            const charContext = ContextBuilder.buildCoreContext(randomChar, userProfile, true);
+            const charContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(randomChar, userProfile, true);
             const recentMsgs = await DB.getMessagesByCharId(randomChar.id);
             const chatSnippet = recentMsgs.slice(-10).map(m => m.content.substring(0, 50)).join(' | ');
 

@@ -32,7 +32,18 @@ assert.equal(AI_TASK_REGISTRY.history_companion_material_analysis.role, 'system_
 assert.equal(AI_TASK_REGISTRY.emotion_background_evaluation.role, 'system_director');
 assert.equal(AI_TASK_REGISTRY.behavior_boundary_compilation.role, 'system_director');
 assert.equal(AI_TASK_REGISTRY.behavior_boundary_compilation.requiresRelationshipScope, false);
+assert.equal(AI_TASK_REGISTRY.worldbook_input_analysis.role, 'system_director');
+assert.equal(AI_TASK_REGISTRY.worldbook_input_analysis.truthEffect, 'none');
+assert.equal(AI_TASK_REGISTRY.worldbook_input_analysis.requiresRelationshipScope, false);
+assert.equal(AI_TASK_REGISTRY.narrative_scene_plan.role, 'system_director');
 assert.equal(AI_TASK_REGISTRY.narrative_scene_plan.truthEffect, 'none');
+assert.equal(AI_TASK_REGISTRY.narrative_scene_plan.requiresRelationshipScope, true);
+assert.equal(AI_TASK_REGISTRY.narrative_world_growth_proposal.role, 'system_director');
+assert.equal(AI_TASK_REGISTRY.narrative_world_growth_proposal.truthEffect, 'none');
+assert.equal(AI_TASK_REGISTRY.narrative_world_growth_proposal.requiresRelationshipScope, true);
+assert.equal(AI_TASK_REGISTRY.narrative_scene_receipt_proposal.role, 'system_director');
+assert.equal(AI_TASK_REGISTRY.narrative_scene_receipt_proposal.truthEffect, 'none');
+assert.equal(AI_TASK_REGISTRY.narrative_scene_receipt_proposal.requiresRelationshipScope, true);
 
 assert.deepEqual(normalizeAiRuntimeRouting(undefined), DEFAULT_AI_RUNTIME_ROUTING);
 assert.deepEqual(normalizeAiRuntimeRouting({

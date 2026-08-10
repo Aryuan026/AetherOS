@@ -28,6 +28,13 @@ import {
 import { prepareCharacterBehaviorBoundaryProjection } from '../utils/characterBehaviorBoundary';
 import { prepareChatConversationContinuity } from '../utils/conversationContinuity';
 import type { CharacterBehaviorBoundaryRule } from '../domain/characterBehaviorBoundary';
+import type { WorldbookProjectionConsumerRef } from '../domain/worldbook';
+import {
+    prepareWorldbookRuntimeProjection,
+    recordWorldbookRuntimeProjectionDelivery,
+    type PreparedWorldbookRuntimeProjection,
+} from '../utils/worldbookRuntime';
+import { indexedDbWorldbookPersistence } from '../utils/worldbookPersistence';
 import {
     advanceCharacterLiveState,
     activeCharacterBuffs,
@@ -415,6 +422,32 @@ export const useChatAI = ({
                 query: typeof lastUserMessage?.content === 'string' ? lastUserMessage.content : '',
                 budgetChars: 1200,
             }) : { markdown: '' };
+            const worldbookConsumer: WorldbookProjectionConsumerRef = {
+                kind: 'chat',
+                id: `chat-prompt:${assistantResponseId}`,
+                revision: 'worldbook-chat-v1',
+            };
+            let preparedWorldbookRuntime: PreparedWorldbookRuntimeProjection | null = null;
+            if (initiatingRelationshipScope && lastUserMessage) {
+                try {
+                    preparedWorldbookRuntime = prepareWorldbookRuntimeProjection({
+                        requestId: `chat-worldbook:${assistantResponseId}`,
+                        library: await indexedDbWorldbookPersistence.listEntries(),
+                        character: char,
+                        scope: initiatingRelationshipScope,
+                        consumer: worldbookConsumer,
+                        knowledgeSubjects: [{ kind: 'character', id: char.id }],
+                        query: typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
+                        budget: {
+                            maxTotalChars: 700,
+                            maxEntries: 1,
+                            maxEntryChars: 560,
+                        },
+                    });
+                } catch (error) {
+                    console.warn('[chat] Worldbook projection unavailable', error);
+                }
+            }
             let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
             if (selectorRelationshipScope && lastUserMessage) {
                 try {
@@ -491,6 +524,7 @@ export const useChatAI = ({
                 {
                     replyMode: chatReplyMode,
                     delivery: 'interactive',
+                    worldbookContext: preparedWorldbookRuntime?.markdown,
                     companionMaterialContext: preparedCompanionMaterial?.markdown,
                     characterBehaviorBoundaryContext: characterBehaviorBoundary?.markdown,
                     interactionQualityContext: interactionQuality?.markdown,
@@ -702,6 +736,23 @@ export const useChatAI = ({
 
             // Comprehensive AI output sanitization (strips name prefixes, headers, stray backticks, residual tags, etc.)
             aiContent = ChatParser.sanitize(aiContent);
+
+            if (
+                preparedWorldbookRuntime?.projection.items.length
+                && preparedWorldbookRuntime.markdown
+                && aiContent.trim()
+                && ChatParser.hasDisplayContent(aiContent)
+            ) {
+                try {
+                    await recordWorldbookRuntimeProjectionDelivery({
+                        prepared: preparedWorldbookRuntime,
+                        consumer: worldbookConsumer,
+                        deliveredAt: Date.now(),
+                    });
+                } catch (error) {
+                    console.warn('[chat] Worldbook delivery receipt unavailable', error);
+                }
+            }
 
             // A 200/JSON response is not yet a completed character reply. Record
             // material delivery only after the final model output survives recall

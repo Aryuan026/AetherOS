@@ -11,6 +11,7 @@ import { buildChatReplyModePrompt, DEFAULT_CHAT_REPLY_MODE } from './chatReplyMo
 export interface ChatPromptBehavior {
     replyMode?: ChatReplyMode;
     delivery?: 'interactive' | 'proactive';
+    worldbookContext?: string;
     companionMaterialContext?: string;
     characterBehaviorBoundaryContext?: string;
     interactionQualityContext?: string;
@@ -118,12 +119,16 @@ export const ChatPrompts = {
         const replyMode = delivery === 'proactive'
             ? 'texting'
             : (behavior.replyMode || DEFAULT_CHAT_REPLY_MODE);
+        const worldbookContext = behavior.worldbookContext?.trim() || '';
         const companionMaterialContext = behavior.companionMaterialContext?.trim() || '';
         const characterBehaviorBoundaryContext = behavior.characterBehaviorBoundaryContext?.trim() || '';
         const interactionQualityContext = behavior.interactionQualityContext?.trim() || '';
-        let baseSystemPrompt = ContextBuilder.buildCoreContext(char, userProfile);
+        let baseSystemPrompt = ContextBuilder.buildCanonicalCoreContext(char, userProfile);
 
-        // 情绪底色（buffInjection）已移入 ContextBuilder.buildCoreContext()，所有 App 统一注入
+        // 情绪底色（buffInjection）由共享 canonical core 统一注入。
+        if (worldbookContext) {
+            baseSystemPrompt += `\n${worldbookContext}\n`;
+        }
         if (worldlineMemoryContext?.trim()) {
             baseSystemPrompt += `\n${worldlineMemoryContext.trim()}\n`;
         }

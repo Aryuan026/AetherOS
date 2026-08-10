@@ -241,7 +241,7 @@ const GameApp: React.FC = () => {
         
         for (const p of players) {
             // 1. Base Context (Identity & Worldview)
-            fullContext += `\n<<< 角色档案: ${p.name} (ID: ${p.id}) >>>\n${ContextBuilder.buildCoreContext(p, userProfile, true)}\n`;
+            fullContext += `\n<<< 角色档案: ${p.name} (ID: ${p.id}) >>>\n${ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(p, userProfile, true)}\n`;
             
             // 2. Neural Link: Private Chat Sync
             try {

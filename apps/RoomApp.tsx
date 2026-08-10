@@ -343,7 +343,7 @@ const RoomApp: React.FC = () => {
     const initializeFallback = async (c: CharacterProfile) => {
         try {
             console.warn("Triggering Room Fallback Initialization");
-            const baseContext = ContextBuilder.buildCoreContext(c, userProfile, false);
+            const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(c, userProfile, false);
             const fallbackPrompt = `${baseContext}\n\nTask: User entered your room. Just say hello. JSON: { "welcomeMessage": "..." }`;
             
             const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -431,7 +431,7 @@ const RoomApp: React.FC = () => {
             const lastMsg = recentMsgs[recentMsgs.length - 1];
             const timeGapHint = getTimeGapHint(lastMsg?.timestamp);
 
-            const baseContext = ContextBuilder.buildCoreContext(c, userProfile, true); // Keep Full Context
+            const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(c, userProfile, true); // Keep Full Context
             
             // DEBUG FIX: Sanitize and truncate interactables context to prevent huge Base64 leakage
             const interactables = currentItems.filter(i => i.isInteractive).map(i => ({ 

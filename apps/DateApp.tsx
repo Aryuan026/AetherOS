@@ -431,7 +431,7 @@ const DateApp: React.FC = () => {
             }
             const messages = buildDateOpeningModelMessages({
                 characterName: c.name,
-                coreContext: ContextBuilder.buildCoreContext(c, userProfile, false),
+                coreContext: ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(c, userProfile, false),
                 worldlineContext: worldlineMemory.markdown,
                 companionMaterialContext: preparedCompanionMaterial?.markdown,
                 characterBehaviorBoundaryContext: prepareCharacterBehaviorBoundaryProjection({
@@ -590,7 +590,7 @@ const DateApp: React.FC = () => {
             budgetChars: 560,
         });
         let systemPrompt = [
-            ContextBuilder.buildCoreContext(char, userProfile),
+            ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, userProfile),
             worldlineMemory.markdown,
             preparedCompanionMaterial?.markdown,
             characterBehaviorBoundary?.markdown,
@@ -757,7 +757,7 @@ const DateApp: React.FC = () => {
             budgetChars: 560,
         });
         let systemPrompt = [
-            ContextBuilder.buildCoreContext(char, userProfile),
+            ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, userProfile),
             worldlineMemoryR.markdown,
             preparedCompanionMaterial?.markdown,
             characterBehaviorBoundary?.markdown,

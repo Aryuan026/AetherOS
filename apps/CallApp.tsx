@@ -46,6 +46,13 @@ import {
   sameMessageRelationshipScope,
   strictRelationshipScopeForProfile,
 } from '../utils/messageContext';
+import type { WorldbookProjectionConsumerRef } from '../domain/worldbook';
+import {
+  prepareWorldbookRuntimeProjection,
+  recordWorldbookRuntimeProjectionDelivery,
+  type PreparedWorldbookRuntimeProjection,
+} from '../utils/worldbookRuntime';
+import { indexedDbWorldbookPersistence } from '../utils/worldbookPersistence';
 type CallState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'ended' | 'error';
 type ViewMode = 'role-select' | 'in-call' | 'history' | 'record-detail';
 type CallBubble = { id: string; dbId?: number; role: 'user' | 'assistant'; text: string; time: string; audioUrl?: string; timestamp: number };
@@ -785,10 +792,39 @@ const CallApp: React.FC = () => {
     if (!baseUrl) throw new Error('请先在设置里配置聊天 API URL');
     const userName = userProfile?.name?.trim() || '用户';
     const requestTime = Date.now();
-    let callCoreContext = selectedChar ? ContextBuilder.buildCoreContext(selectedChar, userProfile, true) : undefined;
+    let callCoreContext = selectedChar
+      ? ContextBuilder.buildCanonicalCoreContext(selectedChar, userProfile, true)
+      : undefined;
     const relationshipScope = callRelationshipScopeRef.current;
+    const worldbookConsumer: WorldbookProjectionConsumerRef = {
+      kind: 'call',
+      id: `call:${currentSessionId}:${requestTime}`,
+      revision: 'worldbook-call-v1',
+    };
+    let preparedWorldbookRuntime: PreparedWorldbookRuntimeProjection | null = null;
     let preparedCompanionMaterial: PreparedCompanionMaterialPrompt | null = null;
     if (selectedChar && relationshipScope) {
+      try {
+        preparedWorldbookRuntime = prepareWorldbookRuntimeProjection({
+          requestId: `call-worldbook:${currentSessionId}:${requestTime}`,
+          library: await indexedDbWorldbookPersistence.listEntries(),
+          character: selectedChar,
+          scope: relationshipScope,
+          consumer: worldbookConsumer,
+          knowledgeSubjects: [{ kind: 'character', id: selectedChar.id }],
+          query: input,
+          budget: {
+            maxTotalChars: 800,
+            maxEntries: 2,
+            maxEntryChars: 400,
+          },
+        });
+        if (preparedWorldbookRuntime.markdown) {
+          callCoreContext = `${callCoreContext || ''}\n${preparedWorldbookRuntime.markdown}\n`;
+        }
+      } catch (error) {
+        console.warn('[call] Worldbook projection unavailable', error);
+      }
       try {
         const recentForMemory = await DB.getRecentMessagesByCharId(selectedChar.id, selectedChar.contextLimit || 500);
         const worldlineMemory = await selectWorldlineMemoryContext({
@@ -895,6 +931,17 @@ const CallApp: React.FC = () => {
     });
     const assistantText = sanitizeAssistantOutput(chatData?.choices?.[0]?.message?.content || '');
     if (!assistantText) throw new Error('文本接口返回为空');
+    if (preparedWorldbookRuntime?.projection.items.length && preparedWorldbookRuntime.markdown) {
+      try {
+        await recordWorldbookRuntimeProjectionDelivery({
+          prepared: preparedWorldbookRuntime,
+          consumer: worldbookConsumer,
+          deliveredAt: Date.now(),
+        });
+      } catch (error) {
+        console.warn('[call] Worldbook delivery receipt unavailable', error);
+      }
+    }
     if (preparedCompanionMaterial) {
       try {
         await recordPreparedCompanionMaterialPromptDelivery({

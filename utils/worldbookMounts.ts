@@ -1,12 +1,30 @@
 import type { CharacterProfile, Worldbook } from '../types';
+import { getActiveWorldbookRevision } from '../domain/worldbook/contract';
 
 export type MountedWorldbook = NonNullable<CharacterProfile['mountedWorldbooks']>[number];
+
+const compatibilityFieldsFor = (book: Worldbook): Pick<
+    MountedWorldbook,
+    'publicationStatus' | 'legacyPromptEligibility' | 'knowledgePolicy'
+> => {
+    const revision = getActiveWorldbookRevision(book);
+    const publicGlobal = revision.knowledgePolicy.kind === 'public'
+        && revision.bindings.every(binding => binding.kind === 'global');
+    return {
+        publicationStatus: revision.publicationStatus,
+        legacyPromptEligibility: publicGlobal ? 'public_global' : 'typed_only',
+        knowledgePolicy: revision.knowledgePolicy,
+    };
+};
 
 const sameMountedWorldbook = (mounted: MountedWorldbook, book: Worldbook) => (
     mounted.id === book.id &&
     mounted.title === book.title &&
     mounted.content === book.content &&
-    mounted.category === book.category
+    mounted.category === book.category &&
+    mounted.publicationStatus === compatibilityFieldsFor(book).publicationStatus &&
+    mounted.legacyPromptEligibility === compatibilityFieldsFor(book).legacyPromptEligibility &&
+    JSON.stringify(mounted.knowledgePolicy) === JSON.stringify(compatibilityFieldsFor(book).knowledgePolicy)
 );
 
 /**
@@ -34,6 +52,7 @@ export const synchronizeMountedWorldbooks = (
             title: current.title,
             content: current.content,
             category: current.category,
+            ...compatibilityFieldsFor(current),
         };
     });
 

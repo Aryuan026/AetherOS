@@ -484,14 +484,27 @@ export const buildPrompt = (
     storyContext: string,
     options: GenerationOptions,
     contextSegments: NovelSegment[],
-    characters: CharacterProfile[]
+    characters: CharacterProfile[],
+    acceptedScene?: {
+        title: string;
+        location?: string;
+        objective?: string;
+        constraints?: readonly string[];
+    },
+    worldbookContext = '',
 ) => {
-    const coreContext = ContextBuilder.buildCoreContext(char, userProfile, true);
+    const coreContext = ContextBuilder.buildCanonicalCoreContext(char, userProfile, true);
     const writerPersona = char.writerPersona || analyzeWriterPersonaSimple(char);
     const fewShot = getFewShotExamples(char);
     const extractedTaboos = extractWritingTaboos(char); 
     const protagonistContext = activeBook?.protagonists.map(p => `- ${p.name} (${p.role}): ${p.description}`).join('\n') || '无';
     const narrativeDirectives = formatNarrativeDirectivesForPrompt(activeBook?.directives || []);
+    const acceptedSceneContext = acceptedScene ? `
+# 玩家已接受的当前现场
+- 场景：${acceptedScene.title}
+${acceptedScene.location ? `- 起点：${acceptedScene.location}\n` : ''}${acceptedScene.objective ? `- 想探索的方向：${acceptedScene.objective}\n` : ''}${acceptedScene.constraints?.length ? `- 已确认边界：${acceptedScene.constraints.join('；')}\n` : ''}
+这些是开放的现场条件，不是预定结局。让人物按自身动机自然行动，不要为了复述条件而停下故事。
+` : '';
     
     const bookInfo = `
 小说：《${activeBook?.title}》
@@ -559,6 +572,10 @@ ${fewShot}
 ${storyContext}
 
 ${bookInfo}
+
+${worldbookContext}
+
+${acceptedSceneContext}
 
 ---
 
@@ -631,6 +648,68 @@ ${tasks}
   "meta": { "tone": "本段情绪基调", "suggestion": "简短的下一步建议" }
 }
 `;
+};
+
+/**
+ * A prose-first prompt for judging the writing model itself. It deliberately
+ * excludes character-chat identity, relationship performance, co-writer
+ * commentary, and blanket negative style lists. Character cards may still own
+ * the selected Worldbook scope, but they do not impersonate the novelist.
+ */
+export const buildPlainNovelPrompt = (input: {
+    activeBook: NovelBook;
+    userText: string;
+    storyContext: string;
+    worldbookContext?: string;
+    acceptedScene?: {
+        title: string;
+        location?: string;
+        objective?: string;
+        constraints?: readonly string[];
+    };
+}): string => {
+    const protagonists = input.activeBook.protagonists.length
+        ? input.activeBook.protagonists.map(item => `- ${item.name}（${item.role}）：${item.description || '暂无补充'}`).join('\n')
+        : '- 暂未单独登记；以正文中已经出现的人物为准。';
+    const directives = formatNarrativeDirectivesForPrompt(input.activeBook.directives || []);
+    const scene = input.acceptedScene ? [
+        `- 场景：${input.acceptedScene.title}`,
+        input.acceptedScene.location ? `- 起点：${input.acceptedScene.location}` : '',
+        input.acceptedScene.objective ? `- 想探索的方向：${input.acceptedScene.objective}` : '',
+        input.acceptedScene.constraints?.length ? `- 已确认边界：${input.acceptedScene.constraints.join('；')}` : '',
+    ].filter(Boolean).join('\n') : '本轮没有额外指定的场景壳。';
+
+    return `你正在续写一部中文小说。请直接输出可以进入正文的小说内容，不要解释写作过程，不要输出标题、提纲、JSON、Markdown 或与读者对话。
+
+写作目标：
+- 延续上文已经形成的叙事视角、时态、节奏和人物理解，让新段落读起来属于同一部作品。
+- 让人物依据已知处境作出具体选择，让场景或关系发生一点真实变化；保持开放，不替未来预设唯一结局。
+- 通过动作、对白、感官和有选择的心理活动呈现信息。世界资料是背景支撑，只在当前场景确实相关时自然显现，不逐条复述。
+- 允许安静、停顿、误解和未解答的问题存在；优先写出准确、具体、有呼吸感的段落。
+
+【作品】
+书名：《${input.activeBook.title}》
+简介：${input.activeBook.summary || '暂无'}
+本书补充设定：${input.activeBook.worldSetting || '暂无'}
+
+【剧中人】
+${protagonists}
+
+【持续生效的创作方向】
+${directives || '暂无额外方向'}
+
+【本轮现场】
+${scene}
+
+${input.worldbookContext || ''}
+
+【上文】
+${input.storyContext}
+
+【本轮要求】
+${input.userText.trim() || '从上文自然续写，推动人物与局面继续向前。'}
+
+请续写约 600–1200 个中文字符；如果当前节奏只适合更短的一幕，可以自然收束，不必为了凑字数稀释内容。`;
 };
 
 // --- Helper: Parse Persona Markdown for UI ---

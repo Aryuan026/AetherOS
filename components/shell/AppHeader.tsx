@@ -16,6 +16,7 @@ interface AppHeaderProps {
   className?: string;
   titleClassName?: string;
   subtitleClassName?: string;
+  centerSideClassName?: string;
 }
 
 export const AppBackButton: React.FC<{ onClick: () => void; label?: string; className?: string }> = ({
@@ -122,6 +123,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   className = '',
   titleClassName,
   subtitleClassName,
+  centerSideClassName = 'w-10',
 }) => {
   const leftSlot = left ?? (onBack ? <AppBackButton onClick={onBack} /> : null);
 
@@ -134,11 +136,11 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       <div className="flex items-center gap-3 px-4" style={{ height: SHELL_APP_HEADER_ROW_HEIGHT }}>
         {center ? (
           <>
-            <div className="flex w-10 shrink-0 justify-start">{leftSlot}</div>
+            <div className={`flex shrink-0 justify-start ${centerSideClassName}`}>{leftSlot}</div>
             <div className="flex-1 min-w-0">
               <HeaderTitle title={title} subtitle={subtitle} titleClassName={titleClassName} subtitleClassName={subtitleClassName} center />
             </div>
-            <div className="flex w-10 shrink-0 justify-end">{right}</div>
+            <div className={`flex shrink-0 justify-end ${centerSideClassName}`}>{right}</div>
           </>
         ) : (
           <>

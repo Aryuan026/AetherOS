@@ -455,7 +455,7 @@ export const WhiteDaySession: React.FC<WhiteDaySessionProps> = ({ charId, onClos
                 .map(m => `${m.role}: ${m.type === 'image' ? '[图片]' : m.content}`)
                 .join('\n');
 
-            const baseContext = ContextBuilder.buildCoreContext(c, userProfile, true);
+            const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(c, userProfile, true);
             const availableEmotions = getAvailableEmotions(c);
             const occasionBoundary = occasion === 'white_day'
                 ? SPECIAL_MOMENT_PROMPT_BOUNDARY
@@ -627,7 +627,7 @@ ${occasionBoundary}
         setErrorMsg('');
         setPhase('loading_review');
         try {
-            const baseContext = ContextBuilder.buildCoreContext(char, userProfile, true);
+            const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, userProfile, true);
             const availableEmotions = getAvailableEmotions(char);
 
             const answerSummary = quizData.questions.map((q, i) => {

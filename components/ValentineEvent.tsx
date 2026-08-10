@@ -478,7 +478,7 @@ export const ValentineSession: React.FC<ValentineSessionProps> = ({ charId, onCl
                 return `${m.role}: ${content}`;
             }).join('\n');
 
-            const baseContext = ContextBuilder.buildCoreContext(c, userProfile, true);
+            const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(c, userProfile, true);
 
             // 根据角色获取可用表情列表
             const availableEmotions = getAvailableEmotions(c);

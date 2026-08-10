@@ -726,7 +726,7 @@ const StudyApp: React.FC = () => {
         try {
             // Attempt 1: Full Character Context (The "Soul")
             // [MODIFIED]: Use centralized ContextBuilder with memory enabled
-            let baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile, true);
+            let baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(selectedChar, userProfile, true);
             baseContext = appendStudyModeContext(baseContext, userProfile);
 
             let response = await callApi(baseContext);
@@ -803,7 +803,7 @@ const StudyApp: React.FC = () => {
             const chunkText = getStudyChapterSource(activeCourse, activeCourse.currentChapterIndex);
 
             // [MODIFIED]: Use Full Context for Q&A
-            let baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile, true);
+            let baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(selectedChar, userProfile, true);
             baseContext = appendStudyQuestionContext(baseContext);
 
             const prompt = buildStudyQuestionPrompt(baseContext, chunkText, question);
@@ -1041,7 +1041,7 @@ const StudyApp: React.FC = () => {
             return line;
         }).join('\n\n');
 
-        let baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile, true);
+        let baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(selectedChar, userProfile, true);
         const reviewPrompt = buildQuizReviewPrompt(
             baseContext,
             userProfile,
@@ -1154,7 +1154,7 @@ const StudyApp: React.FC = () => {
         const userQ = followUpInput.trim();
         setFollowUpInput('');
 
-        let baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile, true);
+        let baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(selectedChar, userProfile, true);
         const prompt = buildQuizFollowUpPrompt(baseContext, question, userQ);
 
         try {

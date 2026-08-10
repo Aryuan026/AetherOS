@@ -759,7 +759,7 @@ ${logText.substring(0, 10000)}
                 });
 
                 // Use ContextBuilder for the heavy lifting of profile, impression, and archived memories
-                const coreContext = ContextBuilder.buildCoreContext(member, userProfile, true);
+                const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(member, userProfile, true);
                 // Get private gap string
                 const privateGapInfo = await getPrivateTimeGap(member.id);
                 

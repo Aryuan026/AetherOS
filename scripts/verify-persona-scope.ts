@@ -6,6 +6,7 @@ import {
     filterCharactersForPersonaSurface,
     linkCharacterToActivePersonaMask,
     resolvePersonaRouteScope,
+    unlinkCharacterFromActivePersonaMask,
 } from '../utils/personaRouteScope.ts';
 
 const characters = [
@@ -53,6 +54,15 @@ assert.deepEqual(
 );
 assert.equal(linkedExplicitly.profile.personaMasks?.[0]?.updatedAt, 123);
 assert.equal(linkCharacterToActivePersonaMask(linkedExplicitly.profile, 'unlinked').status, 'already_linked');
+
+const movedToLibrary = unlinkCharacterFromActivePersonaMask(linkedExplicitly.profile, 'linked', 456);
+assert.equal(movedToLibrary.status, 'unlinked');
+assert.deepEqual(
+    movedToLibrary.profile.personaMasks?.[0]?.linkedCharacterIds,
+    ['unlinked'],
+    'moving a character to the library must only remove it from the active mask',
+);
+assert.equal(unlinkCharacterFromActivePersonaMask(movedToLibrary.profile, 'linked').status, 'already_unlinked');
 
 const emptyScope = resolvePersonaRouteScope(profile([]), characters, 'unlinked');
 for (const surface of ['chat', 'group_chat', 'call', 'date', 'social', 'novel', 'guidebook', 'special_moments', 'timebook', 'companion_plan', 'study', 'journal', 'room', 'launcher'] as const) {

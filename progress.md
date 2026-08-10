@@ -1,5 +1,298 @@
 # AetherOS Progress
 
+## 2026-08-09 Worldbook Intake And Library Layout (local, uncommitted)
+
+- done:
+  - Split the Worldbook header into an external `导入资料` action and a personal
+    `添加` action. Add now contains only manual entry and system-director smart
+    organization; the root empty-group action was removed.
+  - Removed the long read-only import preview. JSON/PNG/TXT sources now select an
+    owner, parse locally and atomically enter a newly source-named group; failure
+    keeps the library unchanged.
+  - Added a reviewed AI organizer for one entry or one group. It only structures
+    supplied text, keeps truth effect at none, and cannot save until the player
+    reviews its editable result.
+  - Added persistent custom-group pinning and drag order. Built-in Worldbooks can
+    be hidden and restored in the library without deleting data or changing
+    runtime enablement.
+  - Matched the Contacts import control's quieter header treatment, tightened
+    expanded group spacing, and added a visible whole-group archive action.
+    Group entries, group registry and character mounts now change atomically;
+    an empty character-owned group can be removed without touching other groups.
+  - Added second-confirmed permanent deletion for one archived entry or a whole
+    archived group. The atomic delete also removes its revision chain, related
+    growth/delivery records and stale character portability caches.
+  - Stopped the built-in read-only drawer from shrinking inside the reordered
+    flex layout, so expanding long built-in material extends the page scroll
+    instead of clipping its last categories on a phone-height screen.
+  - Corrected AetherOS JSON detection so its `entries` envelope is not mistaken
+    for a Tavern standalone Worldbook.
+
+- verified:
+  - `npm run verify:worldbook-ui`
+  - `npm run verify:worldbook-groups`
+  - `npm run verify:ai-runtime-routing`
+  - `npm run verify:whole-device-backup`
+  - `npm run typecheck`
+  - Browser pass on `127.0.0.1:5174`: separate header actions, two-item Add
+    menu, direct-import screen, reversible built-in hide, permanent-delete
+    confirmation and a fully scrollable expanded built-in drawer.
+
+- boundary:
+  - Character hide/library governance is intentionally not part of this slice.
+  - Local only; no commit, push or deployment in this checkpoint.
+
+## 2026-08-09 Character-Owned Worldbook Groups (local, uncommitted)
+
+- done:
+  - Replaced player-authored per-entry mounting with canonical whole-group
+    governance. A custom group belongs to exactly one character or to the fixed
+    `通用区`; one character cannot enable another character's group or borrow one
+    foreign entry.
+  - Embedded Tavern Worldbooks now enter one group named after the imported
+    character. Standalone imports, manual entries and reviewed story growth all
+    choose a canonical group before commit; empty groups persist independently.
+  - Cross-character reuse is an explicit independent copy into the destination
+    group. Source/copy edits and deletion no longer affect each other.
+  - Character deletion atomically archives owned entries and removes owned group
+    definitions, while universal entries and copies owned by surviving roles
+    remain intact.
+  - Legacy custom entries without group metadata are merged into one visible
+    `待归组` repair bucket and fail closed at runtime. The bucket now explains its
+    source and supports atomic whole-bucket assignment or archive; old custom
+    per-entry cache mounts no longer form a hidden enablement path.
+  - Built-in Worldbooks can be independently pinned or hidden. Whole-group
+    restore also accepts entries imported directly into an archived state.
+  - Worldbook cards and group headers show actual owner/use names. Empty-group,
+    import, copy and backup/restore behavior share the same registry.
+
+- verified:
+  - `npm run verify:health`
+  - browser flow on `127.0.0.1:5174`: one repair bucket, correct `通用区` label,
+    empty-group action, import action and independent-copy group picker; a clean
+    reload added no console errors.
+
+- boundary:
+  - Group eligibility only opens the candidate shelf. Chat/Call still apply
+    relationship binding, knowledge subject, topic relevance and strict character
+    budgets before prompt delivery.
+  - Local only; no commit, push or deployment in this checkpoint.
+
+## 2026-08-09 SillyTavern Character And Worldbook Import (local, uncommitted)
+
+- done:
+  - Added one parser for SillyTavern V2/V3 character-card JSON, standalone
+    Worldbook JSON and standard `chara` / `ccv3` PNG text chunks.
+  - Character import now preserves role prompt material and imports an embedded
+    Worldbook through the canonical revisioned library. Source-enabled entries
+    mount to the new character; source-disabled entries remain archived.
+  - Worldbook import accepts both standalone Tavern books and the embedded book
+    inside a Tavern card, while keeping preview/edit and atomic multi-entry save.
+  - Tavern entries now group by the source Worldbook name (or standalone file
+    name), not by SillyTavern's unrelated activation-competition `entry.group`.
+    Worldbook cards show the actual mounted character names instead of only a
+    mount count.
+  - Plain artwork PNGs fail with an explicit “image only” explanation instead
+    of a generic parse error.
+  - First/alternate greetings and Tavern regex scripts are counted and reported
+    but deliberately not injected into role identity or executed. No hidden
+    script, raw opening or compatibility prompt path was introduced.
+
+- sample audit:
+  - The provided V3 card contains one character, 27 embedded Worldbook entries,
+    28 alternate greetings and 8 regex scripts.
+  - The provided standalone Worldbook contains the same 27 entry bodies in its
+    standalone export shape: 16 enabled and 11 disabled.
+  - The provided PNG has only image chunks and no Tavern card metadata, so it is
+    correctly treated as artwork rather than a character card.
+
+- verified:
+  - `npm run verify:tavern-import`
+  - `npm run verify:worldbook-ui`
+  - `npm run typecheck`
+  - 390 x 844 browser pass for Tavern Worldbook preview and atomic save, including
+    one enabled entry becoming visible and one disabled entry entering archive.
+
+- boundary:
+  - Local only; no commit, push or deployment in this checkpoint.
+  - Native browser file-picker automation cannot attach a local file in the
+    in-app browser harness. Contacts upload is therefore covered by parser,
+    persistence and static UI seams, not reported as a synthetic browser click.
+
+## 2026-08-09 Narrative Director Proposal Services (local, uncommitted)
+
+- done:
+  - Added a system-director scene-shell provider that consumes exact scope,
+    bounded active-run truth, an explicit player direction, an allowlisted
+    participant set, and a player-reviewable typed Worldbook projection.
+  - Added a separate played-scene receipt provider that consumes bounded
+    canonical beats and returns only editable summary/fact fields.
+  - Kept both outputs at `truthEffect:none`. Neither service creates, opens,
+    plays, confirms or persists a scene/receipt, and neither writes memory,
+    Character Life or Worldbook growth.
+  - Worldbook projection delivery is receipted only after a valid scene-shell
+    response. Invalid JSON, extra authority fields, unknown participants and
+    provider failures leave zero delivery write.
+
+- verified:
+  - `npm run verify:narrative-director-proposals`
+  - `npm run typecheck`
+
+- capability boundary:
+  - Provider services are available; Story UI has not requested or displayed
+    them in this checkpoint.
+  - UI acceptance must still call the existing scene lifecycle explicitly.
+
+## 2026-08-09 Worldbook Growth Proposal Service (local, uncommitted)
+
+- done:
+  - Registered `narrative_world_growth_proposal` as a scoped system-director
+    structured-analysis task and added a provider-independent service for one
+    confirmed narrative receipt.
+  - Kept the model input short and evidence-bound: capped confirmed receipt
+    material plus a typed, player-reviewable Worldbook projection. The first
+    box deliberately excludes `director_only` material and permits zero
+    proposals.
+  - Strictly accepted only player-reviewable draft fields. Scope, route/branch
+    bindings, provenance, lifecycle, truth effect and current state remain
+    code-owned; receipt facts are never copied into candidate prose by code.
+  - Added one-transaction candidate batch persistence with rollback, exact
+    replay idempotence and one-batch-per-confirmed-receipt enforcement across
+    every candidate status. Existing batches skip the model call.
+
+- verified:
+  - `npm run verify:worldbook-growth-proposal`
+  - `npm run verify:ai-runtime-routing`
+  - `npm run verify:worldbook-narrative-growth`
+  - `npm run typecheck`
+  - `git diff --check`
+
+- capability boundary:
+  - The service is available but no StoryDesk/Novel UI calls it yet; no
+    candidate is accepted, mounted or made truth automatically.
+  - `narrative_scene_receipt_proposal` is registry-only and remains HOLD. No
+    scene receipt provider, confirm action or persistence was added here.
+
+## 2026-08-09 Worldbook W2 + W4 Player Control And Narrative Bridge (local, uncommitted)
+
+- done:
+  - Completed the existing Worldbook App flow for player-authored/imported
+    entries, read-only built-ins, traceable supplements, story-growth review,
+    archive history and N+1 restore. Multi-entry import is one IndexedDB
+    transaction; parse cancellation and any failed row leave zero new entries.
+  - Kept character mount IDs as the sole enablement truth. Player catalogs,
+    counts and mount actions all exclude `director_only` material; restored
+    archived entries explain and confirm how many retained mounts will resume.
+  - Locked candidate acceptance to the reviewed draft and immutable source
+    references. Player review may change only title/content/category; scope,
+    knowledge, bindings, sources and published lifecycle cannot be smuggled
+    through the UI or a forged persistence call.
+  - Added a read-only current-story projection from Narrative Director
+    `currentTruth`, plus a confirmed-scene adapter that creates only
+    `truthEffect:none` new-entry Worldbook candidates. It never copies receipt
+    facts automatically, accepts, writes, mounts, or projects backend NPC
+    knowledge to Chat/player UI.
+  - Refused existing-entry narrative updates until a typed target gate can prove
+    exact scope, lane, route, branch and base revision. Mainline and IF material
+    therefore cannot silently overwrite or rebind each other.
+
+- verified:
+  - `npm run verify:worldbook-ui`
+  - `npm run verify:live-worldbook`
+  - `npm run verify:worldbook-runtime`
+  - `npm run verify:worldbook-narrative-growth`
+  - `npm run verify:worldbook-groups`
+  - `npm run verify:whole-device-backup`
+  - `npm run verify:narrative`
+  - `npm run typecheck`
+  - 390 × 844 browser pass for Worldbook library, version history and restore
+    confirmation; no horizontal overflow or console errors.
+
+- boundary:
+  - Typed Worldbook delivery is live only for Chat and Call. Date,
+    Novel/StoryDesk execution, Social, News and proactive messages retain the
+    explicit public-global legacy path or remain HOLD.
+  - Current story status is backend-only. Player-visible route parameters need
+    a separate field-level visibility projection before any UI is added.
+  - No commit, push, deployment, World Director executor, preset compiler,
+    generator or vector index is part of this checkpoint.
+
+## 2026-08-09 Worldbook W3-0/W3-1 Chat + Call Runtime (local, uncommitted)
+
+- done:
+  - Split the shared role context into a canonical core without Worldbook text
+    and an explicitly named legacy compatibility wrapper. Chat and Call have
+    exited the old full-mounted-book path; unmigrated Apps keep their current
+    path without silently expanding its callsite allowlist.
+  - Added one runtime adapter that reads the canonical library revision, uses
+    character-card mounts only for IDs, and keeps selection separate from
+    formatting and delivery receipts.
+  - Wired Chat to the initiating live message's exact relationship scope with
+    one-entry / 700-character budget, and Call to its session-start frozen scope
+    with two-entry / 800-character budget. Both use only the current character
+    as an explicit knower and no mainline/IF continuity.
+  - Added delayed receipts after the existing output sanitizer accepts a
+    displayable non-empty provider result. Fetch failures, empty replies, local
+    fallback, and receipt persistence failures cannot consume or suppress a
+    successful character reply.
+  - Closed the unmigrated legacy leak: only an explicitly mirrored
+    public+global cache may enter the compatibility wrapper. Relationship,
+    entity-private, and director-only records remain typed-only.
+
+- capability truth:
+  - `available`: shared adapter and selector contract for future consumers.
+  - `delivered`: Chat + Call only.
+  - `canonical_receipt`: Chat + Call only after usable provider output.
+  - `HOLD`: Date, Novel/StoryDesk, Social, News, proactive messages, World
+    Director/DM, growth review UI, presets, and vector ranking.
+
+- verification:
+  - `npm run verify:worldbook-runtime`
+  - `npm run verify:worldbook-ui`
+  - `npm run verify:live-worldbook`
+  - `npm run verify:worldbook-groups`
+  - `npm run verify:whole-device-backup`
+  - `npm run verify:conversation-continuity`
+  - `npm run typecheck`
+  - `npm run build:quiet`
+
+## 2026-08-09 Live Worldbook W1 Foundation (local, uncommitted)
+
+- done:
+  - Added lossless legacy normalization and immutable active revision snapshots
+    to the existing Worldbook record. No second library or per-character enable
+    flag was introduced; character mount IDs remain the only mount truth.
+  - Added non-exclusive global/relationship/mainline/IF/route bindings and
+    explicit public/entity/director knowledge policies. Projection requires an
+    explicit knowledge subject and never guesses from a consumer ID.
+  - Added deterministic Chinese lexical projection after mount, scope,
+    knowledge, revision, and explicit-ref gates, with bounded output and
+    metadata-only `truthEffect: none` delivery receipts.
+  - Added durable growth candidates and atomic IndexedDB paths for
+    Worldbook-revision + all mounted portability caches, and for accepted
+    candidate + new revision. Saves wait for transaction completion.
+  - Replaced hard delete with an archive revision. Old-version restoration
+    creates N+1; no old snapshot is reactivated or overwritten.
+  - Registered Worldbook growth candidates in whole-device backup and added
+    a metadata-only projection receipt store to whole-device backup, with
+    positive/negative production-store fixtures.
+
+- capability truth:
+  - `available`: contracts, projection, receipts, persistence, archive,
+    old-version restore, candidate atomic acceptance, backup.
+  - `delivered`: existing Worldbook create/edit/archive actions now use the
+    versioned atomic path.
+  - not delivered beyond the later W3 Chat/Call slice: candidate review UI,
+    archive browser/deletion restore UI, World Director/DM, generator, Story,
+    Date, Social, News, and proactive-message wiring.
+
+- boundary:
+  - `visibleToCharacterIds` remains UI visibility and never becomes an in-world
+    knower list. Candidate proposals never enter runtime projection.
+  - No commit, push, deployment, Story UI, Date, DM, generator, preset, or
+    network behavior is part of this checkpoint. Chat/Call delivery is tracked
+    separately by the W3 section above.
+
 ## 2026-08-09 Conversation Continuity And Cross-App Handoff
 
 - done:
@@ -3331,3 +3624,85 @@
   - Natural multi-turn use may still expose OOC or repetition. This release
     improves the model's available character-specific footing without
     hard-coding a response template or claiming deterministic roleplay.
+
+## 2026-08-09 Live Worldbook And Player Story Loop (Local, Unreleased)
+
+- done:
+  - Kept whole-group archives intact in the archive UI and added one atomic
+    whole-group restore path. The original group and all archived entries return
+    together; stale restores roll back completely and character enablement stays
+    off until the player turns it on again.
+  - Replaced flat Worldbook editing with revisioned player and built-in layers,
+    explicit character mounts, player-visible knowledge gates, full-screen
+    import/review, archive/restore, supplements and whole-device backup.
+  - Added sparse typed Worldbook projection for Chat and Call. Private,
+    director-only and relationship-scoped entries no longer leak through the
+    legacy whole-book prompt path.
+  - Connected Pen Pal manuscript and Story Line into a real player loop:
+    direction -> accepted route -> accepted scene -> scene-tagged manuscript ->
+    played scene -> player-confirmed experience receipt.
+  - System Director can propose an editable scene opening and an editable
+    played-scene summary. Neither model proposal becomes fact until the player
+    accepts it.
+  - A confirmed experience can explicitly request Worldbook growth proposals.
+    Pending/deferred candidates link to Worldbook review; accepted/ignored
+    batches show as handled; a true zero-candidate result remains retryable.
+  - Removed the old Novel setting that copied raw Worldbook bodies into a
+    second prompt field. Existing per-book supplementary text remains intact.
+  - Verified the full 390 x 844 player path in the local browser, including
+    refresh persistence and the no-API failure path. No hidden test control was
+    added.
+
+- verified:
+  - `npm run verify:storydesk-player-flow`
+  - `npm run verify:narrative-scene-lifecycle`
+  - `npm run verify:narrative-director-proposals`
+  - `npm run verify:worldbook-growth-proposal`
+  - `npm run verify:health`
+  - `npm run typecheck`
+  - `git diff --check`
+
+- boundary:
+  - This checkpoint remained local while the pure-novel and relationship-library
+    governance box was completed; release status is recorded in the next entry.
+  - A real provider generation was not claimed in the local browser because no
+    API preset was enabled there. The failure remained visible while the
+    player's manuscript paragraph and confirmed experience persisted.
+  - Preset/context-compiler work remains a later phase and is not disguised as
+    part of this Worldbook/story integration.
+
+## 2026-08-10 Pure Novel Worldbook Delivery And Relationship Library
+
+- done:
+  - Reused `笔友会` instead of adding another desktop App. New manuscripts now
+    default to `纯小说`; the existing `角色共创` path remains available.
+  - Pure-novel prompts request continuous prose only. Player instructions are
+    transient and only accepted provider prose is stored in the manuscript.
+  - Added a typed, relevance- and budget-limited Worldbook projection to both
+    pure novel and character collaboration. Pure novel uses a director consumer;
+    collaboration uses the selected character's knowledge subject. Neither path
+    restores the old whole-book prompt injection.
+  - Worldbook delivery receipts are written after manuscript persistence, so
+    failed/empty generation or failed storage cannot be reported as delivered.
+  - Split Contacts into `当前生活` and `角色库`. Removing a role from the current
+    mask preserves the character, its messages/memories/Worldbook groups and all
+    other masks; generation surfaces continue to fail closed to linked roles.
+  - Verified the player-facing create-book sheet on canonical port 5174: the
+    two writing modes, pure-novel default, per-book setting and optional material
+    scope are visible without adding a testing-only control.
+
+- verified:
+  - `npm run verify:persona-scope`
+  - `npm run verify:plain-novel-runtime`
+  - `npm run verify:worldbook-runtime`
+  - `npm run verify:storydesk-player-flow`
+  - `npm run verify:health`
+  - `git diff --check`
+
+- boundary:
+  - The code-level provider view, persistence order and positive projection path
+    are Green. Natural prose quality with the player's configured real provider
+    remains a small-circle server test, not a deterministic code claim.
+  - Pure novel is a clean observation surface for prose; it does not silently
+    accept Worldbook growth, write relationship memory, or turn manuscript text
+    into confirmed lived experience.

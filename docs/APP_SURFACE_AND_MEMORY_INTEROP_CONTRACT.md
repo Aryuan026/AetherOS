@@ -62,7 +62,10 @@ The module that owns one class of truth and its lifecycle. Examples:
 - Narrative owns directives, runs, scenes, and experience receipts.
 - Character Life will own current condition, whereabouts, availability,
   commitments, and their append-only change evidence.
-- Worldbook owns canon/source material, not lived events.
+- Worldbook owns the player-maintained, revisioned long-term world knowledge
+  view. Its provenance may be built-in material, player input, reviewed imports,
+  or confirmed narrative promotion; it does not own the lived event or make a
+  generated proposal true by itself.
 
 ### Projection
 
@@ -396,8 +399,9 @@ Every core App may consume only the relevant subset of these shared contracts.
 | New Date/scene play | played interaction evidence | experience receipt review, narrative continuity | claim confirmed route truth before confirmation |
 | Historical mainline/IF/date route | historical route candidate and bindings | StoryDesk background or explicit “continue this line” | activate itself because it is recent or user-edited |
 | Narrative directive | planning state | draft run activation | memory/current-state write |
-| Confirmed Narrative receipt | lived scoped experience | memory promotion and Character Life event proposals | bypass target-domain validation |
-| Worldbook entry | canon/source material | prompt base, world/NPC constraints, plot planning | claim that an event happened or a relationship changed |
+| Confirmed Narrative receipt | lived scoped experience | memory, Life, and Worldbook growth proposals | bypass target-domain validation or write a final Worldbook revision directly |
+| Pending Worldbook growth candidate | editable proposal with `truthEffect: none` | Worldbook review/save flow | enter runtime projection, become current state, or claim the proposed scene was played |
+| Accepted Worldbook revision | player-maintained long-term world knowledge with provenance | scoped prompt base, world/NPC constraints, plot planning | claim that an interaction happened or a relationship changed solely because the entry exists |
 | Character Life event | append-only current-state evidence | shared life projection, hot-state prompt adapter | rewrite historical evidence or relationship keepsakes |
 
 ## Implementation Order
@@ -718,7 +722,7 @@ projection or receipt, not permission for other Apps to read its store.
 | `交换日记` | reflective asynchronous exchange | diary entries | query-triggered relationship projection and compact day state | save entry -> diary evidence receipt; later memory proposal, not direct truth |
 | `时光簿` | see and correct confirmed shared milestones | manual/confirmed relationship date entries | confirmed keepsake and historical correction projection | add/edit/hide/restore -> Timebook receipt |
 | `笔友会 / StoryDesk` | plan, play, review, and archive long routes | directives, runs, scenes, NPC route state, experience receipts, manuscript | narrative history projection, Worldbook/canon, Character Life projection | activate/play/confirm/archive commands -> narrative receipts |
-| `世界书` | edit and mount canon/source packs | worldbook entries and mounts | shared library only | create/edit/order/mount -> source-config receipt; never experience memory |
+| `世界书` | maintain, review, mount, and grow long-term world knowledge | entries, immutable revision snapshots, and growth-candidate review state; Character profiles remain the mount-membership owner | built-in/player/reviewed source plus future confirmed narrative proposals | create/edit/archive/restore-old-version/accept-candidate -> Worldbook revision receipt; never experience memory |
 | `特别时光` | play a bounded relationship game or keepsake event | game/event run and local keepsake records | confirmed relationship and calendar projection | run/confirm/share -> keepsake or interaction receipt |
 | `同行计划` | manage user goals and check-ins | plan/check-in records | explicit plan context and bounded confirmed memory | create/check-in/complete -> plan receipt; not a replacement for Character Life |
 | `设置 / 外观` | manage software and inspect diagnostics | global configuration and appearance | metadata-only delivery/write receipts | config commands; no relationship or narrative truth |
@@ -770,6 +774,10 @@ The product should not ask the player to classify themselves as “companion” 
 - Narrative Director defaults to archivist/continuity support.
 - A user-invoked catalyst may propose the next opening when the story stalls.
 - A proposal is a directive, never a silently advanced world fact.
+- A generated place, NPC, faction, object, or rule may appear in prose and later
+  become a Worldbook growth candidate. Only player acceptance creates the next
+  Worldbook revision; the originating route keeps its own played/confirmed
+  receipt independently.
 
 ### Existing-world daily relationship
 
@@ -971,11 +979,25 @@ The following current code should be extended instead of duplicated:
   historical candidates are scope-gated, but legacy messages, anniversaries,
   character memories, hot state, and semantic dedupe still need scope and
   provenance hardening.
-- Worldbook grouping exists, but dynamic injection/order/activation policy is a
-  separate future contract.
-- Worldbook is currently a shared library with character mounts; those mounts
-  are not automatically mask-private relationship bindings. Canon access and
-  lived-memory access must remain separate until mount scope is explicit.
+- Live Worldbook W1 now provides immutable revision snapshots, non-exclusive
+  scope/route bindings, explicit knowledge subjects, deterministic budgeted
+  projection, growth candidates, and whole-device backup. Existing
+  `CharacterProfile.mountedWorldbooks[].id` remains the sole per-character
+  enablement truth; a binding narrows scope and never mounts a book.
+- Chat and Call are now the first typed Worldbook consumers. Chat uses the
+  initiating live message's exact relationship scope; Call uses the scope
+  frozen at call start. Both pass only the current character as an explicit
+  knower, carry no story continuity, and record a delivery receipt only after a
+  sanitized non-empty provider reply. Date, Story mainline, Story IF, Social,
+  News, proactive messages, World Director, and Context Compiler remain HOLD
+  until each has an equally exact scope/continuity/knowledge source.
+- Unmigrated Apps may still use the named legacy context wrapper, but it admits
+  only portability caches explicitly mirrored as public + global. It cannot
+  expose entity-private, director-only, relationship-bound, route-bound, or
+  missing-policy content.
+- Worldbook archive is durable and preserves all revision snapshots, but W1 has
+  no player-facing archive browser or deletion-restore UI. It truthfully exposes
+  old-version restoration as an N+1 revision only.
 
 These gaps are implementation work, not permission for new Apps to invent
 private shortcuts.

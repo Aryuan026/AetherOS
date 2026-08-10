@@ -1,15 +1,55 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import type { Worldbook } from '../types.ts';
+import type { CharacterProfile, Worldbook } from '../types.ts';
 import {
     buildWorldbookGroupIndex,
+    createWorldbookGroupAssignment,
     DEFAULT_WORLDBOOK_CATEGORY,
+    isWorldbookGroupEnabledForCharacter,
     listCustomWorldbookCategories,
     normalizeWorldbookCategory,
+    UNIVERSAL_WORLDBOOK_GROUP_ID,
 } from '../utils/worldbookGroups.ts';
 import { synchronizeMountedWorldbooks } from '../utils/worldbookMounts.ts';
 
 const now = Date.now();
+const roleGroup = createWorldbookGroupAssignment({
+    id: 'group:char-a:life',
+    name: '生活资料',
+    owner: { kind: 'character', charId: 'char-a' },
+});
+const plotGroup = createWorldbookGroupAssignment({
+    id: 'group:char-a:plot',
+    name: '剧情主线',
+    owner: { kind: 'character', charId: 'char-a' },
+});
+const collisionGroup = createWorldbookGroupAssignment({
+    id: 'group:char-a:deep-space-name',
+    name: '深空世界书',
+    owner: { kind: 'character', charId: 'char-a' },
+});
+const emptyGroup = createWorldbookGroupAssignment({
+    id: 'group:char-a:empty',
+    name: '空白实验组',
+    owner: { kind: 'character', charId: 'char-a' },
+});
+const pinnedGroup = createWorldbookGroupAssignment({
+    id: 'group:char-a:pinned',
+    name: '置顶资料',
+    owner: { kind: 'character', charId: 'char-a' },
+    pinned: true,
+    sortOrder: 99,
+});
+const firstOrderedGroup = createWorldbookGroupAssignment({
+    id: 'group:char-a:first',
+    name: '后排第一',
+    owner: { kind: 'character', charId: 'char-a' },
+    sortOrder: 0,
+});
+const universalGroup = createWorldbookGroupAssignment({
+    name: '随便写也会规范为通用区',
+    owner: { kind: 'universal' },
+});
 const book = (id: string, patch: Partial<Worldbook> = {}): Worldbook => ({
     id,
     title: id,
@@ -33,13 +73,13 @@ const fixture = [
         isBuiltIn: true,
         lockEditing: true,
     }),
-    book('custom-z', { title: '住处', category: '生活资料' }),
-    book('custom-a', { title: '饮食', category: '生活资料' }),
-    book('custom-plot', { title: '主线', category: '剧情主线' }),
-    book('custom-name-collision', { title: '我的深空补充', category: '深空世界书' }),
+    book('custom-z', { title: '住处', category: roleGroup.name, group: roleGroup }),
+    book('custom-a', { title: '饮食', category: roleGroup.name, group: roleGroup }),
+    book('custom-plot', { title: '主线', category: plotGroup.name, group: plotGroup }),
+    book('custom-name-collision', { title: '我的深空补充', category: collisionGroup.name, group: collisionGroup }),
 ];
 
-const index = buildWorldbookGroupIndex(fixture);
+const index = buildWorldbookGroupIndex(fixture, [roleGroup, plotGroup, collisionGroup, emptyGroup, universalGroup, firstOrderedGroup, pinnedGroup]);
 assert.equal(index.builtInCount, 2);
 assert.equal(index.customCount, 4);
 assert.deepEqual(index.builtInGroups.map(group => group.category), ['深空世界书', '深空剧情增强']);
@@ -53,9 +93,30 @@ assert.equal(
     'custom-name-collision',
     'a custom entry must not become read-only merely because its category name matches a built-in category',
 );
+assert.ok(index.customGroups.some(group => group.id === emptyGroup.id && group.books.length === 0));
+assert.ok(index.customGroups.some(group => group.id === UNIVERSAL_WORLDBOOK_GROUP_ID && group.books.length === 0));
+assert.equal(index.customGroups[0].id, pinnedGroup.id, 'pinned groups must stay above the ordinary order');
+assert.equal(index.customGroups[1].id, firstOrderedGroup.id, 'explicit order must win over name sorting');
 assert.deepEqual(listCustomWorldbookCategories(fixture), ['深空世界书', '剧情主线', '生活资料']);
 assert.equal(normalizeWorldbookCategory('  自建分组  '), '自建分组');
 assert.equal(normalizeWorldbookCategory('   '), DEFAULT_WORLDBOOK_CATEGORY);
+const charA = {
+    id: 'char-a',
+    mountedWorldbookGroupIds: [roleGroup.id],
+} as CharacterProfile;
+const charB = {
+    id: 'char-b',
+    mountedWorldbookGroupIds: [roleGroup.id],
+} as CharacterProfile;
+assert.equal(isWorldbookGroupEnabledForCharacter(roleGroup, charA), true);
+assert.equal(
+    isWorldbookGroupEnabledForCharacter(roleGroup, charB),
+    false,
+    'putting another role group id into a character record must not bypass ownership',
+);
+assert.equal(isWorldbookGroupEnabledForCharacter(universalGroup, charA), true);
+assert.equal(isWorldbookGroupEnabledForCharacter(universalGroup, charB), true);
+assert.equal(isWorldbookGroupEnabledForCharacter(undefined, charA), false);
 
 const staleMount = {
     id: 'custom-z',
@@ -70,6 +131,9 @@ assert.deepEqual(synchronizedMount.mountedWorldbooks[0], {
     title: '住处',
     content: 'custom-z content',
     category: '生活资料',
+    publicationStatus: 'published',
+    legacyPromptEligibility: 'public_global',
+    knowledgePolicy: { kind: 'public' },
 });
 
 const missingLibraryMount = synchronizeMountedWorldbooks([{
@@ -82,20 +146,43 @@ assert.equal(missingLibraryMount.changed, false);
 assert.equal(missingLibraryMount.mountedWorldbooks[0].content, '没有单独资料库记录时仍需保留');
 
 const appSource = readFileSync(new URL('../apps/WorldbookApp.tsx', import.meta.url), 'utf8');
+const editorSource = readFileSync(new URL('../components/worldbook/WorldbookEntryEditor.tsx', import.meta.url), 'utf8');
+const pickerSource = readFileSync(new URL('../components/worldbook/WorldbookGroupPicker.tsx', import.meta.url), 'utf8');
 assert.match(appSource, /data-worldbook-built-in-drawer/);
 assert.match(appSource, /data-worldbook-custom-groups/);
-assert.match(appSource, /data-worldbook-category-options/);
-assert.match(appSource, /新建分组/);
-assert.match(appSource, /点一下就能沿用，不用重复输入/);
-assert.doesNotMatch(appSource, /<datalist|list="category-suggestions"/);
+assert.doesNotMatch(appSource, /data-worldbook-empty-group-creator|新建空分组/);
+assert.match(appSource, /DotsSixVertical/);
+assert.match(appSource, /togglePinnedGroup/);
+assert.match(appSource, /hideBuiltInWorldbooks/);
+assert.match(appSource, /pinBuiltInWorldbooks/);
+assert.match(appSource, /data-worldbook-unassigned-repair/);
+assert.match(appSource, /archiveWorldbookGroup/);
+assert.match(appSource, /删除空分组/);
+assert.match(editorSource, /WorldbookGroupPicker/);
+assert.match(pickerSource, /新建分组/);
+assert.match(editorSource, /要复用到别处/);
+assert.doesNotMatch(`${appSource}\n${editorSource}\n${pickerSource}`, /<datalist|list="category-suggestions"/);
 
 const characterSource = readFileSync(new URL('../apps/Character.tsx', import.meta.url), 'utf8');
 assert.match(characterSource, /expandedWorldbookCategories/);
 assert.match(characterSource, /aria-expanded=\{expandedWorldbookCategories\.has\(category\)\}/);
-assert.match(characterSource, /currentMountedWorldbooks\(formData\.mountedWorldbooks, worldbooks\)/);
+assert.match(characterSource, /currentMountedWorldbooks\(formData\.mountedWorldbooks, playerVisibleWorldbooks\)/);
+assert.match(characterSource, /listPlayerVisibleWorldbooks\(worldbooks\)/);
+assert.match(characterSource, /已归档 · 保留挂载记录/);
+assert.match(characterSource, /mountedWorldbookGroupIds/);
+assert.match(characterSource, /停用整组/);
 
 const contextSource = readFileSync(new URL('../context/OSContext.tsx', import.meta.url), 'utf8');
-assert.match(contextSource, /synchronizeMountedWorldbooks\(char\.mountedWorldbooks, nextLibrary\)/);
+assert.match(
+    contextSource,
+    /DB\.saveWorldbookRevision\(groupedUpdatedWb, previousRevisionId\)/,
+    'Worldbook revisions and mounted portability caches must use the atomic persistence path',
+);
 assert.doesNotMatch(contextSource, /let fullUpdatedWb: Worldbook \| undefined/);
+assert.doesNotMatch(
+    contextSource,
+    /updatedChars\.map\(char => DB\.saveCharacter/,
+    'Worldbook edit must not split library and portability-cache writes across transactions',
+);
 
 console.log('worldbook folding, custom group, and live mount contract: OK');

@@ -46,6 +46,13 @@ export const AI_TASK_REGISTRY: Readonly<Record<AiTaskId, AiTaskDefinition>> = {
     // before the character is linked to a persona.
     requiresRelationshipScope: false,
   },
+  worldbook_input_analysis: {
+    id: 'worldbook_input_analysis',
+    role: 'system_director',
+    purpose: 'structured_analysis',
+    truthEffect: 'none',
+    requiresRelationshipScope: false,
+  },
   info_station_generation: {
     id: 'info_station_generation',
     role: 'system_director',
@@ -71,6 +78,20 @@ export const AI_TASK_REGISTRY: Readonly<Record<AiTaskId, AiTaskDefinition>> = {
     id: 'narrative_scene_plan',
     role: 'system_director',
     purpose: 'third_person_planning',
+    truthEffect: 'none',
+    requiresRelationshipScope: true,
+  },
+  narrative_world_growth_proposal: {
+    id: 'narrative_world_growth_proposal',
+    role: 'system_director',
+    purpose: 'structured_analysis',
+    truthEffect: 'none',
+    requiresRelationshipScope: true,
+  },
+  narrative_scene_receipt_proposal: {
+    id: 'narrative_scene_receipt_proposal',
+    role: 'system_director',
+    purpose: 'structured_analysis',
     truthEffect: 'none',
     requiresRelationshipScope: true,
   },

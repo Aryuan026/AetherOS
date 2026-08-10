@@ -80,7 +80,31 @@ export const ContextBuilder = {
      * @param includeDetailedMemories 是否包含激活月份的详细 Log (默认 true)
      * @returns 标准化的 Markdown 格式 System Prompt
      */
-    buildCoreContext: (char: CharacterProfile, user: UserProfile, includeDetailedMemories: boolean = true): string => {
+    buildCanonicalCoreContext: (char: CharacterProfile, user: UserProfile, includeDetailedMemories: boolean = true): string => {
+        return buildCoreContextInternal(char, user, includeDetailedMemories, false);
+    },
+
+    /**
+     * Temporary compatibility path for Apps that have not migrated to the typed,
+     * scoped Worldbook projection yet. New consumers must use
+     * buildCanonicalCoreContext and append a prepared projection themselves.
+     */
+    buildLegacyCoreContextWithMountedWorldbooks: (
+        char: CharacterProfile,
+        user: UserProfile,
+        includeDetailedMemories: boolean = true,
+    ): string => {
+        return buildCoreContextInternal(char, user, includeDetailedMemories, true);
+    },
+
+};
+
+function buildCoreContextInternal(
+    char: CharacterProfile,
+    user: UserProfile,
+    includeDetailedMemories: boolean,
+    includeLegacyMountedWorldbooks: boolean,
+): string {
         let context = `[System: Roleplay Configuration]\n\n`;
 
         // 1. 核心身份 (Identity)
@@ -98,14 +122,22 @@ export const ContextBuilder = {
             context += `### 世界观与设定 (World Settings)\n${char.worldview}\n\n`;
         }
 
-        // [NEW] 挂载的世界书 (Mounted Worldbooks) - GROUPED BY CATEGORY
-        if (char.mountedWorldbooks && char.mountedWorldbooks.length > 0) {
+        // Compatibility only: typed consumers prepare a scoped Worldbook
+        // projection outside this synchronous core and never enter this branch.
+        const runtimeWorldbooks = includeLegacyMountedWorldbooks
+            ? (char.mountedWorldbooks || []).filter(worldbook => (
+                worldbook.publicationStatus !== 'archived'
+                && worldbook.legacyPromptEligibility === 'public_global'
+                && worldbook.knowledgePolicy?.kind === 'public'
+            ))
+            : [];
+        if (includeLegacyMountedWorldbooks && runtimeWorldbooks.length > 0) {
             context += `### 已启用资料包\n`;
             context += `以下只包含当前角色已启用的世界书/资料包。未启用的资料包不得当作当前关系、已知事实或可主动展开的剧情前提；已启用资料也应按当前角色身份、当前聊天事实和用户自设自然取用。\n\n`;
             
             // Group books by category
-            const groupedBooks: Record<string, typeof char.mountedWorldbooks> = {};
-            char.mountedWorldbooks.forEach(wb => {
+            const groupedBooks: Record<string, typeof runtimeWorldbooks> = {};
+            runtimeWorldbooks.forEach(wb => {
                 const cat = wb.category || '通用设定 (General)';
                 if (!groupedBooks[cat]) groupedBooks[cat] = [];
                 groupedBooks[cat].push(wb);
@@ -212,7 +244,7 @@ export const ContextBuilder = {
         if (!char.impression) missing.push('impression');
         if (!char.refinedMemories || Object.keys(char.refinedMemories).length === 0) missing.push('refinedMemories');
         if (!char.activeMemoryMonths || char.activeMemoryMonths.length === 0) missing.push('activeMemoryMonths');
-        if (!char.mountedWorldbooks || char.mountedWorldbooks.length === 0) missing.push('worldbooks');
+        if (includeLegacyMountedWorldbooks && (!char.mountedWorldbooks || char.mountedWorldbooks.length === 0)) missing.push('worldbooks');
         if (!char.worldview) missing.push('worldview');
         if (missing.length > 0) {
             console.log(`⚠️ [Context] Missing/empty fields: ${missing.join(', ')} | context_chars=${context.length}`);
@@ -221,5 +253,4 @@ export const ContextBuilder = {
         }
 
         return context;
-    }
-};
+}

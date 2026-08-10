@@ -38,7 +38,7 @@ export function buildOpeningPrompt(
     recentMessages?: string,
     pastInsights?: string[]
 ): string {
-    const coreContext = ContextBuilder.buildCoreContext(char, user, true);
+    const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, user, true);
     const chatBlock = buildRecentChatBlock(recentMessages)?.replace('{user}', user.name);
 
     const insightsBlock = pastInsights && pastInsights.length > 0 ? `
@@ -113,7 +113,7 @@ export function buildRoundPrompt(
     directionHint?: string,
     roundScenario?: string
 ): string {
-    const coreContext = ContextBuilder.buildCoreContext(char, user, true);
+    const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, user, true);
     const chatBlock = buildRecentChatBlock(recentMessages)?.replace('{user}', user.name);
 
     let roundHistory = '';
@@ -216,7 +216,7 @@ export function buildAutoRoundPrompt(
     worldContext?: string,
     directionHint?: string
 ): string {
-    const coreContext = ContextBuilder.buildCoreContext(char, user, true);
+    const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, user, true);
     const chatBlock = buildRecentChatBlock(recentMessages)?.replace('{user}', user.name);
 
     let roundHistory = '';
@@ -293,7 +293,7 @@ export function buildOptionAssistPrompt(
     worldContext?: string,
     directionHint?: string
 ): string {
-    const coreContext = ContextBuilder.buildCoreContext(char, user, true);
+    const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, user, true);
     const chatBlock = buildRecentChatBlock(recentMessages)?.replace('{user}', user.name);
 
     let roundHistory = '';
@@ -358,7 +358,7 @@ export function buildEndCardPrompt(
     rounds: GuidebookRound[],
     recentMessages?: string
 ): string {
-    const coreContext = ContextBuilder.buildCoreContext(char, user, true);
+    const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, user, true);
     const chatBlock = buildRecentChatBlock(recentMessages)?.replace('{user}', user.name);
 
     const roundSummary = rounds.map(r => {

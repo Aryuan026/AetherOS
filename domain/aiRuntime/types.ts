@@ -7,10 +7,13 @@ export type AiTaskId =
   | 'history_companion_material_analysis'
   | 'emotion_background_evaluation'
   | 'behavior_boundary_compilation'
+  | 'worldbook_input_analysis'
   | 'info_station_generation'
   | 'info_station_editorial_review'
   | 'narrative_history_analysis'
   | 'narrative_scene_plan'
+  | 'narrative_world_growth_proposal'
+  | 'narrative_scene_receipt_proposal'
   | 'life_sim_main_plot';
 
 export type AiProviderBinding =

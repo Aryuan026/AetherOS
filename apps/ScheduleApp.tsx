@@ -282,7 +282,7 @@ const ScheduleApp: React.FC = () => {
         const char = timebookCharacters.find(c => c.id === anni.charId);
         if (!char || !apiConfig.apiKey || anni.aiThought) return;
 
-        const baseContext = ContextBuilder.buildCoreContext(char, userProfile);
+        const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, userProfile);
         const messages = [
             { role: 'system', content: baseContext },
             { role: 'user', content: buildAnniversaryThoughtPrompt(anni) },
@@ -385,7 +385,7 @@ const ScheduleApp: React.FC = () => {
                 .slice(0, 10)
                 .map(memory => `- ${memory.date}: ${memory.title}${memory.aiThought ? `｜${memory.aiThought}` : ''}`)
                 .join('\n') || '- 暂时没有导入的旧纪念日。';
-            const baseContext = ContextBuilder.buildCoreContext(activeCharacter, userProfile);
+            const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(activeCharacter, userProfile);
             const messages = [
                 { role: 'system', content: baseContext },
                 {

@@ -502,7 +502,7 @@ export function buildCharTurnSystemPrompt(
     actionLog: SimAction[]
 ): string {
     // 1. 角色核心上下文
-    const coreContext = ContextBuilder.buildCoreContext(char, user, true);
+    const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, user, true);
 
     // 2. 季节/天气信息
     const season = state.season ?? 'spring';

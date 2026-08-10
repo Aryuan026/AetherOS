@@ -6,6 +6,49 @@ Make AetherOS usable as a small public static web app while keeping personal dat
 
 ## Active Block
 
+Live Worldbook foundation and first runtime bridge:
+
+- Keep the existing Worldbook App as the human-maintained long-term world
+  knowledge view. Sources may be built-in, player-authored, reviewed imports,
+  or future confirmed narrative promotions; generated prose never writes final
+  world truth by itself.
+- Preserve legacy title/content/category data while adding immutable active
+  revisions, archive lifecycle, non-exclusive exact bindings, explicit
+  knowledge subjects, growth candidates, and whole-device backup.
+- Treat custom Worldbook group IDs as the only player-controlled per-character
+  enablement truth. One character may enable only its own whole groups; cross-role
+  reuse creates an independent copy, while the fixed universal group is available
+  to every character. Built-in entries retain their separate code-owned mount
+  contract. Binding and knowledge policy may narrow an eligible entry, never
+  enable one.
+- Make Worldbook revision plus every mounted portability cache atomic, and make
+  accepted candidate plus its new revision atomic.
+- Deliver only a scoped, knowledge-safe, relevance/budgeted typed projection;
+  ordinary greetings may select NONE. Chat and Call are the first two runtime
+  consumers: both use their request-start relationship scope and write a
+  metadata-only receipt only after a usable provider reply.
+- Keep the existing Worldbook App as the player control surface: imports commit
+  atomically after local parsing and owner choice, story-growth candidates stay non-authoritative until
+  review, built-ins are read-only and traceable through player supplements, and
+  archive/restore preserves the revision chain while explaining retained mounts.
+- Project confirmed Narrative Director state into a read-only backend status,
+  and let a confirmed played scene create only a reviewable new-entry growth
+  candidate. Do not auto-copy receipt facts, accept, mount, or expose backend
+  NPC knowledge to Chat or the player.
+- Pen Pal manuscripts now provide two explicit paths: `plain_novel` renders only
+  continuous prose and uses a typed `world_director` Worldbook projection;
+  `character_collaboration` keeps the existing role-authored co-writing surface
+  and uses a character-safe projection. In both paths the request-start scope is
+  frozen and a Worldbook delivery receipt is written only after usable prose is
+  durably persisted.
+- Keep Date, Social, News, proactive messages, broader World Director/DM
+  execution, preset compilation, worldbook generator, player-safe story-status
+  projection, and vector ranking as later blocks.
+- Keep one named legacy compatibility wrapper for unmigrated Apps, but expose
+  through it only caches explicitly mirrored as public + global. Scoped,
+  entity-private, and director-only entries fail closed until those Apps gain a
+  typed consumer.
+
 Companion material and historical voice reuse:
 
 - Keep the default path fully local and non-vector: deterministic scene
@@ -61,8 +104,8 @@ Desktop application visibility and ordering:
 - Ignore unknown imported AppIDs, append newly installed apps visibly, and let
   old appearance JSON without layout data preserve the recipient's current
   desktop.
-- Keep Worldbook grouping, history import, chat, narrative state, and server
-  deployment outside this block.
+- Keep history import, server deployment, and the later World Director/preset
+  runtime outside this Worldbook foundation slice.
 
 Global software shell and virtual-city time:
 

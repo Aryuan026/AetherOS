@@ -34,6 +34,12 @@ export type PersonaCharacterLinkResult = {
     activeMaskId?: string;
 };
 
+export type PersonaCharacterUnlinkResult = {
+    status: 'unlinked' | 'already_unlinked' | 'rejected';
+    profile: UserProfile;
+    activeMaskId?: string;
+};
+
 /**
  * Explicit relationship action used by directory entry points.
  *
@@ -82,6 +88,57 @@ export const linkCharacterToActivePersonaMask = (
 
     return {
         status: 'linked',
+        profile: nextProfile,
+        activeMaskId: activeMask.id,
+    };
+};
+
+/**
+ * Moves one saved character out of the active mask's life circle without
+ * deleting the character card, messages, memories, appearance, or Worldbooks.
+ * The active mask remains the only participation truth; there is no second
+ * hidden/library flag to drift out of sync.
+ */
+export const unlinkCharacterFromActivePersonaMask = (
+    userProfile: UserProfile,
+    characterId: string,
+    now = Date.now(),
+): PersonaCharacterUnlinkResult => {
+    const normalized = normalizeUserPersonaProfile(userProfile);
+    const activeMask = getActivePersonaMask(normalized);
+    const targetId = characterId.trim();
+
+    if (!activeMask || !targetId) {
+        return {
+            status: 'rejected',
+            profile: normalized,
+            activeMaskId: activeMask?.id,
+        };
+    }
+
+    if (!(activeMask.linkedCharacterIds || []).includes(targetId)) {
+        return {
+            status: 'already_unlinked',
+            profile: normalized,
+            activeMaskId: activeMask.id,
+        };
+    }
+
+    const nextProfile = normalizeUserPersonaProfile({
+        ...normalized,
+        personaMasks: (normalized.personaMasks || []).map(mask => (
+            mask.id === activeMask.id
+                ? {
+                    ...mask,
+                    linkedCharacterIds: (mask.linkedCharacterIds || []).filter(id => id !== targetId),
+                    updatedAt: now,
+                }
+                : mask
+        )),
+    });
+
+    return {
+        status: 'unlinked',
         profile: nextProfile,
         activeMaskId: activeMask.id,
     };

@@ -6,8 +6,19 @@ import {
     Task, Anniversary, DiaryEntry, RoomTodo, RoomNote,
     GalleryImage, FullBackupData, GroupProfile, SocialPost, StudyCourse, GameSession, Worldbook, NovelBook, Emoji, EmojiCategory,
     BankTransaction, SavingsGoal, BankFullState, DollhouseState, SongSheet, QuizSession, GuidebookSession,
-    LifeSimState, CompanionWakeupRule, CompanionWakeupLog, MessageType
+    LifeSimState, CompanionWakeupRule, CompanionWakeupLog, MessageType,
+    WorldGrowthCandidate, WorldbookGroupAssignment, WorldbookProjectionDeliveryReceipt, WorldGrowthCandidatePlayerReview
 } from '../types';
+import {
+    archiveWorldbookEntry,
+    acceptWorldGrowthCandidate,
+    getActiveWorldbookRevision,
+    normalizeWorldbookEntry,
+    reviseWorldbookEntry,
+    validateWorldbookGroupAssignment,
+    validateWorldGrowthCandidate,
+} from '../domain/worldbook/contract';
+import { assertWorldbookProjectionDeliveryReceipt } from '../domain/worldbook/projection';
 import { normalizeUserPersonaProfile } from './userPersonaMasks';
 import { archiveLiveMessage } from './dailyArchive/liveSync';
 import {
@@ -16,7 +27,7 @@ import {
 } from './dailyArchive/lifeSurfaceSync';
 
 const DB_NAME = 'AetherOS_Data';
-const DB_VERSION = 40; // Bumped for companion wakeups (主动来信)
+const DB_VERSION = 43; // Player-owned Worldbook group registry
 
 const STORE_CHARACTERS = 'characters';
 const STORE_MESSAGES = 'messages';
@@ -38,6 +49,9 @@ const STORE_SOCIAL_POSTS = 'social_posts';
 const STORE_COURSES = 'courses';
 const STORE_GAMES = 'games';
 const STORE_WORLDBOOKS = 'worldbooks'; 
+const STORE_WORLDBOOK_GROUPS = 'worldbook_groups';
+const STORE_WORLDBOOK_GROWTH_CANDIDATES = 'worldbook_growth_candidates';
+const STORE_WORLDBOOK_PROJECTION_RECEIPTS = 'worldbook_projection_receipts';
 const STORE_NOVELS = 'novels'; 
 const STORE_BANK_TX = 'bank_transactions';
 const STORE_BANK_DATA = 'bank_data';
@@ -243,6 +257,18 @@ const openDB = (): Promise<IDBDatabase> => {
       createStore(STORE_COURSES, { keyPath: 'id' });
       createStore(STORE_GAMES, { keyPath: 'id' }); 
       createStore(STORE_WORLDBOOKS, { keyPath: 'id' }); 
+      createStore(STORE_WORLDBOOK_GROUPS, { keyPath: 'id' });
+      createStore(STORE_WORLDBOOK_GROWTH_CANDIDATES, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(STORE_WORLDBOOK_PROJECTION_RECEIPTS)) {
+          const receiptStore = db.createObjectStore(STORE_WORLDBOOK_PROJECTION_RECEIPTS, { keyPath: 'id' });
+          receiptStore.createIndex('scopeKey', 'scopeKey', { unique: false });
+      } else {
+          const receiptStore = (event.target as IDBOpenDBRequest).transaction
+              ?.objectStore(STORE_WORLDBOOK_PROJECTION_RECEIPTS);
+          if (receiptStore && !receiptStore.indexNames.contains('scopeKey')) {
+              receiptStore.createIndex('scopeKey', 'scopeKey', { unique: false });
+          }
+      }
       createStore(STORE_NOVELS, { keyPath: 'id' });
       
       createStore(STORE_BANK_TX, { keyPath: 'id' });
@@ -287,6 +313,1168 @@ const reconcileLiveMessageWithDailyArchive = async (
     }
 };
 
+const asError = (value: unknown, fallback: string): Error => (
+    value instanceof Error ? value : new Error(fallback)
+);
+
+const refreshMountedWorldbookCache = (
+    character: CharacterProfile,
+    entry: Worldbook,
+): CharacterProfile | null => {
+    if (!character.mountedWorldbooks?.some(mounted => mounted.id === entry.id)) return null;
+    const publicationStatus = getActiveWorldbookRevision(entry).publicationStatus;
+    const mountedWorldbooks = character.mountedWorldbooks.map(mounted => (
+        mounted.id === entry.id
+            ? {
+                id: entry.id,
+                title: entry.title,
+                content: entry.content,
+                category: entry.category,
+                publicationStatus,
+            }
+            : mounted
+    ));
+    return { ...character, mountedWorldbooks };
+};
+
+/**
+ * Commits one Worldbook revision and every affected portability cache in the
+ * same IndexedDB transaction. Mount membership itself is never changed here.
+ */
+const persistWorldbookWithMountedCaches = async (
+    rawEntry: Worldbook,
+    expectedActiveRevisionId: string | null,
+): Promise<CharacterProfile[]> => {
+    const entry = normalizeWorldbookEntry(rawEntry);
+    const db = await openDB();
+    const transaction = db.transaction([STORE_WORLDBOOKS, STORE_CHARACTERS], 'readwrite');
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const entryRequest = worldbookStore.get(entry.id);
+    const characterRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let existingLoaded = false;
+        let charactersLoaded = false;
+        let existing: Worldbook | undefined;
+        let characters: CharacterProfile[] = [];
+        let changedCharacters: CharacterProfile[] = [];
+        let failure: Error | undefined;
+        let writesQueued = false;
+
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try {
+                transaction.abort();
+            } catch {
+                reject(failure);
+            }
+        };
+
+        const queueWrites = () => {
+            if (writesQueued || !existingLoaded || !charactersLoaded) return;
+            writesQueued = true;
+            try {
+                if (expectedActiveRevisionId === null && existing) {
+                    throw new Error(`Worldbook ${entry.id} already exists`);
+                }
+                if (typeof expectedActiveRevisionId === 'string') {
+                    if (!existing) throw new Error(`Worldbook ${entry.id} is missing`);
+                    const current = normalizeWorldbookEntry(existing);
+                    if (current.activeRevisionId !== expectedActiveRevisionId) {
+                        throw new Error(`Worldbook ${entry.id} active revision is stale`);
+                    }
+                }
+                changedCharacters = characters
+                    .map(character => refreshMountedWorldbookCache(character, entry))
+                    .filter((character): character is CharacterProfile => Boolean(character));
+                worldbookStore.put(entry);
+                changedCharacters.forEach(character => characterStore.put(character));
+            } catch (error) {
+                abortWith(error, `Worldbook ${entry.id} transaction failed`);
+            }
+        };
+
+        entryRequest.onsuccess = () => {
+            existing = entryRequest.result as Worldbook | undefined;
+            existingLoaded = true;
+            queueWrites();
+        };
+        entryRequest.onerror = () => abortWith(entryRequest.error, 'Worldbook lookup failed');
+        characterRequest.onsuccess = () => {
+            characters = (characterRequest.result || []) as CharacterProfile[];
+            charactersLoaded = true;
+            queueWrites();
+        };
+        characterRequest.onerror = () => abortWith(characterRequest.error, 'Character cache lookup failed');
+        transaction.oncomplete = () => resolve(changedCharacters);
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, `Worldbook ${entry.id} transaction failed`);
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, `Worldbook ${entry.id} transaction aborted`),
+        );
+    });
+};
+
+/**
+ * Creates one import batch in a single transaction. These are new, unmounted
+ * library entries, so no character portability cache is eligible to change.
+ */
+const persistNewWorldbookEntriesAtomically = async (
+    rawEntries: readonly Worldbook[],
+): Promise<void> => {
+    if (!rawEntries.length) throw new Error('Worldbook batch creation requires at least one entry');
+    const entries = rawEntries.map(normalizeWorldbookEntry);
+    const entryIds = entries.map(entry => entry.id);
+    if (new Set(entryIds).size !== entryIds.length) {
+        throw new Error('Worldbook batch contains duplicate entry ids');
+    }
+
+    const db = await openDB();
+    const transaction = db.transaction(STORE_WORLDBOOKS, 'readwrite');
+    const store = transaction.objectStore(STORE_WORLDBOOKS);
+    const existingRequest = store.getAllKeys();
+
+    return new Promise((resolve, reject) => {
+        let failure: Error | undefined;
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try {
+                transaction.abort();
+            } catch {
+                reject(failure);
+            }
+        };
+
+        existingRequest.onsuccess = () => {
+            try {
+                const existingIds = new Set(existingRequest.result.map(String));
+                const collision = entryIds.find(id => existingIds.has(id));
+                if (collision) throw new Error(`Worldbook ${collision} already exists`);
+                entries.forEach(entry => store.put(entry));
+            } catch (error) {
+                abortWith(error, 'Worldbook batch creation failed');
+            }
+        };
+        existingRequest.onerror = () => abortWith(
+            existingRequest.error,
+            'Worldbook batch collision check failed',
+        );
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, 'Worldbook batch creation failed');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, 'Worldbook batch creation aborted'),
+        );
+    });
+};
+
+const persistCharacterDeletionWithOwnedWorldbookArchive = async (input: {
+    charId: string;
+    groups: readonly WorldbookGroupAssignment[];
+    entries: readonly {
+        entry: Worldbook;
+        expectedActiveRevisionId: string;
+    }[];
+}): Promise<void> => {
+    const groups = input.groups.map(group => {
+        const normalized = {
+            ...group,
+            id: group.id.trim(),
+            name: group.name.trim(),
+            owner: group.owner.kind === 'character'
+                ? { kind: 'character' as const, charId: group.owner.charId.trim() }
+                : { kind: 'universal' as const },
+        };
+        const errors = validateWorldbookGroupAssignment(normalized);
+        if (errors.length) throw new Error(`Worldbook group rejected: ${errors.join('; ')}`);
+        if (normalized.owner.kind !== 'character' || normalized.owner.charId !== input.charId) {
+            throw new Error(`Worldbook group ${normalized.id} is not owned by character ${input.charId}`);
+        }
+        return normalized;
+    });
+    const entries = input.entries.map(item => ({
+        entry: normalizeWorldbookEntry(item.entry),
+        expectedActiveRevisionId: item.expectedActiveRevisionId,
+    }));
+    entries.forEach(({ entry }) => {
+        if (entry.group?.owner.kind !== 'character' || entry.group.owner.charId !== input.charId) {
+            throw new Error(`Worldbook ${entry.id} is not owned by character ${input.charId}`);
+        }
+        if (getActiveWorldbookRevision(entry).publicationStatus !== 'archived') {
+            throw new Error(`Worldbook ${entry.id} must be archived before character deletion`);
+        }
+    });
+
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_CHARACTERS,
+        STORE_WORLDBOOKS,
+        STORE_WORLDBOOK_GROUPS,
+    ], 'readwrite');
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const groupStore = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+
+    return new Promise((resolve, reject) => {
+        let failure: Error | undefined;
+        let loaded = 0;
+        let writesQueued = false;
+        const existingById = new Map<string, Worldbook | undefined>();
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try {
+                transaction.abort();
+            } catch {
+                reject(failure);
+            }
+        };
+        const queueWrites = () => {
+            if (writesQueued || loaded !== entries.length) return;
+            writesQueued = true;
+            try {
+                entries.forEach(({ entry, expectedActiveRevisionId }) => {
+                    const existing = existingById.get(entry.id);
+                    if (!existing) throw new Error(`Worldbook ${entry.id} is missing`);
+                    if (normalizeWorldbookEntry(existing).activeRevisionId !== expectedActiveRevisionId) {
+                        throw new Error(`Worldbook ${entry.id} changed before character deletion`);
+                    }
+                    worldbookStore.put(entry);
+                });
+                groups.forEach(group => groupStore.delete(group.id));
+                characterStore.delete(input.charId);
+            } catch (error) {
+                abortWith(error, 'Character Worldbook cleanup failed');
+            }
+        };
+        if (!entries.length) queueWrites();
+        entries.forEach(({ entry }) => {
+            const request = worldbookStore.get(entry.id);
+            request.onsuccess = () => {
+                existingById.set(entry.id, request.result as Worldbook | undefined);
+                loaded += 1;
+                queueWrites();
+            };
+            request.onerror = () => abortWith(request.error, `Worldbook ${entry.id} lookup failed`);
+        });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, 'Character Worldbook cleanup failed');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, 'Character Worldbook cleanup aborted'),
+        );
+    });
+};
+
+const persistWorldbookGroupArchive = async (input: {
+    group: WorldbookGroupAssignment;
+    entries: readonly {
+        entry: Worldbook;
+        expectedActiveRevisionId: string;
+    }[];
+}): Promise<CharacterProfile[]> => {
+    const group: WorldbookGroupAssignment = {
+        ...input.group,
+        id: input.group.id.trim(),
+        name: input.group.name.trim(),
+        owner: input.group.owner.kind === 'character'
+            ? { kind: 'character', charId: input.group.owner.charId.trim() }
+            : { kind: 'universal' },
+    };
+    const groupErrors = validateWorldbookGroupAssignment(group);
+    if (groupErrors.length) throw new Error(`Worldbook group rejected: ${groupErrors.join('; ')}`);
+    if (group.owner.kind !== 'character') {
+        throw new Error('通用区不能整组归档，请单独整理其中的条目');
+    }
+    const ownerCharId = group.owner.charId;
+    const entries = input.entries.map(item => ({
+        entry: normalizeWorldbookEntry(item.entry),
+        expectedActiveRevisionId: item.expectedActiveRevisionId,
+    }));
+    if (new Set(entries.map(item => item.entry.id)).size !== entries.length) {
+        throw new Error('Worldbook group archive contains duplicate entries');
+    }
+    entries.forEach(({ entry }) => {
+        if (entry.group?.id !== group.id) {
+            throw new Error(`Worldbook ${entry.id} does not belong to group ${group.id}`);
+        }
+        if (getActiveWorldbookRevision(entry).publicationStatus !== 'archived') {
+            throw new Error(`Worldbook ${entry.id} must be archived before group removal`);
+        }
+    });
+
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_WORLDBOOKS,
+        STORE_WORLDBOOK_GROUPS,
+        STORE_CHARACTERS,
+    ], 'readwrite');
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const groupStore = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const storedGroupRequest = groupStore.get(group.id);
+    const storedEntriesRequest = worldbookStore.getAll();
+    const charactersRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let loaded = 0;
+        let writesQueued = false;
+        let failure: Error | undefined;
+        let storedGroup: WorldbookGroupAssignment | undefined;
+        let storedEntries: Worldbook[] = [];
+        let characters: CharacterProfile[] = [];
+        let changedCharacters: CharacterProfile[] = [];
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try { transaction.abort(); } catch { reject(failure); }
+        };
+        const markLoaded = () => {
+            loaded += 1;
+            if (loaded !== 3 || writesQueued) return;
+            writesQueued = true;
+            try {
+                if (!storedGroup) throw new Error('这个分组已经不存在');
+                const sameOwner = storedGroup.owner.kind === 'character'
+                    && storedGroup.owner.charId === ownerCharId;
+                if (storedGroup.name.trim() !== group.name || !sameOwner) {
+                    throw new Error('这个分组已经发生变化，请刷新后再试');
+                }
+                const storedInGroup = storedEntries
+                    .filter(entry => entry.group?.id === group.id)
+                    .map(normalizeWorldbookEntry);
+                const publishedIds = storedInGroup
+                    .filter(entry => getActiveWorldbookRevision(entry).publicationStatus === 'published')
+                    .map(entry => entry.id)
+                    .sort();
+                const incomingIds = entries.map(item => item.entry.id).sort();
+                if (JSON.stringify(publishedIds) !== JSON.stringify(incomingIds)) {
+                    throw new Error('分组内容已经发生变化，请刷新后再试');
+                }
+                const storedById = new Map(storedInGroup.map(entry => [entry.id, entry]));
+                entries.forEach(({ entry, expectedActiveRevisionId }) => {
+                    const stored = storedById.get(entry.id);
+                    if (!stored || stored.activeRevisionId !== expectedActiveRevisionId) {
+                        throw new Error(`Worldbook ${entry.id} changed before group archive`);
+                    }
+                    worldbookStore.put(entry);
+                });
+                changedCharacters = characters
+                    .filter(character => character.mountedWorldbookGroupIds?.includes(group.id))
+                    .map(character => ({
+                        ...character,
+                        mountedWorldbookGroupIds: (character.mountedWorldbookGroupIds || [])
+                            .filter(groupId => groupId !== group.id),
+                    }));
+                changedCharacters.forEach(character => characterStore.put(character));
+                groupStore.delete(group.id);
+            } catch (error) {
+                abortWith(error, 'Worldbook group archive failed');
+            }
+        };
+        storedGroupRequest.onsuccess = () => {
+            storedGroup = storedGroupRequest.result as WorldbookGroupAssignment | undefined;
+            markLoaded();
+        };
+        storedGroupRequest.onerror = () => abortWith(storedGroupRequest.error, 'Worldbook group lookup failed');
+        storedEntriesRequest.onsuccess = () => {
+            storedEntries = (storedEntriesRequest.result || []) as Worldbook[];
+            markLoaded();
+        };
+        storedEntriesRequest.onerror = () => abortWith(storedEntriesRequest.error, 'Worldbook group entries lookup failed');
+        charactersRequest.onsuccess = () => {
+            characters = (charactersRequest.result || []) as CharacterProfile[];
+            markLoaded();
+        };
+        charactersRequest.onerror = () => abortWith(charactersRequest.error, 'Worldbook group characters lookup failed');
+        transaction.oncomplete = () => resolve(changedCharacters);
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, 'Worldbook group archive failed');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, 'Worldbook group archive aborted'),
+        );
+    });
+};
+
+const persistWorldbookGroupRestore = async (input: {
+    group: WorldbookGroupAssignment;
+    entries: readonly {
+        entry: Worldbook;
+        expectedActiveRevisionId: string;
+    }[];
+}): Promise<CharacterProfile[]> => {
+    const group: WorldbookGroupAssignment = {
+        ...input.group,
+        id: input.group.id.trim(),
+        name: input.group.name.trim(),
+        owner: input.group.owner.kind === 'character'
+            ? { kind: 'character', charId: input.group.owner.charId.trim() }
+            : { kind: 'universal' },
+    };
+    const groupErrors = validateWorldbookGroupAssignment(group);
+    if (groupErrors.length) throw new Error(`Worldbook group rejected: ${groupErrors.join('; ')}`);
+    if (group.owner.kind !== 'character') {
+        throw new Error('只有角色分组可以整组恢复');
+    }
+    if (!input.entries.length) throw new Error('这个归档分组里已经没有可恢复的资料');
+    const ownerCharId = group.owner.charId;
+    const entries = input.entries.map(item => ({
+        entry: normalizeWorldbookEntry(item.entry),
+        expectedActiveRevisionId: item.expectedActiveRevisionId,
+    }));
+    if (new Set(entries.map(item => item.entry.id)).size !== entries.length) {
+        throw new Error('Worldbook group restore contains duplicate entries');
+    }
+    entries.forEach(({ entry, expectedActiveRevisionId }) => {
+        const entryGroup = entry.group;
+        const sameOwner = entryGroup?.owner.kind === 'character'
+            && entryGroup.owner.charId === ownerCharId;
+        if (entryGroup?.id !== group.id || entryGroup.name !== group.name || !sameOwner) {
+            throw new Error(`Worldbook ${entry.id} does not belong to group ${group.id}`);
+        }
+        const active = getActiveWorldbookRevision(entry);
+        const previous = entry.revisionSnapshots?.find(revision => revision.id === expectedActiveRevisionId);
+        if (
+            active.publicationStatus !== 'published'
+            || !active.sourceRefs.some(source => source.kind === 'revision_restore')
+            || !previous
+            || active.revision !== previous.revision + 1
+        ) {
+            throw new Error(`Worldbook ${entry.id} is not a valid restored revision`);
+        }
+    });
+
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_WORLDBOOKS,
+        STORE_WORLDBOOK_GROUPS,
+        STORE_CHARACTERS,
+    ], 'readwrite');
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const groupStore = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const storedGroupRequest = groupStore.get(group.id);
+    const storedEntriesRequest = worldbookStore.getAll();
+    const charactersRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let loaded = 0;
+        let writesQueued = false;
+        let failure: Error | undefined;
+        let storedGroup: WorldbookGroupAssignment | undefined;
+        let storedEntries: Worldbook[] = [];
+        let characters: CharacterProfile[] = [];
+        let changedCharacters: CharacterProfile[] = [];
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try { transaction.abort(); } catch { reject(failure); }
+        };
+        const markLoaded = () => {
+            loaded += 1;
+            if (loaded !== 3 || writesQueued) return;
+            writesQueued = true;
+            try {
+                if (!characters.some(character => character.id === ownerCharId)) {
+                    throw new Error('原角色已经不存在，暂时不能恢复这组世界书');
+                }
+                if (storedGroup) {
+                    const sameOwner = storedGroup.owner.kind === 'character'
+                        && storedGroup.owner.charId === ownerCharId;
+                    if (storedGroup.name.trim() !== group.name || !sameOwner) {
+                        throw new Error('这个分组名称已经被其他资料使用，请刷新后再试');
+                    }
+                }
+                const storedInGroup = storedEntries
+                    .filter(entry => entry.group?.id === group.id)
+                    .map(normalizeWorldbookEntry);
+                const archivedIds = storedInGroup
+                    .filter(entry => getActiveWorldbookRevision(entry).publicationStatus === 'archived')
+                    .map(entry => entry.id)
+                    .sort();
+                const incomingIds = entries.map(item => item.entry.id).sort();
+                if (JSON.stringify(archivedIds) !== JSON.stringify(incomingIds)) {
+                    throw new Error('归档分组的内容已经发生变化，请刷新后再试');
+                }
+                const storedById = new Map(storedInGroup.map(entry => [entry.id, entry]));
+                entries.forEach(({ entry, expectedActiveRevisionId }) => {
+                    const stored = storedById.get(entry.id);
+                    if (!stored || stored.activeRevisionId !== expectedActiveRevisionId) {
+                        throw new Error(`Worldbook ${entry.id} changed before group restore`);
+                    }
+                });
+
+                groupStore.put(group);
+                entries.forEach(({ entry }) => worldbookStore.put(entry));
+                changedCharacters = characters.flatMap(character => {
+                    let next = character;
+                    let changed = false;
+                    entries.forEach(({ entry }) => {
+                        const refreshed = refreshMountedWorldbookCache(next, entry);
+                        if (!refreshed) return;
+                        next = refreshed;
+                        changed = true;
+                    });
+                    return changed ? [next] : [];
+                });
+                changedCharacters.forEach(character => characterStore.put(character));
+            } catch (error) {
+                abortWith(error, 'Worldbook group restore failed');
+            }
+        };
+        storedGroupRequest.onsuccess = () => {
+            storedGroup = storedGroupRequest.result as WorldbookGroupAssignment | undefined;
+            markLoaded();
+        };
+        storedGroupRequest.onerror = () => abortWith(storedGroupRequest.error, 'Worldbook group lookup failed');
+        storedEntriesRequest.onsuccess = () => {
+            storedEntries = (storedEntriesRequest.result || []) as Worldbook[];
+            markLoaded();
+        };
+        storedEntriesRequest.onerror = () => abortWith(storedEntriesRequest.error, 'Worldbook group entries lookup failed');
+        charactersRequest.onsuccess = () => {
+            characters = (charactersRequest.result || []) as CharacterProfile[];
+            markLoaded();
+        };
+        charactersRequest.onerror = () => abortWith(charactersRequest.error, 'Worldbook group characters lookup failed');
+        transaction.oncomplete = () => resolve(changedCharacters);
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, 'Worldbook group restore failed');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, 'Worldbook group restore aborted'),
+        );
+    });
+};
+
+type UnassignedWorldbookBatchEntry = {
+    entryId: string;
+    expectedActiveRevisionId: string;
+};
+
+const persistUnassignedWorldbookBatch = async (input: {
+    action: 'assign' | 'archive';
+    entries: readonly UnassignedWorldbookBatchEntry[];
+    changedAt: number;
+    group?: WorldbookGroupAssignment;
+}): Promise<CharacterProfile[]> => {
+    if (!input.entries.length) throw new Error('待归组里已经没有可整理的内容');
+    if (new Set(input.entries.map(item => item.entryId)).size !== input.entries.length) {
+        throw new Error('待归组整理包含重复条目');
+    }
+    const group = input.group ? {
+        ...input.group,
+        id: input.group.id.trim(),
+        name: input.group.name.trim(),
+        owner: input.group.owner.kind === 'character'
+            ? { kind: 'character' as const, charId: input.group.owner.charId.trim() }
+            : { kind: 'universal' as const },
+    } : undefined;
+    if (input.action === 'assign') {
+        if (!group) throw new Error('请选择待归组资料要去的分组');
+        const errors = validateWorldbookGroupAssignment(group);
+        if (errors.length) throw new Error(`Worldbook group rejected: ${errors.join('; ')}`);
+    } else if (group) {
+        throw new Error('归档待归组资料时不能修改它们的归属');
+    }
+
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_WORLDBOOKS,
+        STORE_WORLDBOOK_GROUPS,
+        STORE_CHARACTERS,
+    ], 'readwrite');
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const groupStore = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const storedEntriesRequest = worldbookStore.getAll();
+    const storedGroupsRequest = groupStore.getAll();
+    const charactersRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let loaded = 0;
+        let writesQueued = false;
+        let failure: Error | undefined;
+        let storedEntries: Worldbook[] = [];
+        let storedGroups: WorldbookGroupAssignment[] = [];
+        let characters: CharacterProfile[] = [];
+        let changedCharacters: CharacterProfile[] = [];
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try { transaction.abort(); } catch { reject(failure); }
+        };
+        const markLoaded = () => {
+            loaded += 1;
+            if (loaded !== 3 || writesQueued) return;
+            writesQueued = true;
+            try {
+                if (group?.owner.kind === 'character' && !characters.some(character => character.id === group.owner.charId)) {
+                    throw new Error('目标角色已经不存在，请重新选择分组');
+                }
+                if (group) {
+                    const storedGroup = storedGroups.find(item => item.id === group.id);
+                    if (storedGroup) {
+                        const sameOwner = storedGroup.owner.kind === group.owner.kind && (
+                            storedGroup.owner.kind === 'universal'
+                            || (group.owner.kind === 'character' && storedGroup.owner.charId === group.owner.charId)
+                        );
+                        if (storedGroup.name.trim() !== group.name || !sameOwner) {
+                            throw new Error('目标分组已经发生变化，请刷新后再试');
+                        }
+                    }
+                }
+                const storedById = new Map(
+                    storedEntries.map(entry => {
+                        const normalized = normalizeWorldbookEntry(entry);
+                        return [normalized.id, normalized] as const;
+                    }),
+                );
+                const nextEntries = input.entries.map((item, index) => {
+                    const stored = storedById.get(item.entryId);
+                    if (!stored || stored.activeRevisionId !== item.expectedActiveRevisionId) {
+                        throw new Error(`Worldbook ${item.entryId} changed before unassigned repair`);
+                    }
+                    if (stored.group || stored.isBuiltIn || stored.lockEditing) {
+                        throw new Error('待归组内容已经有了归属，请刷新后再试');
+                    }
+                    if (getActiveWorldbookRevision(stored).publicationStatus !== 'published') {
+                        throw new Error('待归组内容已经离开当前书架，请刷新后再试');
+                    }
+                    const changedAt = Math.max(input.changedAt + index, stored.updatedAt + 1);
+                    if (input.action === 'archive') {
+                        return archiveWorldbookEntry({
+                            current: stored,
+                            sourceRef: { kind: 'player', refId: `worldbook-unassigned-archive:${changedAt}:${index}` },
+                            archivedAt: changedAt,
+                        });
+                    }
+                    const revised = reviseWorldbookEntry({
+                        current: stored,
+                        patch: { category: group!.name },
+                        sourceRef: { kind: 'player', refId: `worldbook-unassigned-assign:${group!.id}:${changedAt}:${index}` },
+                        updatedAt: changedAt,
+                    });
+                    return { ...revised, category: group!.name, group };
+                });
+                if (group) groupStore.put(group);
+                nextEntries.forEach(entry => worldbookStore.put(entry));
+                changedCharacters = characters.flatMap(character => {
+                    let next = character;
+                    let changed = false;
+                    nextEntries.forEach(entry => {
+                        const refreshed = refreshMountedWorldbookCache(next, entry);
+                        if (!refreshed) return;
+                        next = refreshed;
+                        changed = true;
+                    });
+                    return changed ? [next] : [];
+                });
+                changedCharacters.forEach(character => characterStore.put(character));
+            } catch (error) {
+                abortWith(error, '待归组内容没有整理成功');
+            }
+        };
+        storedEntriesRequest.onsuccess = () => {
+            storedEntries = (storedEntriesRequest.result || []) as Worldbook[];
+            markLoaded();
+        };
+        storedEntriesRequest.onerror = () => abortWith(storedEntriesRequest.error, '待归组内容读取失败');
+        storedGroupsRequest.onsuccess = () => {
+            storedGroups = (storedGroupsRequest.result || []) as WorldbookGroupAssignment[];
+            markLoaded();
+        };
+        storedGroupsRequest.onerror = () => abortWith(storedGroupsRequest.error, '世界书分组读取失败');
+        charactersRequest.onsuccess = () => {
+            characters = (charactersRequest.result || []) as CharacterProfile[];
+            markLoaded();
+        };
+        charactersRequest.onerror = () => abortWith(charactersRequest.error, '角色资料读取失败');
+        transaction.oncomplete = () => resolve(changedCharacters);
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, '待归组内容没有整理成功');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, '待归组整理已取消'),
+        );
+    });
+};
+
+const persistArchivedWorldbookDeletion = async (input: {
+    entryIds: readonly string[];
+    groupId?: string;
+}): Promise<CharacterProfile[]> => {
+    const entryIds = [...new Set(input.entryIds)];
+    if (!entryIds.length || entryIds.length !== input.entryIds.length) {
+        throw new Error('请选择要彻底删除的归档资料');
+    }
+    const selectedIds = new Set(entryIds);
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_WORLDBOOKS,
+        STORE_WORLDBOOK_GROUPS,
+        STORE_WORLDBOOK_GROWTH_CANDIDATES,
+        STORE_WORLDBOOK_PROJECTION_RECEIPTS,
+        STORE_CHARACTERS,
+    ], 'readwrite');
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const groupStore = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+    const candidateStore = transaction.objectStore(STORE_WORLDBOOK_GROWTH_CANDIDATES);
+    const receiptStore = transaction.objectStore(STORE_WORLDBOOK_PROJECTION_RECEIPTS);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const entriesRequest = worldbookStore.getAll();
+    const candidatesRequest = candidateStore.getAll();
+    const receiptsRequest = receiptStore.getAll();
+    const charactersRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let loaded = 0;
+        let writesQueued = false;
+        let failure: Error | undefined;
+        let entries: Worldbook[] = [];
+        let candidates: WorldGrowthCandidate[] = [];
+        let receipts: WorldbookProjectionDeliveryReceipt[] = [];
+        let characters: CharacterProfile[] = [];
+        let changedCharacters: CharacterProfile[] = [];
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try { transaction.abort(); } catch { reject(failure); }
+        };
+        const markLoaded = () => {
+            loaded += 1;
+            if (loaded !== 4 || writesQueued) return;
+            writesQueued = true;
+            try {
+                const normalized = entries.map(normalizeWorldbookEntry);
+                const selected = normalized.filter(entry => selectedIds.has(entry.id));
+                if (selected.length !== selectedIds.size) {
+                    throw new Error('归档内容已经发生变化，请刷新后再试');
+                }
+                selected.forEach(entry => {
+                    if (entry.isBuiltIn || entry.lockEditing) {
+                        throw new Error('内置世界书不能被彻底删除');
+                    }
+                    if (getActiveWorldbookRevision(entry).publicationStatus !== 'archived') {
+                        throw new Error('只有归档中的世界书才能被彻底删除');
+                    }
+                    if (input.groupId && entry.group?.id !== input.groupId) {
+                        throw new Error('归档分组内容已经发生变化，请刷新后再试');
+                    }
+                });
+                if (input.groupId) {
+                    const archivedIdsInGroup = normalized
+                        .filter(entry => (
+                            entry.group?.id === input.groupId
+                            && getActiveWorldbookRevision(entry).publicationStatus === 'archived'
+                        ))
+                        .map(entry => entry.id)
+                        .sort();
+                    if (JSON.stringify(archivedIdsInGroup) !== JSON.stringify([...entryIds].sort())) {
+                        throw new Error('归档分组内容已经发生变化，请刷新后再试');
+                    }
+                }
+                const deletedRevisionIds = new Set(selected.flatMap(entry => (
+                    entry.revisionSnapshots || []
+                ).map(revision => revision.id)));
+                entryIds.forEach(entryId => worldbookStore.delete(entryId));
+                candidates
+                    .filter(candidate => (
+                        Boolean(candidate.targetEntryId && selectedIds.has(candidate.targetEntryId))
+                        || Boolean(candidate.acceptedRevisionId && deletedRevisionIds.has(candidate.acceptedRevisionId))
+                    ))
+                    .forEach(candidate => candidateStore.delete(candidate.id));
+                receipts
+                    .filter(receipt => receipt.delivered.some(item => selectedIds.has(item.entryId)))
+                    .forEach(receipt => receiptStore.delete(receipt.id));
+
+                const remainingInGroup = input.groupId
+                    ? normalized.some(entry => entry.group?.id === input.groupId && !selectedIds.has(entry.id))
+                    : true;
+                if (input.groupId && !remainingInGroup) groupStore.delete(input.groupId);
+                changedCharacters = characters.flatMap(character => {
+                    const mountedWorldbooks = (character.mountedWorldbooks || [])
+                        .filter(entry => !selectedIds.has(entry.id));
+                    const mountedWorldbookGroupIds = input.groupId && !remainingInGroup
+                        ? (character.mountedWorldbookGroupIds || []).filter(groupId => groupId !== input.groupId)
+                        : character.mountedWorldbookGroupIds;
+                    if (
+                        mountedWorldbooks.length === (character.mountedWorldbooks || []).length
+                        && mountedWorldbookGroupIds?.length === character.mountedWorldbookGroupIds?.length
+                    ) return [];
+                    return [{ ...character, mountedWorldbooks, mountedWorldbookGroupIds }];
+                });
+                changedCharacters.forEach(character => characterStore.put(character));
+            } catch (error) {
+                abortWith(error, '归档资料没有彻底删除成功');
+            }
+        };
+        entriesRequest.onsuccess = () => { entries = (entriesRequest.result || []) as Worldbook[]; markLoaded(); };
+        entriesRequest.onerror = () => abortWith(entriesRequest.error, '归档资料读取失败');
+        candidatesRequest.onsuccess = () => { candidates = (candidatesRequest.result || []) as WorldGrowthCandidate[]; markLoaded(); };
+        candidatesRequest.onerror = () => abortWith(candidatesRequest.error, '世界书整理记录读取失败');
+        receiptsRequest.onsuccess = () => { receipts = (receiptsRequest.result || []) as WorldbookProjectionDeliveryReceipt[]; markLoaded(); };
+        receiptsRequest.onerror = () => abortWith(receiptsRequest.error, '世界书递送记录读取失败');
+        charactersRequest.onsuccess = () => { characters = (charactersRequest.result || []) as CharacterProfile[]; markLoaded(); };
+        charactersRequest.onerror = () => abortWith(charactersRequest.error, '角色挂载读取失败');
+        transaction.oncomplete = () => resolve(changedCharacters);
+        transaction.onerror = () => { failure ??= asError(transaction.error, '归档资料没有彻底删除成功'); };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, '归档资料彻底删除已取消'),
+        );
+    });
+};
+
+const persistAcceptedWorldGrowthCandidate = async (input: {
+    entry: Worldbook;
+    candidate: WorldGrowthCandidate;
+    reviewedDraft?: WorldGrowthCandidatePlayerReview;
+    expectedBaseRevisionId: string | null;
+    expectedCandidateUpdatedAt: number;
+}): Promise<CharacterProfile[]> => {
+    const entry = normalizeWorldbookEntry(input.entry);
+    const candidateErrors = validateWorldGrowthCandidate(input.candidate);
+    if (candidateErrors.length) {
+        throw new Error(`Accepted Worldbook candidate rejected: ${candidateErrors.join('; ')}`);
+    }
+    if (
+        input.candidate.status !== 'accepted'
+        || input.candidate.acceptedRevisionId !== entry.activeRevisionId
+    ) {
+        throw new Error('Accepted Worldbook candidate does not reference the committed revision');
+    }
+
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_WORLDBOOKS,
+        STORE_WORLDBOOK_GROWTH_CANDIDATES,
+        STORE_CHARACTERS,
+    ], 'readwrite');
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const candidateStore = transaction.objectStore(STORE_WORLDBOOK_GROWTH_CANDIDATES);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const entryRequest = worldbookStore.get(entry.id);
+    const candidateRequest = candidateStore.get(input.candidate.id);
+    const characterRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let existingEntry: Worldbook | undefined;
+        let storedCandidate: WorldGrowthCandidate | undefined;
+        let characters: CharacterProfile[] = [];
+        let loaded = 0;
+        let changedCharacters: CharacterProfile[] = [];
+        let failure: Error | undefined;
+        let writesQueued = false;
+
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try {
+                transaction.abort();
+            } catch {
+                reject(failure);
+            }
+        };
+
+        const queueWrites = () => {
+            if (writesQueued || loaded !== 3) return;
+            writesQueued = true;
+            try {
+                if (!storedCandidate) throw new Error('World growth candidate is missing');
+                if (!['pending', 'deferred'].includes(storedCandidate.status)) {
+                    throw new Error(`World growth candidate cannot be accepted from ${storedCandidate.status}`);
+                }
+                if (storedCandidate.updatedAt !== input.expectedCandidateUpdatedAt) {
+                    throw new Error('World growth candidate changed before acceptance');
+                }
+                if (
+                    storedCandidate.targetEntryId !== input.candidate.targetEntryId
+                    || storedCandidate.baseRevisionId !== input.candidate.baseRevisionId
+                    || storedCandidate.createdAt !== input.candidate.createdAt
+                    || JSON.stringify(storedCandidate.source) !== JSON.stringify(input.candidate.source)
+                    || JSON.stringify(storedCandidate.draft) !== JSON.stringify(input.candidate.draft)
+                ) {
+                    throw new Error('Accepted World growth candidate does not match its stored proposal');
+                }
+                if ((storedCandidate.baseRevisionId ?? null) !== input.expectedBaseRevisionId) {
+                    throw new Error('World growth candidate base revision does not match its stored proposal');
+                }
+                if (storedCandidate.targetEntryId && storedCandidate.targetEntryId !== entry.id) {
+                    throw new Error('Accepted World growth candidate targets a different Worldbook');
+                }
+                if (input.expectedBaseRevisionId === null) {
+                    if (existingEntry) throw new Error(`Worldbook ${entry.id} already exists`);
+                } else {
+                    if (!existingEntry) throw new Error(`Worldbook ${entry.id} is missing`);
+                    if (normalizeWorldbookEntry(existingEntry).activeRevisionId !== input.expectedBaseRevisionId) {
+                        throw new Error(`Worldbook ${entry.id} active revision is stale`);
+                    }
+                }
+                const rebuilt = acceptWorldGrowthCandidate({
+                    candidate: storedCandidate,
+                    currentEntry: storedCandidate.targetEntryId ? existingEntry : undefined,
+                    newEntryId: storedCandidate.targetEntryId ? undefined : entry.id,
+                    reviewedDraft: input.reviewedDraft,
+                    acceptedAt: input.candidate.updatedAt,
+                });
+                const rebuiltEntry = normalizeWorldbookEntry(rebuilt.entry);
+                if (
+                    JSON.stringify(rebuiltEntry) !== JSON.stringify(entry)
+                    || JSON.stringify(rebuilt.candidate) !== JSON.stringify(input.candidate)
+                ) {
+                    throw new Error('Accepted World growth candidate result does not match the stored proposal');
+                }
+                changedCharacters = characters
+                    .map(character => refreshMountedWorldbookCache(character, rebuiltEntry))
+                    .filter((character): character is CharacterProfile => Boolean(character));
+                worldbookStore.put(rebuiltEntry);
+                candidateStore.put(rebuilt.candidate);
+                changedCharacters.forEach(character => characterStore.put(character));
+            } catch (error) {
+                abortWith(error, 'World growth candidate transaction failed');
+            }
+        };
+
+        entryRequest.onsuccess = () => {
+            existingEntry = entryRequest.result as Worldbook | undefined;
+            loaded += 1;
+            queueWrites();
+        };
+        entryRequest.onerror = () => abortWith(entryRequest.error, 'Worldbook lookup failed');
+        candidateRequest.onsuccess = () => {
+            storedCandidate = candidateRequest.result as WorldGrowthCandidate | undefined;
+            loaded += 1;
+            queueWrites();
+        };
+        candidateRequest.onerror = () => abortWith(candidateRequest.error, 'World growth candidate lookup failed');
+        characterRequest.onsuccess = () => {
+            characters = (characterRequest.result || []) as CharacterProfile[];
+            loaded += 1;
+            queueWrites();
+        };
+        characterRequest.onerror = () => abortWith(characterRequest.error, 'Character cache lookup failed');
+        transaction.oncomplete = () => resolve(changedCharacters);
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, 'World growth candidate transaction failed');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, 'World growth candidate transaction aborted'),
+        );
+    });
+};
+
+const persistWorldGrowthCandidateRecord = async (
+    candidate: WorldGrowthCandidate,
+): Promise<void> => {
+    const errors = validateWorldGrowthCandidate(candidate);
+    if (errors.length) throw new Error(`World growth candidate rejected: ${errors.join('; ')}`);
+    if (candidate.status === 'accepted') {
+        throw new Error('Accepted World growth candidates require the atomic entry commit path');
+    }
+    const db = await openDB();
+    const transaction = db.transaction(STORE_WORLDBOOK_GROWTH_CANDIDATES, 'readwrite');
+    const store = transaction.objectStore(STORE_WORLDBOOK_GROWTH_CANDIDATES);
+    const request = store.get(candidate.id);
+    return new Promise((resolve, reject) => {
+        let failure: Error | undefined;
+        const abortWith = (error: unknown) => {
+            failure = asError(error, 'World growth candidate save failed');
+            try {
+                transaction.abort();
+            } catch {
+                reject(failure);
+            }
+        };
+        request.onsuccess = () => {
+            try {
+                const existing = request.result as WorldGrowthCandidate | undefined;
+                if (!existing) {
+                    if (candidate.status !== 'pending') {
+                        throw new Error('A new World growth candidate must start pending');
+                    }
+                    store.put(candidate);
+                    return;
+                }
+                const existingErrors = validateWorldGrowthCandidate(existing);
+                if (existingErrors.length) {
+                    throw new Error(`Stored World growth candidate is invalid: ${existingErrors.join('; ')}`);
+                }
+                if (JSON.stringify(existing) === JSON.stringify(candidate)) return;
+                if (['accepted', 'ignored'].includes(existing.status)) {
+                    throw new Error(`World growth candidate cannot change from ${existing.status}`);
+                }
+                if (!['deferred', 'ignored'].includes(candidate.status)) {
+                    throw new Error(`World growth candidate cannot change to ${candidate.status} through save`);
+                }
+                if (
+                    existing.createdAt !== candidate.createdAt
+                    || existing.targetEntryId !== candidate.targetEntryId
+                    || existing.baseRevisionId !== candidate.baseRevisionId
+                    || JSON.stringify(existing.scope) !== JSON.stringify(candidate.scope)
+                    || JSON.stringify(existing.source) !== JSON.stringify(candidate.source)
+                    || JSON.stringify(existing.draft) !== JSON.stringify(candidate.draft)
+                ) {
+                    throw new Error('World growth candidate proposal fields are immutable');
+                }
+                if (candidate.updatedAt <= existing.updatedAt) {
+                    throw new Error('World growth candidate update is stale');
+                }
+                store.put(candidate);
+            } catch (error) {
+                abortWith(error);
+            }
+        };
+        request.onerror = () => abortWith(request.error);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, 'World growth candidate save failed');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, 'World growth candidate save aborted'),
+        );
+    });
+};
+
+const persistWorldGrowthCandidatesAtomically = async (
+    candidates: readonly WorldGrowthCandidate[],
+): Promise<void> => {
+    if (!candidates.length) throw new Error('World growth candidate batch must not be empty');
+    const ids = candidates.map(candidate => candidate.id);
+    if (new Set(ids).size !== ids.length) {
+        throw new Error('World growth candidate batch ids must be unique');
+    }
+    candidates.forEach((candidate, index) => {
+        const errors = validateWorldGrowthCandidate(candidate);
+        if (errors.length) {
+            throw new Error(`World growth candidate batch[${index}] rejected: ${errors.join('; ')}`);
+        }
+        if (candidate.status !== 'pending') {
+            throw new Error('A new World growth candidate batch may contain only pending candidates');
+        }
+    });
+
+    const db = await openDB();
+    const transaction = db.transaction(STORE_WORLDBOOK_GROWTH_CANDIDATES, 'readwrite');
+    const store = transaction.objectStore(STORE_WORLDBOOK_GROWTH_CANDIDATES);
+    const existingRequest = store.getAll();
+    return new Promise((resolve, reject) => {
+        let failure: Error | undefined;
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try {
+                transaction.abort();
+            } catch {
+                reject(failure);
+            }
+        };
+        existingRequest.onsuccess = () => {
+            try {
+                const existingById = new Map(
+                    ((existingRequest.result || []) as WorldGrowthCandidate[])
+                        .map(candidate => [candidate.id, candidate]),
+                );
+                const narrativeSources = new Map<string, Set<string>>();
+                candidates.forEach(candidate => {
+                    if (candidate.source.kind !== 'narrative' || !candidate.scope) return;
+                    const sourceKey = [
+                        candidate.scope.progressBundleId,
+                        candidate.scope.personaMaskId,
+                        candidate.scope.charId,
+                        candidate.source.refId,
+                    ].join('\u0000');
+                    const idsForSource = narrativeSources.get(sourceKey) || new Set<string>();
+                    idsForSource.add(candidate.id);
+                    narrativeSources.set(sourceKey, idsForSource);
+                });
+                narrativeSources.forEach((incomingIds, sourceKey) => {
+                    const existingIds = [...existingById.values()]
+                        .filter(existing => (
+                            existing.source.kind === 'narrative'
+                            && existing.scope
+                            && [
+                                existing.scope.progressBundleId,
+                                existing.scope.personaMaskId,
+                                existing.scope.charId,
+                                existing.source.refId,
+                            ].join('\u0000') === sourceKey
+                        ))
+                        .map(existing => existing.id);
+                    if (
+                        existingIds.length
+                        && (
+                            existingIds.length !== incomingIds.size
+                            || existingIds.some(id => !incomingIds.has(id))
+                        )
+                    ) {
+                        throw new Error('This confirmed narrative receipt already has a World growth candidate batch');
+                    }
+                });
+                candidates.forEach(candidate => {
+                    const existing = existingById.get(candidate.id);
+                    if (existing && JSON.stringify(existing) !== JSON.stringify(candidate)) {
+                        throw new Error(`World growth candidate ${candidate.id} already exists with different content`);
+                    }
+                });
+                candidates.forEach(candidate => {
+                    if (!existingById.has(candidate.id)) store.put(candidate);
+                });
+            } catch (error) {
+                abortWith(error, 'World growth candidate batch save failed');
+            }
+        };
+        existingRequest.onerror = () => abortWith(
+            existingRequest.error,
+            'World growth candidate batch collision check failed',
+        );
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, 'World growth candidate batch save failed');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, 'World growth candidate batch save aborted'),
+        );
+    });
+};
+
+const persistWorldbookProjectionDeliveryReceipt = async (
+    receipt: WorldbookProjectionDeliveryReceipt,
+): Promise<void> => {
+    assertWorldbookProjectionDeliveryReceipt(receipt);
+    const db = await openDB();
+    const transaction = db.transaction(STORE_WORLDBOOK_PROJECTION_RECEIPTS, 'readwrite');
+    const store = transaction.objectStore(STORE_WORLDBOOK_PROJECTION_RECEIPTS);
+    const request = store.get(receipt.id);
+    return new Promise((resolve, reject) => {
+        let failure: Error | undefined;
+        const abortWith = (error: unknown) => {
+            failure = asError(error, 'Worldbook delivery receipt save failed');
+            try {
+                transaction.abort();
+            } catch {
+                reject(failure);
+            }
+        };
+        request.onsuccess = () => {
+            try {
+                const existing = request.result as WorldbookProjectionDeliveryReceipt | undefined;
+                if (existing && JSON.stringify(existing) !== JSON.stringify(receipt)) {
+                    throw new Error('Worldbook delivery receipt id collision');
+                }
+                if (!existing) store.put(receipt);
+            } catch (error) {
+                abortWith(error);
+            }
+        };
+        request.onerror = () => abortWith(request.error);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, 'Worldbook delivery receipt save failed');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, 'Worldbook delivery receipt save aborted'),
+        );
+    });
+};
+
 export const DB = {
   deleteDB: async (): Promise<void> => {
       return new Promise((resolve, reject) => {
@@ -312,6 +1500,11 @@ export const DB = {
     const db = await openDB();
     const transaction = db.transaction(STORE_CHARACTERS, 'readwrite');
     transaction.objectStore(STORE_CHARACTERS).put(character);
+    return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(asError(transaction.error, 'Character save failed'));
+        transaction.onabort = () => reject(asError(transaction.error, 'Character save aborted'));
+    });
   },
 
   deleteCharacter: async (id: string): Promise<void> => {
@@ -319,6 +1512,49 @@ export const DB = {
     const transaction = db.transaction(STORE_CHARACTERS, 'readwrite');
     transaction.objectStore(STORE_CHARACTERS).delete(id);
   },
+
+  deleteCharacterAndArchiveOwnedWorldbooks: async (input: {
+      charId: string;
+      groups: readonly WorldbookGroupAssignment[];
+      entries: readonly { entry: Worldbook; expectedActiveRevisionId: string }[];
+  }): Promise<void> => {
+      await persistCharacterDeletionWithOwnedWorldbookArchive(input);
+  },
+
+  archiveWorldbookGroup: async (input: {
+      group: WorldbookGroupAssignment;
+      entries: readonly { entry: Worldbook; expectedActiveRevisionId: string }[];
+  }): Promise<CharacterProfile[]> => persistWorldbookGroupArchive(input),
+
+  restoreWorldbookGroup: async (input: {
+      group: WorldbookGroupAssignment;
+      entries: readonly { entry: Worldbook; expectedActiveRevisionId: string }[];
+  }): Promise<CharacterProfile[]> => persistWorldbookGroupRestore(input),
+
+  assignUnassignedWorldbooks: async (input: {
+      group: WorldbookGroupAssignment;
+      entries: readonly UnassignedWorldbookBatchEntry[];
+      assignedAt: number;
+  }): Promise<CharacterProfile[]> => persistUnassignedWorldbookBatch({
+      action: 'assign',
+      group: input.group,
+      entries: input.entries,
+      changedAt: input.assignedAt,
+  }),
+
+  archiveUnassignedWorldbooks: async (input: {
+      entries: readonly UnassignedWorldbookBatchEntry[];
+      archivedAt: number;
+  }): Promise<CharacterProfile[]> => persistUnassignedWorldbookBatch({
+      action: 'archive',
+      entries: input.entries,
+      changedAt: input.archivedAt,
+  }),
+
+  deleteArchivedWorldbooks: async (input: {
+      entryIds: readonly string[];
+      groupId?: string;
+  }): Promise<CharacterProfile[]> => persistArchivedWorldbookDeletion(input),
 
   getMessagesByCharId: async (charId: string): Promise<Message[]> => {
     const db = await openDB();
@@ -1471,22 +2707,243 @@ export const DB = {
           const transaction = db.transaction(STORE_WORLDBOOKS, 'readonly');
           const store = transaction.objectStore(STORE_WORLDBOOKS);
           const request = store.getAll();
-          request.onsuccess = () => resolve(request.result || []);
+          request.onsuccess = () => {
+              try {
+                  resolve(((request.result || []) as Worldbook[]).map(normalizeWorldbookEntry));
+              } catch (error) {
+                  reject(error);
+              }
+          };
           request.onerror = () => reject(request.error);
       });
   },
 
-  saveWorldbook: async (book: Worldbook): Promise<void> => {
+  getAllWorldbookGroups: async (): Promise<WorldbookGroupAssignment[]> => {
       const db = await openDB();
-      const transaction = db.transaction(STORE_WORLDBOOKS, 'readwrite');
-      transaction.objectStore(STORE_WORLDBOOKS).put(book);
+      if (!db.objectStoreNames.contains(STORE_WORLDBOOK_GROUPS)) return [];
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_WORLDBOOK_GROUPS, 'readonly');
+          const request = transaction.objectStore(STORE_WORLDBOOK_GROUPS).getAll();
+          request.onsuccess = () => {
+              try {
+                  const groups = ((request.result || []) as WorldbookGroupAssignment[]).map(group => ({
+                      ...group,
+                      id: group.id.trim(),
+                      name: group.name.trim(),
+                      owner: group.owner.kind === 'character'
+                          ? { kind: 'character' as const, charId: group.owner.charId.trim() }
+                          : { kind: 'universal' as const },
+                  }));
+                  const errors = groups.flatMap(group => validateWorldbookGroupAssignment(group));
+                  if (errors.length) throw new Error(`Stored Worldbook groups are invalid: ${errors.join('; ')}`);
+                  resolve(groups);
+              } catch (error) {
+                  reject(error);
+              }
+          };
+          request.onerror = () => reject(request.error);
+      });
   },
 
-  deleteWorldbook: async (id: string): Promise<void> => {
+  saveWorldbookGroup: async (group: WorldbookGroupAssignment): Promise<void> => {
+      const normalized: WorldbookGroupAssignment = {
+          ...group,
+          id: group.id.trim(),
+          name: group.name.trim(),
+          owner: group.owner.kind === 'character'
+              ? { kind: 'character', charId: group.owner.charId.trim() }
+              : { kind: 'universal' },
+      };
+      const errors = validateWorldbookGroupAssignment(normalized);
+      if (errors.length) throw new Error(`Worldbook group rejected: ${errors.join('; ')}`);
       const db = await openDB();
-      const transaction = db.transaction(STORE_WORLDBOOKS, 'readwrite');
-      transaction.objectStore(STORE_WORLDBOOKS).delete(id);
+      const transaction = db.transaction(STORE_WORLDBOOK_GROUPS, 'readwrite');
+      const store = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+      const request = store.getAll();
+      return new Promise((resolve, reject) => {
+          let failure: Error | undefined;
+          const abortWith = (error: unknown) => {
+              failure = asError(error, 'Worldbook group save failed');
+              try { transaction.abort(); } catch { reject(failure); }
+          };
+          request.onsuccess = () => {
+              try {
+                  const existing = (request.result || []) as WorldbookGroupAssignment[];
+                  const sameId = existing.find(item => item.id === normalized.id);
+                  if (sameId) {
+                      const sameOwner = sameId.owner.kind === normalized.owner.kind && (
+                          sameId.owner.kind === 'universal'
+                          || (
+                              normalized.owner.kind === 'character'
+                              && sameId.owner.charId === normalized.owner.charId
+                          )
+                      );
+                      if (sameId.name.trim() !== normalized.name || !sameOwner) {
+                          throw new Error('Worldbook group id already belongs to another group');
+                      }
+                  }
+                  const sameOwnerAndName = existing.find(item => (
+                      item.id !== normalized.id
+                      && item.name.trim() === normalized.name
+                      && item.owner.kind === normalized.owner.kind
+                      && (
+                          item.owner.kind === 'universal'
+                          || (
+                              normalized.owner.kind === 'character'
+                              && item.owner.charId === normalized.owner.charId
+                          )
+                      )
+                  ));
+                  if (sameOwnerAndName) throw new Error('这个角色已经有同名世界书组');
+                  if (!sameId || JSON.stringify(sameId) !== JSON.stringify(normalized)) {
+                      store.put(normalized);
+                  }
+              } catch (error) {
+                  abortWith(error);
+              }
+          };
+          request.onerror = () => abortWith(request.error);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => { failure ??= asError(transaction.error, 'Worldbook group save failed'); };
+          transaction.onabort = () => reject(failure ?? asError(transaction.error, 'Worldbook group save aborted'));
+      });
   },
+
+  saveWorldbookGroupLayout: async (
+      groups: readonly WorldbookGroupAssignment[],
+  ): Promise<void> => {
+      if (!groups.length) return;
+      const normalized = groups.map(group => ({
+          ...group,
+          id: group.id.trim(),
+          name: group.name.trim(),
+          owner: group.owner.kind === 'character'
+              ? { kind: 'character' as const, charId: group.owner.charId.trim() }
+              : { kind: 'universal' as const },
+      }));
+      const duplicateIds = normalized.filter((group, index) => (
+          normalized.findIndex(item => item.id === group.id) !== index
+      ));
+      if (duplicateIds.length) throw new Error('Worldbook layout contains duplicate groups');
+      const errors = normalized.flatMap(group => validateWorldbookGroupAssignment(group));
+      if (errors.length) throw new Error(`Worldbook group layout rejected: ${errors.join('; ')}`);
+      const db = await openDB();
+      const transaction = db.transaction(STORE_WORLDBOOK_GROUPS, 'readwrite');
+      const store = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+      const request = store.getAll();
+      return new Promise((resolve, reject) => {
+          let failure: Error | undefined;
+          const abortWith = (error: unknown) => {
+              failure = asError(error, 'Worldbook group layout save failed');
+              try { transaction.abort(); } catch { reject(failure); }
+          };
+          request.onsuccess = () => {
+              try {
+                  const existing = new Map(
+                      ((request.result || []) as WorldbookGroupAssignment[])
+                          .map(group => [group.id, group]),
+                  );
+                  normalized.forEach(group => {
+                      const stored = existing.get(group.id);
+                      const sameOwner = stored && stored.owner.kind === group.owner.kind && (
+                          stored.owner.kind === 'universal'
+                          || (group.owner.kind === 'character' && stored.owner.charId === group.owner.charId)
+                      );
+                      if (!stored || stored.name.trim() !== group.name || !sameOwner) {
+                          throw new Error(`Worldbook group ${group.id} cannot be reordered`);
+                      }
+                  });
+                  normalized.forEach(group => store.put(group));
+              } catch (error) {
+                  abortWith(error);
+              }
+          };
+          request.onerror = () => abortWith(request.error);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => {
+              failure ??= asError(transaction.error, 'Worldbook group layout save failed');
+          };
+          transaction.onabort = () => reject(
+              failure ?? asError(transaction.error, 'Worldbook group layout save aborted'),
+          );
+      });
+  },
+
+  saveWorldbookRevision: async (
+      book: Worldbook,
+      expectedActiveRevisionId: string | null,
+  ): Promise<CharacterProfile[]> => {
+      return persistWorldbookWithMountedCaches(book, expectedActiveRevisionId);
+  },
+
+  saveWorldbookEntriesAtomically: async (books: readonly Worldbook[]): Promise<void> => {
+      await persistNewWorldbookEntriesAtomically(books);
+  },
+
+  getAllWorldGrowthCandidates: async (): Promise<WorldGrowthCandidate[]> => {
+      const db = await openDB();
+      if (!db.objectStoreNames.contains(STORE_WORLDBOOK_GROWTH_CANDIDATES)) return [];
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_WORLDBOOK_GROWTH_CANDIDATES, 'readonly');
+          const request = transaction.objectStore(STORE_WORLDBOOK_GROWTH_CANDIDATES).getAll();
+          request.onsuccess = () => {
+              const candidates = (request.result || []) as WorldGrowthCandidate[];
+              const invalid = candidates.flatMap(candidate => validateWorldGrowthCandidate(candidate));
+              if (invalid.length) {
+                  reject(new Error(`Stored World growth candidates are invalid: ${invalid.join('; ')}`));
+                  return;
+              }
+              resolve(candidates);
+          };
+          request.onerror = () => reject(request.error);
+      });
+  },
+
+  saveWorldGrowthCandidate: async (candidate: WorldGrowthCandidate): Promise<void> => {
+      await persistWorldGrowthCandidateRecord(candidate);
+  },
+
+  saveWorldGrowthCandidatesAtomically: async (
+      candidates: readonly WorldGrowthCandidate[],
+  ): Promise<void> => {
+      await persistWorldGrowthCandidatesAtomically(candidates);
+  },
+
+  commitAcceptedWorldGrowthCandidate: async (input: {
+      entry: Worldbook;
+      candidate: WorldGrowthCandidate;
+      reviewedDraft?: WorldGrowthCandidatePlayerReview;
+      expectedBaseRevisionId: string | null;
+      expectedCandidateUpdatedAt: number;
+  }): Promise<CharacterProfile[]> => persistAcceptedWorldGrowthCandidate(input),
+
+  getWorldbookProjectionDeliveryReceipts: async (
+      scopeKey: string,
+  ): Promise<WorldbookProjectionDeliveryReceipt[]> => {
+      if (!scopeKey.trim()) throw new Error('Worldbook delivery receipt scopeKey is required');
+      const db = await openDB();
+      if (!db.objectStoreNames.contains(STORE_WORLDBOOK_PROJECTION_RECEIPTS)) return [];
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_WORLDBOOK_PROJECTION_RECEIPTS, 'readonly');
+          const request = transaction.objectStore(STORE_WORLDBOOK_PROJECTION_RECEIPTS)
+              .index('scopeKey')
+              .getAll(IDBKeyRange.only(scopeKey));
+          request.onsuccess = () => {
+              try {
+                  const receipts = (request.result || []) as WorldbookProjectionDeliveryReceipt[];
+                  receipts.forEach(assertWorldbookProjectionDeliveryReceipt);
+                  resolve(receipts);
+              } catch (error) {
+                  reject(error);
+              }
+          };
+          request.onerror = () => reject(request.error);
+      });
+  },
+
+  saveWorldbookProjectionDeliveryReceipt: async (
+      receipt: WorldbookProjectionDeliveryReceipt,
+  ): Promise<void> => persistWorldbookProjectionDeliveryReceipt(receipt),
 
   getAllNovels: async (): Promise<NovelBook[]> => {
       const db = await openDB();
@@ -1503,13 +2960,39 @@ export const DB = {
   saveNovel: async (novel: NovelBook): Promise<void> => {
       const db = await openDB();
       const transaction = db.transaction(STORE_NOVELS, 'readwrite');
-      transaction.objectStore(STORE_NOVELS).put(novel);
+      const request = transaction.objectStore(STORE_NOVELS).put(novel);
+      return new Promise((resolve, reject) => {
+          let failure: Error | undefined;
+          request.onerror = () => {
+              failure = asError(request.error, 'Novel save failed');
+          };
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(
+              failure ?? asError(transaction.error, 'Novel save failed'),
+          );
+          transaction.onabort = () => reject(
+              failure ?? asError(transaction.error, 'Novel save aborted'),
+          );
+      });
   },
 
   deleteNovel: async (id: string): Promise<void> => {
       const db = await openDB();
       const transaction = db.transaction(STORE_NOVELS, 'readwrite');
-      transaction.objectStore(STORE_NOVELS).delete(id);
+      const request = transaction.objectStore(STORE_NOVELS).delete(id);
+      return new Promise((resolve, reject) => {
+          let failure: Error | undefined;
+          request.onerror = () => {
+              failure = asError(request.error, 'Novel delete failed');
+          };
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(
+              failure ?? asError(transaction.error, 'Novel delete failed'),
+          );
+          transaction.onabort = () => reject(
+              failure ?? asError(transaction.error, 'Novel delete aborted'),
+          );
+      });
   },
 
   // --- BANK / PET APP LOGIC ---
@@ -1680,18 +3163,31 @@ export const DB = {
       
       const getAllFromStore = (storeName: string): Promise<any[]> => {
           if (!db.objectStoreNames.contains(storeName)) {
-              return Promise.resolve([]);
+              return Promise.reject(new Error(`Whole-device backup store is missing: ${storeName}`));
           }
-          return new Promise((resolve) => {
-              const tx = db.transaction(storeName, 'readonly');
-              const store = tx.objectStore(storeName);
-              const req = store.getAll();
+          return new Promise((resolve, reject) => {
+              let tx: IDBTransaction;
+              let req: IDBRequest<any[]>;
+              try {
+                  tx = db.transaction(storeName, 'readonly');
+                  req = tx.objectStore(storeName).getAll();
+              } catch (error) {
+                  reject(asError(error, `Whole-device backup could not read ${storeName}`));
+                  return;
+              }
               req.onsuccess = () => resolve(req.result || []);
-              req.onerror = () => resolve([]); 
+              req.onerror = () => reject(asError(
+                  req.error,
+                  `Whole-device backup could not read ${storeName}`,
+              ));
+              tx.onabort = () => reject(asError(
+                  tx.error,
+                  `Whole-device backup read aborted for ${storeName}`,
+              ));
           });
       };
 
-      const [characters, messages, themes, emojis, emojiCategories, assets, galleryImages, userProfiles, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, journalStickers, socialPosts, courses, games, worldbooks, novels, bankTx, bankData, songs, quizzes, guidebookSessions, scheduledMessages, companionWakeupRules, companionWakeupLogs, lifeSimStates] = await Promise.all([
+      const [characters, messages, themes, emojis, emojiCategories, assets, galleryImages, userProfiles, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, journalStickers, socialPosts, courses, games, worldbookGroups, worldbooks, worldbookGrowthCandidates, worldbookProjectionDeliveryReceipts, novels, bankTx, bankData, songs, quizzes, guidebookSessions, scheduledMessages, companionWakeupRules, companionWakeupLogs, lifeSimStates] = await Promise.all([
           getAllFromStore(STORE_CHARACTERS),
           getAllFromStore(STORE_MESSAGES),
           getAllFromStore(STORE_THEMES),
@@ -1710,7 +3206,10 @@ export const DB = {
           getAllFromStore(STORE_SOCIAL_POSTS),
           getAllFromStore(STORE_COURSES),
           getAllFromStore(STORE_GAMES),
+          getAllFromStore(STORE_WORLDBOOK_GROUPS),
           getAllFromStore(STORE_WORLDBOOKS),
+          getAllFromStore(STORE_WORLDBOOK_GROWTH_CANDIDATES),
+          getAllFromStore(STORE_WORLDBOOK_PROJECTION_RECEIPTS),
           getAllFromStore(STORE_NOVELS),
           getAllFromStore(STORE_BANK_TX),
           getAllFromStore(STORE_BANK_DATA),
@@ -1731,7 +3230,7 @@ export const DB = {
       const dollhouseRecord = bankData.find((d: any) => d.id === 'dollhouse_state');
 
       return {
-          characters, messages, customThemes: themes, savedEmojis: emojis, emojiCategories, assets, galleryImages, userProfile, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, savedJournalStickers: journalStickers, socialPosts, courses, games, worldbooks, novels,
+          characters, messages, customThemes: themes, savedEmojis: emojis, emojiCategories, assets, galleryImages, userProfile, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, savedJournalStickers: journalStickers, socialPosts, courses, games, worldbookGroups, worldbooks, worldbookGrowthCandidates, worldbookProjectionDeliveryReceipts, novels,
           bankState: mainState ? { ...mainState, id: undefined } : undefined,
           bankDollhouse: dollhouseRecord?.data || undefined,
           bankTransactions: bankTx,
@@ -1746,13 +3245,26 @@ export const DB = {
   },
 
   importFullData: async (data: FullBackupData): Promise<void> => {
+      const normalizedWorldbooks = data.worldbooks?.map(normalizeWorldbookEntry);
+      const worldbookGroupErrors = (data.worldbookGroups || [])
+          .flatMap(group => validateWorldbookGroupAssignment(group));
+      if (worldbookGroupErrors.length) {
+          throw new Error(`Worldbook group backup rejected: ${worldbookGroupErrors.join('; ')}`);
+      }
+      const worldGrowthCandidateErrors = (data.worldbookGrowthCandidates || [])
+          .flatMap(validateWorldGrowthCandidate);
+      if (worldGrowthCandidateErrors.length) {
+          throw new Error(`World growth candidate backup rejected: ${worldGrowthCandidateErrors.join('; ')}`);
+      }
+      (data.worldbookProjectionDeliveryReceipts || [])
+          .forEach(assertWorldbookProjectionDeliveryReceipt);
       const db = await openDB();
       
       const availableStores = [
           STORE_CHARACTERS, STORE_MESSAGES, STORE_THEMES, STORE_EMOJIS, STORE_EMOJI_CATEGORIES,
           STORE_ASSETS, STORE_GALLERY, STORE_USER, STORE_DIARIES,
           STORE_TASKS, STORE_ANNIVERSARIES, STORE_ROOM_TODOS, STORE_ROOM_NOTES,
-          STORE_GROUPS, STORE_JOURNAL_STICKERS, STORE_SOCIAL_POSTS, STORE_COURSES, STORE_GAMES, STORE_WORLDBOOKS, STORE_NOVELS, STORE_SONGS,
+          STORE_GROUPS, STORE_JOURNAL_STICKERS, STORE_SOCIAL_POSTS, STORE_COURSES, STORE_GAMES, STORE_WORLDBOOK_GROUPS, STORE_WORLDBOOKS, STORE_WORLDBOOK_GROWTH_CANDIDATES, STORE_WORLDBOOK_PROJECTION_RECEIPTS, STORE_NOVELS, STORE_SONGS,
           STORE_BANK_TX, STORE_BANK_DATA,
           STORE_QUIZZES,
           STORE_GUIDEBOOK,
@@ -1867,7 +3379,14 @@ export const DB = {
       if (data.socialPosts) clearAndAdd(STORE_SOCIAL_POSTS, data.socialPosts);
       if (data.courses) clearAndAdd(STORE_COURSES, data.courses);
       if (data.games) clearAndAdd(STORE_GAMES, data.games);
-      if (data.worldbooks) clearAndAdd(STORE_WORLDBOOKS, data.worldbooks);
+      if (data.worldbookGroups) clearAndAdd(STORE_WORLDBOOK_GROUPS, data.worldbookGroups);
+      if (normalizedWorldbooks) clearAndAdd(STORE_WORLDBOOKS, normalizedWorldbooks);
+      if (data.worldbookGrowthCandidates) {
+          clearAndAdd(STORE_WORLDBOOK_GROWTH_CANDIDATES, data.worldbookGrowthCandidates);
+      }
+      if (data.worldbookProjectionDeliveryReceipts) {
+          clearAndAdd(STORE_WORLDBOOK_PROJECTION_RECEIPTS, data.worldbookProjectionDeliveryReceipts);
+      }
       if (data.novels) clearAndAdd(STORE_NOVELS, data.novels);
       if (data.songs) clearAndAdd(STORE_SONGS, data.songs);
       if (data.quizSessions) clearAndAdd(STORE_QUIZZES, data.quizSessions);
@@ -1910,7 +3429,8 @@ export const DB = {
 
       return new Promise((resolve, reject) => {
           tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
+          tx.onerror = () => reject(asError(tx.error, 'Full data import failed'));
+          tx.onabort = () => reject(asError(tx.error, 'Full data import aborted'));
       });
   }
 };

@@ -305,8 +305,9 @@
 - `时光簿` entries should become future retrievable relationship context.
 - Timebook context should be selected sparsely, with a small budget, not injected
   wholesale into every chat turn.
-- `ContextBuilder.buildCoreContext()` should stay a synchronous role/user context
-  builder and should not directly query IndexedDB for timebook rows.
+- `ContextBuilder.buildCanonicalCoreContext()` should stay a synchronous
+  role/user context builder and should not directly query IndexedDB for
+  timebook rows.
 - A future async retrieval adapter should select relevant timebook entries before
   chat prompt assembly appends them.
 - Proactive-message settings and timebook context rules should remain separate.
@@ -319,8 +320,10 @@
 - Memory rows and candidates should describe their `origin`, `continuity`,
   `knowledge`, and `status` so original canon, relationship truth, generated
   branches, and scene-only facts do not overwrite each other.
-- `ContextBuilder.buildCoreContext()` should remain DB-free and should not
-  become the place where every future memory source is queried.
+- `ContextBuilder.buildCanonicalCoreContext()` should remain DB-free and should
+  not become the place where every future memory source is queried. Unmigrated
+  surfaces may call the explicitly named legacy wrapper only for mounted
+  public-global material.
 - Prompt assembly should be able to append a small worldline-memory block after
   base role context is built.
 - The worldline selector should include a tiny, budgeted slice of recent
@@ -797,6 +800,21 @@
   directory sorting/linking, Date and Call role pickers, GroupChat member
   creation, Novel/Story collaborator selection, special-event selection,
   Timebook, Companion Plan, Study, Journal, Room, and Launcher widgets.
+- The character directory must visibly separate `当前生活` from `角色库`.
+  Moving a character into the library removes only that character from the
+  active mask's `linkedCharacterIds`; it must not delete the character card,
+  messages, memories, Worldbook groups, or other masks' links. Generation
+  surfaces continue to use current-life roles only.
+- Pen Pal manuscript creation must offer `纯小说` and `角色共创`, defaulting to
+  `纯小说` for new books. Pure-novel user input is an instruction for the next
+  prose continuation and must not be persisted as a manuscript paragraph.
+  Pure-novel output is stored as system-authored prose without role chat,
+  commentary, bubble splitting, or a mandatory romance identity.
+- A pure novel may run without a character using only per-book supplementary
+  setting. If the player chooses a character as its material scope, the runtime
+  may read only that exact relationship's mounted Worldbook projection. The
+  character's dialogue voice is not automatically applied. Worldbook receipts
+  are recorded only after the generated prose is durably stored.
 - The identity mode list must include a non-DeepSpace option for fully custom
   worlds and imported original character cards. In that mode, prompt context
   must not force DeepSpace hunter, canon protagonist, aether core, or original
@@ -826,27 +844,65 @@
 - Custom worldbooks must remain visually separate from built-ins even when a
   custom category happens to reuse a built-in category name. Built-in/read-only
   status comes from record metadata, never from the category label.
-- Creating or editing a custom worldbook must show existing custom categories
-  as visible, named controls. Reusing a category must not require typing its
-  name again or relying on a mobile `datalist` suggestion popup.
-- Creating a new category is an explicit action. If no existing custom category
-  is selected, a blank category resolves to `未分类设定 (General)`.
-- A custom group is a projection of entries sharing the same normalized
-  `category`; empty standalone groups are not persisted. Deleting the final
-  entry therefore removes that group naturally.
-- Character worldbook mounting must keep the same records and mount semantics,
-  while category contents start collapsed so large libraries remain usable on
-  a phone.
-- A character mount is related to the library by stable worldbook ID. Editing
-  an enabled entry must update the character detail preview and every prompt
-  context that uses that character; users must not need to disable/re-enable a
-  book or its group. Persisted copied fields are portability caches, not an
-  independent editable version.
-- App startup must repair older stale mount caches from the current library.
-  A mounted record that exists only inside an imported character card may stay
-  intact until the user adds or removes it explicitly.
-- Grouping changes must not introduce a new database version, rewrite mounted
-  worldbooks, or change backup/export compatibility.
+- A custom group is a persisted library object with a stable ID, name and one
+  owner: either one character or the fixed universal owner. Its persisted
+  presentation metadata may include player-controlled pin and sort order.
+  Existing empty groups remain valid and survive reload, backup and restore,
+  but the library home does not expose a context-free "create empty group"
+  action; new groups are created while adding player-authored material.
+- Importing an embedded Tavern Worldbook with a character card creates one
+  character-owned group named after that imported character. Standalone imports
+  first choose a character owner (or the fixed universal owner), then create a
+  new source-named group and commit the parsed entries atomically. They do not
+  stop at a long read-only preview page. Parse failure or cancellation writes
+  nothing.
+- The Worldbook header exposes two different intents: `导入资料` receives an
+  external JSON/PNG/TXT source, while `添加` opens only `手写一条` and
+  `AI 智能整理`. Smart organization may structure the supplied text into one
+  entry or one group, but cannot invent world facts and cannot save before the
+  player reviews the editable result.
+- Player-authored groups can be pinned and reordered. Layout changes persist
+  independently from entry content and must not change group identity or mount
+  authority. The built-in collection can be pinned above the player library or
+  hidden from the library UI and restored later; these preferences never delete
+  built-in data or silently change runtime enablement.
+- A character-owned group can be archived from its expanded group header. The
+  operation must archive every currently published entry, remove the canonical
+  group record and remove that group ID from every character mount in one local
+  transaction. An empty group is simply removed. The fixed universal group and
+  the legacy repair bucket cannot be removed through this action. Archived
+  character-owned entries remain grouped by their retained group identity in
+  the archive UI. `恢复整组` must recreate the canonical group and publish every
+  currently archived entry in that group in one transaction; stale input must
+  leave both the group and all entries unchanged. Restore does not silently
+  re-enable the group for its character. Per-entry history remains readable.
+- The archive UI must offer explicit permanent deletion for one archived entry
+  and for one complete archived group. This is a destructive action with a
+  separate second confirmation; it removes every revision of the selected
+  content plus candidate, delivery-receipt and portability-cache references in
+  one local transaction. Whole-group deletion must prove that its input is the
+  exact current archived membership before deleting the empty group registry.
+  It must never delete a published entry, a built-in entry or unrelated content.
+- Player-controlled enablement is whole-group only. A character may enable only
+  its own groups; it cannot mount another character's group or a single foreign
+  entry. The universal group is available to every character without adding a
+  second per-character mount record.
+- Cross-character reuse is an explicit copy into the destination group. The copy
+  has an independent entry ID and revision history; editing or deleting either
+  side must not mutate the other.
+- Deleting a character atomically archives that character's owned entries and
+  removes its group definitions. Universal entries and copies owned by surviving
+  characters remain intact.
+- Existing custom entries without canonical group metadata are displayed in a
+  visible `待归组` repair bucket and fail closed at runtime until assigned. This
+  bucket is not a persisted group: the player may atomically assign all visible
+  entries to one real group or archive them all, but may not pin or mount the
+  repair bucket itself. Old per-entry custom mount caches must not remain a
+  hidden enablement path.
+- Built-in Worldbooks retain their code-owned per-entry/package rules and remain
+  separate from player-authored group governance. Expanding their read-only
+  drawer must increase the outer library scroll range; flex layout must not
+  shrink or clip the last category or entry on a phone-height viewport.
 
 ## Public Sticker Packs
 

@@ -884,7 +884,7 @@ const SocialApp: React.FC = () => {
             let identityMap = "### 角色身份表 (Identities)\n";
 
             for (const char of selectedChars) {
-                const coreContext = ContextBuilder.buildCoreContext(char, userProfile, false);
+                const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, userProfile, false);
                 const msgs = await DB.getMessagesByCharId(char.id);
                 const recentStatus = msgs.length > 0 ? `(最近私聊状态: 刚和用户聊过 "${msgs[msgs.length-1].content.substring(0, 20)}...")` : '(最近无私聊，生活平淡)';
                 
@@ -1169,7 +1169,7 @@ ${JSON.stringify(normalizedItems, null, 2)}
 
             let contextPrompt = "";
             if (!isNewsPost) {
-                for (const char of selectedChars) { contextPrompt += `\n<<< 评论者角色: ${char.name} >>>\n${ContextBuilder.buildCoreContext(char, userProfile, false)}\n`; }
+                for (const char of selectedChars) { contextPrompt += `\n<<< 评论者角色: ${char.name} >>>\n${ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, userProfile, false)}\n`; }
             }
             
             let authorType = "Stranger";
@@ -1303,7 +1303,7 @@ ${contextPrompt}
         const handles = handleListForChar(nextChar);
         const primaryHandle = primaryHandleForChar(nextChar);
         const identityMap = handles.map(handle => `- "${handle.handle}" (${handle.note})`).join('\n');
-        const coreContext = ContextBuilder.buildCoreContext(nextChar, userProfile, false);
+        const coreContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(nextChar, userProfile, false);
 
         const prompt = `### 任务: AetherOS 朋友圈单人延迟回复
 用户刚发了一条朋友圈。现在只轮到一个已激活角色回复，不要生成其他男主或未激活角色。

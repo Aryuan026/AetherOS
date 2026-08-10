@@ -7,12 +7,12 @@ import ConfirmDialog from '../components/os/ConfirmDialog';
 import { processImage } from '../utils/file';
 import { NOVEL_THEMES, analyzeWriterPersonaSimple } from '../utils/novelUtils';
 import NovelWorkspace, { type NovelWorkspacePanel } from '../components/novel/NovelWorkspace';
-import { Robot, MaskHappy, PenNib, Books, FolderOpen } from '@phosphor-icons/react';
+import { Robot, MaskHappy, PenNib, FolderOpen } from '@phosphor-icons/react';
 import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const NovelApp: React.FC = () => {
-    const { closeApp, novels, addNovel, updateNovel, deleteNovel, characters, updateCharacter, apiConfig, addToast, userProfile, worldbooks, registerBackHandler } = useOS();
+    const { closeApp, novels, addNovel, updateNovel, deleteNovel, characters, updateCharacter, apiConfig, addToast, userProfile, registerBackHandler } = useOS();
     
     // Navigation State
     const [view, setView] = useState<'shelf' | 'create' | 'write' | 'settings' | 'library'>('shelf');
@@ -25,6 +25,7 @@ const NovelApp: React.FC = () => {
     const [tempSubtitle, setTempSubtitle] = useState('');
     const [tempSummary, setTempSummary] = useState('');
     const [tempWorld, setTempWorld] = useState('');
+    const [tempWritingMode, setTempWritingMode] = useState<NonNullable<NovelBook['writingMode']>>('plain_novel');
     const [selectedCollaborators, setSelectedCollaborators] = useState<Set<string>>(new Set());
     const [tempProtagonists, setTempProtagonists] = useState<NovelProtagonist[]>([]);
     
@@ -40,9 +41,6 @@ const NovelApp: React.FC = () => {
     // Protagonist Import State
     const [isProtoImportOpen, setIsProtoImportOpen] = useState(false);
     const [importTab, setImportTab] = useState<'system' | 'history'>('system');
-
-    // Worldbook Import Modal State
-    const [isWorldbookModalOpen, setIsWorldbookModalOpen] = useState(false);
 
     // Persona View Modal State
     const [showPersonaModal, setShowPersonaModal] = useState(false);
@@ -85,10 +83,10 @@ const NovelApp: React.FC = () => {
     }, [novels]);
 
     useEffect(() => {
-        if (activeBook && collaborators.length > 0 && !targetCharId) {
-            setTargetCharId(collaborators[0].id);
-        }
-    }, [activeBook, collaborators]);
+        if (!activeBook) return;
+        if (targetCharId && collaborators.some(character => character.id === targetCharId)) return;
+        setTargetCharId(collaborators[0]?.id || null);
+    }, [activeBook, collaborators, targetCharId]);
 
     useEffect(() => {
         if (activeBook) {
@@ -112,20 +110,25 @@ const NovelApp: React.FC = () => {
 
     // --- CRUD ---
 
-    const handleCreateBook = () => {
+    const handleCreateBook = async () => {
         if (!tempTitle.trim()) { addToast('请输入标题', 'error'); return; }
         const newBook: NovelBook = {
             id: `novel-${Date.now()}`,
             title: tempTitle, subtitle: tempSubtitle, summary: tempSummary,
             coverStyle: activeTheme.id, coverImage: tempCoverImage, worldSetting: tempWorld,
             collaboratorIds: Array.from(selectedCollaborators), protagonists: tempProtagonists,
+            writingMode: tempWritingMode,
             segments: [], createdAt: Date.now(), lastActiveAt: Date.now()
         };
-        addNovel(newBook);
-        setActiveBookId(newBook.id);
-        setWorkspacePanel('manuscript');
-        setView('write');
-        resetTempState();
+        try {
+            await addNovel(newBook);
+            setActiveBookId(newBook.id);
+            setWorkspacePanel('manuscript');
+            setView('write');
+            resetTempState();
+        } catch (reason) {
+            addToast(reason instanceof Error ? reason.message : '新书稿没有保存成功', 'error');
+        }
     };
 
     const handleEditBookSettings = () => {
@@ -134,6 +137,7 @@ const NovelApp: React.FC = () => {
         setTempSubtitle(activeBook.subtitle || '');
         setTempSummary(activeBook.summary);
         setTempWorld(activeBook.worldSetting);
+        setTempWritingMode(activeBook.writingMode || 'character_collaboration');
         setActiveTheme(getTheme(activeBook.coverStyle));
         setTempCoverImage(activeBook.coverImage || '');
         setSelectedCollaborators(new Set(activeBook.collaboratorIds));
@@ -148,6 +152,7 @@ const NovelApp: React.FC = () => {
             title: tempTitle, subtitle: tempSubtitle, summary: tempSummary,
             worldSetting: tempWorld, coverStyle: activeTheme.id, coverImage: tempCoverImage,
             collaboratorIds: Array.from(selectedCollaborators), protagonists: tempProtagonists,
+            writingMode: tempWritingMode,
             segments: activeBook.segments, lastActiveAt: Date.now()
         };
         await updateNovel(activeBook.id, updated);
@@ -156,13 +161,22 @@ const NovelApp: React.FC = () => {
     };
 
     const resetTempState = () => {
-        setTempTitle(''); setTempSubtitle(''); setTempSummary(''); setTempWorld(''); setSelectedCollaborators(new Set()); setTempProtagonists([]); setTempCoverImage(''); setCoverInputUrl('');
+        setTempTitle(''); setTempSubtitle(''); setTempSummary(''); setTempWorld(''); setTempWritingMode('plain_novel'); setSelectedCollaborators(new Set()); setTempProtagonists([]); setTempCoverImage(''); setCoverInputUrl('');
     };
 
     const handleDeleteBook = async (id: string) => {
         setConfirmDialog({
             isOpen: true, title: '删除作品', message: '确定要删除这本小说吗？此操作无法撤销。', variant: 'danger',
-            onConfirm: () => { deleteNovel(id); if (activeBookId === id) { setActiveBookId(null); setView('shelf'); } addToast('已删除', 'success'); setConfirmDialog(null); }
+            onConfirm: async () => {
+                try {
+                    await deleteNovel(id);
+                    if (activeBookId === id) { setActiveBookId(null); setView('shelf'); }
+                    addToast('已删除', 'success');
+                    setConfirmDialog(null);
+                } catch (reason) {
+                    addToast(reason instanceof Error ? reason.message : '这本书没有删除成功', 'error');
+                }
+            }
         });
     };
 
@@ -200,13 +214,6 @@ const NovelApp: React.FC = () => {
         setTempProtagonists(prev => [...prev, newP]);
         setIsProtoImportOpen(false);
         addToast(`已导入角色: ${p.name}`, 'success');
-    };
-
-    const importWorldbook = (wb: any) => {
-        const textToAppend = `\n\n【${wb.title}】\n${wb.content}`;
-        setTempWorld(prev => (prev + textToAppend).trim());
-        setIsWorldbookModalOpen(false);
-        addToast(`已导入设定: ${wb.title}`, 'success');
     };
 
     const ProtagonistCard = ({ p, onDelete, onClick }: { p: NovelProtagonist, onDelete?: () => void, onClick?: () => void }) => (
@@ -286,7 +293,7 @@ const NovelApp: React.FC = () => {
                                 </div>
                                 <div className="p-4 flex-1 flex flex-col justify-between">
                                     <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-3">{book.summary || '暂无简介...'}</p>
-                                    <div className="flex items-center justify-between pt-3 border-t border-slate-50"><div className="flex -space-x-2">{novelScopedCharacters.filter(c => book.collaboratorIds.includes(c.id)).map(c => (<img key={c.id} src={c.avatar} className="w-6 h-6 rounded-full border-2 border-white object-cover" />))}</div><span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-0.5 rounded-full">{(wordCount/1000).toFixed(1)}k 字</span></div>
+                                    <div className="flex items-center justify-between pt-3 border-t border-slate-50"><div className="flex items-center gap-2"><div className="flex -space-x-2">{novelScopedCharacters.filter(c => book.collaboratorIds.includes(c.id)).map(c => (<img key={c.id} src={c.avatar} className="w-6 h-6 rounded-full border-2 border-white object-cover" />))}</div>{book.writingMode === 'plain_novel' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">纯小说</span>}</div><span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-0.5 rounded-full">{(wordCount/1000).toFixed(1)}k 字</span></div>
                                 </div>
                                 <button onClick={(e) => { e.stopPropagation(); handleDeleteBook(book.id); }} className="absolute top-2 right-2 text-slate-400/50 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white/20 backdrop-blur rounded-full">×</button>
                             </div>
@@ -314,6 +321,19 @@ const NovelApp: React.FC = () => {
                         <input value={tempSubtitle} onChange={e => setTempSubtitle(e.target.value)} placeholder="卷名/副标题" className="w-full text-sm font-bold bg-transparent border-b border-slate-200 py-2 outline-none focus:border-slate-800 text-slate-600" />
                         <textarea value={tempSummary} onChange={e => setTempSummary(e.target.value)} placeholder="一句话简介..." className="w-full h-20 bg-slate-100 rounded-xl p-3 text-sm resize-none outline-none" />
                         <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">写作方式</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button type="button" onClick={() => setTempWritingMode('plain_novel')} className={`rounded-2xl border p-3 text-left transition-all ${tempWritingMode === 'plain_novel' ? 'border-slate-800 bg-white shadow-sm' : 'border-slate-200 bg-slate-100/60 text-slate-400'}`}>
+                                    <div className="text-sm font-bold">纯小说</div>
+                                    <p className="mt-1 text-[10px] leading-relaxed">只看正文，适合试文笔与长篇续写。</p>
+                                </button>
+                                <button type="button" onClick={() => setTempWritingMode('character_collaboration')} className={`rounded-2xl border p-3 text-left transition-all ${tempWritingMode === 'character_collaboration' ? 'border-slate-800 bg-white shadow-sm' : 'border-slate-200 bg-slate-100/60 text-slate-400'}`}>
+                                    <div className="text-sm font-bold">角色共创</div>
+                                    <p className="mt-1 text-[10px] leading-relaxed">保留角色执笔、点评与讨论。</p>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
                             <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">内页风格</label>
                             <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">{NOVEL_THEMES.map(t => (<button key={t.id} onClick={() => setActiveTheme(t)} className={`w-12 h-16 rounded-md shadow-sm border-2 shrink-0 ${t.bg} ${activeTheme.id === t.id ? 'border-slate-800 scale-105' : 'border-transparent'}`}></button>))}</div>
                         </div>
@@ -326,11 +346,11 @@ const NovelApp: React.FC = () => {
                         </div>
                     </section>
                     <section className="space-y-4">
-                        <div className="flex justify-between items-center"><label className="text-xs font-bold text-slate-400 uppercase block">世界观设定</label><button onClick={() => setIsWorldbookModalOpen(true)} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold hover:bg-indigo-100 flex items-center gap-1"><Books size={12} /> 导入世界书</button></div>
-                        <textarea value={tempWorld} onChange={e => setTempWorld(e.target.value)} placeholder="世界观设定..." className="w-full h-32 bg-white border border-slate-200 rounded-xl p-3 text-sm resize-none outline-none focus:border-slate-400" />
+                        <div><label className="text-xs font-bold text-slate-400 uppercase block">本书补充设定</label><p className="mt-1 text-[10px] leading-relaxed text-slate-400">只写这本手稿额外需要的内容；角色已挂载的世界书会由运行时按需提供。</p></div>
+                        <textarea value={tempWorld} onChange={e => setTempWorld(e.target.value)} placeholder="这本书独有的补充设定..." className="w-full h-32 bg-white border border-slate-200 rounded-xl p-3 text-sm resize-none outline-none focus:border-slate-400" />
                     </section>
                     <section className="space-y-4">
-                        <label className="text-xs font-bold text-slate-400 uppercase block">共创者</label>
+                        <div><label className="text-xs font-bold text-slate-400 uppercase block">{tempWritingMode === 'plain_novel' ? '资料范围（可选）' : '共创者'}</label>{tempWritingMode === 'plain_novel' && <p className="mt-1 text-[10px] leading-relaxed text-slate-400">选择角色后，会按该角色启用的世界书筛选本轮资料；不会让角色以聊天口吻执笔。</p>}</div>
                         <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">{novelScopedCharacters.map(c => (<div key={c.id} onClick={() => { const s = new Set(selectedCollaborators); if(s.has(c.id)) s.delete(c.id); else s.add(c.id); setSelectedCollaborators(s); }} className={`flex flex-col items-center gap-2 cursor-pointer transition-opacity ${selectedCollaborators.has(c.id) ? 'opacity-100' : 'opacity-50 grayscale'}`}><img src={c.avatar} className="w-12 h-12 rounded-full object-cover shadow-sm" /><span className="text-[10px] font-bold text-slate-600">{c.name}</span></div>))}</div>
                     </section>
                     <section className="space-y-4">
@@ -340,7 +360,6 @@ const NovelApp: React.FC = () => {
                 </div>
                 <Modal isOpen={isProtagonistModalOpen} title="编辑角色" onClose={() => setIsProtagonistModalOpen(false)} footer={<button onClick={saveProtagonist} className="w-full py-3 bg-slate-800 text-white font-bold rounded-2xl">保存</button>}>{editingProtagonist && (<div className="space-y-4"><div><label className="text-xs font-bold text-slate-400 uppercase block mb-1">姓名</label><input value={editingProtagonist.name} onChange={e => setEditingProtagonist({...editingProtagonist, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold" /></div><div><label className="text-xs font-bold text-slate-400 uppercase block mb-1">定位</label><input value={editingProtagonist.role} onChange={e => setEditingProtagonist({...editingProtagonist, role: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="主角 / 反派" /></div><div><label className="text-xs font-bold text-slate-400 uppercase block mb-1">设定</label><textarea value={editingProtagonist.description} onChange={e => setEditingProtagonist({...editingProtagonist, description: e.target.value})} className="w-full h-32 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm resize-none leading-relaxed" /></div></div>)}</Modal>
                 <Modal isOpen={isProtoImportOpen} title="导入角色" onClose={() => setIsProtoImportOpen(false)}><div className="flex p-1 bg-slate-100 rounded-xl mb-3"><button onClick={() => setImportTab('system')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${importTab === 'system' ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>生活圈角色</button><button onClick={() => setImportTab('history')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${importTab === 'history' ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>历史角色</button></div><div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-3 p-1">{importTab === 'system' && novelScopedCharacters.map(c => (<button key={c.id} onClick={() => handleImportProtagonist({name: c.name, role: '客串', description: c.description})} className="w-full flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-200 shadow-sm active:scale-95 transition-all text-left"><img src={c.avatar} className="w-8 h-8 rounded-full object-cover" /><div className="flex-1 min-w-0"><div className="font-bold text-sm text-slate-700">{c.name}</div><div className="text-[10px] text-slate-400 truncate">{c.description}</div></div></button>))}{importTab === 'history' && historyProtagonists.map((p, idx) => (<button key={`hist-${idx}`} onClick={() => handleImportProtagonist(p)} className="w-full flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-200 shadow-sm active:scale-95 transition-all text-left"><div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200">{p.name[0]}</div><div className="flex-1 min-w-0"><div className="font-bold text-sm text-slate-700">{p.name}</div><div className="text-[10px] text-slate-400 truncate">{p.role} - {p.description || "无描述"}</div></div></button>))}</div></Modal>
-                <Modal isOpen={isWorldbookModalOpen} title="导入世界书设定" onClose={() => setIsWorldbookModalOpen(false)}><div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-2 p-1">{worldbooks.map(wb => (<button key={wb.id} onClick={() => importWorldbook(wb)} className="w-full text-left p-3 rounded-xl border border-slate-100 hover:border-indigo-300 bg-white shadow-sm active:scale-95 transition-all"><div className="font-bold text-slate-700 text-sm">{wb.title}</div><div className="text-[10px] text-slate-400 mt-1">{wb.category || '未分类'}</div></button>))}</div></Modal>
             </div>
         );
     }

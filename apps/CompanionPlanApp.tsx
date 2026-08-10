@@ -180,7 +180,7 @@ ${checkInSummary}
             body: JSON.stringify({
                 model: apiConfig.model,
                 messages: [
-                    { role: 'system', content: ContextBuilder.buildCoreContext(supervisor, userProfile) },
+                    { role: 'system', content: ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(supervisor, userProfile) },
                     { role: 'user', content: prompt },
                 ],
                 temperature: 0.8,

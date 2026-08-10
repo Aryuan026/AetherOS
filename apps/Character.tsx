@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useOS } from '../context/OSContext';
-import { AppID, AvatarFramePreset, CharacterProfile, CharacterExportData, UserImpression, MemoryFragment } from '../types';
+import { AppID, AvatarFramePreset, CharacterProfile, CharacterExportData, UserImpression, MemoryFragment, Worldbook } from '../types';
 import { SlidersHorizontal, SpeakerHigh, Books, BookOpen, CaretDown, Heart } from '@phosphor-icons/react';
 import Modal from '../components/os/Modal';
 import { processImage } from '../utils/file';
@@ -25,7 +25,11 @@ import { formatBondTimeLabelFromMessages } from '../utils/bondTime';
 import AppHeader, { AppHeaderAddButton, AppHeaderIconButton } from '../components/shell/AppHeader';
 import { resolveAvatarFramePreset } from '../utils/avatarFrames';
 import { getDeepSpaceWorldbookIdentityNotice } from '../utils/deepspaceIdentity';
-import { linkCharacterToActivePersonaMask, resolvePersonaRouteScope } from '../utils/personaRouteScope';
+import {
+    linkCharacterToActivePersonaMask,
+    resolvePersonaRouteScope,
+    unlinkCharacterFromActivePersonaMask,
+} from '../utils/personaRouteScope';
 import { strictRelationshipScopeForProfile } from '../utils/messageContext';
 import type { MemoryProjectionPatch, MemoryProjectionView } from '../domain/memoryProjection';
 import {
@@ -40,6 +44,20 @@ import {
     compilePlayerCharacterBehaviorBoundary,
     integrateCompiledCharacterBehaviorRule,
 } from '../utils/characterBehaviorBoundary';
+import { getActiveWorldbookRevision, isWorldbookPublished } from '../domain/worldbook';
+import {
+    listPlayerVisibleWorldbooks,
+} from '../utils/worldbookPlayerView';
+import {
+    extractTavernCharacterCardFromPng,
+    isTavernCharacterCardDocument,
+    parseTavernCharacterCard,
+} from '../utils/tavernImport';
+import {
+    buildWorldbookGroupIndex,
+    createWorldbookGroupAssignment,
+    isBuiltInWorldbook,
+} from '../utils/worldbookGroups';
 
 const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
@@ -82,6 +100,12 @@ const compareWorldbookCategories = (a: string, b: string) => {
     return worldbookCollator.compare(a, b);
 };
 
+const createImportedCharacterAvatar = (name: string): string => {
+    const letter = (name.trim().charAt(0) || '?').replace(/[<>&'\"]/g, '');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#c7d2fe"/><text x="50" y="55" font-family="sans-serif" font-weight="700" font-size="46" text-anchor="middle" dy=".3em" fill="white">${letter}</text></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
 const CharacterCard: React.FC<{
     char: CharacterProfile;
     subtitle?: string;
@@ -91,8 +115,9 @@ const CharacterCard: React.FC<{
     onDelete: (e: React.MouseEvent) => void;
     isLinkedToMask?: boolean;
     onLinkToMask?: (e: React.MouseEvent) => void;
+    onUnlinkFromMask?: (e: React.MouseEvent) => void;
     avatarFramePreset?: AvatarFramePreset;
-}> = ({ char, subtitle, isActive, onClick, onSetWanted, onDelete, isLinkedToMask, onLinkToMask, avatarFramePreset }) => {
+}> = ({ char, subtitle, isActive, onClick, onSetWanted, onDelete, isLinkedToMask, onLinkToMask, onUnlinkFromMask, avatarFramePreset }) => {
     const isLockedBuiltIn = Boolean(char.isBuiltIn && char.lockPromptEditing);
 
     return (
@@ -118,14 +143,19 @@ const CharacterCard: React.FC<{
                     {subtitle || char.description || '暂无描述'}
                 </p>
                 <div className="mt-1.5 flex items-center gap-1.5">
-                    {isLinkedToMask ? (
-                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-500">当前面具已链接</span>
+                    {isLinkedToMask && onUnlinkFromMask ? (
+                        <button
+                            onClick={onUnlinkFromMask}
+                            className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-500 hover:bg-slate-100 hover:text-slate-500 active:scale-95"
+                        >
+                            收进角色库
+                        </button>
                     ) : onLinkToMask ? (
                         <button
                             onClick={onLinkToMask}
                             className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-500 active:scale-95"
                         >
-                            加入当前面具
+                            加入当前生活
                         </button>
                     ) : null}
                 </div>
@@ -165,6 +195,7 @@ const Character: React.FC = () => {
       activeCharacterId,
       setActiveCharacterId,
       addCharacter,
+      addPreparedCharacter,
       updateCharacter,
       deleteCharacter,
       apiConfig,
@@ -176,6 +207,8 @@ const Character: React.FC = () => {
       customThemes,
       addCustomTheme,
       worldbooks,
+      worldbookGroups,
+      addImportedWorldbooks,
       lastMsgTimestamp,
       theme,
   } = useOS();
@@ -185,6 +218,18 @@ const Character: React.FC = () => {
       apiPresets,
       routing: aiRuntimeRouting,
   }), [aiRuntimeRouting, apiConfig, apiPresets]);
+  const playerVisibleWorldbooks = useMemo(
+      () => listPlayerVisibleWorldbooks(worldbooks),
+      [worldbooks],
+  );
+  const playerVisibleWorldbookIds = useMemo(
+      () => new Set(playerVisibleWorldbooks.map(book => book.id)),
+      [playerVisibleWorldbooks],
+  );
+  const customWorldbookGroups = useMemo(
+      () => buildWorldbookGroupIndex(playerVisibleWorldbooks, worldbookGroups).customGroups,
+      [playerVisibleWorldbooks, worldbookGroups],
+  );
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [detailTab, setDetailTab] = useState<'identity' | 'boundary' | 'memory' | 'impression'>('identity');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -233,6 +278,20 @@ const Character: React.FC = () => {
       voice_generation: [],
   });
   const [bondTimeLabels, setBondTimeLabels] = useState<Record<string, string>>({});
+  const availableCustomWorldbookGroups = useMemo(() => (
+      formData
+          ? customWorldbookGroups.filter(group => (
+              group.owner?.kind === 'universal'
+              || (group.owner?.kind === 'character' && group.owner.charId === formData.id)
+          ))
+          : []
+  ), [customWorldbookGroups, formData?.id]);
+  const activeCustomWorldbookGroups = useMemo(() => (
+      availableCustomWorldbookGroups.filter(group => (
+          group.owner?.kind === 'universal'
+          || formData?.mountedWorldbookGroupIds?.includes(group.id)
+      ))
+  ), [availableCustomWorldbookGroups, formData?.mountedWorldbookGroupIds]);
   const [promotedMemoryViews, setPromotedMemoryViews] = useState<MemoryProjectionView[]>([]);
   const builtInCharacterIdsKey = characters.filter(char => char.isBuiltIn).map(char => char.id).join('|');
   const personaScope = useMemo(() => (
@@ -249,6 +308,14 @@ const Character: React.FC = () => {
           return a.name.localeCompare(b.name, 'zh-CN');
       })
   ), [characters, linkedCharacterIdSet, activeCharacterId]);
+  const linkedDirectoryCharacters = useMemo(
+      () => directoryCharacters.filter(char => linkedCharacterIdSet.has(char.id)),
+      [directoryCharacters, linkedCharacterIdSet],
+  );
+  const libraryCharacters = useMemo(
+      () => directoryCharacters.filter(char => !linkedCharacterIdSet.has(char.id)),
+      [directoryCharacters, linkedCharacterIdSet],
+  );
   const promotedMemoryScope = useMemo(() => {
       if (!formData || !linkedCharacterIdSet.has(formData.id)) return undefined;
       return strictRelationshipScopeForProfile(formData.id, userProfile);
@@ -331,6 +398,28 @@ const Character: React.FC = () => {
           announceExisting: true,
           announceLinked: true,
       });
+  };
+
+  const handleUnlinkCharacterFromActiveMask = (char: CharacterProfile, e?: React.MouseEvent) => {
+      e?.stopPropagation();
+      const result = unlinkCharacterFromActivePersonaMask(userProfile, char.id);
+      if (result.status === 'rejected') {
+          addToast('当前没有可调整的身份面具', 'info');
+          return;
+      }
+      if (result.status === 'already_unlinked') {
+          addToast(`${char.name} 已经在角色库里`, 'info');
+          return;
+      }
+      updateUserProfile({ personaMasks: result.profile.personaMasks });
+      if (activeCharacterId === char.id) {
+          const nextLinkedId = result.profile.personaMasks
+              ?.find(mask => mask.id === result.activeMaskId)
+              ?.linkedCharacterIds
+              ?.find(id => characters.some(candidate => candidate.id === id));
+          setActiveCharacterId(nextLinkedId || '');
+      }
+      addToast(`${char.name} 已收进角色库，聊天和资料都还在`, 'success');
   };
 
   const handleSetWantedCharacter = (char: CharacterProfile) => {
@@ -552,7 +641,7 @@ const Character: React.FC = () => {
   const getCharacterSubtitle = (char: CharacterProfile) => (
       char.isBuiltIn ? (bondTimeLabels[char.id] || '牵绊时间 0 天') : undefined
   );
-  const getLibraryWorldbook = (bookId?: string) => worldbooks.find(book => book.id === bookId);
+  const getLibraryWorldbook = (bookId?: string) => playerVisibleWorldbooks.find(book => book.id === bookId);
   const isBuiltInLibraryWorldbook = (bookId?: string) => Boolean(getLibraryWorldbook(bookId)?.isBuiltIn);
   const canToggleWorldbook = (bookId?: string) => {
       if (!bookId) return false;
@@ -564,11 +653,12 @@ const Character: React.FC = () => {
       Boolean(bookId) &&
       !isOptionalBuiltInWorldbook(bookId)
   );
-  const toMountedWorldbookEntry = (book: { id: string; title: string; content: string; category?: string }) => ({
+  const toMountedWorldbookEntry = (book: Worldbook) => ({
       id: book.id,
       title: book.title,
       content: book.content,
       category: book.category,
+      publicationStatus: getActiveWorldbookRevision(book).publicationStatus,
   });
 
   // Worldbook Logic
@@ -578,7 +668,7 @@ const Character: React.FC = () => {
           addToast('内置基础世界书固定启用，可选资料包可单独切换', 'info');
           return;
       }
-      const book = worldbooks.find(b => b.id === bookId);
+      const book = playerVisibleWorldbooks.find(b => b.id === bookId);
       if (!book) return;
 
       const identityNotice = getDeepSpaceWorldbookIdentityNotice(book, userProfile);
@@ -600,39 +690,40 @@ const Character: React.FC = () => {
       addToast(`已启用: ${book.title}`, 'success');
   };
 
-  // New: Mount entire category
-  const mountCategory = (category: string) => {
-      if (isPromptLocked) return;
+  const mountWorldbookGroup = (groupId: string) => {
       if (!formData) return;
-      const booksToMount = worldbooks.filter(b => (
-          (b.category || DEFAULT_WORLDBOOK_CATEGORY) === category &&
-          !isOptionalBuiltInWorldbook(b.id)
-      ));
-      if (booksToMount.length === 0) return;
-
-      const currentBooks = formData.mountedWorldbooks || [];
-      const newEntries = [];
-      let addedCount = 0;
-
-      for (const book of booksToMount) {
-          if (!currentBooks.some(b => b.id === book.id)) {
-              newEntries.push({
-                  id: book.id,
-                  title: book.title,
-                  content: book.content,
-                  category: book.category
-              });
-              addedCount++;
-          }
+      const group = customWorldbookGroups.find(item => item.id === groupId);
+      if (
+          !group?.owner
+          || (
+              group.owner.kind === 'character'
+              && group.owner.charId !== formData.id
+          )
+      ) {
+          addToast('这组世界书不属于当前角色', 'error');
+          return;
       }
-
-      if (addedCount > 0) {
-          handleChange('mountedWorldbooks', [...currentBooks, ...newEntries]);
-          addToast(`已批量挂载 ${addedCount} 本世界书`, 'success');
-      } else {
-          addToast('该组世界书已全部挂载', 'info');
+      if (group.owner.kind === 'universal') {
+          addToast('通用区已经供所有角色使用', 'info');
+          return;
       }
-      setShowWorldbookModal(false);
+      const current = formData.mountedWorldbookGroupIds || [];
+      if (current.includes(groupId)) {
+          addToast('这组已经启用', 'info');
+          return;
+      }
+      handleChange('mountedWorldbookGroupIds', [...current, groupId]);
+      addToast(`已启用“${group.category}”整组`, 'success');
+  };
+
+  const unmountWorldbookGroup = (groupId: string) => {
+      if (!formData) return;
+      handleChange(
+          'mountedWorldbookGroupIds',
+          (formData.mountedWorldbookGroupIds || []).filter(id => id !== groupId),
+      );
+      const group = customWorldbookGroups.find(item => item.id === groupId);
+      addToast(`已停用“${group?.category || '这组世界书'}”`, 'success');
   };
 
   const unmountWorldbook = (bookId: string) => {
@@ -838,7 +929,7 @@ const Character: React.FC = () => {
             const dates = Object.keys(msgsByDate).sort();
             const newMemories: MemoryFragment[] = [];
 
-            const baseContext = ContextBuilder.buildCoreContext(formData, userProfile);
+            const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(formData, userProfile);
 
             for (let i = 0; i < dates.length; i++) {
                 const date = dates[i];
@@ -959,7 +1050,7 @@ const Character: React.FC = () => {
           const boundUser = userProfile;
 
           // 构建完整角色上下文（包含人设、世界观、用户档案、精炼记忆等宏观信息）
-          const fullContext = ContextBuilder.buildCoreContext(formData, userProfile);
+          const fullContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(formData, userProfile);
 
           let messagesToAnalyze = "";
 
@@ -1117,11 +1208,15 @@ ${isInitialGeneration ? `
       }
   };
 
-  const confirmDeleteCharacter = () => {
+  const confirmDeleteCharacter = async () => {
       if (deleteConfirmTarget) {
-          deleteCharacter(deleteConfirmTarget);
-          setDeleteConfirmTarget(null);
-          addToast('连接已断开', 'success');
+          try {
+              await deleteCharacter(deleteConfirmTarget);
+              setDeleteConfirmTarget(null);
+              addToast('角色与其专属世界书组已一起收好', 'success');
+          } catch (error) {
+              addToast(error instanceof Error ? error.message : '没有删除成功', 'error');
+          }
       }
   };
 
@@ -1213,54 +1308,93 @@ ${isInitialGeneration ? `
           addToast('角色卡已生成并下载', 'success');
   };
 
-  const handleImportCard = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportCard = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      try {
+          const extension = file.name.split('.').pop()?.toLocaleLowerCase();
+          const document = extension === 'png'
+              ? extractTavernCharacterCardFromPng(await file.arrayBuffer())
+              : JSON.parse(await file.text());
 
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-          try {
-              const json = ev.target?.result as string;
-              const data: CharacterExportData = JSON.parse(json);
-              
-              if (data.type !== 'aether_character_card') {
-                  throw new Error('无效的角色卡文件');
-              }
-
-              if (data.embeddedTheme) {
-                  const exists = customThemes.some(t => t.id === data.embeddedTheme!.id);
-                  if (!exists) {
-                      addCustomTheme(data.embeddedTheme);
-                  }
-              }
-
+          if (isTavernCharacterCardDocument(document)) {
+              const card = parseTavernCharacterCard(document);
+              const newCharacterId = `char-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+              const importedGroup = createWorldbookGroupAssignment({
+                  name: card.name,
+                  owner: { kind: 'character', charId: newCharacterId },
+              });
+              const importedWorldbooks = card.worldbooks.length
+                  ? await addImportedWorldbooks(card.worldbooks.map((draft, index) => ({
+                      clientId: `tavern-card-${index + 1}`,
+                      ...draft,
+                  })), importedGroup)
+                  : [];
+              const mountedLibrary = importedWorldbooks.filter(isWorldbookPublished);
+              const avatar = extension === 'png'
+                  ? await processImage(file, { maxWidth: 1200, quality: 0.85 })
+                  : createImportedCharacterAvatar(card.name);
               const newChar: CharacterProfile = {
-                  ...data,
-                  id: `char-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
-                  chatAppearancePreset: data.chatAppearancePreset || (
-                      data.bubbleStyle && data.bubbleStyle !== 'default' ? 'custom' : 'minimal'
-                  ),
-                  emotionConfig: data.emotionConfig || { enabled: true },
+                  id: newCharacterId,
+                  name: card.name,
+                  avatar,
+                  description: '',
+                  systemPrompt: card.systemPrompt,
+                  mountedWorldbooks: [],
+                  mountedWorldbookGroupIds: mountedLibrary.length ? [importedGroup.id] : [],
+                  chatAppearancePreset: 'minimal',
+                  emotionConfig: { enabled: true },
                   memories: [],
                   refinedMemories: {},
                   activeMemoryMonths: [],
-                  embeddedTheme: undefined 
-              } as CharacterProfile;
-
-              await DB.saveCharacter(newChar);
-              addCharacter(); // Force refresh (naive)
-              setTimeout(() => window.location.reload(), 500); 
-              
-              addToast(`角色 ${newChar.name} 导入成功`, 'success');
-
-          } catch (err: any) {
-              console.error(err);
-              addToast(err.message || '导入失败', 'error');
-          } finally {
-              if (cardImportRef.current) cardImportRef.current.value = '';
+                  contextLimit: 500,
+              };
+              await addPreparedCharacter(newChar);
+              if (ensureCharacterLinkedToActiveMask(newChar, { announceLinked: false })) {
+                  setActiveCharacterId(newChar.id);
+              }
+              addToast(`已导入 ${card.name} 和 ${mountedLibrary.length} 条启用世界书`, 'success');
+              const heldCount = card.worldbooks.length - mountedLibrary.length;
+              const openingCount = card.alternateGreetingsCount + (card.firstMessage ? 1 : 0);
+              const importNotes = [
+                  heldCount ? `已归档 ${heldCount} 条原文件停用世界书` : '',
+                  openingCount ? `${openingCount} 条开场暂不导入` : '',
+                  card.regexScriptCount ? `${card.regexScriptCount} 条酒馆正则暂不导入` : '',
+              ].filter(Boolean);
+              if (importNotes.length) {
+                  addToast(importNotes.join('；'), 'info');
+              }
+              return;
           }
-      };
-      reader.readAsText(file);
+
+          const data = document as CharacterExportData;
+          if (data.type !== 'aether_character_card') throw new Error('这不是可识别的角色卡文件。');
+          if (data.embeddedTheme && !customThemes.some(theme => theme.id === data.embeddedTheme!.id)) {
+              addCustomTheme(data.embeddedTheme);
+          }
+          const newChar: CharacterProfile = {
+              ...data,
+              id: `char-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+              chatAppearancePreset: data.chatAppearancePreset || (
+                  data.bubbleStyle && data.bubbleStyle !== 'default' ? 'custom' : 'minimal'
+              ),
+              emotionConfig: data.emotionConfig || { enabled: true },
+              memories: [],
+              refinedMemories: {},
+              activeMemoryMonths: [],
+              embeddedTheme: undefined,
+          } as CharacterProfile;
+          await addPreparedCharacter(newChar);
+          if (ensureCharacterLinkedToActiveMask(newChar, { announceLinked: false })) {
+              setActiveCharacterId(newChar.id);
+          }
+          addToast(`角色 ${newChar.name} 导入成功`, 'success');
+      } catch (err: any) {
+          console.error(err);
+          addToast(err.message || '导入失败', 'error');
+      } finally {
+          if (cardImportRef.current) cardImportRef.current.value = '';
+      }
   };
 
   return (
@@ -1269,7 +1403,7 @@ ${isInitialGeneration ? `
            <div className="flex flex-col h-full animate-fade-in">
                <AppHeader
                    title="通讯录"
-                   subtitle={`已链接 ${personaScope.linkedCharacters.length} 位 · 已保存 ${characters.length} 位`}
+                   subtitle={`当前生活 ${personaScope.linkedCharacters.length} 位 · 角色库 ${libraryCharacters.length} 位`}
                    onBack={closeApp}
                    className="bg-white/60 border-white/40"
                    titleClassName="truncate text-xl font-light tracking-tight text-slate-800"
@@ -1285,33 +1419,71 @@ ${isInitialGeneration ? `
                        </div>
                    )}
                />
-               <input type="file" ref={cardImportRef} className="hidden" accept=".json" onChange={handleImportCard} />
+               <input type="file" ref={cardImportRef} className="hidden" accept=".json,.png,application/json,image/png" onChange={handleImportCard} />
                <div className="flex-1 overflow-y-auto px-5 pt-3 pb-20 no-scrollbar flex flex-col gap-3">
-                   {personaScope.hasLinkedFocus && (
-                       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[11px] leading-relaxed text-indigo-500">
-                           当前面具「{personaScope.activeMaskLabel || '未命名面具'}」已链接角色会排在前面；未链接角色仍可打开或加入当前面具。
+                   <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[11px] leading-relaxed text-indigo-500">
+                       「当前生活」会参与聊天、来电、朋友圈和故事生成；「角色库」只保存资料，不会自己进入这个面具的生活。
+                   </div>
+                   <section className="flex flex-col gap-3">
+                       <div className="flex items-center justify-between px-1 pt-1">
+                           <h2 className="text-xs font-bold tracking-wide text-slate-600">当前生活</h2>
+                           <span className="text-[10px] text-slate-400">{personaScope.activeMaskLabel || '当前面具'} · {linkedDirectoryCharacters.length} 位</span>
                        </div>
-                   )}
-                   {directoryCharacters.map(char => (
-                       <CharacterCard 
-                           key={char.id} 
-                           char={char} 
-                           avatarFramePreset={resolveAvatarFramePreset(theme, char.avatarFramePresetId)}
-                           subtitle={getCharacterSubtitle(char)}
-                           isActive={char.id === activeCharacterId}
-                           isLinkedToMask={linkedCharacterIdSet.has(char.id)}
-                           onLinkToMask={(e) => handleLinkCharacterToActiveMask(char, e)}
-                           onClick={() => { setEditingId(char.id); setView('detail'); }} 
-                           onSetWanted={(e) => {
-                               e.stopPropagation();
-                               handleSetWantedCharacter(char);
-                           }}
-                           onDelete={(e) => { 
-                               e.stopPropagation(); 
-                               setDeleteConfirmTarget(char.id); 
-                           }} 
-                       />
-                   ))}
+                       {linkedDirectoryCharacters.length === 0 ? (
+                           <div className="rounded-2xl border border-dashed border-slate-200 bg-white/40 px-4 py-5 text-center text-xs text-slate-400">
+                               从下方角色库加入一位，才会出现在生活类 App 里。
+                           </div>
+                       ) : linkedDirectoryCharacters.map(char => (
+                           <CharacterCard
+                               key={char.id}
+                               char={char}
+                               avatarFramePreset={resolveAvatarFramePreset(theme, char.avatarFramePresetId)}
+                               subtitle={getCharacterSubtitle(char)}
+                               isActive={char.id === activeCharacterId}
+                               isLinkedToMask
+                               onUnlinkFromMask={(e) => handleUnlinkCharacterFromActiveMask(char, e)}
+                               onClick={() => { setEditingId(char.id); setView('detail'); }}
+                               onSetWanted={(e) => {
+                                   e.stopPropagation();
+                                   handleSetWantedCharacter(char);
+                               }}
+                               onDelete={(e) => {
+                                   e.stopPropagation();
+                                   setDeleteConfirmTarget(char.id);
+                               }}
+                           />
+                       ))}
+                   </section>
+                   <section className="mt-2 flex flex-col gap-3">
+                       <div className="flex items-center justify-between px-1 pt-1">
+                           <h2 className="text-xs font-bold tracking-wide text-slate-600">角色库</h2>
+                           <span className="text-[10px] text-slate-400">资料仍完整保存 · {libraryCharacters.length} 位</span>
+                       </div>
+                       {libraryCharacters.length === 0 ? (
+                           <div className="rounded-2xl border border-dashed border-slate-200 bg-white/40 px-4 py-5 text-center text-xs text-slate-400">
+                               暂时没有收起的角色。
+                           </div>
+                       ) : libraryCharacters.map(char => (
+                           <CharacterCard
+                               key={char.id}
+                               char={char}
+                               avatarFramePreset={resolveAvatarFramePreset(theme, char.avatarFramePresetId)}
+                               subtitle={getCharacterSubtitle(char)}
+                               isActive={false}
+                               isLinkedToMask={false}
+                               onLinkToMask={(e) => handleLinkCharacterToActiveMask(char, e)}
+                               onClick={() => { setEditingId(char.id); setView('detail'); }}
+                               onSetWanted={(e) => {
+                                   e.stopPropagation();
+                                   handleSetWantedCharacter(char);
+                               }}
+                               onDelete={(e) => {
+                                   e.stopPropagation();
+                                   setDeleteConfirmTarget(char.id);
+                               }}
+                           />
+                       ))}
+                   </section>
                </div>
            </div>
        ) : formData && (
@@ -1512,9 +1684,28 @@ ${isInitialGeneration ? `
 	                                   )}
 	                                </div>
 	                                <div className="space-y-2">
-                                   {formData.mountedWorldbooks && formData.mountedWorldbooks.length > 0 ? (
-	                                       currentMountedWorldbooks(formData.mountedWorldbooks, worldbooks).map(wb => {
+                                   {activeCustomWorldbookGroups.map(group => (
+	                                   <div key={group.id} className="flex items-center justify-between rounded-2xl border border-violet-100 bg-white px-4 py-3 shadow-sm">
+	                                       <div className="min-w-0">
+	                                           <div className="truncate text-sm font-bold text-slate-700">{group.category}</div>
+	                                           <div className="mt-1 text-[9px] text-slate-400">
+                                                   {group.owner?.kind === 'universal' ? '通用区 · 所有角色可用' : `${group.books.length} 条 · 整组启用`}
+                                               </div>
+	                                       </div>
+                                           {group.owner?.kind === 'character' && (
+	                                           <button onClick={() => unmountWorldbookGroup(group.id)} className="ml-2 p-1 text-slate-300 hover:text-red-400">×</button>
+                                           )}
+	                                   </div>
+                                   ))}
+                                   {formData.mountedWorldbooks && formData.mountedWorldbooks.length > 0 && (
+                                       currentMountedWorldbooks(formData.mountedWorldbooks, playerVisibleWorldbooks)
+                                           .filter(wb => isBuiltInWorldbook(getLibraryWorldbook(wb.id)))
+                                           .filter(wb => playerVisibleWorldbookIds.has(wb.id))
+                                           .map(wb => {
                                                const identityNotice = getDeepSpaceWorldbookIdentityNotice(wb, userProfile);
+                                               const lifecycleLabel = wb.publicationStatus === 'archived'
+                                                   ? '已归档 · 保留挂载记录'
+                                                   : isFixedBuiltInWorldbook(wb.id) ? '默认启用' : '已启用';
                                                return (
 	                                           <div key={wb.id} className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-indigo-50 shadow-sm group">
                                                <button
@@ -1525,7 +1716,7 @@ ${isInitialGeneration ? `
 	                                                   <div className="flex flex-col min-w-0">
 	                                                       <span className="text-sm font-bold text-slate-700 truncate">{wb.title}</span>
 	                                                       <span className={`text-[9px] truncate ${identityNotice?.tone === 'danger' ? 'text-rose-500' : identityNotice ? 'text-amber-500' : 'text-slate-400'}`}>
-                                                               {wb.category || '未分类'} · {isFixedBuiltInWorldbook(wb.id) ? '默认启用' : '已启用'} · {identityNotice ? identityNotice.title : '点击查看内容'}
+                                                               {wb.category || '未分类'} · {lifecycleLabel} · {identityNotice ? identityNotice.title : '点击查看内容'}
                                                            </span>
 	                                                   </div>
 	                                               </button>
@@ -1535,7 +1726,8 @@ ${isInitialGeneration ? `
 	                                           </div>
                                                );
                                            })
-                                   ) : (
+                                   )}
+                                   {activeCustomWorldbookGroups.length === 0 && (!formData.mountedWorldbooks || formData.mountedWorldbooks.length === 0) && (
                                        <div className="text-center py-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
                                            暂未挂载任何世界书
                                        </div>
@@ -1727,9 +1919,56 @@ ${isInitialGeneration ? `
 	        >
 	            <div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-4 p-1">
 	                {(() => {
+	                    if (!isPromptLocked) {
+	                        if (availableCustomWorldbookGroups.length === 0) {
+	                            return (
+	                                <div className="py-8 text-center text-xs text-slate-400">
+	                                    这个角色还没有自己的世界书组；可以去【世界书】App 新建或复制一组。
+	                                </div>
+	                            );
+	                        }
+	                        return availableCustomWorldbookGroups.map(group => {
+	                            const universal = group.owner?.kind === 'universal';
+	                            const enabled = universal || formData?.mountedWorldbookGroupIds?.includes(group.id);
+	                            return (
+	                                <div key={group.id} className={`rounded-2xl border p-4 ${enabled ? 'border-violet-200 bg-violet-50/60' : 'border-slate-100 bg-white'}`} data-worldbook-group-mount>
+	                                    <div className="flex items-start justify-between gap-3">
+	                                        <div className="min-w-0">
+	                                            <div className="truncate text-sm font-bold text-slate-700">{group.category}</div>
+	                                            <div className="mt-1 text-[10px] text-slate-400">
+	                                                {universal ? '通用区 · 所有角色可用' : `${group.books.length} 条 · 只归属当前角色`}
+	                                            </div>
+	                                        </div>
+	                                        {!universal && (
+	                                            <button
+	                                                type="button"
+	                                                onClick={() => enabled ? unmountWorldbookGroup(group.id) : mountWorldbookGroup(group.id)}
+	                                                className={`rounded-xl px-3 py-1.5 text-[10px] font-bold ${enabled ? 'bg-white text-red-400' : 'bg-violet-600 text-white'}`}
+	                                            >
+	                                                {enabled ? '停用整组' : '启用整组'}
+	                                            </button>
+	                                        )}
+	                                    </div>
+	                                    <div className="mt-3 space-y-1.5 border-t border-white/80 pt-3">
+	                                        {group.books.map(book => (
+	                                            <button
+	                                                type="button"
+	                                                key={book.id}
+	                                                onClick={() => setViewingWorldbook(toMountedWorldbookEntry(book))}
+	                                                className="flex w-full items-center justify-between gap-2 text-left text-[11px] text-slate-500"
+	                                            >
+	                                                <span className="truncate">{book.title}</span>
+	                                                <span className="shrink-0 text-[9px] text-slate-300">查看</span>
+	                                            </button>
+	                                        ))}
+	                                    </div>
+	                                </div>
+	                            );
+	                        });
+	                    }
 	                    const availableWorldbooks = isPromptLocked
-	                        ? worldbooks.filter(wb => wb.isBuiltIn && isOptionalBuiltInWorldbook(wb.id) && isWorldbookVisibleForCharacter(wb, formData?.id))
-	                        : worldbooks;
+	                        ? playerVisibleWorldbooks.filter(wb => wb.isBuiltIn && isOptionalBuiltInWorldbook(wb.id) && isWorldbookVisibleForCharacter(wb, formData?.id))
+	                        : playerVisibleWorldbooks;
 
 	                    if (availableWorldbooks.length === 0) {
 	                        return (
@@ -1748,7 +1987,6 @@ ${isInitialGeneration ? `
 	                        .sort(([categoryA], [categoryB]) => compareWorldbookCategories(categoryA, categoryB))
 	                        .map(([category, books]) => {
 	                            const sortedBooks = [...books].sort(compareWorldbookEntries);
-	                            const mountableDefaultBooks = sortedBooks.filter(wb => !isOptionalBuiltInWorldbook(wb.id));
 
 	                            return (
 	                        <div key={category} className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/70">
@@ -1772,14 +2010,6 @@ ${isInitialGeneration ? `
 	                                    <h4 className="min-w-0 truncate text-xs font-bold uppercase tracking-wider text-slate-500">{category}</h4>
 	                                    <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-slate-400">{sortedBooks.length}</span>
 	                                </button>
-	                                {!isPromptLocked && mountableDefaultBooks.length > 0 && (
-	                                    <button
-	                                        onClick={() => mountCategory(category)}
-	                                        className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-bold hover:bg-indigo-100"
-	                                    >
-	                                        {category === '深空世界书' ? '挂载通用 01-04' : '挂载整组'}
-	                                    </button>
-	                                )}
 	                            </div>
 	                            {expandedWorldbookCategories.has(category) && (
 	                            <div className="space-y-2 border-t border-slate-100 p-2">
@@ -1856,8 +2086,9 @@ ${isInitialGeneration ? `
             <div className="flex flex-col items-center gap-3 py-4">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-slate-300"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
                 <p className="text-sm text-slate-600 text-center leading-relaxed">
-                    确定要删除与该角色的所有连接吗？<br/>
-                    <span className="text-xs text-red-400 font-bold">该操作不可恢复，记忆将被清空。</span>
+                    确定要删除这位角色吗？<br/>
+                    <span className="text-xs text-red-400 font-bold">角色资料会移除；他的专属世界书组会收进归档。</span><br/>
+                    <span className="text-[10px] text-slate-400">通用区，以及已经复制到其他分组的副本，不会受影响。</span>
                 </p>
             </div>
         </Modal>

@@ -341,7 +341,7 @@ const JournalApp: React.FC = () => {
         saveEntry(); 
 
         try {
-            let systemPrompt = ContextBuilder.buildCoreContext(selectedChar, userProfile);
+            let systemPrompt = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(selectedChar, userProfile);
 
             const styleOptions = PAPER_STYLES.map(p => p.id).join(', ');
             const defaultStickers = DEFAULT_STICKERS.join(' ');
@@ -448,7 +448,7 @@ Structure:
         
         try {
             // 1. Build Context using ContextBuilder to ensure AI knows WHO it is
-            const baseContext = ContextBuilder.buildCoreContext(selectedChar, userProfile);
+            const baseContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(selectedChar, userProfile);
 
             const prompt = `${baseContext}
 

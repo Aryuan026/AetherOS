@@ -168,10 +168,11 @@ const requiredVariableConsumers = [
 ];
 
 requiredVariableConsumers.forEach((path) => {
+    const source = read(path);
     assert.match(
-        read(path),
-        /SHELL_APP_HEADER_(?:CONTENT_TOP|HEIGHT)|SHELL_TOP_INSET|SHELL_OVERLAY_TOP/,
-        `${path} must consume the shared top coordinate source`,
+        source,
+        /SHELL_APP_HEADER_(?:CONTENT_TOP|HEIGHT)|SHELL_TOP_INSET|SHELL_OVERLAY_TOP|<AppHeader\b/,
+        `${path} must consume the shared top coordinate source directly or through AppHeader`,
     );
 });
 

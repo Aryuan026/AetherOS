@@ -62,7 +62,7 @@ export const SongPrompts = {
         recentMessages: { role: string; content: string }[]
     ): string => {
         // Use ContextBuilder with includeDetailedMemories = true
-        const charContext = ContextBuilder.buildCoreContext(char, user, true);
+        const charContext = ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(char, user, true);
 
         const genreInfo = SONG_GENRES.find(g => g.id === song.genre);
         const moodInfo = SONG_MOODS.find(m => m.id === song.mood);

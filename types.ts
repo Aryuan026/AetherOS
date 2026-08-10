@@ -6,6 +6,14 @@ import type {
     CharacterBehaviorBoundaryRule,
 } from './domain/characterBehaviorBoundary';
 import type { AiRuntimeRoutingV1 } from './domain/aiRuntime/types';
+import type {
+    WorldbookProjectionDeliveryReceipt,
+    WorldbookGroupAssignment,
+    WorldbookKnowledgePolicy,
+    WorldbookRevisionSnapshot,
+    WorldGrowthCandidate,
+    WorldGrowthCandidatePlayerReview,
+} from './domain/worldbook/types';
 
 export type {
     AiModelRole,
@@ -57,6 +65,22 @@ export type {
     NarrativeSurfaceId,
     NovelNarrativeState,
 } from './domain/narrative/types';
+
+export type {
+    WorldbookBinding,
+    WorldbookGroupAssignment,
+    WorldbookGroupOwner,
+    WorldbookContinuityRef,
+    WorldbookKnowledgePolicy,
+    WorldbookKnowledgeSubjectRef,
+    WorldbookProjectionConsumerRef,
+    WorldbookProjectionDeliveryReceipt,
+    WorldbookProjectionRequest,
+    WorldbookProjectionResult,
+    WorldbookRevisionSnapshot,
+    WorldGrowthCandidate,
+    WorldGrowthCandidatePlayerReview,
+} from './domain/worldbook/types';
 
 export enum AppID {
   Launcher = 'launcher',
@@ -171,6 +195,10 @@ export interface OSTheme {
   customFont?: string;
   shellChromeMode?: ShellChromeMode;
   launcherLayout?: LauncherLayoutV1;
+  /** Hides the built-in worldbook drawer from the library; runtime data is unchanged. */
+  hideBuiltInWorldbooks?: boolean;
+  /** Keeps the visible built-in worldbook drawer above the player's library. */
+  pinBuiltInWorldbooks?: boolean;
   /** @deprecated Read only during the software-shell migration. */
   hideStatusBar?: boolean;
   // Chat UI customization (global)
@@ -502,6 +530,8 @@ export interface Worldbook {
     title: string;
     content: string; 
     category: string; 
+    /** Canonical player-library group. Built-in entries keep code-owned mounts. */
+    group?: WorldbookGroupAssignment;
     activationHint?: string;
     visibleToCharacterIds?: string[];
     createdAt: number;
@@ -509,6 +539,10 @@ export interface Worldbook {
     isBuiltIn?: boolean;
     lockEditing?: boolean;
     builtInVersion?: number;
+    /** W1 live-worldbook lifecycle. Legacy records are normalized losslessly. */
+    worldbookSchemaVersion?: 1;
+    activeRevisionId?: string;
+    revisionSnapshots?: WorldbookRevisionSnapshot[];
 }
 
 export type UserDeepSpaceIdentityMode =
@@ -540,6 +574,8 @@ export interface NovelSegment {
         reaction?: string;
         technique?: string;
         mood?: string;
+        /** The accepted story scene this manuscript paragraph was written for. */
+        narrativeSceneId?: string;
     };
 }
 
@@ -556,6 +592,8 @@ export interface NovelBook {
     segments: NovelSegment[];
     directives?: NarrativeDirective[];
     narrative?: NovelNarrativeState;
+    /** Plain prose keeps the manuscript free of character-chat/co-writer UI. */
+    writingMode?: 'plain_novel' | 'character_collaboration';
     createdAt: number;
     lastActiveAt: number;
 }
@@ -834,7 +872,24 @@ export interface CharacterProfile {
   writerPersona?: string;
   writerPersonaGeneratedAt?: number;
 
-  mountedWorldbooks?: { id: string; title: string; content: string; category?: string }[];
+  mountedWorldbooks?: {
+      id: string;
+      title: string;
+      content: string;
+      category?: string;
+      /** Portable mirror of library lifecycle; never mount membership truth. */
+      publicationStatus?: 'published' | 'archived';
+      /**
+       * Code-owned compatibility marker. Legacy prompt builders may read only
+       * an explicitly public+global cache; all scoped/private entries stay on
+       * the typed projection path. This is never an enablement flag.
+       */
+      legacyPromptEligibility?: 'public_global' | 'typed_only';
+      /** Portable audit mirror; runtime typed consumers still read the library revision. */
+      knowledgePolicy?: WorldbookKnowledgePolicy;
+  }[];
+  /** Custom Worldbooks are enabled by whole group, never by foreign entry ID. */
+  mountedWorldbookGroupIds?: string[];
   /** Player-authored only. Built-in reviewed boundaries remain code-owned. */
   behaviorBoundaryRules?: CharacterBehaviorBoundaryRule[];
   /** Hash-only audit trail for system-director compilation; no raw complaint. */
@@ -1448,7 +1503,10 @@ export interface FullBackupData {
     socialPosts?: SocialPost[]; 
     courses?: StudyCourse[]; 
     games?: GameSession[];
+    worldbookGroups?: WorldbookGroupAssignment[];
     worldbooks?: Worldbook[]; 
+    worldbookGrowthCandidates?: WorldGrowthCandidate[];
+    worldbookProjectionDeliveryReceipts?: WorldbookProjectionDeliveryReceipt[];
     roomCustomAssets?: { id?: string; name: string; image: string; defaultScale: number; description?: string; visibility?: 'public' | 'character'; assignedCharIds?: string[] }[]; 
     
     novels?: NovelBook[];

@@ -289,47 +289,227 @@ authorize direct memory writes. The clean schema uses
 
 ## Worldbook Group Projection
 
-Worldbook grouping reuses the existing `Worldbook.category` field. There is no
-separate group store and no database migration:
+Player-authored Worldbooks use a persisted canonical group registry:
 
 ```ts
-interface WorldbookGroupProjection {
-  category: string;
-  books: Worldbook[];
+type WorldbookGroupOwner =
+  | { kind: 'character'; charId: string }
+  | { kind: 'universal' };
+
+interface WorldbookGroupAssignment {
+  id: string;
+  name: string;
+  owner: WorldbookGroupOwner;
+  sortOrder?: number;
+  pinned?: boolean;
 }
 ```
 
-At read time, every category is trimmed and blank values normalize to
-`未分类设定 (General)`. The UI builds two independent projections:
+The `worldbook_groups` IndexedDB store preserves empty groups independently from
+entries. Each custom `Worldbook.group` contains the same canonical assignment,
+and its legacy `category` mirror must equal `group.name`. The UI builds two
+independent projections:
 
 ```text
 built-in groups = books where isBuiltIn || lockEditing
 custom groups   = all remaining books
 ```
 
-Category text is not an authority boundary. A custom book named under
-`深空世界书` remains custom and editable; it must never inherit read-only status
-from that label. Existing character mounts, local persistence and backup files
-continue to store ordinary `Worldbook` records, so grouping is a presentation
-and selection contract rather than a second source of truth.
+The group owner is an authority boundary; category text is not. A custom book
+named under `深空世界书` remains custom and editable. Custom legacy records with
+no group are shown in `待归组` and are runtime-ineligible until repaired.
+The repair bucket is a derived view, not a `worldbook_groups` record. Its entries
+may be batch-assigned to one canonical group or batch-archived atomically.
+`sortOrder` and `pinned` are library presentation metadata only. They can be
+updated atomically for a set of groups, but cannot change group ID, name, owner,
+mount authority, entry revisions or prompt priority. The built-in-library hidden
+preference lives in `OSTheme.hideBuiltInWorldbooks`; it is a reversible UI
+preference and is not a second enablement truth. `OSTheme.pinBuiltInWorldbooks`
+only moves the visible built-in drawer above the player library.
+
+Archiving a character-owned group is an atomic cross-store command:
+
+```text
+published entries in group -> archived N+1 revisions
+worldbook_groups[groupId]  -> removed
+characters[*].mountedWorldbookGroupIds -> groupId removed
+```
+
+The entry snapshots retain their original `group` assignment, so an explicit
+later whole-group restore can use that identity without a second archive record:
+
+```text
+archived entries sharing groupId -> published N+1 restore revisions
+worldbook_groups[groupId]        -> recreated from retained assignment
+characters[*].mountedWorldbookGroupIds -> unchanged
+```
+
+An imported entry whose first and only revision was already archived restores
+from that active archived snapshot as a new published N+1 revision; it does not
+need a fictional earlier published revision.
+
+The group and every restored entry commit in one transaction. A stale active
+revision aborts the whole restore, and restoring the library never silently
+re-enables the old character mount. The fixed universal group is not eligible
+for whole-group removal.
+
+Permanent deletion is a distinct archive-only transaction, not another
+revision transition:
+
+```text
+selected archived entry records + all revisionSnapshots -> deleted
+growth candidates targeting those entries/revisions      -> deleted
+delivery receipts containing those entries                -> deleted
+characters[*].mountedWorldbooks portability cache         -> pruned
+empty selected worldbook_groups record + stale group mount -> deleted
+```
+
+The transaction rejects built-in or published entries. Whole-group deletion
+also compares the supplied entry IDs with the exact archived membership of the
+group, so a stale archive screen cannot partially erase a changed group.
 
 ### Mounted Worldbook Resolution
 
-`CharacterProfile.mountedWorldbooks[].id` is the relationship key. The copied
-`title`, `content`, and `category` fields make character cards portable, but do
-not form a separately editable branch. Whenever the library contains that ID,
-the current library record wins and refreshes those cached fields:
+For custom entries, `CharacterProfile.mountedWorldbookGroupIds[]` is the sole
+player-controlled enablement key:
 
 ```text
-library record with same ID -> current title/content/category
-no library record           -> keep portable character-card copy
+character-owned group + same owner + group ID enabled -> eligible candidate
+universal group                                      -> eligible candidate
+foreign group / groupless legacy entry               -> ineligible
 ```
 
-Worldbook edits persist the canonical library record first, then refresh every
-mounted character in IndexedDB and React state. App initialization applies the
-same resolution to repair caches left stale by older builds. Prompt builders
-therefore continue receiving ordinary mounted records while reading the latest
-library content.
+Eligibility is only the first gate. Binding, knowledge subject, current query and
+character budget still decide whether an entry reaches one provider request.
+Built-in entries remain on the separate code-owned `mountedWorldbooks` package
+contract. Startup strips legacy custom per-entry cache mounts so they cannot
+silently bypass group ownership.
+
+### Live Worldbook W1
+
+The existing `worldbooks` record remains the one library record. W1 adds an
+append-only snapshot chain to it instead of creating a second library:
+
+```ts
+interface Worldbook {
+  // legacy title/content/category fields mirror the active revision
+  worldbookSchemaVersion?: 1;
+  activeRevisionId?: string;
+  revisionSnapshots?: WorldbookRevisionSnapshot[];
+}
+
+interface WorldbookRevisionSnapshot {
+  id: string;
+  entryId: string;
+  revision: number;
+  title: string;
+  content: string;
+  category: string;
+  aliases: readonly string[];
+  activationHint?: string;
+  publicationStatus: 'published' | 'archived';
+  bindings: readonly WorldbookBinding[];
+  knowledgePolicy: WorldbookKnowledgePolicy;
+  supplementsEntryIds: readonly string[];
+  sourceRefs: readonly WorldbookRevisionSourceRef[];
+  contentHash: string;
+  createdAt: number;
+}
+```
+
+`publicationStatus` is library lifecycle only. It never means that a character
+enabled the entry. For custom records, canonical group eligibility resolves to
+candidate entry IDs before projection checks binding, relevance and budget.
+Bindings can be global, exact
+relationship, mainline, IF branch, or route-local and may coexist on one
+revision. They narrow access and never auto-enable an entry.
+
+The portable character-card cache mirrors `publicationStatus` only so legacy
+prompt builders can omit an archived book while the mount ID remains intact.
+That mirror cannot mount, unmount, or publish anything; the library active
+revision wins whenever it exists.
+
+For the temporary unmigrated-App prompt wrapper, the portability cache also
+mirrors a code-owned `legacyPromptEligibility` plus the active
+`knowledgePolicy`. Only an explicitly `public_global` + `public` cache may enter
+that wrapper. Relationship/route-bound, entity-private, director-only, missing,
+or stale compatibility metadata fails closed. This marker is not a second
+enablement flag; the mount ID remains the only enablement truth.
+
+Legacy `visibleToCharacterIds` remains Character-UI visibility/mountability.
+Normalization preserves the legacy text and maps its knowledge policy to
+`public`; it must never reinterpret those IDs as in-world secret knowers or
+silently assign the entry to the currently active mask.
+
+Knowledge filtering uses explicit request subjects:
+
+```ts
+type WorldbookKnowledgeSubjectRef = {
+  kind: 'user' | 'character' | 'npc' | 'organization' | 'narrator';
+  id: string;
+};
+
+type WorldbookKnowledgePolicy =
+  | { kind: 'public' }
+  | { kind: 'entities'; subjects: readonly WorldbookKnowledgeSubjectRef[] }
+  | { kind: 'director_only' };
+```
+
+The consumer ID is never treated as a knower. An `entities` entry fails closed
+when the request has no matching subject. `director_only` requires the explicit
+World Director consumer kind.
+
+Projection order is fixed:
+
+```text
+valid active revision
+-> mounted entry ID
+-> legacy Character-UI visibility
+-> published library lifecycle
+-> exact binding/scope/continuity
+-> explicit knowledge subject/director gate
+-> explicit entry/revision refs
+-> Chinese title/alias/category/hint/body lexical relevance
+-> entry and total character budgets
+```
+
+An ordinary low-signal greeting selects `NONE` unless the caller supplies an
+explicit current revision ref. Results carry entry/revision/hash, scope,
+consumer, knowledge-subject snapshot, selected/drop reason, and used budget.
+Delivery receipts are metadata-only and always `truthEffect: none`. A future
+vector ranker may replace only lexical scoring, not any preceding gate.
+
+World growth proposals live in the separate
+`worldbook_growth_candidates` store. They remain `truthEffect: none` in
+`pending`, `deferred`, `ignored`, and `accepted` audit states. Acceptance writes
+the accepted candidate plus the new Worldbook revision in one transaction; an
+abort leaves both unchanged. Candidate drafts never enter runtime projection.
+
+The ordinary library delete action is archive-only: it creates an N+1 revision,
+leaving the complete snapshot chain intact. Restoring an older revision also
+creates N+1 and never overwrites an old snapshot. A later player-facing archive
+extension adds the explicitly confirmed permanent-delete transaction documented
+under Worldbook Group Projection; it is never reachable from a published card.
+
+`worldbooks`, `worldbook_growth_candidates`, and the metadata-only
+`worldbook_projection_receipts` are registered in the whole-device backup
+contract. A receipt is written only after a consumer accepts the projection;
+it stores scope/knowledge subjects/consumer/revision hashes/budget, never the
+selected excerpts. The current capability ladder is:
+
+```text
+available: contract, normalization, revision/candidate persistence, projection,
+           delivery receipt, backup roundtrip
+delivered: existing Worldbook create/edit/archive UI uses versioned atomic writes;
+           Chat and Call prepare a typed projection from the canonical library
+selected/requested: Chat/Call use exact captured relationship scope, the current
+           character as explicit knower, no story continuity, and small budgets
+executor_started: the projection is actually included in the provider prompt
+canonical_receipt: written only after a sanitized, non-empty provider reply;
+           provider failure, empty output, or local fallback writes none
+visible_projection: world facts affect the model reply but have no standalone UI
+           panel; Date/Story/Social/proactive and growth review remain HOLD
+```
 
 ## Shell Chrome And Virtual World Clock
 
@@ -652,7 +832,7 @@ contract.
 
 Context delivery rule:
 
-- `ContextBuilder.buildCoreContext()` stays synchronous and DB-free.
+- `ContextBuilder.buildCanonicalCoreContext()` stays synchronous and DB-free.
 - Future timebook delivery should use an async selector such as
   `selectTimebookContext()` before chat prompt assembly.
 - The selector should return a tiny markdown block, not raw full history.
@@ -714,9 +894,10 @@ selectWorldlineMemoryContext({
 ```
 
 Group chat uses the selector as a per-member prompt supplement, not as a shared
-group memory blob. The AI director should build each member's base context with
-`ContextBuilder.buildCoreContext(member, userProfile, true)`, then append a
-budgeted `selectWorldlineMemoryContext()` result for that same member. The
+group memory blob. The AI director should temporarily build each member's base
+context with
+`ContextBuilder.buildLegacyCoreContextWithMountedWorldbooks(member, userProfile, true)`,
+then append a budgeted `selectWorldlineMemoryContext()` result for that same member. The
 selector receives the member's recent private messages as `currentMessages` and
 the recent group topic as `query`. Imported-history delivery is stricter:
 Group Chat may receive only `shared` or `public_safe` confirmed candidates;
@@ -1398,6 +1579,7 @@ interface NarrativeDirective {
 ```ts
 interface NovelBook {
   // existing fields...
+  writingMode?: "plain_novel" | "character_collaboration";
   directives?: NarrativeDirective[];
 }
 ```
@@ -1407,6 +1589,12 @@ Compatibility:
 - No IndexedDB migration is required for this first slice because
   `NovelBook.directives` is optional.
 - Existing novel records without `directives` remain valid.
+- Existing novel records without `writingMode` are interpreted as
+  `character_collaboration`; newly created books default to `plain_novel`.
+- In `plain_novel`, player input is a transient generation instruction. Only
+  accepted provider prose is appended as a `NovelSegment` with
+  `authorId: "system"`. A typed Worldbook delivery receipt may be written only
+  after those segments have been persisted.
 - Future `咨询台` work may either store accepted directives inside a target
   `NovelBook` or add a dedicated object store after the UX is confirmed.
 - IF-line directives must use `memoryPolicy: "dream_material"` and must not be
