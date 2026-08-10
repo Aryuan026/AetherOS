@@ -315,7 +315,11 @@ built-in groups = books where isBuiltIn || lockEditing
 custom groups   = all remaining books
 ```
 
-The group owner is an authority boundary; category text is not. A custom book
+The group owner is an authority boundary; category text is not. `universal` is
+a governance class, not one fixed group record. The library projects every
+universal-owned group beneath one expandable `通用资料` drawer, while each child
+keeps its own stable ID, human name, order, archive history and character mount
+membership. A custom book
 named under `深空世界书` remains custom and editable. Custom legacy records with
 no group are shown in `待归组` and are runtime-ineligible until repaired.
 The repair bucket is a derived view, not a `worldbook_groups` record. Its entries
@@ -327,7 +331,7 @@ preference lives in `OSTheme.hideBuiltInWorldbooks`; it is a reversible UI
 preference and is not a second enablement truth. `OSTheme.pinBuiltInWorldbooks`
 only moves the visible built-in drawer above the player library.
 
-Archiving a character-owned group is an atomic cross-store command:
+Archiving a character-owned or named universal group is an atomic cross-store command:
 
 ```text
 published entries in group -> archived N+1 revisions
@@ -350,8 +354,7 @@ need a fictional earlier published revision.
 
 The group and every restored entry commit in one transaction. A stale active
 revision aborts the whole restore, and restoring the library never silently
-re-enables the old character mount. The fixed universal group is not eligible
-for whole-group removal.
+re-enables any old character mount.
 
 Permanent deletion is a distinct archive-only transaction, not another
 revision transition:
@@ -375,8 +378,9 @@ player-controlled enablement key:
 
 ```text
 character-owned group + same owner + group ID enabled -> eligible candidate
-universal group                                      -> eligible candidate
-foreign group / groupless legacy entry               -> ineligible
+named universal group + group ID enabled              -> eligible candidate
+foreign group / unselected universal group            -> ineligible
+groupless legacy entry                                -> ineligible
 ```
 
 Eligibility is only the first gate. Binding, knowledge subject, current query and

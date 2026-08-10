@@ -845,14 +845,17 @@
   custom category happens to reuse a built-in category name. Built-in/read-only
   status comes from record metadata, never from the category label.
 - A custom group is a persisted library object with a stable ID, name and one
-  owner: either one character or the fixed universal owner. Its persisted
+  governance owner: either one character or the universal-library class. The
+  universal class is a player-visible expandable drawer, not a persisted group
+  named `通用`. It may contain several independent named groups such as `古代书`,
+  `现代书` or `A 城书`. Its persisted
   presentation metadata may include player-controlled pin and sort order.
   Existing empty groups remain valid and survive reload, backup and restore,
   but the library home does not expose a context-free "create empty group"
   action; new groups are created while adding player-authored material.
 - Importing an embedded Tavern Worldbook with a character card creates one
   character-owned group named after that imported character. Standalone imports
-  first choose a character owner (or the fixed universal owner), then create a
+  first choose a character owner (or the universal-library class), then create a
   new source-named group and commit the parsed entries atomically. They do not
   stop at a long read-only preview page. Parse failure or cancellation writes
   nothing.
@@ -869,9 +872,10 @@
 - A character-owned group can be archived from its expanded group header. The
   operation must archive every currently published entry, remove the canonical
   group record and remove that group ID from every character mount in one local
-  transaction. An empty group is simply removed. The fixed universal group and
-  the legacy repair bucket cannot be removed through this action. Archived
-  character-owned entries remain grouped by their retained group identity in
+  transaction. An empty group is simply removed. A named universal group follows
+  the same archive/restore lifecycle; only the derived `待归组` repair bucket is
+  not a real group and cannot be removed through this action. Archived
+  entries remain grouped by their retained group identity in
   the archive UI. `恢复整组` must recreate the canonical group and publish every
   currently archived entry in that group in one transaction; stale input must
   leave both the group and all entries unchanged. Restore does not silently
@@ -884,9 +888,14 @@
   exact current archived membership before deleting the empty group registry.
   It must never delete a published entry, a built-in entry or unrelated content.
 - Player-controlled enablement is whole-group only. A character may enable only
-  its own groups; it cannot mount another character's group or a single foreign
-  entry. The universal group is available to every character without adding a
-  second per-character mount record.
+  its own groups or a named universal group; it cannot mount another character's
+  group or a single foreign entry. Every named universal group uses the same
+  `mountedWorldbookGroupIds` truth and may be enabled for several characters.
+  Nothing under the universal drawer is silently enabled for everyone.
+- A character-owned group may be reassigned as one whole group when the player
+  selected the wrong owner during import. The registry, every entry mirror and
+  character mount membership must change atomically; individual entries cannot
+  be lent across group boundaries.
 - Cross-character reuse is an explicit copy into the destination group. The copy
   has an independent entry ID and revision history; editing or deleting either
   side must not mutate the other.

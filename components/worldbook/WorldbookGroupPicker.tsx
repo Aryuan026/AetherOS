@@ -3,7 +3,7 @@ import { Plus } from '@phosphor-icons/react';
 import type { CharacterProfile, WorldbookGroupAssignment } from '../../types';
 import {
   createWorldbookGroupAssignment,
-  UNIVERSAL_WORLDBOOK_GROUP_NAME,
+  worldbookGroupDisplayName,
 } from '../../utils/worldbookGroups';
 
 interface Props {
@@ -40,10 +40,10 @@ const WorldbookGroupPicker: React.FC<Props> = ({ characters, groups, value, onCh
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => chooseOwner({ kind: 'universal' }, UNIVERSAL_WORLDBOOK_GROUP_NAME)}
+            onClick={() => chooseOwner({ kind: 'universal' }, '新分组')}
             className={`rounded-full border px-3 py-2 text-xs font-bold ${value.owner.kind === 'universal' ? 'border-violet-500 bg-violet-500 text-white' : 'border-slate-200 bg-white text-slate-500'}`}
           >
-            通用区
+            通用资料
           </button>
           {characters.map(character => (
             <button
@@ -58,8 +58,7 @@ const WorldbookGroupPicker: React.FC<Props> = ({ characters, groups, value, onCh
         </div>
       </div>
 
-      {value.owner.kind === 'character' && (
-        <div>
+      <div>
           <div className="mb-2 flex items-center justify-between gap-3">
             <span className="text-xs font-bold tracking-wider text-slate-400">分组</span>
             <span className="text-[10px] text-slate-400">整组启用，不跨角色借单条</span>
@@ -72,15 +71,17 @@ const WorldbookGroupPicker: React.FC<Props> = ({ characters, groups, value, onCh
                 onClick={() => onChange(group)}
                 className={`rounded-full border px-3 py-2 text-xs font-bold ${group.id === value.id ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-200 bg-white text-slate-500'}`}
               >
-                {group.name}
+                {worldbookGroupDisplayName(group)}
               </button>
             ))}
             <button
               type="button"
               onClick={() => onChange(createWorldbookGroupAssignment({
-                name: characters.find(character => (
-                  value.owner.kind === 'character' && character.id === value.owner.charId
-                ))?.name || '新分组',
+                name: value.owner.kind === 'universal'
+                  ? '新分组'
+                  : characters.find(character => (
+                    value.owner.kind === 'character' && character.id === value.owner.charId
+                  ))?.name || '新分组',
                 owner: value.owner,
               }))}
               className={`flex items-center gap-1 rounded-full border border-dashed px-3 py-2 text-xs font-bold ${isExisting ? 'border-slate-300 bg-white text-slate-500' : 'border-violet-400 bg-violet-50 text-violet-600'}`}
@@ -96,11 +97,10 @@ const WorldbookGroupPicker: React.FC<Props> = ({ characters, groups, value, onCh
               className="mt-3 w-full rounded-2xl border border-violet-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             />
           )}
-        </div>
-      )}
+      </div>
       {value.owner.kind === 'universal' && (
         <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-4 py-3 text-xs leading-5 text-violet-600">
-          通用区里的启用条目会供所有角色按需读取；它们仍会经过本轮话题和篇幅筛选。
+          这里保存可被多位角色共用的具名分组；实际使用时仍按整组选择。
         </div>
       )}
     </div>

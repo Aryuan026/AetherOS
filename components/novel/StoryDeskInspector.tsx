@@ -103,17 +103,18 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
         <div className="h-full w-full bg-[#f4f1eb] flex flex-col font-sans text-slate-800" data-testid="story-desk-inspector">
             <AppHeader title={activeBook.title} subtitle="故事线 · 方向与进度" onBack={onExit} className="bg-[#fbfaf7]/95 border-b border-slate-200/80" />
 
-            <main className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 pb-12 no-scrollbar">
-                <section className="rounded-3xl bg-slate-900 text-white p-5 shadow-lg shadow-slate-300/40 overflow-hidden relative">
-                    <div className="absolute -right-8 -top-10 w-36 h-36 rounded-full border border-white/10"></div>
-                    <div className="absolute -right-2 -top-3 w-20 h-20 rounded-full border border-white/10"></div>
+            <main className="flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-12 no-scrollbar">
+                <div className="mx-auto w-full max-w-3xl space-y-5">
+                <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm overflow-hidden relative">
+                    <div className="absolute -right-8 -top-10 w-36 h-36 rounded-full border border-slate-100"></div>
+                    <div className="absolute -right-2 -top-3 w-20 h-20 rounded-full border border-slate-100"></div>
                     <div className="relative">
-                        <div className="text-[10px] font-bold tracking-[0.2em] text-white/50 mb-2">CURRENT STORYLINE</div>
-                        <h2 className="font-black text-xl">{activeMaskLabel || '当前身份'}的故事线</h2>
-                        <p className="mt-2 text-xs leading-relaxed text-white/65">
+                        <div className="text-[10px] font-bold tracking-[0.16em] text-slate-400 mb-2">故事线</div>
+                        <h2 className="font-bold text-lg text-slate-800">{activeMaskLabel || '当前身份'}的故事线</h2>
+                        <p className="mt-2 text-xs leading-relaxed text-slate-500">
                             可以先把想走的方向写下来并复核。只有真正写过、结束并由你确认的内容，才会成为角色经历。
                         </p>
-                        <div className="mt-4 text-[10px] font-bold tracking-wide text-white/45">
+                        <div className="mt-4 text-[10px] font-bold tracking-wide text-slate-400">
                             {inspection.progressBundleId ? '当前身份已准备好' : '当前身份尚未准备好'}
                         </div>
                     </div>
@@ -304,6 +305,7 @@ export const StoryDeskInspector: React.FC<StoryDeskInspectorProps> = ({
                         </div>
                     </section>
                 )}
+                </div>
             </main>
         </div>
     );

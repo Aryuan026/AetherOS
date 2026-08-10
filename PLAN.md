@@ -17,8 +17,9 @@ Live Worldbook foundation and first runtime bridge:
   knowledge subjects, growth candidates, and whole-device backup.
 - Treat custom Worldbook group IDs as the only player-controlled per-character
   enablement truth. One character may enable only its own whole groups; cross-role
-  reuse creates an independent copy, while the fixed universal group is available
-  to every character. Built-in entries retain their separate code-owned mount
+  reuse creates an independent copy. Shared material lives in multiple named groups
+  under the universal library drawer, and each group is explicitly enabled for one
+  or more characters. Built-in entries retain their separate code-owned mount
   contract. Binding and knowledge policy may narrow an eligible entry, never
   enable one.
 - Make Worldbook revision plus every mounted portability cache atomic, and make

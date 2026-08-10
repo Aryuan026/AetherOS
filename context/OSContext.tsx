@@ -72,6 +72,7 @@ import {
     createWorldbookGroupAssignment,
     isBuiltInWorldbook,
     listWorldbookGroupAssignments,
+    UNIVERSAL_WORLDBOOK_GROUP_ID,
 } from '../utils/worldbookGroups';
 import {
     assignMainDatabaseBackupStore,
@@ -206,6 +207,8 @@ interface OSContextType {
   worldbookGroups: WorldbookGroupAssignment[];
   createWorldbookGroup: (group: WorldbookGroupAssignment) => Promise<WorldbookGroupAssignment>;
   updateWorldbookGroupLayout: (groups: readonly WorldbookGroupAssignment[]) => Promise<void>;
+  reassignWorldbookGroup: (groupId: string, nextOwnerCharId: string) => Promise<void>;
+  setUniversalWorldbookGroupCharacters: (groupId: string, characterIds: readonly string[]) => Promise<void>;
   addWorldbook: (wb: Worldbook, group: WorldbookGroupAssignment) => Promise<void>;
   addImportedWorldbooks: (entries: WorldbookImportDraft[], group: WorldbookGroupAssignment) => Promise<Worldbook[]>;
   addPlayerWorldbooks: (entries: WorldbookImportDraft[], group: WorldbookGroupAssignment) => Promise<Worldbook[]>;
@@ -1693,15 +1696,19 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         let finalChars = dbChars.filter(c => !isLegacyPrivateCharacterId(c.id));
         let finalWorldbooks = dbWorldbooks;
         let finalWorldbookGroups = dbWorldbookGroups;
-        const universalWorldbookGroup = createWorldbookGroupAssignment({
-            name: '通用区',
-            owner: { kind: 'universal' },
-        });
-        if (!finalWorldbookGroups.some(group => group.id === universalWorldbookGroup.id)) {
-            await DB.saveWorldbookGroup(universalWorldbookGroup);
-            finalWorldbookGroups = [...finalWorldbookGroups, universalWorldbookGroup];
+        const emptyLegacyUniversalGroup = finalWorldbookGroups.find(group => (
+            group.id === UNIVERSAL_WORLDBOOK_GROUP_ID
+            && !finalWorldbooks.some(entry => entry.group?.id === group.id)
+        ));
+        if (emptyLegacyUniversalGroup) {
+            const changedCharacters = await DB.archiveWorldbookGroup({
+                group: emptyLegacyUniversalGroup,
+                entries: [],
+            });
+            const changedById = new Map(changedCharacters.map(character => [character.id, character]));
+            finalChars = finalChars.map(character => changedById.get(character.id) || character);
+            finalWorldbookGroups = finalWorldbookGroups.filter(group => group.id !== emptyLegacyUniversalGroup.id);
         }
-
         for (const builtInWorldbook of DEEPSPACE_BUILT_IN_LIBRARY_WORLDBOOKS) {
             const existingBook = finalWorldbooks.find(wb => wb.id === builtInWorldbook.id);
             if (!existingBook) {
@@ -2421,6 +2428,22 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       setWorldbookGroups(previous => previous.map(group => byId.get(group.id) || group));
   };
 
+  const reassignWorldbookGroup = async (
+      groupId: string,
+      nextOwnerCharId: string,
+  ): Promise<void> => {
+      await DB.reassignWorldbookGroup({ groupId, nextOwnerCharId });
+      await reloadWorldbookOwnerState();
+  };
+
+  const setUniversalWorldbookGroupCharacters = async (
+      groupId: string,
+      characterIds: readonly string[],
+  ): Promise<void> => {
+      await DB.setUniversalWorldbookGroupCharacters({ groupId, characterIds });
+      await reloadWorldbookOwnerState();
+  };
+
   const addWorldbook = async (wb: Worldbook, group: WorldbookGroupAssignment) => {
       await createWorldbookGroup(group);
       const entry = createWorldbookEntry({ book: { ...wb, category: group.name, group } });
@@ -2592,9 +2615,6 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const archiveWorldbookGroup = async (groupId: string) => {
       const group = worldbookGroups.find(item => item.id === groupId);
       if (!group) throw new Error('这个分组已经不存在');
-      if (group.owner.kind !== 'character') {
-          throw new Error('通用区不能整组归档，请单独整理其中的条目');
-      }
       const currentEntries = worldbooks.filter(entry => (
           !isBuiltInWorldbook(entry) && entry.group?.id === group.id
       ));
@@ -3519,6 +3539,8 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     worldbookGroups,
     createWorldbookGroup,
     updateWorldbookGroupLayout,
+    reassignWorldbookGroup,
+    setUniversalWorldbookGroupCharacters,
     addWorldbook,
     addImportedWorldbooks,
     addPlayerWorldbooks,

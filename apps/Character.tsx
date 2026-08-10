@@ -288,8 +288,7 @@ const Character: React.FC = () => {
   ), [customWorldbookGroups, formData?.id]);
   const activeCustomWorldbookGroups = useMemo(() => (
       availableCustomWorldbookGroups.filter(group => (
-          group.owner?.kind === 'universal'
-          || formData?.mountedWorldbookGroupIds?.includes(group.id)
+          formData?.mountedWorldbookGroupIds?.includes(group.id)
       ))
   ), [availableCustomWorldbookGroups, formData?.mountedWorldbookGroupIds]);
   const [promotedMemoryViews, setPromotedMemoryViews] = useState<MemoryProjectionView[]>([]);
@@ -701,10 +700,6 @@ const Character: React.FC = () => {
           )
       ) {
           addToast('这组世界书不属于当前角色', 'error');
-          return;
-      }
-      if (group.owner.kind === 'universal') {
-          addToast('通用区已经供所有角色使用', 'info');
           return;
       }
       const current = formData.mountedWorldbookGroupIds || [];
@@ -1689,12 +1684,10 @@ ${isInitialGeneration ? `
 	                                       <div className="min-w-0">
 	                                           <div className="truncate text-sm font-bold text-slate-700">{group.category}</div>
 	                                           <div className="mt-1 text-[9px] text-slate-400">
-                                                   {group.owner?.kind === 'universal' ? '通用区 · 所有角色可用' : `${group.books.length} 条 · 整组启用`}
+                                                   {group.owner?.kind === 'universal' ? `通用资料 · ${group.books.length} 条` : `${group.books.length} 条 · 整组启用`}
                                                </div>
 	                                       </div>
-                                           {group.owner?.kind === 'character' && (
-	                                           <button onClick={() => unmountWorldbookGroup(group.id)} className="ml-2 p-1 text-slate-300 hover:text-red-400">×</button>
-                                           )}
+                                           <button onClick={() => unmountWorldbookGroup(group.id)} className="ml-2 p-1 text-slate-300 hover:text-red-400">×</button>
 	                                   </div>
                                    ))}
                                    {formData.mountedWorldbooks && formData.mountedWorldbooks.length > 0 && (
@@ -1929,25 +1922,23 @@ ${isInitialGeneration ? `
 	                        }
 	                        return availableCustomWorldbookGroups.map(group => {
 	                            const universal = group.owner?.kind === 'universal';
-	                            const enabled = universal || formData?.mountedWorldbookGroupIds?.includes(group.id);
+	                            const enabled = Boolean(formData?.mountedWorldbookGroupIds?.includes(group.id));
 	                            return (
 	                                <div key={group.id} className={`rounded-2xl border p-4 ${enabled ? 'border-violet-200 bg-violet-50/60' : 'border-slate-100 bg-white'}`} data-worldbook-group-mount>
 	                                    <div className="flex items-start justify-between gap-3">
 	                                        <div className="min-w-0">
 	                                            <div className="truncate text-sm font-bold text-slate-700">{group.category}</div>
 	                                            <div className="mt-1 text-[10px] text-slate-400">
-	                                                {universal ? '通用区 · 所有角色可用' : `${group.books.length} 条 · 只归属当前角色`}
+	                                                {universal ? `${group.books.length} 条 · 可供多位角色使用` : `${group.books.length} 条 · 只归属当前角色`}
 	                                            </div>
 	                                        </div>
-	                                        {!universal && (
-	                                            <button
+	                                        <button
 	                                                type="button"
 	                                                onClick={() => enabled ? unmountWorldbookGroup(group.id) : mountWorldbookGroup(group.id)}
 	                                                className={`rounded-xl px-3 py-1.5 text-[10px] font-bold ${enabled ? 'bg-white text-red-400' : 'bg-violet-600 text-white'}`}
 	                                            >
 	                                                {enabled ? '停用整组' : '启用整组'}
 	                                            </button>
-	                                        )}
 	                                    </div>
 	                                    <div className="mt-3 space-y-1.5 border-t border-white/80 pt-3">
 	                                        {group.books.map(book => (
@@ -2088,7 +2079,7 @@ ${isInitialGeneration ? `
                 <p className="text-sm text-slate-600 text-center leading-relaxed">
                     确定要删除这位角色吗？<br/>
                     <span className="text-xs text-red-400 font-bold">角色资料会移除；他的专属世界书组会收进归档。</span><br/>
-                    <span className="text-[10px] text-slate-400">通用区，以及已经复制到其他分组的副本，不会受影响。</span>
+                    <span className="text-[10px] text-slate-400">通用资料，以及已经复制到其他分组的副本，不会受影响。</span>
                 </p>
             </div>
         </Modal>

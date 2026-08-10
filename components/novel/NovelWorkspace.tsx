@@ -35,6 +35,10 @@ import {
     type StorySceneDraft,
 } from './StorySceneReviewScreen';
 import { StoryDeskInspector } from './StoryDeskInspector';
+import {
+    SHELL_APP_HEADER_CONTENT_TOP,
+    SHELL_APP_HEADER_HEIGHT,
+} from '../shell/shellLayout';
 
 export type NovelWorkspacePanel = 'manuscript' | 'story_desk';
 
@@ -361,10 +365,12 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
 
     return (
         <div className="h-full w-full flex flex-col bg-slate-50">
-            <nav className="h-16 shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 pt-5 pb-1 flex items-end justify-center z-40" aria-label="小说工作区">
-                <div className="p-1 rounded-xl bg-slate-100 flex gap-1 text-xs font-bold">
-                    <button onClick={() => onPanelChange('manuscript')} aria-pressed={activePanel === 'manuscript'} className={`px-4 py-1.5 rounded-lg transition-all ${activePanel === 'manuscript' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>手稿</button>
-                    <button disabled={isWriterGenerating} onClick={() => onPanelChange('story_desk')} aria-pressed={activePanel === 'story_desk'} className={`px-4 py-1.5 rounded-lg transition-all disabled:opacity-40 ${activePanel === 'story_desk' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>故事线</button>
+            <nav className="box-border shrink-0 border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md z-40" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }} aria-label="小说工作区">
+                <div className="flex h-12 items-center justify-center">
+                    <div className="flex gap-1 rounded-2xl border border-slate-200/80 bg-slate-100/80 p-1 text-xs font-bold">
+                        <button onClick={() => onPanelChange('manuscript')} aria-pressed={activePanel === 'manuscript'} className={`min-h-8 rounded-xl px-4 transition-all ${activePanel === 'manuscript' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>手稿</button>
+                        <button disabled={isWriterGenerating} onClick={() => onPanelChange('story_desk')} aria-pressed={activePanel === 'story_desk'} className={`min-h-8 rounded-xl px-4 transition-all disabled:opacity-40 ${activePanel === 'story_desk' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>故事线</button>
+                    </div>
                 </div>
             </nav>
             <div className="flex-1 min-h-0">

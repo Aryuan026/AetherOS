@@ -8,10 +8,7 @@ import {
   type WorldbookImportDraft,
 } from '../../utils/worldbookImport';
 import { extractTavernCharacterCardFromPng } from '../../utils/tavernImport';
-import {
-  createWorldbookGroupAssignment,
-  UNIVERSAL_WORLDBOOK_GROUP_NAME,
-} from '../../utils/worldbookGroups';
+import { createWorldbookGroupAssignment } from '../../utils/worldbookGroups';
 
 interface Props {
   characters: readonly Pick<CharacterProfile, 'id' | 'name'>[];
@@ -42,7 +39,6 @@ const WorldbookImportScreen: React.FC<Props> = ({
   )), [groupOptions, owner]);
 
   const uniqueGroupName = (baseName: string): string => {
-    if (owner.kind === 'universal') return UNIVERSAL_WORLDBOOK_GROUP_NAME;
     const names = new Set(ownerGroups.map(group => group.name.trim()));
     if (!names.has(baseName)) return baseName;
     let suffix = 2;
@@ -92,31 +88,31 @@ const WorldbookImportScreen: React.FC<Props> = ({
         className="border-b border-slate-200 bg-white/90 backdrop-blur-xl"
       />
 
-      <div className="flex-1 overflow-y-auto px-5 pb-[max(6rem,env(safe-area-inset-bottom))] pt-5 no-scrollbar">
-          <div className="space-y-5">
-            <section className="rounded-[24px] border border-violet-100 bg-white/80 p-4 shadow-sm">
-              <div className="mb-3 text-xs font-bold tracking-wider text-slate-400">这份资料属于</div>
+      <div className="flex-1 overflow-y-auto px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-4 no-scrollbar">
+          <div className="space-y-4">
+            <section className="rounded-[20px] border border-violet-100 bg-white/80 p-3.5 shadow-sm">
+              <div className="mb-2.5 text-[11px] font-bold tracking-wider text-slate-400">这份资料属于</div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => setOwner({ kind: 'universal' })}
-                  className={`rounded-full border px-3 py-2 text-xs font-bold ${owner.kind === 'universal' ? 'border-violet-500 bg-violet-500 text-white' : 'border-slate-200 bg-white text-slate-500'}`}
+                  className={`rounded-full border px-3 py-1.5 text-[11px] font-bold ${owner.kind === 'universal' ? 'border-violet-500 bg-violet-500 text-white' : 'border-slate-200 bg-white text-slate-500'}`}
                 >
-                  通用区
+                  通用资料
                 </button>
                 {characters.map(character => (
                   <button
                     type="button"
                     key={character.id}
                     onClick={() => setOwner({ kind: 'character', charId: character.id })}
-                    className={`rounded-full border px-3 py-2 text-xs font-bold ${owner.kind === 'character' && owner.charId === character.id ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-200 bg-white text-slate-500'}`}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold ${owner.kind === 'character' && owner.charId === character.id ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-200 bg-white text-slate-500'}`}
                   >
                     {character.name}
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-[10px] leading-5 text-slate-400">
-                角色资料会自动建成一个新分组；通用资料会直接进入通用区。
+              <p className="mt-2.5 text-[10px] leading-4 text-slate-400">
+                无论归给角色还是放进通用资料，都会按来源名称新建一个完整分组。
               </p>
             </section>
             <input
@@ -130,14 +126,13 @@ const WorldbookImportScreen: React.FC<Props> = ({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={saving}
-              className="flex w-full items-center gap-4 rounded-[24px] border border-indigo-100 bg-white p-5 text-left shadow-sm"
+              className="flex w-full items-center gap-3 rounded-[20px] border border-indigo-100 bg-white p-4 text-left shadow-sm"
             >
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-500">
-                <FileArrowUp size={24} weight="duotone" />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-indigo-50 text-indigo-500">
+                <FileArrowUp size={21} weight="duotone" />
               </span>
               <span className="min-w-0 flex-1">
                 <strong className="block text-sm text-slate-700">{saving ? '正在带进来…' : '选择 JSON、PNG 或 TXT'}</strong>
-                <span className="mt-1 block truncate text-[11px] text-slate-400">支持酒馆独立世界书与角色卡内嵌世界书</span>
               </span>
             </button>
 
@@ -146,15 +141,15 @@ const WorldbookImportScreen: React.FC<Props> = ({
             </div>
 
             <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-400"><TextT size={16} /> 资料内容</span>
+              <span className="mb-2 flex items-center gap-2 text-[11px] font-bold text-slate-400"><TextT size={15} /> 资料内容</span>
               <textarea
                 value={source}
                 onChange={event => {
                   setSource(event.target.value);
                   setError('');
                 }}
-                placeholder="粘贴 TXT；或粘贴 AetherOS / 酒馆 JSON……"
-                className="min-h-[44vh] w-full resize-y rounded-[24px] border border-slate-200 bg-white p-4 text-sm leading-7 text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                placeholder="粘贴 TXT 或 JSON 内容……"
+                className="min-h-[34vh] w-full resize-y rounded-[20px] border border-slate-200 bg-white p-3.5 text-[13px] leading-6 text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
               />
             </label>
 
@@ -162,7 +157,7 @@ const WorldbookImportScreen: React.FC<Props> = ({
               type="button"
               onClick={() => void importSource(source)}
               disabled={saving || !source.trim()}
-              className="w-full rounded-2xl bg-slate-900 py-4 text-sm font-bold text-white shadow-lg disabled:opacity-40"
+              className="w-full rounded-2xl bg-slate-900 py-3.5 text-sm font-bold text-white shadow-lg disabled:opacity-40"
             >
               {saving ? '正在带进来…' : '导入这份资料'}
             </button>

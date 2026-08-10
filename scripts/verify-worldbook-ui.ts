@@ -222,7 +222,72 @@ const mountedCharacter = {
 assert.equal(worldbookMountCount(manual, [mountedCharacter]), 1);
 assert.equal(worldbookMountCount(supplement, [mountedCharacter]), 0);
 assert.deepEqual(worldbookMountedCharacterNames(manual, [mountedCharacter]), ['角色']);
+await DB.saveWorldbookGroup(roleGroup);
 await DB.saveCharacter(mountedCharacter);
+await DB.saveCharacter({
+  ...mountedCharacter,
+  id: 'char-2',
+  name: '另一位角色',
+  mountedWorldbooks: [],
+  mountedWorldbookGroupIds: [],
+});
+
+// A named universal group is a real group, not one global bucket. It may be
+// enabled for several characters and changed later without touching entries.
+const sharedAncientGroup = createWorldbookGroupAssignment({
+  id: 'worldbook-group:universal:ancient',
+  name: '古代书',
+  owner: { kind: 'universal' },
+});
+await DB.saveWorldbookGroup(sharedAncientGroup);
+await DB.setUniversalWorldbookGroupCharacters({
+  groupId: sharedAncientGroup.id,
+  characterIds: ['char-1', 'char-2'],
+});
+let sharedCharacters = new Map((await DB.getAllCharacters()).map(character => [character.id, character]));
+assert.equal(sharedCharacters.get('char-1')?.mountedWorldbookGroupIds?.includes(sharedAncientGroup.id), true);
+assert.equal(sharedCharacters.get('char-2')?.mountedWorldbookGroupIds?.includes(sharedAncientGroup.id), true);
+await DB.setUniversalWorldbookGroupCharacters({
+  groupId: sharedAncientGroup.id,
+  characterIds: ['char-2'],
+});
+sharedCharacters = new Map((await DB.getAllCharacters()).map(character => [character.id, character]));
+assert.equal(sharedCharacters.get('char-1')?.mountedWorldbookGroupIds?.includes(sharedAncientGroup.id), false);
+assert.equal(sharedCharacters.get('char-2')?.mountedWorldbookGroupIds?.includes(sharedAncientGroup.id), true);
+
+// Choosing the wrong role at import time remains repairable as one atomic
+// whole-group move; both registry and every entry keep the same group id.
+const movableGroup = createWorldbookGroupAssignment({
+  id: 'worldbook-group:char-1:movable',
+  name: '选错角色的资料',
+  owner: { kind: 'character', charId: 'char-1' },
+});
+const movableEntry = createWorldbookEntry({
+  book: legacyBook('movable-entry', {
+    category: movableGroup.name,
+    group: movableGroup,
+    createdAt: 150,
+    updatedAt: 150,
+  }),
+  sourceRef: { kind: 'import', refId: 'movable-import', revision: 1 },
+});
+await DB.saveWorldbookGroup(movableGroup);
+await indexedDbWorldbookPersistence.createEntry(movableEntry);
+await DB.saveCharacter({
+  ...sharedCharacters.get('char-1')!,
+  mountedWorldbookGroupIds: [
+    ...(sharedCharacters.get('char-1')?.mountedWorldbookGroupIds || []),
+    movableGroup.id,
+  ],
+});
+await DB.reassignWorldbookGroup({ groupId: movableGroup.id, nextOwnerCharId: 'char-2' });
+const movedGroup = (await DB.getAllWorldbookGroups()).find(group => group.id === movableGroup.id);
+const movedEntry = (await DB.getAllWorldbooks()).find(entry => entry.id === movableEntry.id);
+const movedCharacters = new Map((await DB.getAllCharacters()).map(character => [character.id, character]));
+assert.deepEqual(movedGroup?.owner, { kind: 'character', charId: 'char-2' });
+assert.deepEqual(movedEntry?.group?.owner, { kind: 'character', charId: 'char-2' });
+assert.equal(movedCharacters.get('char-1')?.mountedWorldbookGroupIds?.includes(movableGroup.id), false);
+assert.equal(movedCharacters.get('char-2')?.mountedWorldbookGroupIds?.includes(movableGroup.id), true);
 
 // Each growth candidate is independent; defer remains, ignore disappears.
 assert.throws(() => createWorldGrowthCandidate({
@@ -583,12 +648,17 @@ const emptyArchiveGroup = createWorldbookGroupAssignment({
 await DB.saveWorldbookGroup(emptyArchiveGroup);
 await DB.archiveWorldbookGroup({ group: emptyArchiveGroup, entries: [] });
 assert.equal((await DB.getAllWorldbookGroups()).some(group => group.id === emptyArchiveGroup.id), false);
-await assert.rejects(
-  () => DB.archiveWorldbookGroup({
-    group: createWorldbookGroupAssignment({ name: '通用区', owner: { kind: 'universal' } }),
-    entries: [],
-  }),
-  /通用区不能整组归档/,
+const emptyUniversalArchiveGroup = createWorldbookGroupAssignment({
+  id: 'worldbook-group:universal:empty-archive',
+  name: '空白通用资料',
+  owner: { kind: 'universal' },
+});
+await DB.saveWorldbookGroup(emptyUniversalArchiveGroup);
+await DB.archiveWorldbookGroup({ group: emptyUniversalArchiveGroup, entries: [] });
+assert.equal(
+  (await DB.getAllWorldbookGroups()).some(group => group.id === emptyUniversalArchiveGroup.id),
+  false,
+  'a named universal group can be removed as one empty group',
 );
 
 // The visible legacy repair bucket is actionable without becoming a fake
@@ -781,7 +851,7 @@ const survivorGroup = createWorldbookGroupAssignment({
   owner: { kind: 'character', charId: 'char-survivor' },
 });
 const universalGroup = createWorldbookGroupAssignment({
-  name: '通用区',
+  name: '共享规则',
   owner: { kind: 'universal' },
 });
 await DB.saveWorldbookGroup(deletedRoleGroup);
@@ -914,6 +984,8 @@ assert.match(osContextSource, /worldbook-copy:/);
 assert.match(editorSource, /data-worldbook-fullscreen-editor/);
 assert.match(importSource, /data-worldbook-import-screen/);
 assert.doesNotMatch(importSource, /data-worldbook-import-preview|预览导入内容/);
+assert.doesNotMatch(importSource, /酒馆|SillyTavern/);
+assert.match(importSource, /粘贴 TXT 或 JSON 内容/);
 assert.match(growthSource, /data-world-growth-review-screen/);
 assert.doesNotMatch(`${editorSource}\n${importSource}\n${growthSource}`, /<Modal/);
 

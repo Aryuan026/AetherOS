@@ -8,7 +8,6 @@ import {
     isWorldbookGroupEnabledForCharacter,
     listCustomWorldbookCategories,
     normalizeWorldbookCategory,
-    UNIVERSAL_WORLDBOOK_GROUP_ID,
 } from '../utils/worldbookGroups.ts';
 import { synchronizeMountedWorldbooks } from '../utils/worldbookMounts.ts';
 
@@ -47,7 +46,13 @@ const firstOrderedGroup = createWorldbookGroupAssignment({
     sortOrder: 0,
 });
 const universalGroup = createWorldbookGroupAssignment({
-    name: '随便写也会规范为通用区',
+    id: 'group:universal:ancient',
+    name: '古代书',
+    owner: { kind: 'universal' },
+});
+const secondUniversalGroup = createWorldbookGroupAssignment({
+    id: 'group:universal:modern',
+    name: '现代书',
     owner: { kind: 'universal' },
 });
 const book = (id: string, patch: Partial<Worldbook> = {}): Worldbook => ({
@@ -79,7 +84,7 @@ const fixture = [
     book('custom-name-collision', { title: '我的深空补充', category: collisionGroup.name, group: collisionGroup }),
 ];
 
-const index = buildWorldbookGroupIndex(fixture, [roleGroup, plotGroup, collisionGroup, emptyGroup, universalGroup, firstOrderedGroup, pinnedGroup]);
+const index = buildWorldbookGroupIndex(fixture, [roleGroup, plotGroup, collisionGroup, emptyGroup, universalGroup, secondUniversalGroup, firstOrderedGroup, pinnedGroup]);
 assert.equal(index.builtInCount, 2);
 assert.equal(index.customCount, 4);
 assert.deepEqual(index.builtInGroups.map(group => group.category), ['深空世界书', '深空剧情增强']);
@@ -94,7 +99,9 @@ assert.equal(
     'a custom entry must not become read-only merely because its category name matches a built-in category',
 );
 assert.ok(index.customGroups.some(group => group.id === emptyGroup.id && group.books.length === 0));
-assert.ok(index.customGroups.some(group => group.id === UNIVERSAL_WORLDBOOK_GROUP_ID && group.books.length === 0));
+assert.ok(index.customGroups.some(group => group.id === universalGroup.id && group.category === '古代书' && group.books.length === 0));
+assert.ok(index.customGroups.some(group => group.id === secondUniversalGroup.id && group.category === '现代书' && group.books.length === 0));
+assert.notEqual(universalGroup.id, secondUniversalGroup.id, 'named universal groups must remain independent groups');
 assert.equal(index.customGroups[0].id, pinnedGroup.id, 'pinned groups must stay above the ordinary order');
 assert.equal(index.customGroups[1].id, firstOrderedGroup.id, 'explicit order must win over name sorting');
 assert.deepEqual(listCustomWorldbookCategories(fixture), ['深空世界书', '剧情主线', '生活资料']);
@@ -102,7 +109,7 @@ assert.equal(normalizeWorldbookCategory('  自建分组  '), '自建分组');
 assert.equal(normalizeWorldbookCategory('   '), DEFAULT_WORLDBOOK_CATEGORY);
 const charA = {
     id: 'char-a',
-    mountedWorldbookGroupIds: [roleGroup.id],
+    mountedWorldbookGroupIds: [roleGroup.id, universalGroup.id],
 } as CharacterProfile;
 const charB = {
     id: 'char-b',
@@ -115,7 +122,8 @@ assert.equal(
     'putting another role group id into a character record must not bypass ownership',
 );
 assert.equal(isWorldbookGroupEnabledForCharacter(universalGroup, charA), true);
-assert.equal(isWorldbookGroupEnabledForCharacter(universalGroup, charB), true);
+assert.equal(isWorldbookGroupEnabledForCharacter(universalGroup, charB), false);
+assert.equal(isWorldbookGroupEnabledForCharacter(secondUniversalGroup, charA), false);
 assert.equal(isWorldbookGroupEnabledForCharacter(undefined, charA), false);
 
 const staleMount = {
@@ -150,6 +158,8 @@ const editorSource = readFileSync(new URL('../components/worldbook/WorldbookEntr
 const pickerSource = readFileSync(new URL('../components/worldbook/WorldbookGroupPicker.tsx', import.meta.url), 'utf8');
 assert.match(appSource, /data-worldbook-built-in-drawer/);
 assert.match(appSource, /data-worldbook-custom-groups/);
+assert.match(appSource, /data-worldbook-universal-drawer/);
+assert.match(appSource, /data-worldbook-group-access/);
 assert.doesNotMatch(appSource, /data-worldbook-empty-group-creator|新建空分组/);
 assert.match(appSource, /DotsSixVertical/);
 assert.match(appSource, /togglePinnedGroup/);

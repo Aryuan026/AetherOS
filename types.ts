@@ -888,7 +888,7 @@ export interface CharacterProfile {
       /** Portable audit mirror; runtime typed consumers still read the library revision. */
       knowledgePolicy?: WorldbookKnowledgePolicy;
   }[];
-  /** Custom Worldbooks are enabled by whole group, never by foreign entry ID. */
+  /** Custom Worldbooks are enabled by whole group; universal groups may appear on several characters. */
   mountedWorldbookGroupIds?: string[];
   /** Player-authored only. Built-in reviewed boundaries remain code-owned. */
   behaviorBoundaryRules?: CharacterBehaviorBoundaryRule[];

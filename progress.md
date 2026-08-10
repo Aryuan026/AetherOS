@@ -1,5 +1,43 @@
 # AetherOS Progress
 
+## 2026-08-10 Named Shared Worldbooks And Player Story Loop (release candidate)
+
+- done:
+  - Replaced the old single `通用区` bucket with one expandable `通用资料`
+    library class. It contains independently named groups such as `古代书` or
+    `A 城书`; each whole group explicitly selects one or more characters.
+  - Added atomic repair for imports assigned to the wrong character. The group
+    registry, every entry mirror and all character mount IDs move together;
+    individual cross-group borrowing remains forbidden.
+  - Kept archive, restore, permanent deletion, backup and legacy cleanup aligned
+    with the same whole-group identity. An empty legacy universal bucket is
+    removed during startup without deleting any entry.
+  - Connected the player story loop from scene preparation through manuscript,
+    played-scene review and optional Worldbook growth review. Confirmed story
+    receipts still cannot write Worldbook truth without the visible review step.
+  - Kept Chat, Call and plain-novel generation on typed, bounded Worldbook
+    projections. Model-visible material is filtered by mount, knowledge subject,
+    current topic and character budget; successful non-empty output precedes the
+    delivery receipt.
+  - Simplified the import screen to neutral file-format language and reduced the
+    owner card, file card, paste area and action spacing for one-screen mobile use.
+
+- verified:
+  - `npm run verify:health`
+  - `npm run verify:worldbook-ui`
+  - `npm run verify:worldbook-groups`
+  - `npm run verify:worldbook-runtime`
+  - `npm run verify:worldbook-narrative-growth`
+  - `npm run verify:whole-device-backup`
+  - 390 × 844 browser flow through the Worldbook library and compact import page.
+
+- boundary:
+  - Date, Social, News and other multi-character surfaces are not represented as
+    migrated typed Worldbook consumers in this release. Their existing narrow
+    behavior remains unchanged.
+  - Provider quality and natural prose remain small-circle real-API observations,
+    not deterministic code claims.
+
 ## 2026-08-09 Worldbook Intake And Library Layout (local, uncommitted)
 
 - done:
@@ -46,9 +84,13 @@
 
 - done:
   - Replaced player-authored per-entry mounting with canonical whole-group
-    governance. A custom group belongs to exactly one character or to the fixed
-    `通用区`; one character cannot enable another character's group or borrow one
-    foreign entry.
+    governance. A custom group belongs to exactly one character or to the
+    `通用资料` class; the latter is now an expandable shelf of independent named
+    groups rather than one fixed bucket. Each named universal group can be
+    enabled for several characters through the same mount-ID truth.
+  - Role-owned groups can be reassigned atomically after a mistaken import;
+    universal groups expose their real selected character names and can be
+    archived/restored as complete groups.
   - Embedded Tavern Worldbooks now enter one group named after the imported
     character. Standalone imports, manual entries and reviewed story growth all
     choose a canonical group before commit; empty groups persist independently.
@@ -68,7 +110,7 @@
 
 - verified:
   - `npm run verify:health`
-  - browser flow on `127.0.0.1:5174`: one repair bucket, correct `通用区` label,
+  - browser flow on `127.0.0.1:5174`: one repair bucket, expandable `通用资料` shelf,
     empty-group action, import action and independent-copy group picker; a clean
     reload added no console errors.
 

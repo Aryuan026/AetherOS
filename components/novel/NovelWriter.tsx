@@ -504,15 +504,16 @@ ${chapterText.substring(0, 200000)}
             {/* Header */}
             {/* Removed 'sticky top-0' to fix layout overlap. It is now a standard flex child. */}
             <div className={`flex flex-col border-b border-black/5 shrink-0 z-20 backdrop-blur-md ${activeTheme.bg}/90 transition-all`}>
-                <div className="h-16 flex items-center justify-between px-4 pt-2">
-                    <button onClick={onBack} className="p-3 -ml-3 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
+                <div className="h-14 flex items-center justify-between px-4">
+                    <button onClick={onBack} className="h-10 w-10 -ml-2 rounded-full flex items-center justify-center hover:bg-black/5 active:scale-90 transition-transform">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`w-6 h-6 ${activeTheme.text}`}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                     </button>
                     {/* Title is clickable to open settings */}
-                    <div className="flex flex-col items-center cursor-pointer active:opacity-70 transition-opacity" onClick={onOpenSettings}>
-                        <span className={`font-bold text-base ${activeTheme.text} truncate max-w-[150px]`}>{activeBook.title}</span>
+                    <div className="flex min-w-0 flex-col items-center cursor-pointer active:opacity-70 transition-opacity" onClick={onOpenSettings}>
+                        <span className={`font-bold text-base ${activeTheme.text} truncate max-w-[11rem]`}>{activeBook.title}</span>
                         <div className="flex items-center gap-2">
                             <span className={`text-[10px] opacity-60 ${activeTheme.text}`}>第 {chapterCount} 章</span>
+                            {isPlainNovel && <span className={`rounded-full border border-current px-1.5 py-0.5 text-[9px] opacity-55 ${activeTheme.text}`}>{targetCharId ? '世界书按需' : '本书设定'}</span>}
                             {lastTokenUsage && <span className={`text-[9px] px-1.5 py-0.5 rounded opacity-50 font-mono border border-current ${activeTheme.text}`}>{lastTokenUsage}</span>}
                         </div>
                     </div>
@@ -578,8 +579,9 @@ ${chapterText.substring(0, 200000)}
             </div>}
 
             {/* Content Stream */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar pb-40" ref={scrollRef}>
-                {displaySegments.length === 0 && <div className="text-center py-20 opacity-40"><p className="text-sm italic font-serif">第 {chapterCount} 章<br/>提笔写下新的开始...</p></div>}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-40 no-scrollbar" ref={scrollRef}>
+                <div className="mx-auto w-full max-w-3xl space-y-5">
+                {displaySegments.length === 0 && <div className="rounded-2xl border border-dashed border-black/10 bg-white/35 px-5 py-14 text-center opacity-65"><p className="text-sm italic font-serif">第 {chapterCount} 章<br/>提笔写下新的开始</p></div>}
                 {displaySegments.map(seg => {
                     const isUser = seg.authorId === 'user';
                     const char = !isUser ? characters.find(c => c.id === seg.authorId) : null;
@@ -594,11 +596,11 @@ ${chapterText.substring(0, 200000)}
                     );
 
                     if (role === 'writer') return (
-                        <div key={seg.id} className={`p-6 rounded-sm shadow-sm leading-loose text-justify text-[17px] relative group transition-all ${activeTheme.paper} ${activeTheme.text} ${isUser ? 'border-l-4 border-slate-300' : ''}`}>
+                        <div key={seg.id} className={`p-5 sm:p-7 rounded-2xl shadow-sm leading-8 text-justify text-[16px] sm:text-[17px] relative group transition-all ${activeTheme.paper} ${activeTheme.text} ${isUser ? 'border-l-4 border-slate-300' : ''}`}>
                             {hoverMenu}
-                            <div className="absolute -top-3 left-4 bg-white/90 border border-black/5 px-2 py-0.5 rounded text-[9px] font-sans font-bold uppercase tracking-wider text-slate-500 shadow-sm flex items-center gap-1.5">
+                            {!isPlainNovel && <div className="absolute -top-3 left-4 bg-white/90 border border-black/5 px-2 py-0.5 rounded text-[9px] font-sans font-bold uppercase tracking-wider text-slate-500 shadow-sm flex items-center gap-1.5">
                                 {!isUser && char?.avatar ? <img src={char.avatar} className="w-3 h-3 rounded-full object-cover" /> : null}<span>{writerLabel} 执笔</span>{!isUser && seg.meta?.mood && <span className="bg-slate-100 px-1.5 rounded text-[9px] text-slate-600 normal-case">{seg.meta.mood}</span>}
-                            </div>
+                            </div>}
                             <div className="whitespace-pre-wrap">{seg.content}</div>
                         </div>
                     );
@@ -617,19 +619,22 @@ ${chapterText.substring(0, 200000)}
                     return null;
                 })}
                 {isTyping && <div className="flex justify-center py-4"><div className="flex gap-2"><div className={`w-2 h-2 rounded-full ${activeTheme.button} animate-bounce`}></div><div className={`w-2 h-2 rounded-full ${activeTheme.button} animate-bounce delay-75`}></div><div className={`w-2 h-2 rounded-full ${activeTheme.button} animate-bounce delay-150`}></div></div></div>}
+                </div>
             </div>
 
             {/* Input */}
-            <div className={`absolute bottom-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 z-30 transition-transform duration-300 font-sans shadow-[0_-5px_20px_rgba(0,0,0,0.05)] pb-safe`}>
+            <div className={`absolute bottom-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 z-30 transition-transform duration-300 font-sans shadow-[0_-5px_20px_rgba(0,0,0,0.05)] pb-[max(0.75rem,env(safe-area-inset-bottom))]`}>
+                <div className="mx-auto w-full max-w-3xl">
                 {!isPlainNovel && <div className="flex gap-2 px-4 py-2 text-xs border-b border-slate-100 overflow-x-auto no-scrollbar">
                     <button onClick={() => setGenOptions({...genOptions, write: !genOptions.write})} className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${genOptions.write ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>续写正文</button>
                     <button onClick={() => setGenOptions({...genOptions, comment: !genOptions.comment})} className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${genOptions.comment ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>角色吐槽</button>
                     <button onClick={() => setGenOptions({...genOptions, analyze: !genOptions.analyze})} className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${genOptions.analyze ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>深度分析</button>
                 </div>}
-                <div className="p-3 flex gap-2 items-end">
+                <div className="px-4 pt-2.5 flex gap-2 items-end">
                     <textarea value={inputText} onChange={e => setInputText(e.target.value)} placeholder={isPlainNovel ? '写本轮要求，或留空继续正文…' : (genOptions.write ? (inputText.trim() ? "输入剧情大纲..." : "输入指令或留空AI续写...") : "输入讨论内容...")} className="flex-1 bg-slate-100 rounded-2xl px-4 py-3 text-sm text-slate-700 outline-none resize-none max-h-32 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200 transition-all" rows={1} style={{ minHeight: '44px' }} />
                     {canReroll && !isTyping && !inputText.trim() && <button onClick={handleReroll} className={`w-11 h-11 rounded-full flex items-center justify-center text-slate-500 bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all shrink-0`}><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg></button>}
                     <button onClick={handleSend} disabled={isTyping || (!inputText.trim() && !isPlainNovel && !genOptions.write)} className={`w-11 h-11 rounded-full flex items-center justify-center text-white shadow-md active:scale-95 transition-all shrink-0 ${inputText.trim() || isPlainNovel || genOptions.write ? activeTheme.button : 'bg-slate-300'}`}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" /></svg></button>
+                </div>
                 </div>
             </div>
 

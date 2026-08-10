@@ -6,7 +6,8 @@ import type {
 } from '../types.ts';
 
 export const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
-export const UNIVERSAL_WORLDBOOK_GROUP_NAME = '通用区';
+export const UNIVERSAL_WORLDBOOK_GROUP_NAME = '通用资料';
+export const LEGACY_UNIVERSAL_WORLDBOOK_GROUP_NAME = '通用区';
 export const UNIVERSAL_WORLDBOOK_GROUP_ID = 'worldbook-group:universal';
 export const UNASSIGNED_WORLDBOOK_GROUP_NAME = '待归组';
 
@@ -142,25 +143,30 @@ export const createWorldbookGroupAssignment = (input: {
     sortOrder?: number;
     pinned?: boolean;
 }): WorldbookGroupAssignment => {
-    if (input.owner.kind === 'universal') {
-        return {
-            id: UNIVERSAL_WORLDBOOK_GROUP_ID,
-            name: UNIVERSAL_WORLDBOOK_GROUP_NAME,
-            owner: { kind: 'universal' },
-            sortOrder: input.sortOrder,
-            pinned: input.pinned,
-        };
-    }
     const name = normalizeWorldbookCategory(input.name);
-    const ownerKey = `character:${input.owner.charId}`;
+    const ownerKey = input.owner.kind === 'universal'
+        ? 'universal'
+        : `character:${input.owner.charId}`;
     return {
         id: input.id || `worldbook-group:${ownerKey}:${input.now ?? Date.now()}:${Math.random().toString(36).slice(2, 9)}`,
         name,
-        owner: { kind: 'character', charId: input.owner.charId },
+        owner: input.owner.kind === 'universal'
+            ? { kind: 'universal' }
+            : { kind: 'character', charId: input.owner.charId },
         sortOrder: input.sortOrder,
         pinned: input.pinned,
     };
 };
+
+export const worldbookGroupDisplayName = (
+    group: Pick<WorldbookGroupAssignment, 'id' | 'name' | 'owner'>,
+): string => (
+    group.owner.kind === 'universal'
+    && group.id === UNIVERSAL_WORLDBOOK_GROUP_ID
+    && group.name.trim() === LEGACY_UNIVERSAL_WORLDBOOK_GROUP_NAME
+        ? '未分类'
+        : group.name
+);
 
 export const isWorldbookGroupOwnedByCharacter = (
     group: WorldbookGroupAssignment | undefined,
@@ -175,13 +181,9 @@ export const isWorldbookGroupAvailableToCharacter = (
 export const isWorldbookGroupEnabledForCharacter = (
     group: WorldbookGroupAssignment | undefined,
     character: Pick<CharacterProfile, 'id' | 'mountedWorldbookGroupIds'>,
-): boolean => Boolean(group && (
-    group.owner.kind === 'universal'
-    || (
-        group.owner.charId === character.id
-        && character.mountedWorldbookGroupIds?.includes(group.id)
-    )
-));
+): boolean => Boolean(group
+    && isWorldbookGroupAvailableToCharacter(group, character.id)
+    && character.mountedWorldbookGroupIds?.includes(group.id));
 
 export const worldbookGroupOwnerLabel = (
     group: WorldbookGroupAssignment | undefined,

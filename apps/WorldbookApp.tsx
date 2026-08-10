@@ -15,6 +15,7 @@ import {
   PushPin,
   Sparkle,
   Trash,
+  UsersThree,
 } from '@phosphor-icons/react';
 import { useOS } from '../context/OSContext';
 import type { Worldbook, WorldbookGroupAssignment, WorldGrowthCandidate } from '../types';
@@ -33,6 +34,7 @@ import {
   createWorldbookGroupAssignment,
   isBuiltInWorldbook,
   normalizeWorldbookCategory,
+  worldbookGroupDisplayName,
   worldbookGroupOwnerLabel,
 } from '../utils/worldbookGroups';
 import {
@@ -47,6 +49,7 @@ import {
 import { resolveAiTaskRoute } from '../utils/aiRuntime';
 
 const BUILT_IN_ROOT_KEY = 'built-in-root';
+const UNIVERSAL_ROOT_KEY = 'universal-root';
 const builtInCategoryKey = (category: string) => `built-in:${category}`;
 const customCategoryKey = (category: string) => `custom:${category}`;
 
@@ -73,6 +76,8 @@ const WorldbookApp: React.FC = () => {
     activeCharacterId,
     addWorldbook,
     updateWorldbookGroupLayout,
+    reassignWorldbookGroup,
+    setUniversalWorldbookGroupCharacters,
     addImportedWorldbooks,
     addPlayerWorldbooks,
     addWorldbookSupplement,
@@ -118,6 +123,9 @@ const WorldbookApp: React.FC = () => {
   const [copyTarget, setCopyTarget] = useState<Worldbook | null>(null);
   const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null);
   const [dragOrderIds, setDragOrderIds] = useState<string[] | null>(null);
+  const [managedGroup, setManagedGroup] = useState<WorldbookGroupAssignment | null>(null);
+  const [managedCharacterIds, setManagedCharacterIds] = useState<string[]>([]);
+  const [savingManagedGroup, setSavingManagedGroup] = useState(false);
   const dragOrderRef = useRef<string[] | null>(null);
 
   const visiblePublished = useMemo(
@@ -150,7 +158,7 @@ const WorldbookApp: React.FC = () => {
         owner: { kind: 'character', charId: activeCharacter.id },
       });
     }
-    return createWorldbookGroupAssignment({ name: '通用区', owner: { kind: 'universal' } });
+    return createWorldbookGroupAssignment({ name: '新分组', owner: { kind: 'universal' } });
   }, [activeCharacterId, characters, groupOptions]);
   const [copyGroup, setCopyGroup] = useState<WorldbookGroupAssignment | null>(null);
   const supplementLinksByEntryId = useMemo(() => new Map(
@@ -184,7 +192,7 @@ const WorldbookApp: React.FC = () => {
     const loose: Worldbook[] = [];
     archivedEntries.forEach(entry => {
       const group = entry.group;
-      if (!group || group.owner.kind !== 'character') {
+      if (!group) {
         loose.push(entry);
         return;
       }
@@ -246,6 +254,47 @@ const WorldbookApp: React.FC = () => {
       ...groupIndex.customGroups.filter(group => !dragOrderIds.includes(group.id)),
     ] as typeof groupIndex.customGroups;
   }, [dragOrderIds, groupIndex.customGroups]);
+  const orderedUniversalGroups = useMemo(
+    () => orderedCustomGroups.filter(group => group.owner?.kind === 'universal'),
+    [orderedCustomGroups],
+  );
+  const orderedCharacterGroups = useMemo(
+    () => orderedCustomGroups.filter(group => group.owner?.kind !== 'universal'),
+    [orderedCustomGroups],
+  );
+
+  const openGroupManagement = (group: WorldbookGroupAssignment) => {
+    setManagedGroup(group);
+    setManagedCharacterIds(group.owner.kind === 'universal'
+      ? characters
+        .filter(character => character.mountedWorldbookGroupIds?.includes(group.id))
+        .map(character => character.id)
+      : [group.owner.charId]);
+  };
+
+  const saveGroupManagement = async () => {
+    if (!managedGroup || savingManagedGroup) return;
+    setSavingManagedGroup(true);
+    try {
+      if (managedGroup.owner.kind === 'universal') {
+        await setUniversalWorldbookGroupCharacters(managedGroup.id, managedCharacterIds);
+        addToast('这组通用资料的使用对象已更新', 'success');
+      } else {
+        const nextOwnerCharId = managedCharacterIds[0];
+        if (!nextOwnerCharId) throw new Error('请选择这组资料属于哪位角色');
+        if (nextOwnerCharId !== managedGroup.owner.charId) {
+          await reassignWorldbookGroup(managedGroup.id, nextOwnerCharId);
+          addToast('这组世界书已经换到新的角色名下', 'success');
+        }
+      }
+      setManagedGroup(null);
+      await refreshWorkspace();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : '这组资料没有保存成功', 'error');
+    } finally {
+      setSavingManagedGroup(false);
+    }
+  };
 
   const beginGroupDrag = (event: React.PointerEvent<HTMLButtonElement>, groupId: string) => {
     if (!worldbookGroups.some(group => group.id === groupId)) return;
@@ -565,6 +614,126 @@ const WorldbookApp: React.FC = () => {
     );
   };
 
+  const renderCustomGroup = (group: (typeof groupIndex.customGroups)[number]) => {
+    const key = customCategoryKey(group.id);
+    const expanded = expandedSections.has(key);
+    const assignment = group.owner ? {
+      id: group.id,
+      name: group.category,
+      owner: group.owner,
+      sortOrder: group.sortOrder,
+      pinned: group.pinned,
+    } satisfies WorldbookGroupAssignment : undefined;
+    const displayName = assignment ? worldbookGroupDisplayName(assignment) : group.category;
+    const mountedNames = assignment
+      ? characters
+        .filter(character => character.mountedWorldbookGroupIds?.includes(assignment.id))
+        .map(character => character.name)
+      : [];
+    const statusLabel = group.requiresAssignment
+      ? '旧版或早期导入中缺少归属 · 暂不参与运行'
+      : assignment?.owner.kind === 'universal'
+        ? mountedNames.length
+          ? `${mountedNames.slice(0, 2).join('、')}${mountedNames.length > 2 ? `等 ${mountedNames.length} 位` : ''}正在使用`
+          : '尚未给角色使用'
+        : worldbookGroupOwnerLabel(assignment, characters);
+    return (
+      <div
+        key={group.id}
+        data-worldbook-group-id={group.id}
+        className={`overflow-hidden rounded-[24px] border bg-white/50 shadow-sm backdrop-blur-md transition ${draggedGroupId === group.id ? 'scale-[1.01] border-violet-300 shadow-md' : 'border-white/70'}`}
+      >
+        <div className="flex items-center pr-2">
+          <button type="button" onClick={() => toggleSection(key)} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left" aria-expanded={expanded}>
+            <CaretDown className={`shrink-0 text-violet-400 transition-transform ${expanded ? 'rotate-180' : ''}`} size={16} weight="bold" />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5">
+                <span className="truncate text-sm font-bold text-slate-600">{displayName}</span>
+                {group.pinned && <PushPin size={12} weight="fill" className="shrink-0 text-violet-500" />}
+              </span>
+              <span className="mt-0.5 block truncate text-[9px] text-slate-400">{statusLabel}</span>
+            </span>
+            <span className="rounded-full bg-white/70 px-2 py-0.5 text-[9px] font-bold text-slate-400">{group.books.length}</span>
+          </button>
+          {assignment && (
+            <>
+              <button
+                type="button"
+                onClick={() => openGroupManagement(assignment)}
+                aria-label={assignment.owner.kind === 'universal' ? `选择${displayName}给谁使用` : `修改${displayName}的角色归属`}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-300 active:bg-violet-50 active:text-violet-500"
+                data-worldbook-group-access
+              >
+                <UsersThree size={16} weight="duotone" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void togglePinnedGroup(assignment)}
+                aria-label={group.pinned ? `取消置顶${displayName}` : `置顶${displayName}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${group.pinned ? 'bg-violet-100 text-violet-600' : 'text-slate-300'}`}
+              >
+                <PushPin size={15} weight={group.pinned ? 'fill' : 'regular'} />
+              </button>
+              {expanded && (
+                <button
+                  type="button"
+                  onClick={() => setArchiveGroupTarget(assignment)}
+                  aria-label={group.books.length ? `归档分组${displayName}` : `删除分组${displayName}`}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-300 active:bg-red-50 active:text-red-500"
+                >
+                  <Archive size={15} />
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label={`拖动${displayName}`}
+                onPointerDown={event => beginGroupDrag(event, group.id)}
+                onPointerMove={moveGroupDrag}
+                onPointerUp={() => void finishGroupDrag()}
+                onPointerCancel={() => { dragOrderRef.current = null; setDragOrderIds(null); setDraggedGroupId(null); }}
+                className="flex h-9 w-9 shrink-0 touch-none items-center justify-center rounded-full text-slate-300 active:bg-violet-50 active:text-violet-500"
+              >
+                <DotsSixVertical size={18} weight="bold" />
+              </button>
+            </>
+          )}
+          {group.requiresAssignment && (
+            <>
+              <button
+                type="button"
+                onClick={() => setUnassignedRepair({
+                  entryIds: group.books.map(book => book.id),
+                  group: defaultGroup,
+                })}
+                aria-label="整理待归组资料"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-violet-500 active:bg-violet-50"
+                data-worldbook-unassigned-repair
+              >
+                <FolderOpen size={16} weight="duotone" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnassignedArchiveIds(group.books.map(book => book.id))}
+                aria-label="归档全部待归组资料"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-300 active:bg-red-50 active:text-red-500"
+                data-worldbook-unassigned-archive
+              >
+                <Archive size={15} />
+              </button>
+            </>
+          )}
+        </div>
+        {expanded && (
+          <div className="space-y-2.5 px-3 pb-3 pt-0">
+            {group.books.length
+              ? group.books.map(renderBook)
+              : <div className="rounded-2xl border border-dashed border-violet-100 py-4 text-center text-[10px] text-slate-400">这组还是空的，可以把新条目或副本放进来。</div>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (editorState) {
     return (
       <WorldbookEntryEditor
@@ -878,107 +1047,29 @@ const WorldbookApp: React.FC = () => {
 
           {groupIndex.customGroups.length > 0 ? (
             <div className="space-y-3" data-worldbook-custom-groups>
-              {orderedCustomGroups.map(group => {
-                const key = customCategoryKey(group.id);
-                const expanded = expandedSections.has(key);
-                const assignment = group.owner ? {
-                  id: group.id,
-                  name: group.category,
-                  owner: group.owner,
-                  sortOrder: group.sortOrder,
-                  pinned: group.pinned,
-                } satisfies WorldbookGroupAssignment : undefined;
-                return (
-                  <div
-                    key={group.id}
-                    data-worldbook-group-id={group.id}
-                    className={`overflow-hidden rounded-[24px] border bg-white/50 shadow-sm backdrop-blur-md transition ${draggedGroupId === group.id ? 'scale-[1.01] border-violet-300 shadow-md' : 'border-white/70'}`}
+              {orderedUniversalGroups.length > 0 && (
+                <section className="overflow-hidden rounded-[26px] border border-violet-100/80 bg-white/45 shadow-sm backdrop-blur-xl" data-worldbook-universal-drawer>
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(UNIVERSAL_ROOT_KEY)}
+                    className="flex w-full items-center gap-3 px-4 py-4 text-left"
+                    aria-expanded={expandedSections.has(UNIVERSAL_ROOT_KEY)}
                   >
-                    <div className="flex items-center pr-2">
-                      <button type="button" onClick={() => toggleSection(key)} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left" aria-expanded={expanded}>
-                        <CaretDown className={`shrink-0 text-violet-400 transition-transform ${expanded ? 'rotate-180' : ''}`} size={16} weight="bold" />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5">
-                            <span className="truncate text-sm font-bold text-slate-600">{group.category}</span>
-                            {group.pinned && <PushPin size={12} weight="fill" className="shrink-0 text-violet-500" />}
-                          </span>
-                          <span className="mt-0.5 block text-[9px] text-slate-400">
-                            {group.requiresAssignment
-                              ? '旧版或早期导入中缺少归属 · 暂不参与运行'
-                              : worldbookGroupOwnerLabel(assignment, characters)}
-                          </span>
-                        </span>
-                        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[9px] font-bold text-slate-400">{group.books.length}</span>
-                      </button>
-                      {assignment && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => void togglePinnedGroup(assignment)}
-                            aria-label={group.pinned ? `取消置顶${group.category}` : `置顶${group.category}`}
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${group.pinned ? 'bg-violet-100 text-violet-600' : 'text-slate-300'}`}
-                          >
-                            <PushPin size={15} weight={group.pinned ? 'fill' : 'regular'} />
-                          </button>
-                          {expanded && assignment.owner.kind === 'character' && (
-                            <button
-                              type="button"
-                              onClick={() => setArchiveGroupTarget(assignment)}
-                              aria-label={group.books.length ? `归档分组${group.category}` : `删除分组${group.category}`}
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-300 active:bg-red-50 active:text-red-500"
-                            >
-                              <Archive size={15} />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            aria-label={`拖动${group.category}`}
-                            onPointerDown={event => beginGroupDrag(event, group.id)}
-                            onPointerMove={moveGroupDrag}
-                            onPointerUp={() => void finishGroupDrag()}
-                            onPointerCancel={() => { dragOrderRef.current = null; setDragOrderIds(null); setDraggedGroupId(null); }}
-                            className="flex h-9 w-9 shrink-0 touch-none items-center justify-center rounded-full text-slate-300 active:bg-violet-50 active:text-violet-500"
-                          >
-                            <DotsSixVertical size={18} weight="bold" />
-                          </button>
-                        </>
-                      )}
-                      {group.requiresAssignment && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setUnassignedRepair({
-                              entryIds: group.books.map(book => book.id),
-                              group: defaultGroup,
-                            })}
-                            aria-label="整理待归组资料"
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-violet-500 active:bg-violet-50"
-                            data-worldbook-unassigned-repair
-                          >
-                            <FolderOpen size={16} weight="duotone" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setUnassignedArchiveIds(group.books.map(book => book.id))}
-                            aria-label="归档全部待归组资料"
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-300 active:bg-red-50 active:text-red-500"
-                            data-worldbook-unassigned-archive
-                          >
-                            <Archive size={15} />
-                          </button>
-                        </>
-                      )}
+                    <CaretDown className={`shrink-0 text-violet-500 transition-transform ${expandedSections.has(UNIVERSAL_ROOT_KEY) ? 'rotate-180' : ''}`} size={17} weight="bold" />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-sm text-slate-700">通用资料</strong>
+                      <span className="mt-1 block text-[10px] text-slate-400">{orderedUniversalGroups.length} 组 · 每组可以给多位角色使用</span>
+                    </span>
+                    <UsersThree size={19} className="text-violet-400" weight="duotone" />
+                  </button>
+                  {expandedSections.has(UNIVERSAL_ROOT_KEY) && (
+                    <div className="space-y-3 border-t border-white/70 px-3 pb-3 pt-3">
+                      {orderedUniversalGroups.map(renderCustomGroup)}
                     </div>
-                    {expanded && (
-                      <div className="space-y-2.5 px-3 pb-3 pt-0">
-                        {group.books.length
-                          ? group.books.map(renderBook)
-                          : <div className="rounded-2xl border border-dashed border-violet-100 py-4 text-center text-[10px] text-slate-400">这组还是空的，可以把新条目或副本放进来。</div>}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  )}
+                </section>
+              )}
+              {orderedCharacterGroups.map(renderCustomGroup)}
             </div>
           ) : (
             <div className="rounded-[28px] border border-dashed border-violet-200 bg-white/45 px-5 py-8 text-center">
@@ -1067,6 +1158,57 @@ const WorldbookApp: React.FC = () => {
             <Sparkle size={20} weight="fill" /> <span><strong className="block text-sm">AI 智能整理</strong><span className="text-[10px] text-violet-400">把已有文字整理成一条或一组</span></span>
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(managedGroup)}
+        title={managedGroup?.owner.kind === 'universal' ? '选择使用这组资料的角色' : '修改分组归属'}
+        onClose={() => { if (!savingManagedGroup) setManagedGroup(null); }}
+        footer={managedGroup ? (
+          <div className="flex w-full gap-3">
+            <button type="button" onClick={() => setManagedGroup(null)} disabled={savingManagedGroup} className="flex-1 rounded-2xl bg-slate-100 py-3 text-sm font-bold text-slate-600 disabled:opacity-50">取消</button>
+            <button type="button" onClick={() => void saveGroupManagement()} disabled={savingManagedGroup} className="flex-1 rounded-2xl bg-violet-600 py-3 text-sm font-bold text-white disabled:opacity-50">
+              {savingManagedGroup ? '保存中' : '保存'}
+            </button>
+          </div>
+        ) : undefined}
+      >
+        {managedGroup && (
+          <div className="space-y-4 py-2" data-worldbook-group-access-modal>
+            <div className="rounded-2xl bg-violet-50 px-4 py-3 text-xs leading-5 text-violet-700">
+              <strong className="block">{worldbookGroupDisplayName(managedGroup)}</strong>
+              <span className="mt-1 block text-violet-500">
+                {managedGroup.owner.kind === 'universal'
+                  ? '可以同时给多位角色使用；未选中的角色不会读取这一组。'
+                  : '角色分组只归属一位角色，换人后会连同整组资料一起移动。'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {characters.map(character => {
+                const selected = managedCharacterIds.includes(character.id);
+                return (
+                  <button
+                    type="button"
+                    key={character.id}
+                    onClick={() => setManagedCharacterIds(current => (
+                      managedGroup.owner.kind === 'universal'
+                        ? selected
+                          ? current.filter(id => id !== character.id)
+                          : [...current, character.id]
+                        : [character.id]
+                    ))}
+                    className={`rounded-2xl border px-3 py-3 text-xs font-bold ${selected ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'}`}
+                  >
+                    {character.name}
+                  </button>
+                );
+              })}
+            </div>
+            {characters.length === 0 && (
+              <div className="py-5 text-center text-xs text-slate-400">通讯录里还没有可以选择的角色。</div>
+            )}
+          </div>
+        )}
       </Modal>
 
       <Modal

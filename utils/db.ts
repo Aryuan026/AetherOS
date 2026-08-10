@@ -25,9 +25,10 @@ import {
     archiveDiaryEvidence,
     archiveSocialPostEvidence,
 } from './dailyArchive/lifeSurfaceSync';
+import { UNIVERSAL_WORLDBOOK_GROUP_ID } from './worldbookGroups';
 
 const DB_NAME = 'AetherOS_Data';
-const DB_VERSION = 43; // Player-owned Worldbook group registry
+const DB_VERSION = 44; // Editable group ownership and per-character universal mounts
 
 const STORE_CHARACTERS = 'characters';
 const STORE_MESSAGES = 'messages';
@@ -286,6 +287,30 @@ const openDB = (): Promise<IDBDatabase> => {
           const wakeLogStore = db.createObjectStore(STORE_COMPANION_WAKEUP_LOGS, { keyPath: 'id' });
           wakeLogStore.createIndex('charId', 'charId', { unique: false });
           wakeLogStore.createIndex('ruleId', 'ruleId', { unique: false });
+      }
+
+      // Before v44 the universal Worldbook group was implicitly active for every
+      // character. Materialize that released behavior once so players can now
+      // edit the same canonical mount list without losing existing access.
+      if (event.oldVersion > 0 && event.oldVersion < 44) {
+          const upgradeTransaction = (event.target as IDBOpenDBRequest).transaction;
+          const characterStore = upgradeTransaction?.objectStore(STORE_CHARACTERS);
+          const cursorRequest = characterStore?.openCursor();
+          if (cursorRequest) {
+              cursorRequest.onsuccess = () => {
+                  const cursor = cursorRequest.result;
+                  if (!cursor) return;
+                  const character = cursor.value as CharacterProfile;
+                  const mounted = [...new Set(character.mountedWorldbookGroupIds || [])];
+                  if (!mounted.includes(UNIVERSAL_WORLDBOOK_GROUP_ID)) {
+                      cursor.update({
+                          ...character,
+                          mountedWorldbookGroupIds: [...mounted, UNIVERSAL_WORLDBOOK_GROUP_ID],
+                      });
+                  }
+                  cursor.continue();
+              };
+          }
       }
     };
   });
@@ -586,10 +611,6 @@ const persistWorldbookGroupArchive = async (input: {
     };
     const groupErrors = validateWorldbookGroupAssignment(group);
     if (groupErrors.length) throw new Error(`Worldbook group rejected: ${groupErrors.join('; ')}`);
-    if (group.owner.kind !== 'character') {
-        throw new Error('通用区不能整组归档，请单独整理其中的条目');
-    }
-    const ownerCharId = group.owner.charId;
     const entries = input.entries.map(item => ({
         entry: normalizeWorldbookEntry(item.entry),
         expectedActiveRevisionId: item.expectedActiveRevisionId,
@@ -637,8 +658,11 @@ const persistWorldbookGroupArchive = async (input: {
             writesQueued = true;
             try {
                 if (!storedGroup) throw new Error('这个分组已经不存在');
-                const sameOwner = storedGroup.owner.kind === 'character'
-                    && storedGroup.owner.charId === ownerCharId;
+                const sameOwner = storedGroup.owner.kind === group.owner.kind
+                    && (group.owner.kind === 'universal' || (
+                        storedGroup.owner.kind === 'character'
+                        && storedGroup.owner.charId === group.owner.charId
+                    ));
                 if (storedGroup.name.trim() !== group.name || !sameOwner) {
                     throw new Error('这个分组已经发生变化，请刷新后再试');
                 }
@@ -716,11 +740,8 @@ const persistWorldbookGroupRestore = async (input: {
     };
     const groupErrors = validateWorldbookGroupAssignment(group);
     if (groupErrors.length) throw new Error(`Worldbook group rejected: ${groupErrors.join('; ')}`);
-    if (group.owner.kind !== 'character') {
-        throw new Error('只有角色分组可以整组恢复');
-    }
     if (!input.entries.length) throw new Error('这个归档分组里已经没有可恢复的资料');
-    const ownerCharId = group.owner.charId;
+    const ownerCharId = group.owner.kind === 'character' ? group.owner.charId : undefined;
     const entries = input.entries.map(item => ({
         entry: normalizeWorldbookEntry(item.entry),
         expectedActiveRevisionId: item.expectedActiveRevisionId,
@@ -730,8 +751,11 @@ const persistWorldbookGroupRestore = async (input: {
     }
     entries.forEach(({ entry, expectedActiveRevisionId }) => {
         const entryGroup = entry.group;
-        const sameOwner = entryGroup?.owner.kind === 'character'
-            && entryGroup.owner.charId === ownerCharId;
+        const sameOwner = entryGroup?.owner.kind === group.owner.kind
+            && (group.owner.kind === 'universal' || (
+                entryGroup?.owner.kind === 'character'
+                && entryGroup.owner.charId === group.owner.charId
+            ));
         if (entryGroup?.id !== group.id || entryGroup.name !== group.name || !sameOwner) {
             throw new Error(`Worldbook ${entry.id} does not belong to group ${group.id}`);
         }
@@ -777,12 +801,18 @@ const persistWorldbookGroupRestore = async (input: {
             if (loaded !== 3 || writesQueued) return;
             writesQueued = true;
             try {
-                if (!characters.some(character => character.id === ownerCharId)) {
+                if (
+                    ownerCharId
+                    && !characters.some(character => character.id === ownerCharId)
+                ) {
                     throw new Error('原角色已经不存在，暂时不能恢复这组世界书');
                 }
                 if (storedGroup) {
-                    const sameOwner = storedGroup.owner.kind === 'character'
-                        && storedGroup.owner.charId === ownerCharId;
+                    const sameOwner = storedGroup.owner.kind === group.owner.kind
+                        && (group.owner.kind === 'universal' || (
+                            storedGroup.owner.kind === 'character'
+                            && storedGroup.owner.charId === group.owner.charId
+                        ));
                     if (storedGroup.name.trim() !== group.name || !sameOwner) {
                         throw new Error('这个分组名称已经被其他资料使用，请刷新后再试');
                     }
@@ -1475,6 +1505,189 @@ const persistWorldbookProjectionDeliveryReceipt = async (
     });
 };
 
+const persistWorldbookGroupOwnerChange = async (input: {
+    groupId: string;
+    nextOwnerCharId: string;
+}): Promise<void> => {
+    const groupId = input.groupId.trim();
+    const nextOwnerCharId = input.nextOwnerCharId.trim();
+    if (!groupId || !nextOwnerCharId) throw new Error('请选择新的角色归属');
+
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_WORLDBOOK_GROUPS,
+        STORE_WORLDBOOKS,
+        STORE_CHARACTERS,
+    ], 'readwrite');
+    const groupStore = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const groupsRequest = groupStore.getAll();
+    const entriesRequest = worldbookStore.getAll();
+    const charactersRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let loaded = 0;
+        let writesQueued = false;
+        let failure: Error | undefined;
+        let groups: WorldbookGroupAssignment[] = [];
+        let entries: Worldbook[] = [];
+        let characters: CharacterProfile[] = [];
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try { transaction.abort(); } catch { reject(failure); }
+        };
+        const markLoaded = () => {
+            loaded += 1;
+            if (loaded !== 3 || writesQueued) return;
+            writesQueued = true;
+            try {
+                const group = groups.find(item => item.id === groupId);
+                if (!group) throw new Error('这个分组已经不存在');
+                if (group.owner.kind !== 'character') {
+                    throw new Error('通用资料请直接选择哪些角色可以使用');
+                }
+                if (!characters.some(character => character.id === nextOwnerCharId)) {
+                    throw new Error('新的角色已经不存在');
+                }
+                const nameCollision = groups.some(item => (
+                    item.id !== group.id
+                    && item.owner.kind === 'character'
+                    && item.owner.charId === nextOwnerCharId
+                    && item.name.trim() === group.name.trim()
+                ));
+                if (nameCollision) {
+                    throw new Error('这个角色已经有同名分组，请先修改其中一个分组名称');
+                }
+
+                const nextGroup: WorldbookGroupAssignment = {
+                    ...group,
+                    owner: { kind: 'character', charId: nextOwnerCharId },
+                };
+                const groupedEntries = entries.filter(entry => entry.group?.id === groupId);
+                const groupedEntryIds = new Set(groupedEntries.map(entry => entry.id));
+                groupStore.put(nextGroup);
+                groupedEntries.forEach(entry => worldbookStore.put({
+                    ...entry,
+                    category: nextGroup.name,
+                    group: nextGroup,
+                }));
+                characters.forEach(character => {
+                    const mountedGroupIds = (character.mountedWorldbookGroupIds || [])
+                        .filter(id => id !== groupId);
+                    if (character.id === nextOwnerCharId) mountedGroupIds.push(groupId);
+                    characterStore.put({
+                        ...character,
+                        mountedWorldbookGroupIds: [...new Set(mountedGroupIds)],
+                        mountedWorldbooks: character.mountedWorldbooks?.filter(
+                            mounted => !groupedEntryIds.has(mounted.id),
+                        ),
+                    });
+                });
+            } catch (error) {
+                abortWith(error, '世界书分组归属没有修改成功');
+            }
+        };
+        groupsRequest.onsuccess = () => {
+            groups = (groupsRequest.result || []) as WorldbookGroupAssignment[];
+            markLoaded();
+        };
+        groupsRequest.onerror = () => abortWith(groupsRequest.error, '世界书分组读取失败');
+        entriesRequest.onsuccess = () => {
+            entries = (entriesRequest.result || []) as Worldbook[];
+            markLoaded();
+        };
+        entriesRequest.onerror = () => abortWith(entriesRequest.error, '世界书条目读取失败');
+        charactersRequest.onsuccess = () => {
+            characters = (charactersRequest.result || []) as CharacterProfile[];
+            markLoaded();
+        };
+        charactersRequest.onerror = () => abortWith(charactersRequest.error, '角色资料读取失败');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, '世界书分组归属没有修改成功');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, '世界书分组归属修改已取消'),
+        );
+    });
+};
+
+const persistUniversalWorldbookGroupCharacters = async (input: {
+    groupId: string;
+    characterIds: readonly string[];
+}): Promise<void> => {
+    const groupId = input.groupId.trim();
+    const selectedIds = new Set(input.characterIds.map(id => id.trim()).filter(Boolean));
+    if (!groupId) throw new Error('通用世界书分组不存在');
+
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_WORLDBOOK_GROUPS,
+        STORE_CHARACTERS,
+    ], 'readwrite');
+    const groupStore = transaction.objectStore(STORE_WORLDBOOK_GROUPS);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const groupRequest = groupStore.get(groupId);
+    const charactersRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let groupLoaded = false;
+        let charactersLoaded = false;
+        let writesQueued = false;
+        let failure: Error | undefined;
+        let group: WorldbookGroupAssignment | undefined;
+        let characters: CharacterProfile[] = [];
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try { transaction.abort(); } catch { reject(failure); }
+        };
+        const queueWrites = () => {
+            if (writesQueued || !groupLoaded || !charactersLoaded) return;
+            writesQueued = true;
+            try {
+                if (!group || group.owner.kind !== 'universal') {
+                    throw new Error('这里只能调整通用世界书');
+                }
+                const knownIds = new Set(characters.map(character => character.id));
+                if ([...selectedIds].some(id => !knownIds.has(id))) {
+                    throw new Error('选择中包含已经不存在的角色');
+                }
+                characters.forEach(character => {
+                    const mounted = (character.mountedWorldbookGroupIds || [])
+                        .filter(id => id !== groupId);
+                    if (selectedIds.has(character.id)) mounted.push(groupId);
+                    characterStore.put({
+                        ...character,
+                        mountedWorldbookGroupIds: [...new Set(mounted)],
+                    });
+                });
+            } catch (error) {
+                abortWith(error, '通用世界书使用角色没有保存成功');
+            }
+        };
+        groupRequest.onsuccess = () => {
+            group = groupRequest.result as WorldbookGroupAssignment | undefined;
+            groupLoaded = true;
+            queueWrites();
+        };
+        groupRequest.onerror = () => abortWith(groupRequest.error, '通用世界书读取失败');
+        charactersRequest.onsuccess = () => {
+            characters = (charactersRequest.result || []) as CharacterProfile[];
+            charactersLoaded = true;
+            queueWrites();
+        };
+        charactersRequest.onerror = () => abortWith(charactersRequest.error, '角色资料读取失败');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, '通用世界书使用角色没有保存成功');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, '通用世界书使用角色修改已取消'),
+        );
+    });
+};
+
 export const DB = {
   deleteDB: async (): Promise<void> => {
       return new Promise((resolve, reject) => {
@@ -1525,6 +1738,16 @@ export const DB = {
       group: WorldbookGroupAssignment;
       entries: readonly { entry: Worldbook; expectedActiveRevisionId: string }[];
   }): Promise<CharacterProfile[]> => persistWorldbookGroupArchive(input),
+
+  reassignWorldbookGroup: async (input: {
+      groupId: string;
+      nextOwnerCharId: string;
+  }): Promise<void> => persistWorldbookGroupOwnerChange(input),
+
+  setUniversalWorldbookGroupCharacters: async (input: {
+      groupId: string;
+      characterIds: readonly string[];
+  }): Promise<void> => persistUniversalWorldbookGroupCharacters(input),
 
   restoreWorldbookGroup: async (input: {
       group: WorldbookGroupAssignment;

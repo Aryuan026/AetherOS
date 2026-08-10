@@ -51,7 +51,7 @@ const WorldbookSmartInputScreen: React.FC<Props> = ({
         provider: route.provider,
       });
       setDrafts(result.drafts);
-      if (mode === 'group' && group.owner.kind === 'character') {
+      if (mode === 'group') {
         setGroup(createWorldbookGroupAssignment({
           name: result.suggestedGroupName,
           owner: group.owner,

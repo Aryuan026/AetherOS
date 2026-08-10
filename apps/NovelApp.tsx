@@ -8,7 +8,7 @@ import { processImage } from '../utils/file';
 import { NOVEL_THEMES, analyzeWriterPersonaSimple } from '../utils/novelUtils';
 import NovelWorkspace, { type NovelWorkspacePanel } from '../components/novel/NovelWorkspace';
 import { Robot, MaskHappy, PenNib, FolderOpen } from '@phosphor-icons/react';
-import { SHELL_APP_HEADER_CONTENT_TOP, SHELL_APP_HEADER_HEIGHT } from '../components/shell/shellLayout';
+import AppHeader, { AppHeaderAddButton, AppHeaderIconButton } from '../components/shell/AppHeader';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const NovelApp: React.FC = () => {
@@ -230,32 +230,26 @@ const NovelApp: React.FC = () => {
     if (view === 'library') {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans">
-                <div className="bg-white/80 backdrop-blur-md flex items-center px-6 border-b border-slate-200 shrink-0 sticky top-0 z-20" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
-                    <div className="flex justify-between items-center w-full">
-                        <button onClick={() => setView('shelf')} className="p-2 -ml-2 rounded-full hover:bg-slate-100 active:scale-90 transition-transform">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
-                        </button>
-                        <span className="font-bold text-slate-800 text-lg tracking-wide">角色库</span>
-                        <div className="w-8"></div>
-                    </div>
-                </div>
+                <AppHeader title="角色库" subtitle="笔友会可用角色" onBack={() => setView('shelf')} center titleClassName="text-base font-bold tracking-wide text-slate-800" />
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
+                <div className="flex-1 overflow-y-auto px-4 py-5 pb-10 no-scrollbar">
+                    <div className="mx-auto max-w-3xl space-y-7">
                     <section>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Robot size={14} /> 系统角色 (AI Collaborators)</h3>
-                        <div className="grid grid-cols-2 gap-4">
+                        <h3 className="text-[11px] font-bold text-slate-400 tracking-[0.12em] mb-3 flex items-center gap-2"><Robot size={14} /> 生活圈角色</h3>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                             {novelScopedCharacters.map(c => (
-                                <div key={c.id} onClick={() => { setLibraryPersonaChar(c); setShowPersonaModal(true); }} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center gap-3 cursor-pointer hover:shadow-md transition-all active:scale-95">
-                                    <img src={c.avatar} className="w-16 h-16 rounded-full object-cover border-2 border-slate-50" />
-                                    <div className="text-center"><div className="font-bold text-slate-700 text-sm">{c.name}</div><div className="text-[10px] text-slate-400 mt-1 px-2 py-0.5 bg-slate-50 rounded-full">共创者</div></div>
+                                <div key={c.id} onClick={() => { setLibraryPersonaChar(c); setShowPersonaModal(true); }} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center gap-2.5 cursor-pointer hover:shadow-md transition-all active:scale-[0.98]">
+                                    <img src={c.avatar} className="w-14 h-14 rounded-full object-cover border-2 border-slate-50" />
+                                    <div className="text-center"><div className="font-bold text-slate-700 text-sm truncate max-w-full">{c.name}</div><div className="text-[10px] text-slate-400 mt-1">可作为共创者</div></div>
                                 </div>
                             ))}
                         </div>
                     </section>
                     <section>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><MaskHappy size={14} /> 历史剧中人 (From History)</h3>
-                        {historyProtagonists.length === 0 ? <div className="text-center py-8 text-slate-400 text-xs">暂无历史角色数据</div> : <div className="grid grid-cols-1 gap-3">{historyProtagonists.map((p, idx) => (<div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><div className="flex justify-between items-start mb-2"><span className="font-bold text-slate-800">{p.name}</span><span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100">{p.role}</span></div><p className="text-xs text-slate-500 leading-relaxed line-clamp-3">{p.description || "暂无描述"}</p></div>))}</div>}
+                        <h3 className="text-[11px] font-bold text-slate-400 tracking-[0.12em] mb-3 flex items-center gap-2"><MaskHappy size={14} /> 剧中人</h3>
+                        {historyProtagonists.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 py-7 text-center text-xs text-slate-400">还没有可用的剧中人</div> : <div className="grid grid-cols-1 gap-3">{historyProtagonists.map((p, idx) => (<div key={idx} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"><div className="flex justify-between items-start gap-3 mb-2"><span className="font-bold text-sm text-slate-800 truncate">{p.name}</span><span className="shrink-0 text-[10px] bg-slate-100 px-2 py-0.5 rounded-full text-slate-500">{p.role}</span></div><p className="text-xs text-slate-500 leading-relaxed line-clamp-3">{p.description || "暂无描述"}</p></div>))}</div>}
                     </section>
+                    </div>
                 </div>
 
                 <Modal isOpen={showPersonaModal} title={libraryPersonaChar?.name || '角色风格'} onClose={() => setShowPersonaModal(false)}>
@@ -272,26 +266,27 @@ const NovelApp: React.FC = () => {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans relative">
                 <ConfirmDialog isOpen={!!confirmDialog} title={confirmDialog?.title || ''} message={confirmDialog?.message || ''} variant={confirmDialog?.variant} confirmText={confirmDialog?.confirmText || (confirmDialog?.onConfirm ? '确认' : 'OK')} onConfirm={confirmDialog?.onConfirm || (() => setConfirmDialog(null))} onCancel={() => setConfirmDialog(null)} />
-                <div className="flex items-center justify-between px-6 bg-white/80 backdrop-blur-md z-20 shrink-0 border-b border-slate-100" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
-                    <button onClick={closeApp} className="p-3 -ml-3 rounded-full hover:bg-slate-100 active:scale-95 transition-all"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-slate-600"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg></button>
-                    <span className="font-black text-2xl text-slate-800 tracking-tight">我的手稿</span>
-                    <div className="flex gap-2">
-                        <button onClick={() => setView('library')} className="w-10 h-10 bg-white text-slate-600 border border-slate-200 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform hover:bg-slate-50"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg></button>
-                        <button onClick={() => { setView('create'); resetTempState(); }} className="w-10 h-10 bg-slate-900 text-white rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform hover:bg-black"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></button>
-                    </div>
-                </div>
-                <div className="p-6 grid grid-cols-2 gap-5 overflow-y-auto pb-24">
+                <AppHeader
+                    title="我的手稿"
+                    subtitle="笔友会"
+                    onBack={closeApp}
+                    center
+                    titleClassName="text-lg font-bold tracking-wide text-slate-800"
+                    right={<div className="flex items-center gap-1"><AppHeaderIconButton title="角色库" onClick={() => setView('library')} className="border border-slate-200 bg-white text-slate-600 shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-[18px] h-[18px]"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg></AppHeaderIconButton><AppHeaderAddButton title="新建手稿" onClick={() => { setView('create'); resetTempState(); }} /></div>}
+                />
+                <div className="flex-1 overflow-y-auto px-4 py-5 pb-10 no-scrollbar">
+                    <div className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {novels.map(book => {
                         const style = getTheme(book.coverStyle);
                         const wordCount = book.segments.reduce((acc, seg) => acc + (seg.type === 'story' ? seg.content.length : 0), 0);
                         const bgStyle = book.coverImage ? { backgroundImage: `url(${book.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
                         return (
-                            <div key={book.id} onClick={() => { setActiveBookId(book.id); setWorkspacePanel('manuscript'); setView('write'); }} className="group relative aspect-auto min-h-[14rem] bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-100 cursor-pointer flex flex-col">
-                                <div className={`h-28 shrink-0 ${style.bg} relative p-4 flex flex-col justify-end`} style={bgStyle}>
+                            <div key={book.id} onClick={() => { setActiveBookId(book.id); setWorkspacePanel('manuscript'); setView('write'); }} className="group relative min-h-[13rem] bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border border-slate-100 cursor-pointer flex flex-col active:scale-[0.98]">
+                                <div className={`h-24 shrink-0 ${style.bg} relative p-4 flex flex-col justify-end`} style={bgStyle}>
                                     <div className={`absolute inset-0 ${book.coverImage ? 'bg-black/30' : ''}`}></div>
                                     <div className="relative z-10"><h3 className={`font-bold text-lg leading-tight line-clamp-2 ${book.coverImage ? 'text-white drop-shadow-md' : style.text}`}>{book.title}</h3>{book.subtitle && <p className={`text-[10px] font-bold opacity-80 uppercase tracking-wide truncate ${book.coverImage ? 'text-white' : style.text}`}>{book.subtitle}</p>}</div>
                                 </div>
-                                <div className="p-4 flex-1 flex flex-col justify-between">
+                                <div className="p-3.5 flex-1 flex flex-col justify-between">
                                     <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-3">{book.summary || '暂无简介...'}</p>
                                     <div className="flex items-center justify-between pt-3 border-t border-slate-50"><div className="flex items-center gap-2"><div className="flex -space-x-2">{novelScopedCharacters.filter(c => book.collaboratorIds.includes(c.id)).map(c => (<img key={c.id} src={c.avatar} className="w-6 h-6 rounded-full border-2 border-white object-cover" />))}</div>{book.writingMode === 'plain_novel' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">纯小说</span>}</div><span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-0.5 rounded-full">{(wordCount/1000).toFixed(1)}k 字</span></div>
                                 </div>
@@ -299,7 +294,8 @@ const NovelApp: React.FC = () => {
                             </div>
                         );
                     })}
-                    {novels.length === 0 && <div className="col-span-2 flex flex-col items-center justify-center h-64 text-slate-300 gap-3"><PenNib size={48} className="opacity-50" /><span className="text-sm font-sans">点击右上角，开始创作</span></div>}
+                    {novels.length === 0 && <div className="col-span-full flex min-h-[16rem] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white/60 text-slate-400 gap-3"><PenNib size={34} className="opacity-50" /><span className="text-sm">从第一页开始写吧</span><button type="button" onClick={() => { setView('create'); resetTempState(); }} className="mt-1 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white">新建手稿</button></div>}
+                    </div>
                 </div>
             </div>
         );
@@ -310,12 +306,9 @@ const NovelApp: React.FC = () => {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans relative">
                 <ConfirmDialog isOpen={!!confirmDialog} title={confirmDialog?.title || ''} message={confirmDialog?.message || ''} variant={confirmDialog?.variant} confirmText={confirmDialog?.confirmText || (confirmDialog?.onConfirm ? '确认' : 'OK')} onConfirm={confirmDialog?.onConfirm || (() => setConfirmDialog(null))} onCancel={() => setConfirmDialog(null)} />
-                <div className="flex items-center justify-between px-4 bg-white border-b border-slate-200 shrink-0 sticky top-0 z-20" style={{ height: SHELL_APP_HEADER_HEIGHT, paddingTop: SHELL_APP_HEADER_CONTENT_TOP }}>
-                    <button onClick={() => setView(view === 'create' ? 'shelf' : 'write')} className="text-slate-500 text-sm">取消</button>
-                    <span className="font-bold text-slate-800">{view === 'create' ? '新建书稿' : '小说设定'}</span>
-                    <button onClick={view === 'create' ? handleCreateBook : handleSaveSettings} className="bg-slate-800 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-md active:scale-95 transition-transform">保存</button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-20">
+                <AppHeader title={view === 'create' ? '新建手稿' : '小说设定'} subtitle="笔友会" onBack={() => setView(view === 'create' ? 'shelf' : 'write')} center titleClassName="text-base font-bold tracking-wide text-slate-800" right={<button type="button" onClick={view === 'create' ? handleCreateBook : handleSaveSettings} className="h-8 rounded-full bg-slate-900 px-3 text-xs font-bold text-white shadow-sm active:scale-95">保存</button>} />
+                <div className="flex-1 overflow-y-auto px-4 py-5 pb-12 no-scrollbar">
+                <div className="mx-auto max-w-2xl space-y-7">
                     <section className="space-y-4">
                         <input value={tempTitle} onChange={e => setTempTitle(e.target.value)} placeholder="书名" className="w-full text-2xl font-bold bg-transparent border-b border-slate-200 py-2 outline-none focus:border-slate-800 font-serif" />
                         <input value={tempSubtitle} onChange={e => setTempSubtitle(e.target.value)} placeholder="卷名/副标题" className="w-full text-sm font-bold bg-transparent border-b border-slate-200 py-2 outline-none focus:border-slate-800 text-slate-600" />
@@ -357,6 +350,7 @@ const NovelApp: React.FC = () => {
                         <div className="flex justify-between items-center"><label className="text-xs font-bold text-slate-400 uppercase">剧中人</label><div className="flex gap-2"><button onClick={() => setIsProtoImportOpen(true)} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold hover:bg-indigo-100 border border-indigo-100 flex items-center gap-1"><FolderOpen size={12} /> 导入</button><button onClick={() => openProtagonistEdit()} className="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-600 hover:bg-slate-200 transition-colors">+ 添加</button></div></div>
                         <div className="grid grid-cols-2 gap-3">{tempProtagonists.map((p, idx) => (<ProtagonistCard key={p.id} p={p} onClick={() => openProtagonistEdit(p)} onDelete={() => setTempProtagonists(tempProtagonists.filter((_, i) => i !== idx))} />))}</div>
                     </section>
+                </div>
                 </div>
                 <Modal isOpen={isProtagonistModalOpen} title="编辑角色" onClose={() => setIsProtagonistModalOpen(false)} footer={<button onClick={saveProtagonist} className="w-full py-3 bg-slate-800 text-white font-bold rounded-2xl">保存</button>}>{editingProtagonist && (<div className="space-y-4"><div><label className="text-xs font-bold text-slate-400 uppercase block mb-1">姓名</label><input value={editingProtagonist.name} onChange={e => setEditingProtagonist({...editingProtagonist, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold" /></div><div><label className="text-xs font-bold text-slate-400 uppercase block mb-1">定位</label><input value={editingProtagonist.role} onChange={e => setEditingProtagonist({...editingProtagonist, role: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="主角 / 反派" /></div><div><label className="text-xs font-bold text-slate-400 uppercase block mb-1">设定</label><textarea value={editingProtagonist.description} onChange={e => setEditingProtagonist({...editingProtagonist, description: e.target.value})} className="w-full h-32 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm resize-none leading-relaxed" /></div></div>)}</Modal>
                 <Modal isOpen={isProtoImportOpen} title="导入角色" onClose={() => setIsProtoImportOpen(false)}><div className="flex p-1 bg-slate-100 rounded-xl mb-3"><button onClick={() => setImportTab('system')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${importTab === 'system' ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>生活圈角色</button><button onClick={() => setImportTab('history')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${importTab === 'history' ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>历史角色</button></div><div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-3 p-1">{importTab === 'system' && novelScopedCharacters.map(c => (<button key={c.id} onClick={() => handleImportProtagonist({name: c.name, role: '客串', description: c.description})} className="w-full flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-200 shadow-sm active:scale-95 transition-all text-left"><img src={c.avatar} className="w-8 h-8 rounded-full object-cover" /><div className="flex-1 min-w-0"><div className="font-bold text-sm text-slate-700">{c.name}</div><div className="text-[10px] text-slate-400 truncate">{c.description}</div></div></button>))}{importTab === 'history' && historyProtagonists.map((p, idx) => (<button key={`hist-${idx}`} onClick={() => handleImportProtagonist(p)} className="w-full flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-200 shadow-sm active:scale-95 transition-all text-left"><div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 border border-slate-200">{p.name[0]}</div><div className="flex-1 min-w-0"><div className="font-bold text-sm text-slate-700">{p.name}</div><div className="text-[10px] text-slate-400 truncate">{p.role} - {p.description || "无描述"}</div></div></button>))}</div></Modal>
