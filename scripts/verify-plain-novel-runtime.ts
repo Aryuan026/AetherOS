@@ -72,7 +72,6 @@ const book: NovelBook = {
   collaboratorIds: [character.id],
   protagonists: [{ id: 'p1', name: '林霁', role: '主角', description: '谨慎的修表师' }],
   segments: [],
-  writingMode: 'plain_novel',
   createdAt: 1,
   lastActiveAt: 1,
 };
@@ -95,12 +94,22 @@ assert.match(prompt, /直接交付可以接进手稿的中文小说正文/u);
 assert.match(prompt, new RegExp(BUILT_IN_DREAMWORLD.name, 'u'));
 
 const writerSource = readFileSync(join(process.cwd(), 'components/novel/NovelWriter.tsx'), 'utf8');
-assert.ok(writerSource.includes("activeBook.writingMode === 'plain_novel'"));
 assert.ok(writerSource.includes("authorId: 'system'"));
 assert.ok(writerSource.includes('creativeSchemeDelivery'));
 assert.ok(writerSource.includes('preparePlainNovelCreativeScheme'));
 assert.ok(writerSource.includes("consumer: worldbookConsumer"));
 assert.ok(writerSource.indexOf('await persistSegments([...contextSegments, ...newAiSegments])') < writerSource.lastIndexOf('await recordWorldbookRuntimeProjectionDelivery'));
-assert.ok(writerSource.includes("if (!isPlainNovel && inputText.trim())"), 'plain-novel instructions must not be stored as manuscript prose');
+assert.ok(!writerSource.includes('activeBook.writingMode'), 'manuscript must not branch into a permanent role-coauthor mode');
+assert.ok(!writerSource.includes('buildPrompt('), 'manuscript must not use the legacy role-as-author prompt');
+assert.ok(!writerSource.includes("authorId: 'user'"), 'round instructions must not be stored as manuscript prose');
+assert.ok(writerSource.includes('manuscriptSegments.length > 0 && <article'), 'current prose must render as one continuous manuscript page');
+assert.ok(writerSource.includes('materialCharacters.length > 1'), 'multiple material scopes must expose an explicit selector');
+assert.ok(!writerSource.includes("role === 'commenter'"));
+assert.ok(!writerSource.includes("执笔"));
+
+const novelUtilsSource = readFileSync(join(process.cwd(), 'utils/novelUtils.ts'), 'utf8');
+assert.ok(!novelUtilsSource.includes('analyzeWriterPersonaSimple'));
+assert.ok(!novelUtilsSource.includes('反趋同协议'));
+assert.ok(!novelUtilsSource.includes('你的写作人格'));
 
 console.log('plain novel prose + typed Worldbook runtime: OK');

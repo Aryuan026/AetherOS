@@ -16,7 +16,7 @@ Live Worldbook foundation and first runtime bridge:
   grouping layer above schemes. Keep the player library aligned with Worldbook's
   vertical drawers, quiet import control, persistent pinning and drag order so a large
   imported library does not collapse into a two-column card grid.
-- Use Pen Pal `plain_novel` as the first CreativeScheme consumer. Compile the scheme
+- Use Manuscript long-form prose as the first CreativeScheme consumer. Compile the scheme
   before dynamic Worldbook/story/recent prose, use scheme model hints instead of
   character traits for pure-novel sampling, and record the exact scheme revision only
   after usable prose is durably saved. Keep Chat, Date, mainline, IF and Little Attic
@@ -50,12 +50,14 @@ Live Worldbook foundation and first runtime bridge:
   and let a confirmed played scene create only a reviewable new-entry growth
   candidate. Do not auto-copy receipt facts, accept, mount, or expose backend
   NPC knowledge to Chat or the player.
-- Pen Pal manuscripts now provide two explicit paths: `plain_novel` renders only
-  continuous prose and uses a typed `world_director` Worldbook projection;
-  `character_collaboration` keeps the existing role-authored co-writing surface
-  and uses a character-safe projection. In both paths the request-start scope is
-  frozen and a Worldbook delivery receipt is written only after usable prose is
-  durably persisted.
+- Manuscripts now own one clean long-form path: continuous prose compiled from the
+  selected CreativeScheme, typed Worldbook projection, current story state, and
+  recent manuscript. A selected relationship character supplies cast/material
+  scope only; MBTI, relationship tone, and role dialogue voice never become the
+  novelist's style. The request-start scope is frozen and a Worldbook delivery
+  receipt is written only after usable prose is durably persisted. Role invitations,
+  fanfic, and co-reading remain separate future interactions rather than permanent
+  book modes.
 - Keep Date, Social, News, proactive messages, broader World Director/DM
   execution, broader CreativeScheme compilation, worldbook generator, player-safe story-status
   projection, and vector ranking as later blocks.

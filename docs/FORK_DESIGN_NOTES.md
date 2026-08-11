@@ -213,15 +213,16 @@ Original local sample behavior:
 Fork behavior:
 
 - Dock apps are now `Message`, `电话`, `相册`, and `设置`.
-- Launcher pages are explicit internal groups instead of raw 8-app chunks, but
-  the group names are not rendered on the phone desktop:
-  - `日常陪伴`: `通讯录`, `同行计划`, `时光簿`, `朋友圈`, `交换日记`, `书房`, `群聊`, `档案`.
-  - `剧情游玩`: `见面`, `查手机`, `攻略本`, `都市人生`, `TRPG`, `世界书`, `特别时光`.
-  - `创作整理`: `聊天装扮`, `外观`, `小组件`, `小小窝`, `笔友会`, `写歌`, `存钱罐`, `使用帮助`.
-- Any app not assigned to a group falls into a generated `更多` page, so future
-  additions do not silently disappear.
+- Internal groups seed one calm default order; Launcher still paginates that
+  visible order in chunks of at most eight, and never renders the group names:
+  - `日常陪伴核心`: `通讯录`, `同行计划`, `时光簿`, `朋友圈`, `交换日记`, `书房`, `群聊`, `档案`.
+  - `关系与共同生活`: `见面`, `小小窝`, `查手机`, `特别时光`, `对话日历`, `旧日迁入`.
+  - `独立故事创作`: `手稿`, `世界书`, `创作方案`, `TRPG`, `都市人生`, `攻略本`, `写歌`.
+  - `装扮与工具`: `聊天装扮`, `外观`, `小组件`, `存钱罐`, `使用帮助`.
+- Any app not assigned to a group is appended visibly to the default order, so
+  future additions do not silently disappear.
 - The desktop keeps the visual calm: no visible section labels such as
-  `日常陪伴`, `剧情游玩`, or `创作整理`.
+  `日常陪伴`, `关系与共同生活`, or `故事创作`.
 
 Design principle:
 

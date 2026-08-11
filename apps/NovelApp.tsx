@@ -5,14 +5,14 @@ import { NovelBook, NovelProtagonist, CharacterProfile } from '../types';
 import Modal from '../components/os/Modal';
 import ConfirmDialog from '../components/os/ConfirmDialog';
 import { processImage } from '../utils/file';
-import { NOVEL_THEMES, analyzeWriterPersonaSimple } from '../utils/novelUtils';
+import { NOVEL_THEMES } from '../utils/novelUtils';
 import NovelWorkspace, { type NovelWorkspacePanel } from '../components/novel/NovelWorkspace';
 import { Robot, MaskHappy, PenNib, FolderOpen } from '@phosphor-icons/react';
 import AppHeader, { AppHeaderAddButton, AppHeaderIconButton } from '../components/shell/AppHeader';
 import { filterCharactersForPersonaSurface, resolvePersonaRouteScope } from '../utils/personaRouteScope';
 
 const NovelApp: React.FC = () => {
-    const { closeApp, novels, addNovel, updateNovel, deleteNovel, characters, updateCharacter, apiConfig, addToast, userProfile, registerBackHandler } = useOS();
+    const { closeApp, novels, addNovel, updateNovel, deleteNovel, characters, apiConfig, addToast, userProfile, registerBackHandler } = useOS();
     
     // Navigation State
     const [view, setView] = useState<'shelf' | 'create' | 'write' | 'settings' | 'library'>('shelf');
@@ -25,7 +25,6 @@ const NovelApp: React.FC = () => {
     const [tempSubtitle, setTempSubtitle] = useState('');
     const [tempSummary, setTempSummary] = useState('');
     const [tempWorld, setTempWorld] = useState('');
-    const [tempWritingMode, setTempWritingMode] = useState<NonNullable<NovelBook['writingMode']>>('plain_novel');
     const [selectedCollaborators, setSelectedCollaborators] = useState<Set<string>>(new Set());
     const [tempProtagonists, setTempProtagonists] = useState<NovelProtagonist[]>([]);
     
@@ -117,7 +116,6 @@ const NovelApp: React.FC = () => {
             title: tempTitle, subtitle: tempSubtitle, summary: tempSummary,
             coverStyle: activeTheme.id, coverImage: tempCoverImage, worldSetting: tempWorld,
             collaboratorIds: Array.from(selectedCollaborators), protagonists: tempProtagonists,
-            writingMode: tempWritingMode,
             segments: [], createdAt: Date.now(), lastActiveAt: Date.now()
         };
         try {
@@ -137,7 +135,6 @@ const NovelApp: React.FC = () => {
         setTempSubtitle(activeBook.subtitle || '');
         setTempSummary(activeBook.summary);
         setTempWorld(activeBook.worldSetting);
-        setTempWritingMode(activeBook.writingMode || 'character_collaboration');
         setActiveTheme(getTheme(activeBook.coverStyle));
         setTempCoverImage(activeBook.coverImage || '');
         setSelectedCollaborators(new Set(activeBook.collaboratorIds));
@@ -152,7 +149,6 @@ const NovelApp: React.FC = () => {
             title: tempTitle, subtitle: tempSubtitle, summary: tempSummary,
             worldSetting: tempWorld, coverStyle: activeTheme.id, coverImage: tempCoverImage,
             collaboratorIds: Array.from(selectedCollaborators), protagonists: tempProtagonists,
-            writingMode: tempWritingMode,
             segments: activeBook.segments, lastActiveAt: Date.now()
         };
         await updateNovel(activeBook.id, updated);
@@ -161,7 +157,7 @@ const NovelApp: React.FC = () => {
     };
 
     const resetTempState = () => {
-        setTempTitle(''); setTempSubtitle(''); setTempSummary(''); setTempWorld(''); setTempWritingMode('plain_novel'); setSelectedCollaborators(new Set()); setTempProtagonists([]); setTempCoverImage(''); setCoverInputUrl('');
+        setTempTitle(''); setTempSubtitle(''); setTempSummary(''); setTempWorld(''); setSelectedCollaborators(new Set()); setTempProtagonists([]); setTempCoverImage(''); setCoverInputUrl('');
     };
 
     const handleDeleteBook = async (id: string) => {
@@ -230,7 +226,7 @@ const NovelApp: React.FC = () => {
     if (view === 'library') {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans">
-                <AppHeader title="角色库" subtitle="笔友会可用角色" onBack={() => setView('shelf')} center titleClassName="text-base font-bold tracking-wide text-slate-800" />
+                <AppHeader title="角色资料" subtitle="手稿可用范围" onBack={() => setView('shelf')} center titleClassName="text-base font-bold tracking-wide text-slate-800" />
 
                 <div className="flex-1 overflow-y-auto px-4 py-5 pb-10 no-scrollbar">
                     <div className="mx-auto max-w-3xl space-y-7">
@@ -240,7 +236,7 @@ const NovelApp: React.FC = () => {
                             {novelScopedCharacters.map(c => (
                                 <div key={c.id} onClick={() => { setLibraryPersonaChar(c); setShowPersonaModal(true); }} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center gap-2.5 cursor-pointer hover:shadow-md transition-all active:scale-[0.98]">
                                     <img src={c.avatar} className="w-14 h-14 rounded-full object-cover border-2 border-slate-50" />
-                                    <div className="text-center"><div className="font-bold text-slate-700 text-sm truncate max-w-full">{c.name}</div><div className="text-[10px] text-slate-400 mt-1">可作为共创者</div></div>
+                                    <div className="text-center"><div className="font-bold text-slate-700 text-sm truncate max-w-full">{c.name}</div><div className="text-[10px] text-slate-400 mt-1">可提供设定与世界资料</div></div>
                                 </div>
                             ))}
                         </div>
@@ -252,9 +248,9 @@ const NovelApp: React.FC = () => {
                     </div>
                 </div>
 
-                <Modal isOpen={showPersonaModal} title={libraryPersonaChar?.name || '角色风格'} onClose={() => setShowPersonaModal(false)}>
+                <Modal isOpen={showPersonaModal} title={libraryPersonaChar?.name || '角色资料'} onClose={() => setShowPersonaModal(false)}>
                     <div className="max-h-[60vh] overflow-y-auto space-y-4 p-1">
-                        {libraryPersonaChar ? <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{libraryPersonaChar.writerPersona || analyzeWriterPersonaSimple(libraryPersonaChar)}</div> : null}
+                        {libraryPersonaChar ? <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{libraryPersonaChar.description || libraryPersonaChar.worldview || '暂时没有补充资料'}</div> : null}
                     </div>
                 </Modal>
             </div>
@@ -268,11 +264,11 @@ const NovelApp: React.FC = () => {
                 <ConfirmDialog isOpen={!!confirmDialog} title={confirmDialog?.title || ''} message={confirmDialog?.message || ''} variant={confirmDialog?.variant} confirmText={confirmDialog?.confirmText || (confirmDialog?.onConfirm ? '确认' : 'OK')} onConfirm={confirmDialog?.onConfirm || (() => setConfirmDialog(null))} onCancel={() => setConfirmDialog(null)} />
                 <AppHeader
                     title="我的手稿"
-                    subtitle="笔友会"
+                    subtitle="长篇写作"
                     onBack={closeApp}
                     center
                     titleClassName="text-lg font-bold tracking-wide text-slate-800"
-                    right={<div className="flex items-center gap-1"><AppHeaderIconButton title="角色库" onClick={() => setView('library')} className="border border-slate-200 bg-white text-slate-600 shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-[18px] h-[18px]"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg></AppHeaderIconButton><AppHeaderAddButton title="新建手稿" onClick={() => { setView('create'); resetTempState(); }} /></div>}
+                    right={<div className="flex items-center gap-1"><AppHeaderIconButton title="角色资料" onClick={() => setView('library')} className="border border-slate-200 bg-white text-slate-600 shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-[18px] h-[18px]"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg></AppHeaderIconButton><AppHeaderAddButton title="新建手稿" onClick={() => { setView('create'); resetTempState(); }} /></div>}
                 />
                 <div className="flex-1 overflow-y-auto px-4 py-5 pb-10 no-scrollbar">
                     <div className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -288,7 +284,7 @@ const NovelApp: React.FC = () => {
                                 </div>
                                 <div className="p-3.5 flex-1 flex flex-col justify-between">
                                     <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-3">{book.summary || '暂无简介...'}</p>
-                                    <div className="flex items-center justify-between pt-3 border-t border-slate-50"><div className="flex items-center gap-2"><div className="flex -space-x-2">{novelScopedCharacters.filter(c => book.collaboratorIds.includes(c.id)).map(c => (<img key={c.id} src={c.avatar} className="w-6 h-6 rounded-full border-2 border-white object-cover" />))}</div>{book.writingMode === 'plain_novel' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">纯小说</span>}</div><span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-0.5 rounded-full">{(wordCount/1000).toFixed(1)}k 字</span></div>
+                                    <div className="flex items-center justify-between pt-3 border-t border-slate-50"><div className="flex -space-x-2">{novelScopedCharacters.filter(c => book.collaboratorIds.includes(c.id)).map(c => (<img key={c.id} src={c.avatar} className="w-6 h-6 rounded-full border-2 border-white object-cover" />))}</div><span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-0.5 rounded-full">{(wordCount/1000).toFixed(1)}k 字</span></div>
                                 </div>
                                 <button onClick={(e) => { e.stopPropagation(); handleDeleteBook(book.id); }} className="absolute top-2 right-2 text-slate-400/50 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white/20 backdrop-blur rounded-full">×</button>
                             </div>
@@ -306,26 +302,13 @@ const NovelApp: React.FC = () => {
         return (
             <div className="h-full w-full bg-slate-50 flex flex-col font-sans relative">
                 <ConfirmDialog isOpen={!!confirmDialog} title={confirmDialog?.title || ''} message={confirmDialog?.message || ''} variant={confirmDialog?.variant} confirmText={confirmDialog?.confirmText || (confirmDialog?.onConfirm ? '确认' : 'OK')} onConfirm={confirmDialog?.onConfirm || (() => setConfirmDialog(null))} onCancel={() => setConfirmDialog(null)} />
-                <AppHeader title={view === 'create' ? '新建手稿' : '小说设定'} subtitle="笔友会" onBack={() => setView(view === 'create' ? 'shelf' : 'write')} center titleClassName="text-base font-bold tracking-wide text-slate-800" right={<button type="button" onClick={view === 'create' ? handleCreateBook : handleSaveSettings} className="h-8 rounded-full bg-slate-900 px-3 text-xs font-bold text-white shadow-sm active:scale-95">保存</button>} />
+                <AppHeader title={view === 'create' ? '新建手稿' : '手稿设定'} subtitle="长篇写作" onBack={() => setView(view === 'create' ? 'shelf' : 'write')} center titleClassName="text-base font-bold tracking-wide text-slate-800" right={<button type="button" onClick={view === 'create' ? handleCreateBook : handleSaveSettings} className="h-8 rounded-full bg-slate-900 px-3 text-xs font-bold text-white shadow-sm active:scale-95">保存</button>} />
                 <div className="flex-1 overflow-y-auto px-4 py-5 pb-12 no-scrollbar">
                 <div className="mx-auto max-w-2xl space-y-7">
                     <section className="space-y-4">
                         <input value={tempTitle} onChange={e => setTempTitle(e.target.value)} placeholder="书名" className="w-full text-2xl font-bold bg-transparent border-b border-slate-200 py-2 outline-none focus:border-slate-800 font-serif" />
                         <input value={tempSubtitle} onChange={e => setTempSubtitle(e.target.value)} placeholder="卷名/副标题" className="w-full text-sm font-bold bg-transparent border-b border-slate-200 py-2 outline-none focus:border-slate-800 text-slate-600" />
                         <textarea value={tempSummary} onChange={e => setTempSummary(e.target.value)} placeholder="一句话简介..." className="w-full h-20 bg-slate-100 rounded-xl p-3 text-sm resize-none outline-none" />
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">写作方式</label>
-                            <div className="grid grid-cols-2 gap-3">
-                                <button type="button" onClick={() => setTempWritingMode('plain_novel')} className={`rounded-2xl border p-3 text-left transition-all ${tempWritingMode === 'plain_novel' ? 'border-slate-800 bg-white shadow-sm' : 'border-slate-200 bg-slate-100/60 text-slate-400'}`}>
-                                    <div className="text-sm font-bold">纯小说</div>
-                                    <p className="mt-1 text-[10px] leading-relaxed">只看正文，适合试文笔与长篇续写。</p>
-                                </button>
-                                <button type="button" onClick={() => setTempWritingMode('character_collaboration')} className={`rounded-2xl border p-3 text-left transition-all ${tempWritingMode === 'character_collaboration' ? 'border-slate-800 bg-white shadow-sm' : 'border-slate-200 bg-slate-100/60 text-slate-400'}`}>
-                                    <div className="text-sm font-bold">角色共创</div>
-                                    <p className="mt-1 text-[10px] leading-relaxed">保留角色执笔、点评与讨论。</p>
-                                </button>
-                            </div>
-                        </div>
                         <div>
                             <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">内页风格</label>
                             <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">{NOVEL_THEMES.map(t => (<button key={t.id} onClick={() => setActiveTheme(t)} className={`w-12 h-16 rounded-md shadow-sm border-2 shrink-0 ${t.bg} ${activeTheme.id === t.id ? 'border-slate-800 scale-105' : 'border-transparent'}`}></button>))}</div>
@@ -343,7 +326,7 @@ const NovelApp: React.FC = () => {
                         <textarea value={tempWorld} onChange={e => setTempWorld(e.target.value)} placeholder="这本书独有的补充设定..." className="w-full h-32 bg-white border border-slate-200 rounded-xl p-3 text-sm resize-none outline-none focus:border-slate-400" />
                     </section>
                     <section className="space-y-4">
-                        <div><label className="text-xs font-bold text-slate-400 uppercase block">{tempWritingMode === 'plain_novel' ? '资料范围（可选）' : '共创者'}</label>{tempWritingMode === 'plain_novel' && <p className="mt-1 text-[10px] leading-relaxed text-slate-400">选择角色后，会按该角色启用的世界书筛选本轮资料；不会让角色以聊天口吻执笔。</p>}</div>
+                        <div><label className="text-xs font-bold text-slate-400 uppercase block">角色资料范围（可选）</label><p className="mt-1 text-[10px] leading-relaxed text-slate-400">选择后会读取该角色可用的世界资料；角色是故事素材或剧中人，不会接管整本书的文风。</p></div>
                         <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">{novelScopedCharacters.map(c => (<div key={c.id} onClick={() => { const s = new Set(selectedCollaborators); if(s.has(c.id)) s.delete(c.id); else s.add(c.id); setSelectedCollaborators(s); }} className={`flex flex-col items-center gap-2 cursor-pointer transition-opacity ${selectedCollaborators.has(c.id) ? 'opacity-100' : 'opacity-50 grayscale'}`}><img src={c.avatar} className="w-12 h-12 rounded-full object-cover shadow-sm" /><span className="text-[10px] font-bold text-slate-600">{c.name}</span></div>))}</div>
                     </section>
                     <section className="space-y-4">
@@ -370,10 +353,9 @@ const NovelApp: React.FC = () => {
                 userProfile={userProfile}
                 apiConfig={apiConfig}
                 onBack={() => setView('shelf')}
-                updateCharacter={updateCharacter}
-                collaborators={collaborators}
+                materialCharacters={collaborators}
                 targetCharId={targetCharId}
-                setTargetCharId={setTargetCharId}
+                onMaterialCharacterChange={setTargetCharId}
                 onOpenSettings={handleEditBookSettings}
             />
         );

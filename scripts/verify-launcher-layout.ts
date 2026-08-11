@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppID } from '../types';
+import { INSTALLED_APPS } from '../constants';
 import {
   DEFAULT_LAUNCHER_APP_ORDER,
   DEFAULT_LAUNCHER_DOCK_APP_IDS,
@@ -57,6 +58,75 @@ assert.equal(movedDock.dockAppIds.indexOf(AppID.Settings), defaults.dockAppIds.i
 const defaultPages = paginateLauncherAppIds(defaults);
 assert.deepEqual(defaultPages.flat(), defaults.appOrder);
 assert.ok(defaultPages.every(page => page.length <= LAUNCHER_APPS_PER_PAGE));
+assert.deepEqual(defaults.appOrder, [
+  // 日常陪伴核心
+  AppID.Character,
+  AppID.CompanionPlan,
+  AppID.Schedule,
+  AppID.Social,
+  AppID.Journal,
+  AppID.Study,
+  AppID.GroupChat,
+  AppID.User,
+  // 关系与共同生活
+  AppID.Date,
+  AppID.Room,
+  AppID.CheckPhone,
+  AppID.SpecialMoments,
+  AppID.DailyArchive,
+  AppID.HistoryImport,
+  // 独立故事创作
+  AppID.Novel,
+  AppID.Worldbook,
+  AppID.CreativeScheme,
+  AppID.Game,
+  AppID.LifeSim,
+  AppID.Guidebook,
+  AppID.Songwriting,
+  // 装扮与工具
+  AppID.ThemeMaker,
+  AppID.Appearance,
+  AppID.Widget,
+  AppID.Bank,
+  AppID.FAQ,
+]);
+assert.deepEqual(defaultPages[0], [
+  AppID.Character,
+  AppID.CompanionPlan,
+  AppID.Schedule,
+  AppID.Social,
+  AppID.Journal,
+  AppID.Study,
+  AppID.GroupChat,
+  AppID.User,
+]);
+assert.deepEqual(defaultPages.slice(1), [
+  [
+    AppID.Date,
+    AppID.Room,
+    AppID.CheckPhone,
+    AppID.SpecialMoments,
+    AppID.DailyArchive,
+    AppID.HistoryImport,
+  ],
+  [
+    AppID.Novel,
+    AppID.Worldbook,
+    AppID.CreativeScheme,
+    AppID.Game,
+    AppID.LifeSim,
+    AppID.Guidebook,
+    AppID.Songwriting,
+  ],
+  [
+    AppID.ThemeMaker,
+    AppID.Appearance,
+    AppID.Widget,
+    AppID.Bank,
+    AppID.FAQ,
+  ],
+]);
+assert.equal(INSTALLED_APPS.find(app => app.id === AppID.Novel)?.name, '手稿');
 const pageBoundaryApp = defaults.appOrder[LAUNCHER_APPS_PER_PAGE - 1];
 const crossedPageBoundary = moveLauncherApp(defaults, pageBoundaryApp, 1);
 assert.equal(
@@ -70,6 +140,17 @@ assert.deepEqual(
   paginateLauncherAppIds(movedPastHidden)[0].slice(0, 2),
   [defaults.appOrder[2], firstGridApp],
   'visible sorting must skip hidden rows so every tap has a visible result',
+);
+const customAcrossGroupBoundary = moveLauncherApp(defaults, AppID.Novel, -1);
+assert.ok(
+  paginateLauncherAppIds(customAcrossGroupBoundary)[1].includes(AppID.Novel),
+  'a moved layout must fall back to the saved flat order instead of reconstructing default groups',
+);
+const hiddenDefaultApp = setLauncherAppHidden(defaults, AppID.Date, true);
+assert.equal(
+  paginateLauncherAppIds(hiddenDefaultApp)[1].length,
+  LAUNCHER_APPS_PER_PAGE,
+  'a hidden app must repaginate the saved visible order in ordinary 8-app pages',
 );
 
 const futureRegisteredApp = 'future_registered_app' as AppID;
@@ -105,6 +186,7 @@ const appearanceSource = read('apps/Appearance.tsx');
 const settingsSource = read('apps/Settings.tsx');
 assert.match(launcherSource, /normalizeLauncherLayout\(theme\.launcherLayout\)/);
 assert.doesNotMatch(launcherSource, /LAUNCHER_APP_GROUPS/);
+assert.doesNotMatch(launcherSource, /日常陪伴核心|关系与共同生活|独立故事创作|装扮与工具/);
 assert.match(launcherSource, /paginateLauncherAppIds\(launcherLayout\)/);
 assert.match(appearanceSource, /<LauncherLayoutEditor/);
 assert.match(appearanceSource, /INSTALLED_APPS\.map\(app =>/);

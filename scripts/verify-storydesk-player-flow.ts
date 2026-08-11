@@ -115,7 +115,8 @@ assert.doesNotMatch(inspectorSource, /MEMORY_POLICY_LABELS|\{run\.routeId\} \/ \
 assert.match(sceneReviewSource, /requiredCharacterId/);
 assert.match(sceneReviewSource, /这一幕要尊重的条件/);
 assert.match(receiptReviewSource, /暂不算作事实/);
-assert.match(writerSource, /narrativeSceneId: activeNarrativeScene\?\.id/);
+assert.match(writerSource, /narrativeSceneId: capturedSceneId/);
+assert.match(writerSource, /runGeneration\(selectedChar, userPrompt, segments, activeNarrativeScene\?\.id\)/);
 assert.match(writerSource, /章节已归档在手稿中/);
 assert.doesNotMatch(writerSource.slice(writerSource.indexOf('const confirmChapterSummary'), writerSource.indexOf('return (')), /updateCharacter|memories/);
 assert.doesNotMatch(novelAppSource, /导入世界书设定|导入世界书/);

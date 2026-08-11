@@ -612,8 +612,6 @@ export interface NovelBook {
     segments: NovelSegment[];
     directives?: NarrativeDirective[];
     narrative?: NovelNarrativeState;
-    /** Plain prose keeps the manuscript free of character-chat/co-writer UI. */
-    writingMode?: 'plain_novel' | 'character_collaboration';
     createdAt: number;
     lastActiveAt: number;
 }
@@ -889,9 +887,6 @@ export interface CharacterProfile {
   refinedMemories?: Record<string, string>;
   activeMemoryMonths?: string[];
   
-  writerPersona?: string;
-  writerPersonaGeneratedAt?: number;
-
   mountedWorldbooks?: {
       id: string;
       title: string;

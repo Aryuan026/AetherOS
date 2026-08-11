@@ -317,9 +317,8 @@ const companionGroup = constantsSource.slice(
     constantsSource.indexOf("id: 'companion'"),
     constantsSource.indexOf("id: 'story'"),
 );
-const studioGroup = constantsSource.slice(constantsSource.indexOf("id: 'studio'"));
-assert.ok(!companionGroup.includes('AppID.DailyArchive'));
-assert.ok(studioGroup.indexOf('AppID.DailyArchive') > studioGroup.indexOf('AppID.HistoryImport'));
+assert.ok(companionGroup.includes('AppID.DailyArchive'));
+assert.ok(companionGroup.indexOf('AppID.DailyArchive') < companionGroup.indexOf('AppID.HistoryImport'));
 const dbSource = readFileSync(new URL('../utils/db.ts', import.meta.url), 'utf8');
 assert.ok(dbSource.includes('archiveLiveMessage'));
 const backupSource = readFileSync(new URL('../context/OSContext.tsx', import.meta.url), 'utf8');

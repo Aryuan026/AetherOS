@@ -320,8 +320,9 @@ assert.ok(!callSource.includes('buildLegacyCoreContextWithMountedWorldbooks'));
 assert.ok(chatSource.lastIndexOf('await recordWorldbookRuntimeProjectionDelivery') > chatSource.indexOf('ChatParser.sanitize(aiContent)'));
 assert.ok(callSource.lastIndexOf('await recordWorldbookRuntimeProjectionDelivery') > callSource.indexOf("if (!assistantText) throw new Error('文本接口返回为空')"));
 
-// Novel keeps its own supplementary setting text, but must not copy raw
-// Worldbook bodies into a second prompt-owned snapshot.
+// Manuscript keeps its own supplementary setting text, but must not copy raw
+// Worldbook bodies into a second prompt-owned snapshot or inherit a character
+// relationship/persona prompt as the novelist's identity.
 const novelSource = readFileSync(join(root, 'apps/NovelApp.tsx'), 'utf8');
 const novelPromptSource = readFileSync(join(root, 'utils/novelUtils.ts'), 'utf8');
 const novelWriterSource = readFileSync(join(root, 'components/novel/NovelWriter.tsx'), 'utf8');
@@ -329,7 +330,7 @@ assert.ok(novelSource.includes('worldSetting: tempWorld'));
 assert.ok(novelSource.includes('本书补充设定'));
 assert.ok(!novelSource.includes('const importWorldbook'));
 assert.ok(!novelSource.includes('isWorldbookModalOpen'));
-assert.ok(novelPromptSource.includes('buildCanonicalCoreContext'));
+assert.ok(!novelPromptSource.includes('buildCanonicalCoreContext'));
 assert.ok(!novelPromptSource.includes('buildLegacyCoreContextWithMountedWorldbooks'));
 assert.ok(novelWriterSource.includes('prepareWorldbookRuntimeProjection'));
 assert.ok(novelWriterSource.includes('recordWorldbookRuntimeProjectionDelivery'));

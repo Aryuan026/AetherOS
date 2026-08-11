@@ -805,11 +805,15 @@
   active mask's `linkedCharacterIds`; it must not delete the character card,
   messages, memories, Worldbook groups, or other masks' links. Generation
   surfaces continue to use current-life roles only.
-- Pen Pal manuscript creation must offer `纯小说` and `角色共创`, defaulting to
-  `纯小说` for new books. Pure-novel user input is an instruction for the next
-  prose continuation and must not be persisted as a manuscript paragraph.
-  Pure-novel output is stored as system-authored prose without role chat,
+- Manuscript creation owns one long-form prose path. Player input is a transient
+  instruction for the next continuation and must not be persisted as a manuscript
+  paragraph. Provider output is stored as system-authored prose without role chat,
   commentary, bubble splitting, or a mandatory romance identity.
+- Selecting a relationship character makes that character available as cast and
+  supplies the exact Worldbook scope. It must not derive a novelist persona from
+  MBTI, relationship tone, memories, or the character's dialogue voice. Future
+  role invitations and fanfic are separate session interactions, not a permanent
+  `NovelBook` mode.
 - A pure novel may run without a character using only per-book supplementary
   setting. If the player chooses a character as its material scope, the runtime
   may read only that exact relationship's mounted Worldbook projection. The

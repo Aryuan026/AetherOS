@@ -44,6 +44,31 @@ export const DEFAULT_LAUNCHER_APP_ORDER = appendMissing(
 
 export const DEFAULT_LAUNCHER_DOCK_APP_IDS = [...DOCK_APPS];
 
+const chunkLauncherAppIds = (appIds: readonly AppID[]): AppID[][] => {
+  const pages: AppID[][] = [];
+  for (let index = 0; index < appIds.length; index += LAUNCHER_APPS_PER_PAGE) {
+    pages.push(appIds.slice(index, index + LAUNCHER_APPS_PER_PAGE));
+  }
+  return pages;
+};
+
+const DEFAULT_LAUNCHER_GROUP_PAGES = (() => {
+  const allowed = new Set(DEFAULT_LAUNCHER_APP_ORDER);
+  const seen = new Set<AppID>();
+  const pages = LAUNCHER_APP_GROUPS.flatMap(group => {
+    const groupAppIds = group.appIds.filter(appId => {
+      if (!allowed.has(appId) || seen.has(appId)) return false;
+      seen.add(appId);
+      return true;
+    });
+    return chunkLauncherAppIds(groupAppIds);
+  });
+  return [
+    ...pages,
+    ...chunkLauncherAppIds(DEFAULT_LAUNCHER_APP_ORDER.filter(appId => !seen.has(appId))),
+  ];
+})();
+
 const currentLauncherCatalog: LauncherLayoutCatalog = {
   installedAppIds,
   defaultAppOrder: DEFAULT_LAUNCHER_APP_ORDER,
@@ -116,12 +141,15 @@ export const isDefaultLauncherLayout = (value: unknown): boolean => {
 /** Launcher and Appearance share this projection so page boundaries cannot drift. */
 export const paginateLauncherAppIds = (value: unknown): AppID[][] => {
   const layout = normalizeLauncherLayout(value);
+  if (
+    layout.hiddenAppIds.length === 0
+    && sameAppOrder(layout.appOrder, DEFAULT_LAUNCHER_APP_ORDER)
+  ) {
+    return DEFAULT_LAUNCHER_GROUP_PAGES.map(page => [...page]);
+  }
   const hiddenIds = new Set(layout.hiddenAppIds);
   const visibleIds = layout.appOrder.filter(appId => !hiddenIds.has(appId));
-  const pages: AppID[][] = [];
-  for (let index = 0; index < visibleIds.length; index += LAUNCHER_APPS_PER_PAGE) {
-    pages.push(visibleIds.slice(index, index + LAUNCHER_APPS_PER_PAGE));
-  }
+  const pages = chunkLauncherAppIds(visibleIds);
   return pages.length > 0 ? pages : [[]];
 };
 

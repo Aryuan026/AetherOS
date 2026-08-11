@@ -1583,7 +1583,6 @@ interface NarrativeDirective {
 ```ts
 interface NovelBook {
   // existing fields...
-  writingMode?: "plain_novel" | "character_collaboration";
   directives?: NarrativeDirective[];
 }
 ```
@@ -1593,12 +1592,12 @@ Compatibility:
 - No IndexedDB migration is required for this first slice because
   `NovelBook.directives` is optional.
 - Existing novel records without `directives` remain valid.
-- Existing novel records without `writingMode` are interpreted as
-  `character_collaboration`; newly created books default to `plain_novel`.
-- In `plain_novel`, player input is a transient generation instruction. Only
+- Player input is a transient generation instruction. Only
   accepted provider prose is appended as a `NovelSegment` with
   `authorId: "system"`. A typed Worldbook delivery receipt may be written only
   after those segments have been persisted.
+- `NovelBook` has no permanent writing mode. Selected relationship characters
+  provide cast/material scope only and do not own the manuscript's prose style.
 - Future `咨询台` work may either store accepted directives inside a target
   `NovelBook` or add a dedicated object store after the UX is confirmed.
 - IF-line directives must use `memoryPolicy: "dream_material"` and must not be

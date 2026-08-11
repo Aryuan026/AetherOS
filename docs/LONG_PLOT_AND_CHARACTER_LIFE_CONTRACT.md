@@ -85,8 +85,8 @@ The first visible slice is deliberately an inspector rather than a generator:
 
 The deterministic narrative fixture now covers inspection isolation with two
 progress bundles and one unscoped legacy directive. The phone UI was checked at
-430x932 through the real Launcher entry (`AppID.Novel` is currently labelled
-`笔友会`, while `书房` is the separate Study app), including manuscript open,
+430x932 through the real Launcher entry (`AppID.Novel` is labelled
+`手稿`, while `书房` is the separate Study app), including manuscript open,
 StoryDesk empty state, semantic renderer output, return-to-shelf, and cleanup of
 the temporary book.
 

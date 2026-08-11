@@ -96,7 +96,7 @@
 能力真相：
 
 - `available`：系统主持路由、严格结构解析、typed 世界书预览、候选映射、批次原子保存与幂等门均存在。
-- `delivered`：笔友会“故事线”会在玩家确认一幕后显示“整理这一幕的世界变化”。
+- `delivered`：手稿“故事线”会在玩家确认一幕后显示“整理这一幕的世界变化”。
 - `selected / requested / executor_started`：只有玩家点击该按钮才选择任务、请求系统主持并启动 provider；确认经历本身不会静默花费 token。
 - `canonical_receipt`：本链只消费已经由玩家确认的 Narrative 回执；模型输出不能生成或替代该回执。
 - `visible_projection`：真实 `pending / deferred` 候选显示数量并跳到世界书审阅；`accepted / ignored` 显示“已处理”且不再重复整理；真正零候选才保留再次整理入口。
