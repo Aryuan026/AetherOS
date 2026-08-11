@@ -8,6 +8,20 @@ Make AetherOS usable as a small public static web app while keeping personal dat
 
 Live Worldbook foundation and first runtime bridge:
 
+- Keep CreativeScheme as the versioned owner of writing method, never character,
+  relationship, Worldbook, current-story or system-policy truth. Ship read-only
+  `梦世界`, per-module copy, player/imported revisions, one default plus per-character
+  selection, whole-group archive/restore/delete, whole-device backup and exact delivery
+  refs. One scheme is one group and its modules are the entries; do not add an empty
+  grouping layer above schemes. Keep the player library aligned with Worldbook's
+  vertical drawers, quiet import control, persistent pinning and drag order so a large
+  imported library does not collapse into a two-column card grid.
+- Use Pen Pal `plain_novel` as the first CreativeScheme consumer. Compile the scheme
+  before dynamic Worldbook/story/recent prose, use scheme model hints instead of
+  character traits for pure-novel sampling, and record the exact scheme revision only
+  after usable prose is durably saved. Keep Chat, Date, mainline, IF and Little Attic
+  CreativeScheme delivery as explicit later boxes.
+
 - Keep the existing Worldbook App as the human-maintained long-term world
   knowledge view. Sources may be built-in, player-authored, reviewed imports,
   or future confirmed narrative promotions; generated prose never writes final
@@ -43,7 +57,7 @@ Live Worldbook foundation and first runtime bridge:
   frozen and a Worldbook delivery receipt is written only after usable prose is
   durably persisted.
 - Keep Date, Social, News, proactive messages, broader World Director/DM
-  execution, preset compilation, worldbook generator, player-safe story-status
+  execution, broader CreativeScheme compilation, worldbook generator, player-safe story-status
   projection, and vector ranking as later blocks.
 - Keep one named legacy compatibility wrapper for unmigrated Apps, but expose
   through it only caches explicitly mirrored as public + global. Scoped,

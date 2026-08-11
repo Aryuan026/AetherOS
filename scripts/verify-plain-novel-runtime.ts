@@ -7,6 +7,11 @@ import type { CharacterProfile, NovelBook, Worldbook } from '../types.ts';
 import { buildPlainNovelPrompt } from '../utils/novelUtils.ts';
 import { prepareWorldbookRuntimeProjection } from '../utils/worldbookRuntime.ts';
 import { createWorldbookGroupAssignment } from '../utils/worldbookGroups.ts';
+import {
+  BUILT_IN_DREAMWORLD,
+  createDefaultCreativeSchemeSettings,
+  prepareCreativeScheme,
+} from '../domain/creativeScheme/index.ts';
 
 const scope: HistoryScope = {
   progressBundleId: 'bundle-a',
@@ -75,17 +80,25 @@ const prompt = buildPlainNovelPrompt({
   activeBook: book,
   userText: '从钟声之后继续',
   storyContext: '【当前章节】\n林霁把手放在生锈的门栓上。',
+  creativeSchemeContext: prepareCreativeScheme({
+    schemes: [],
+    settings: createDefaultCreativeSchemeSettings(1),
+    surface: 'plain_novel',
+  }).markdown,
   worldbookContext: prepared.markdown,
 });
 assert.match(prompt, /雾港潮汐钟/u);
 assert.match(prompt, /林霁/u);
 assert.doesNotMatch(prompt, /山城果园/u);
 assert.doesNotMatch(prompt, /小说共创|你的身份|反趋同协议|绝对禁止/u);
-assert.match(prompt, /直接输出可以进入正文的小说内容/u);
+assert.match(prompt, /直接交付可以接进手稿的中文小说正文/u);
+assert.match(prompt, new RegExp(BUILT_IN_DREAMWORLD.name, 'u'));
 
 const writerSource = readFileSync(join(process.cwd(), 'components/novel/NovelWriter.tsx'), 'utf8');
 assert.ok(writerSource.includes("activeBook.writingMode === 'plain_novel'"));
 assert.ok(writerSource.includes("authorId: 'system'"));
+assert.ok(writerSource.includes('creativeSchemeDelivery'));
+assert.ok(writerSource.includes('preparePlainNovelCreativeScheme'));
 assert.ok(writerSource.includes("consumer: worldbookConsumer"));
 assert.ok(writerSource.indexOf('await persistSegments([...contextSegments, ...newAiSegments])') < writerSource.lastIndexOf('await recordWorldbookRuntimeProjectionDelivery'));
 assert.ok(writerSource.includes("if (!isPlainNovel && inputText.trim())"), 'plain-novel instructions must not be stored as manuscript prose');

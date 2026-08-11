@@ -131,7 +131,7 @@ assert.match(characterSource, /mountedWorldbookGroupIds: mountedLibrary\.length 
 assert.match(characterSource, /mountedWorldbooks: \[\]/);
 assert.match(characterSource, /ensureCharacterLinkedToActiveMask\(newChar/);
 assert.match(worldbookScreenSource, /选择 JSON、PNG 或 TXT/);
-assert.match(worldbookScreenSource, /支持酒馆独立世界书与角色卡内嵌世界书/);
+assert.doesNotMatch(worldbookScreenSource, /支持酒馆|角色卡内嵌世界书/);
 assert.match(worldbookScreenSource, /识别后自动收进一个新分组/);
 
 console.log('Tavern JSON/PNG character card and standalone/embedded Worldbook import: OK');

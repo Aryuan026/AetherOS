@@ -21,6 +21,10 @@ import {
   assignMainDatabaseBackupStore,
   MAIN_DATABASE_BACKUP_STORES,
 } from '../utils/systemBackup/mainDatabaseBackupContract';
+import {
+  createCreativeScheme,
+  createDefaultCreativeSchemeSettings,
+} from '../domain/creativeScheme/index.ts';
 
 const readSource = (relativePath: string): string => (
   readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8')
@@ -148,6 +152,25 @@ const backupCharacter: CharacterProfile = {
 } as CharacterProfile;
 
 const envelope: Partial<FullBackupData> = {};
+const backupCreativeScheme = createCreativeScheme({
+  id: 'creative-scheme:backup',
+  name: '备份创作方案',
+  source: 'player',
+  modules: [{
+    id: 'creative-module:backup',
+    title: '备份笔触',
+    content: '保留具体的空间连续性。',
+    category: '文体表达',
+    enabled: true,
+    order: 1,
+    surfaces: ['plain_novel'],
+  }],
+  now: 1_720_000_000_000,
+});
+const backupCreativeSchemeSettings = {
+  ...createDefaultCreativeSchemeSettings(1_720_000_000_000),
+  defaultSchemeId: backupCreativeScheme.id,
+};
 assignMainDatabaseBackupStore(envelope, 'companion_wakeups', [rule], 'full');
 assignMainDatabaseBackupStore(envelope, 'companion_wakeup_logs', [log], 'full');
 assignMainDatabaseBackupStore(
@@ -159,6 +182,12 @@ assignMainDatabaseBackupStore(
 assignMainDatabaseBackupStore(envelope, 'worldbook_groups', [backupWorldbookGroup], 'full');
 assignMainDatabaseBackupStore(
   envelope,
+  'creative_schemes',
+  [backupCreativeScheme, backupCreativeSchemeSettings],
+  'full',
+);
+assignMainDatabaseBackupStore(
+  envelope,
   'worldbook_projection_receipts',
   [worldbookProjectionReceipt],
   'full',
@@ -168,6 +197,7 @@ assert.deepEqual(envelope.companionWakeupLogs, [log]);
 assert.deepEqual(envelope.worldbookGrowthCandidates, [worldGrowthCandidate]);
 assert.deepEqual(envelope.worldbookProjectionDeliveryReceipts, [worldbookProjectionReceipt]);
 assert.deepEqual(envelope.worldbookGroups, [backupWorldbookGroup]);
+assert.deepEqual(envelope.creativeSchemeRecords, [backupCreativeScheme, backupCreativeSchemeSettings]);
 
 await DB.deleteDB();
 await DB.saveCharacter(backupCharacter);
@@ -181,6 +211,8 @@ await DB.saveCompanionWakeupRule(rule);
 await DB.saveCompanionWakeupLog(log);
 await DB.saveWorldGrowthCandidate(worldGrowthCandidate);
 await DB.saveWorldbookProjectionDeliveryReceipt(worldbookProjectionReceipt);
+await DB.saveCreativeSchemeRecord(backupCreativeScheme);
+await DB.saveCreativeSchemeRecord(backupCreativeSchemeSettings);
 
 const exported = await DB.exportFullData();
 assert.equal(exported.companionWakeupRules?.length, 1);
@@ -189,6 +221,10 @@ assert.deepEqual(exported.companionWakeupLogs, [log]);
 assert.deepEqual(exported.worldbookGrowthCandidates, [worldGrowthCandidate]);
 assert.deepEqual(exported.worldbookProjectionDeliveryReceipts, [worldbookProjectionReceipt]);
 assert.deepEqual(exported.worldbookGroups, [backupWorldbookGroup]);
+assert.deepEqual(
+  exported.creativeSchemeRecords?.slice().sort((left, right) => left.id.localeCompare(right.id)),
+  [backupCreativeScheme, backupCreativeSchemeSettings].sort((left, right) => left.id.localeCompare(right.id)),
+);
 const exportedWorldbook = exported.worldbooks?.find(book => book.id === backupWorldbookV2.id);
 assert.equal(exportedWorldbook?.revisionSnapshots?.length, 2);
 assert.equal(exportedWorldbook?.activeRevisionId, backupWorldbookV2.activeRevisionId);
@@ -207,6 +243,7 @@ for (const failingStore of [
   'worldbooks',
   'worldbook_growth_candidates',
   'worldbook_projection_receipts',
+  'creative_schemes',
 ]) {
   (IDBObjectStore.prototype as any).getAll = function failingBackupRead(this: IDBObjectStore) {
     if (this.name === failingStore) {
@@ -235,6 +272,7 @@ await DB.importFullData({
   companionWakeupLogs: [],
   worldbookGrowthCandidates: [],
   worldbookProjectionDeliveryReceipts: [],
+  creativeSchemeRecords: [],
 });
 assert.deepEqual(await DB.getAllCompanionWakeupRules(), []);
 assert.deepEqual(await DB.getCompanionWakeupLogsByCharId(rule.charId), []);
@@ -242,6 +280,7 @@ assert.deepEqual(await DB.getAllWorldGrowthCandidates(), []);
 assert.deepEqual(await DB.getWorldbookProjectionDeliveryReceipts(worldbookProjectionReceipt.scopeKey), []);
 assert.deepEqual(await DB.getAllWorldbooks(), []);
 assert.deepEqual(await DB.getAllWorldbookGroups(), []);
+assert.deepEqual(await DB.getAllCreativeSchemeRecords(), []);
 assert.deepEqual(await DB.getAllCharacters(), []);
 
 await DB.importFullData({
@@ -254,6 +293,7 @@ await DB.importFullData({
   companionWakeupLogs: exported.companionWakeupLogs,
   worldbookGrowthCandidates: exported.worldbookGrowthCandidates,
   worldbookProjectionDeliveryReceipts: exported.worldbookProjectionDeliveryReceipts,
+  creativeSchemeRecords: exported.creativeSchemeRecords,
 });
 const restoredRules = await DB.getAllCompanionWakeupRules();
 const restoredLogs = await DB.getCompanionWakeupLogsByCharId(rule.charId);
@@ -263,6 +303,10 @@ assert.equal(restoredRules[0]?.value, rule.value);
 assert.deepEqual(restoredLogs, [log]);
 assert.deepEqual(await DB.getAllWorldGrowthCandidates(), [worldGrowthCandidate]);
 assert.deepEqual(await DB.getAllWorldbookGroups(), [backupWorldbookGroup]);
+assert.deepEqual(
+  (await DB.getAllCreativeSchemeRecords()).sort((left, right) => left.id.localeCompare(right.id)),
+  [backupCreativeScheme, backupCreativeSchemeSettings].sort((left, right) => left.id.localeCompare(right.id)),
+);
 assert.deepEqual(
   await DB.getWorldbookProjectionDeliveryReceipts(worldbookProjectionReceipt.scopeKey),
   [worldbookProjectionReceipt],

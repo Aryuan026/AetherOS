@@ -52,6 +52,7 @@ const FAQApp = React.lazy(() => import('../apps/FAQApp'));
 const GameApp = React.lazy(() => import('../apps/GameApp'));
 const WorldbookApp = React.lazy(() => import('../apps/WorldbookApp'));
 const NovelApp = React.lazy(() => import('../apps/NovelApp'));
+const CreativeSchemeApp = React.lazy(() => import('../apps/CreativeSchemeApp'));
 const BankApp = React.lazy(() => import('../apps/BankApp'));
 const BrowserApp = React.lazy(() => import('../apps/BrowserApp'));
 const SongwritingApp = React.lazy(() => import('../apps/SongwritingApp'));
@@ -537,6 +538,7 @@ const PhoneShell: React.FC = () => {
       case AppID.Game: return <GameApp />; 
       case AppID.Worldbook: return <WorldbookApp />;
       case AppID.Novel: return <NovelApp />; 
+      case AppID.CreativeScheme: return <CreativeSchemeApp />;
       case AppID.Bank: return <BankApp />;
       case AppID.Browser: return <BrowserApp />;
       case AppID.Songwriting: return <SongwritingApp />;

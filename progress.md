@@ -1,5 +1,64 @@
 # AetherOS Progress
 
+## 2026-08-11 CreativeScheme And Dreamworld Foundation (release candidate)
+
+- done:
+  - Added the versioned `创作方案` library with one global default and optional
+    per-character selection. New, imported and built-in characters resolve to the
+    read-only `梦世界` unless the player explicitly selects another scheme.
+  - Aligned scheme governance with the Worldbook mental model without adding another
+    empty folder layer: one scheme is one group, its modules are entries, and imported
+    files create new groups. Player/imported groups support atomic archive plus binding
+    cleanup, restore without silent reactivation, and permanent deletion only from the
+    archive.
+  - Replaced the temporary two-column scheme cards with the same vertical expandable
+    library used by Worldbook. The import control now uses the same quiet icon; every
+    scheme group supports persistent pinning, drag ordering, expansion and whole-group
+    archive without changing its runtime binding.
+  - Expanded the temporary six-item Dreamworld summary into a twenty-module built-in
+    edition derived from the owner-authored Dreamworld principles. Code-owned memory,
+    time and runtime policy stay out of the creative prompt instead of being duplicated.
+  - Made long imported schemes practical: every module is individually collapsed,
+    compact typography wraps long mixed-language prompts, actual global delivery
+    positions stay visible, and same-category drag writes a new revision without letting
+    the visual category layer reorder the compiler by accident.
+  - Made scheme scope visible in player language: one card is explicitly marked as
+    `所有角色默认使用`; another can become the shared default, while selected roles
+    clearly replace it and return to it when deselected. Full schemes do not stack.
+  - Split Dreamworld into six responsibility sections covering common-creation posture,
+    character agency, relational range, physical continuity, prose rhythm and
+    plain-novel delivery. The built-in package stays code-owned; individual modules
+    may be copied into an editable player scheme.
+  - Added external JSON intake for text prompt modules and prompt order. Script,
+    regex, quick-reply and tool automation are never executed or imported as a
+    CreativeScheme.
+  - Added the first real runtime bridge in Pen Pal plain-novel generation. Creative
+    method is compiled before dynamic Worldbook/story context, character personality
+    no longer controls pure-novel sampling, and successful prose stores the exact
+    scheme/revision/module/hash delivery ref.
+  - Added IndexedDB persistence, strict record validation and whole-device backup for
+    schemes, revisions, bindings and settings. The App also exposes the immutable
+    system boundary separately from player/imported creative instructions.
+
+- verified:
+  - `npm run verify:creative-scheme`
+  - `npm run verify:plain-novel-runtime`
+  - `npm run verify:whole-device-backup`
+  - `npm run verify:public-release`
+  - `npm run typecheck`
+  - `npm run build:quiet`
+  - Local browser flow: open library, inspect Dreamworld, copy one module into a new
+    scheme, pin and drag groups with reload persistence, then inspect the real 229-entry
+    imported `众生相` scheme with all 229 entries collapsed and all 229 reorder handles
+    present. Opening one entry rendered one body only; the page console stayed clean.
+
+- boundary:
+  - Chat, Date, mainline, IF, Little Attic and system-director preset analysis are not
+    CreativeScheme consumers yet. Their future adapters must declare prompt order,
+    budget and durable receipt timing instead of reading the store directly.
+  - Adult/sensitive-content fields, provider cache optimization and executable preset
+    extensions are not shipped in this box.
+
 ## 2026-08-10 Named Shared Worldbooks And Player Story Loop (release candidate)
 
 - done:

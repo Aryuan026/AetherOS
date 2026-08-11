@@ -14,6 +14,10 @@ import type {
     WorldGrowthCandidate,
     WorldGrowthCandidatePlayerReview,
 } from './domain/worldbook/types';
+import type {
+    CreativeSchemeDeliveryRef,
+    CreativeSchemeStoreRecord,
+} from './domain/creativeScheme/types';
 
 export type {
     AiModelRole,
@@ -82,6 +86,19 @@ export type {
     WorldGrowthCandidatePlayerReview,
 } from './domain/worldbook/types';
 
+export type {
+    CreativeScheme,
+    CreativeSchemeCategory,
+    CreativeSchemeDeliveryRef,
+    CreativeSchemeModelHints,
+    CreativeSchemeModule,
+    CreativeSchemeRevision,
+    CreativeSchemeSettings,
+    CreativeSchemeStoreRecord,
+    CreativeSchemeSurface,
+    PreparedCreativeScheme,
+} from './domain/creativeScheme/types';
+
 export enum AppID {
   Launcher = 'launcher',
   Settings = 'settings',
@@ -116,6 +133,7 @@ export enum AppID {
   Widget = 'widget', // 首屏小组件管理
   HistoryImport = 'history_import', // 旧日对话迁入与本机档案整理
   DailyArchive = 'daily_archive', // 按日期保藏与回看本机对话日档
+  CreativeScheme = 'creative_scheme', // 创作方案与预设导入
 }
 
 export interface SystemLog {
@@ -576,6 +594,8 @@ export interface NovelSegment {
         mood?: string;
         /** The accepted story scene this manuscript paragraph was written for. */
         narrativeSceneId?: string;
+        /** Exact CreativeScheme revision that shaped this generated prose. */
+        creativeSchemeDelivery?: CreativeSchemeDeliveryRef;
     };
 }
 
@@ -1507,6 +1527,7 @@ export interface FullBackupData {
     worldbooks?: Worldbook[]; 
     worldbookGrowthCandidates?: WorldGrowthCandidate[];
     worldbookProjectionDeliveryReceipts?: WorldbookProjectionDeliveryReceipt[];
+    creativeSchemeRecords?: CreativeSchemeStoreRecord[];
     roomCustomAssets?: { id?: string; name: string; image: string; defaultScale: number; description?: string; visibility?: 'public' | 'character'; assignedCharIds?: string[] }[]; 
     
     novels?: NovelBook[];

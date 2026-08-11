@@ -17,6 +17,8 @@ import {
     type PreparedWorldbookRuntimeProjection,
 } from '../../utils/worldbookRuntime';
 import type { WorldbookContinuityRef, WorldbookProjectionConsumerRef } from '../../domain/worldbook';
+import { preparePlainNovelCreativeScheme } from '../../utils/creativeSchemeRuntime';
+import type { PreparedCreativeScheme } from '../../domain/creativeScheme';
 
 interface NovelWriterProps {
     activeBook: NovelBook;
@@ -236,6 +238,10 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
 
             let preparedWorldbook: PreparedWorldbookRuntimeProjection | null = null;
             let worldbookConsumer: WorldbookProjectionConsumerRef | null = null;
+            let preparedCreativeScheme: PreparedCreativeScheme | null = null;
+            if (isPlainNovel) {
+                preparedCreativeScheme = await preparePlainNovelCreativeScheme(char?.id);
+            }
             if (char) {
                 const scope = strictRelationshipScopeForProfile(char.id, userProfile);
                 if (scope) {
@@ -280,6 +286,7 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
                     activeBook,
                     userText: userPrompt,
                     storyContext,
+                    creativeSchemeContext: preparedCreativeScheme!.markdown,
                     worldbookContext: preparedWorldbook?.markdown,
                     acceptedScene: activeNarrativeScene,
                 })
@@ -288,10 +295,12 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
                     genOptions, contextSegments, characters, activeNarrativeScene,
                     preparedWorldbook?.markdown,
                 );
-            const traits = char?.impression?.personality_core.observed_traits || [];
-            let temperature = 0.85;
-            if (traits.some(t => t.includes('电波') || t.includes('疯'))) temperature = 0.98;
-            if (traits.some(t => t.includes('理性') || t.includes('冷') || t.includes('逻辑'))) temperature = 0.6;
+            let temperature = preparedCreativeScheme?.modelHints?.temperature ?? 0.85;
+            if (!isPlainNovel) {
+                const traits = char?.impression?.personality_core.observed_traits || [];
+                if (traits.some(t => t.includes('电波') || t.includes('疯'))) temperature = 0.98;
+                if (traits.some(t => t.includes('理性') || t.includes('冷') || t.includes('逻辑'))) temperature = 0.6;
+            }
 
             const response = await fetch(`${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
                 method: 'POST',
@@ -313,7 +322,17 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
                 if (!prose) throw new Error('模型没有返回可写入的正文');
                 newAiSegments.push({
                     id: `seg-${baseTime}-w`, role: 'writer', type: 'story', authorId: 'system',
-                    content: prose, meta: { narrativeSceneId: capturedSceneId }, timestamp: baseTime + 2,
+                    content: prose,
+                    meta: {
+                        narrativeSceneId: capturedSceneId,
+                        creativeSchemeDelivery: preparedCreativeScheme ? {
+                            schemeId: preparedCreativeScheme.schemeId,
+                            revisionId: preparedCreativeScheme.revisionId,
+                            moduleIds: [...preparedCreativeScheme.moduleIds],
+                            renderedHash: preparedCreativeScheme.renderedHash,
+                        } : undefined,
+                    },
+                    timestamp: baseTime + 2,
                 });
             } else {
                 content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');

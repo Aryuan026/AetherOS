@@ -660,6 +660,7 @@ export const buildPlainNovelPrompt = (input: {
     activeBook: NovelBook;
     userText: string;
     storyContext: string;
+    creativeSchemeContext: string;
     worldbookContext?: string;
     acceptedScene?: {
         title: string;
@@ -679,13 +680,7 @@ export const buildPlainNovelPrompt = (input: {
         input.acceptedScene.constraints?.length ? `- 已确认边界：${input.acceptedScene.constraints.join('；')}` : '',
     ].filter(Boolean).join('\n') : '本轮没有额外指定的场景壳。';
 
-    return `你正在续写一部中文小说。请直接输出可以进入正文的小说内容，不要解释写作过程，不要输出标题、提纲、JSON、Markdown 或与读者对话。
-
-写作目标：
-- 延续上文已经形成的叙事视角、时态、节奏和人物理解，让新段落读起来属于同一部作品。
-- 让人物依据已知处境作出具体选择，让场景或关系发生一点真实变化；保持开放，不替未来预设唯一结局。
-- 通过动作、对白、感官和有选择的心理活动呈现信息。世界资料是背景支撑，只在当前场景确实相关时自然显现，不逐条复述。
-- 允许安静、停顿、误解和未解答的问题存在；优先写出准确、具体、有呼吸感的段落。
+    return `${input.creativeSchemeContext}
 
 【作品】
 书名：《${input.activeBook.title}》
@@ -709,7 +704,7 @@ ${input.storyContext}
 【本轮要求】
 ${input.userText.trim() || '从上文自然续写，推动人物与局面继续向前。'}
 
-请续写约 600–1200 个中文字符；如果当前节奏只适合更短的一幕，可以自然收束，不必为了凑字数稀释内容。`;
+本轮通常可以续写约 600–1200 个中文字符；如果现场只适合更短的一幕，按作品节奏自然收束。`;
 };
 
 // --- Helper: Parse Persona Markdown for UI ---

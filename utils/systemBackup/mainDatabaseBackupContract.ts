@@ -30,6 +30,7 @@ export const MAIN_DATABASE_BACKUP_STORES = [
   'worldbook_growth_candidates',
   'worldbook_projection_receipts',
   'novels',
+  'creative_schemes',
   'songs',
   'bank_transactions',
   'bank_data',
@@ -82,6 +83,7 @@ export const assignMainDatabaseBackupStore = (
     case 'worldbook_growth_candidates': backupData.worldbookGrowthCandidates = processedData; break;
     case 'worldbook_projection_receipts': backupData.worldbookProjectionDeliveryReceipts = processedData; break;
     case 'novels': backupData.novels = processedData; break;
+    case 'creative_schemes': backupData.creativeSchemeRecords = processedData; break;
     case 'songs': backupData.songs = processedData; break;
     case 'bank_transactions': backupData.bankTransactions = processedData; break;
     case 'bank_data': {

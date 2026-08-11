@@ -2065,3 +2065,37 @@ visible correction projections; Chat, Call, proactive, Group Chat, Date, Diary,
 Social, Guidebook, Special Moments, and other approved consumers receive
 budgeted read projections rather than duplicated durable rows. Shared/HOLD
 surfaces fail closed. See `docs/HISTORY_REUSE_SURFACE_AUDIT.md`.
+
+## CreativeScheme Library
+
+CreativeScheme owns reusable writing method, not story truth. Its IndexedDB store
+`creative_schemes` contains versioned `CreativeScheme` records and one
+`CreativeSchemeSettings` record. The latter keeps one default scheme ID plus explicit
+per-character overrides, optional player-visible group order IDs, and pinned group IDs;
+absent settings resolve to the code-owned read-only
+`builtin:dreamworld`.
+
+One `CreativeScheme` is the player-visible group and its revision modules are the
+entries. `lifecycle: active | archived` governs the whole group; records created before
+this field existed read as active. Archiving and detaching every default/character
+binding is one IndexedDB transaction. Restore never recreates those bindings, and
+permanent deletion rejects an active group.
+
+`CreativeSchemeModule.category` is player-library organization only. Runtime compilation
+sorts enabled, surface-compatible modules by the global numeric `order`; category display
+never rewrites that order. A same-category player drag replaces those modules in their
+existing global slots, normalizes the resulting order, and creates a new immutable scheme
+revision.
+
+`schemeOrderIds` and `pinnedSchemeIds` affect only the Worldbook-style vertical
+library layout. They never enable a scheme, change per-character selection, or alter
+prompt compilation.
+
+Every generated plain-novel segment may retain one exact
+`CreativeSchemeDeliveryRef { schemeId, revisionId, moduleIds, renderedHash }` in
+`NovelSegment.meta`. The ref is written only with durably saved usable prose. It is
+provenance, not permission to replay a deleted revision or promote its instructions
+into Worldbook, memory, relationship, current story, tool policy, or system policy.
+
+See `docs/CREATIVE_SCHEME_CONTRACT.md` for player operations, import boundaries,
+compile order, first runtime consumer and explicitly held surfaces.

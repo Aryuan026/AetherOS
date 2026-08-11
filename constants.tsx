@@ -31,6 +31,7 @@ import {
   ImageSquare,
   TrayArrowDown,
   CalendarDots,
+  MagicWand,
 } from '@phosphor-icons/react';
 
 // SVG 图标库 - Phosphor Icons
@@ -65,6 +66,7 @@ export const Icons: Record<string, React.FC<{ className?: string }>> = {
   Widget: ({ className }) => <ImageSquare className={className} weight="bold" />,
   HistoryImport: ({ className }) => <TrayArrowDown className={className} weight="bold" />,
   DailyArchive: ({ className }) => <CalendarDots className={className} weight="bold" />,
+  CreativeScheme: ({ className }) => <MagicWand className={className} weight="bold" />,
 };
 
 export const INSTALLED_APPS: AppConfig[] = [
@@ -101,6 +103,7 @@ export const INSTALLED_APPS: AppConfig[] = [
     color: 'violet',
   },
   { id: AppID.Novel, name: '笔友会', icon: 'Novel', color: 'amber' },
+  { id: AppID.CreativeScheme, name: '创作方案', icon: 'CreativeScheme', color: 'violet' },
   { id: AppID.Songwriting, name: '写歌', icon: 'Songwriting', color: 'fuchsia' },
   { id: AppID.Bank, name: '存钱罐', icon: 'Bank', color: 'lime' },
   { id: AppID.FAQ, name: '使用帮助', icon: 'FAQ', color: 'indigo' },
@@ -148,6 +151,7 @@ export const LAUNCHER_APP_GROUPS = [
       AppID.DailyArchive,
       AppID.Room,
       AppID.Novel,
+      AppID.CreativeScheme,
       AppID.Songwriting,
       AppID.Bank,
       AppID.FAQ,

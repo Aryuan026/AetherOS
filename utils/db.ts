@@ -9,6 +9,13 @@ import {
     LifeSimState, CompanionWakeupRule, CompanionWakeupLog, MessageType,
     WorldGrowthCandidate, WorldbookGroupAssignment, WorldbookProjectionDeliveryReceipt, WorldGrowthCandidatePlayerReview
 } from '../types';
+import type { CreativeSchemeStoreRecord } from '../domain/creativeScheme';
+import {
+    archiveCreativeScheme,
+    isCreativeSchemeArchived,
+    restoreCreativeScheme,
+    validateCreativeSchemeStoreRecord,
+} from '../domain/creativeScheme';
 import {
     archiveWorldbookEntry,
     acceptWorldGrowthCandidate,
@@ -28,7 +35,7 @@ import {
 import { UNIVERSAL_WORLDBOOK_GROUP_ID } from './worldbookGroups';
 
 const DB_NAME = 'AetherOS_Data';
-const DB_VERSION = 44; // Editable group ownership and per-character universal mounts
+const DB_VERSION = 45; // CreativeScheme library and bindings
 
 const STORE_CHARACTERS = 'characters';
 const STORE_MESSAGES = 'messages';
@@ -54,6 +61,7 @@ const STORE_WORLDBOOK_GROUPS = 'worldbook_groups';
 const STORE_WORLDBOOK_GROWTH_CANDIDATES = 'worldbook_growth_candidates';
 const STORE_WORLDBOOK_PROJECTION_RECEIPTS = 'worldbook_projection_receipts';
 const STORE_NOVELS = 'novels'; 
+const STORE_CREATIVE_SCHEMES = 'creative_schemes';
 const STORE_BANK_TX = 'bank_transactions';
 const STORE_BANK_DATA = 'bank_data';
 const STORE_SONGS = 'songs';
@@ -271,6 +279,7 @@ const openDB = (): Promise<IDBDatabase> => {
           }
       }
       createStore(STORE_NOVELS, { keyPath: 'id' });
+      createStore(STORE_CREATIVE_SCHEMES, { keyPath: 'id' });
       
       createStore(STORE_BANK_TX, { keyPath: 'id' });
       createStore(STORE_BANK_DATA, { keyPath: 'id' });
@@ -3218,6 +3227,132 @@ export const DB = {
       });
   },
 
+  getAllCreativeSchemeRecords: async (): Promise<CreativeSchemeStoreRecord[]> => {
+      const db = await openDB();
+      const transaction = db.transaction(STORE_CREATIVE_SCHEMES, 'readonly');
+      const request = transaction.objectStore(STORE_CREATIVE_SCHEMES).getAll();
+      return new Promise((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = () => reject(request.error);
+      });
+  },
+
+  saveCreativeSchemeRecord: async (record: CreativeSchemeStoreRecord): Promise<void> => {
+      const errors = validateCreativeSchemeStoreRecord(record);
+      if (errors.length) throw new Error(`CreativeScheme record rejected: ${errors.join('; ')}`);
+      const db = await openDB();
+      const transaction = db.transaction(STORE_CREATIVE_SCHEMES, 'readwrite');
+      transaction.objectStore(STORE_CREATIVE_SCHEMES).put(record);
+      return new Promise((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(asError(transaction.error, 'CreativeScheme save failed'));
+          transaction.onabort = () => reject(asError(transaction.error, 'CreativeScheme save aborted'));
+      });
+  },
+
+  archiveCreativeScheme: async (
+      id: string,
+      settings: CreativeSchemeStoreRecord,
+  ): Promise<void> => {
+      if (settings.kind !== 'settings') throw new Error('归档方案需要有效的方案设置。');
+      const settingsErrors = validateCreativeSchemeStoreRecord(settings);
+      if (settingsErrors.length) throw new Error(`CreativeScheme settings rejected: ${settingsErrors.join('; ')}`);
+      if (
+          settings.defaultSchemeId === id
+          || Object.values(settings.characterSchemeIds).includes(id)
+      ) {
+          throw new Error('归档前必须先解除这个方案的默认与角色绑定。');
+      }
+      const db = await openDB();
+      const transaction = db.transaction(STORE_CREATIVE_SCHEMES, 'readwrite');
+      const store = transaction.objectStore(STORE_CREATIVE_SCHEMES);
+      const request = store.get(id);
+      let failure: Error | undefined;
+      request.onsuccess = () => {
+          const scheme = request.result as CreativeSchemeStoreRecord | undefined;
+          if (!scheme || scheme.kind !== 'scheme') {
+              failure = new Error('要归档的创作方案不存在。');
+              transaction.abort();
+              return;
+          }
+          if (isCreativeSchemeArchived(scheme)) {
+              failure = new Error('这个创作方案已经在归档中。');
+              transaction.abort();
+              return;
+          }
+          store.put(archiveCreativeScheme(scheme));
+          store.put(settings);
+      };
+      request.onerror = () => {
+          failure = asError(request.error, 'CreativeScheme archive read failed');
+      };
+      return new Promise((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(failure ?? asError(transaction.error, 'CreativeScheme archive failed'));
+          transaction.onabort = () => reject(failure ?? asError(transaction.error, 'CreativeScheme archive aborted'));
+      });
+  },
+
+  restoreCreativeScheme: async (id: string): Promise<void> => {
+      const db = await openDB();
+      const transaction = db.transaction(STORE_CREATIVE_SCHEMES, 'readwrite');
+      const store = transaction.objectStore(STORE_CREATIVE_SCHEMES);
+      const request = store.get(id);
+      let failure: Error | undefined;
+      request.onsuccess = () => {
+          const scheme = request.result as CreativeSchemeStoreRecord | undefined;
+          if (!scheme || scheme.kind !== 'scheme') {
+              failure = new Error('要恢复的创作方案不存在。');
+              transaction.abort();
+              return;
+          }
+          if (!isCreativeSchemeArchived(scheme)) {
+              failure = new Error('这个创作方案不在归档中。');
+              transaction.abort();
+              return;
+          }
+          store.put(restoreCreativeScheme(scheme));
+      };
+      request.onerror = () => {
+          failure = asError(request.error, 'CreativeScheme restore read failed');
+      };
+      return new Promise((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(failure ?? asError(transaction.error, 'CreativeScheme restore failed'));
+          transaction.onabort = () => reject(failure ?? asError(transaction.error, 'CreativeScheme restore aborted'));
+      });
+  },
+
+  deleteCreativeScheme: async (id: string): Promise<void> => {
+      const db = await openDB();
+      const transaction = db.transaction(STORE_CREATIVE_SCHEMES, 'readwrite');
+      const store = transaction.objectStore(STORE_CREATIVE_SCHEMES);
+      const request = store.get(id);
+      let failure: Error | undefined;
+      request.onsuccess = () => {
+          const scheme = request.result as CreativeSchemeStoreRecord | undefined;
+          if (!scheme || scheme.kind !== 'scheme') {
+              failure = new Error('要删除的创作方案不存在。');
+              transaction.abort();
+              return;
+          }
+          if (!isCreativeSchemeArchived(scheme)) {
+              failure = new Error('请先归档创作方案，再决定是否彻底删除。');
+              transaction.abort();
+              return;
+          }
+          store.delete(id);
+      };
+      request.onerror = () => {
+          failure = asError(request.error, 'CreativeScheme delete read failed');
+      };
+      return new Promise((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(failure ?? asError(transaction.error, 'CreativeScheme delete failed'));
+          transaction.onabort = () => reject(failure ?? asError(transaction.error, 'CreativeScheme delete aborted'));
+      });
+  },
+
   // --- BANK / PET APP LOGIC ---
   getBankState: async (): Promise<BankFullState | null> => {
       const db = await openDB();
@@ -3410,7 +3545,7 @@ export const DB = {
           });
       };
 
-      const [characters, messages, themes, emojis, emojiCategories, assets, galleryImages, userProfiles, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, journalStickers, socialPosts, courses, games, worldbookGroups, worldbooks, worldbookGrowthCandidates, worldbookProjectionDeliveryReceipts, novels, bankTx, bankData, songs, quizzes, guidebookSessions, scheduledMessages, companionWakeupRules, companionWakeupLogs, lifeSimStates] = await Promise.all([
+      const [characters, messages, themes, emojis, emojiCategories, assets, galleryImages, userProfiles, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, journalStickers, socialPosts, courses, games, worldbookGroups, worldbooks, worldbookGrowthCandidates, worldbookProjectionDeliveryReceipts, novels, creativeSchemeRecords, bankTx, bankData, songs, quizzes, guidebookSessions, scheduledMessages, companionWakeupRules, companionWakeupLogs, lifeSimStates] = await Promise.all([
           getAllFromStore(STORE_CHARACTERS),
           getAllFromStore(STORE_MESSAGES),
           getAllFromStore(STORE_THEMES),
@@ -3434,6 +3569,7 @@ export const DB = {
           getAllFromStore(STORE_WORLDBOOK_GROWTH_CANDIDATES),
           getAllFromStore(STORE_WORLDBOOK_PROJECTION_RECEIPTS),
           getAllFromStore(STORE_NOVELS),
+          getAllFromStore(STORE_CREATIVE_SCHEMES),
           getAllFromStore(STORE_BANK_TX),
           getAllFromStore(STORE_BANK_DATA),
           getAllFromStore(STORE_SONGS),
@@ -3453,7 +3589,7 @@ export const DB = {
       const dollhouseRecord = bankData.find((d: any) => d.id === 'dollhouse_state');
 
       return {
-          characters, messages, customThemes: themes, savedEmojis: emojis, emojiCategories, assets, galleryImages, userProfile, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, savedJournalStickers: journalStickers, socialPosts, courses, games, worldbookGroups, worldbooks, worldbookGrowthCandidates, worldbookProjectionDeliveryReceipts, novels,
+          characters, messages, customThemes: themes, savedEmojis: emojis, emojiCategories, assets, galleryImages, userProfile, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, savedJournalStickers: journalStickers, socialPosts, courses, games, worldbookGroups, worldbooks, worldbookGrowthCandidates, worldbookProjectionDeliveryReceipts, novels, creativeSchemeRecords,
           bankState: mainState ? { ...mainState, id: undefined } : undefined,
           bankDollhouse: dollhouseRecord?.data || undefined,
           bankTransactions: bankTx,
@@ -3481,13 +3617,18 @@ export const DB = {
       }
       (data.worldbookProjectionDeliveryReceipts || [])
           .forEach(assertWorldbookProjectionDeliveryReceipt);
+      const creativeSchemeErrors = (data.creativeSchemeRecords || [])
+          .flatMap(validateCreativeSchemeStoreRecord);
+      if (creativeSchemeErrors.length) {
+          throw new Error(`CreativeScheme backup rejected: ${creativeSchemeErrors.join('; ')}`);
+      }
       const db = await openDB();
       
       const availableStores = [
           STORE_CHARACTERS, STORE_MESSAGES, STORE_THEMES, STORE_EMOJIS, STORE_EMOJI_CATEGORIES,
           STORE_ASSETS, STORE_GALLERY, STORE_USER, STORE_DIARIES,
           STORE_TASKS, STORE_ANNIVERSARIES, STORE_ROOM_TODOS, STORE_ROOM_NOTES,
-          STORE_GROUPS, STORE_JOURNAL_STICKERS, STORE_SOCIAL_POSTS, STORE_COURSES, STORE_GAMES, STORE_WORLDBOOK_GROUPS, STORE_WORLDBOOKS, STORE_WORLDBOOK_GROWTH_CANDIDATES, STORE_WORLDBOOK_PROJECTION_RECEIPTS, STORE_NOVELS, STORE_SONGS,
+          STORE_GROUPS, STORE_JOURNAL_STICKERS, STORE_SOCIAL_POSTS, STORE_COURSES, STORE_GAMES, STORE_WORLDBOOK_GROUPS, STORE_WORLDBOOKS, STORE_WORLDBOOK_GROWTH_CANDIDATES, STORE_WORLDBOOK_PROJECTION_RECEIPTS, STORE_NOVELS, STORE_CREATIVE_SCHEMES, STORE_SONGS,
           STORE_BANK_TX, STORE_BANK_DATA,
           STORE_QUIZZES,
           STORE_GUIDEBOOK,
@@ -3611,6 +3752,7 @@ export const DB = {
           clearAndAdd(STORE_WORLDBOOK_PROJECTION_RECEIPTS, data.worldbookProjectionDeliveryReceipts);
       }
       if (data.novels) clearAndAdd(STORE_NOVELS, data.novels);
+      if (data.creativeSchemeRecords) clearAndAdd(STORE_CREATIVE_SCHEMES, data.creativeSchemeRecords);
       if (data.songs) clearAndAdd(STORE_SONGS, data.songs);
       if (data.quizSessions) clearAndAdd(STORE_QUIZZES, data.quizSessions);
       if (data.guidebookSessions) clearAndAdd(STORE_GUIDEBOOK, data.guidebookSessions);
