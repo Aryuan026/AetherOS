@@ -84,7 +84,9 @@ const normalizeReleaseDescriptor = (value: unknown): ReleaseDescriptor | null =>
 
 const releaseDescriptorUrl = () => {
   const baseUrl = new URL(import.meta.env.BASE_URL || './', window.location.href);
-  return new URL(RELEASE_DESCRIPTOR_FILE, baseUrl).toString();
+  const descriptorUrl = new URL(RELEASE_DESCRIPTOR_FILE, baseUrl);
+  descriptorUrl.searchParams.set('__aetheros_release_probe', String(Date.now()));
+  return descriptorUrl.toString();
 };
 
 const fetchReleaseDescriptor = async (): Promise<ReleaseDescriptor | null> => {

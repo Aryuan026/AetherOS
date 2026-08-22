@@ -4,6 +4,12 @@ const requestedBase = process.argv[2]
   || process.env.AETHEROS_PUBLIC_BASE_URL
   || 'https://lab.asherie.cloud/aetheros/';
 const baseUrl = new URL(requestedBase.endsWith('/') ? requestedBase : `${requestedBase}/`);
+const probeId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+const mutableReleaseUrl = (relative = '') => {
+  const url = new URL(relative, baseUrl);
+  url.searchParams.set('__aetheros_release_probe', probeId);
+  return url;
+};
 
 const fetchRequired = async (url, expectedContentType) => {
   const response = await fetch(url, { cache: 'no-store', redirect: 'follow' });
@@ -18,7 +24,7 @@ const fetchRequired = async (url, expectedContentType) => {
   return response;
 };
 
-const indexResponse = await fetchRequired(baseUrl, /^text\/html\b/i);
+const indexResponse = await fetchRequired(mutableReleaseUrl(), /^text\/html\b/i);
 const indexHtml = await indexResponse.text();
 const refs = Array.from(
   indexHtml.matchAll(/\b(?:src|href)=["']([^"']+)["']/g),
@@ -33,7 +39,7 @@ for (const ref of refs) {
   await fetchRequired(url);
 }
 
-const manifestUrl = new URL('manifest.webmanifest', baseUrl);
+const manifestUrl = mutableReleaseUrl('manifest.webmanifest');
 const manifestResponse = await fetchRequired(manifestUrl, /^application\/manifest\+json\b/i);
 const cacheControl = manifestResponse.headers.get('cache-control') || '';
 assert.match(cacheControl, /\bno-cache\b/i, 'manifest must revalidate instead of using a stale install contract');
@@ -51,7 +57,7 @@ for (const icon of manifest.icons || []) {
 }
 
 const descriptorResponse = await fetchRequired(
-  new URL('aetheros-release.json', baseUrl),
+  mutableReleaseUrl('aetheros-release.json'),
   /^application\/json\b/i,
 );
 const descriptor = await descriptorResponse.json();
@@ -60,7 +66,7 @@ assert.match(String(descriptor.buildId || ''), /^aetheros-[A-Za-z0-9._+-]+-[a-f0
 assert.equal(descriptor.shellMode, 'online-first');
 assert.equal(descriptor.offlineShell, false);
 
-const workerUrl = new URL('sw-keep-alive.js', baseUrl);
+const workerUrl = mutableReleaseUrl('sw-keep-alive.js');
 const workerResponse = await fetchRequired(workerUrl, /(?:application|text)\/javascript/i);
 const workerText = await workerResponse.text();
 assert.ok(workerText.includes(descriptor.buildId), 'deployed worker and release descriptor must share one build id');
