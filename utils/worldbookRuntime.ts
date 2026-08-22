@@ -16,6 +16,7 @@ import {
 } from './worldbookGroups.ts';
 import {
   builtInStoryEnhancementPackForEntry,
+  directorReferenceEntryIdsForMountedStoryEntries,
   storyEnhancementPackAllowsRuntime,
   type DeepspaceStoryRuntimeContext,
 } from '../domain/deepspaceStoryEnhancement/index.ts';
@@ -45,32 +46,76 @@ export interface PreparedWorldbookRuntimeProjection {
   markdown: string;
 }
 
+const WORLDBOOK_FOLLOW_UP_CUES = [
+  /^(?:那|这个|那个|这些|那些|这件事|那件事|刚才|所以|然后|后来|还有|至于|关于)/,
+  /(?:呢|又|还|当时|后来|为什么|怎么|是谁|谁|哪里|什么时候|中文|英文|名字|目标)[呀啊嘛吗呢吧？?!！。\s]*$/,
+];
+
+/**
+ * Worldbook selection normally follows the current message only. A short,
+ * clearly referential follow-up may borrow the immediately previous user turn
+ * so “那中文名呢？” does not lose the topic that named the relevant archive.
+ * This string is selector-only: it is never rendered into the model prompt.
+ */
+export const buildWorldbookRecallQuery = (input: {
+  query: string;
+  previousQuery?: string;
+}): string => {
+  const query = input.query.replace(/\s+/g, ' ').trim();
+  const previousQuery = (input.previousQuery || '').replace(/\s+/g, ' ').trim();
+  const isReferentialFollowUp = Boolean(
+    previousQuery
+    && query
+    && query.length <= 64
+    && WORLDBOOK_FOLLOW_UP_CUES.some(pattern => pattern.test(query)),
+  );
+  if (!isReferentialFollowUp) return query;
+  return `${previousQuery.slice(-260)}\n${query.slice(0, 180)}`;
+};
+
 const mountedEntryIdsFor = (
   input: Pick<PrepareWorldbookRuntimeProjectionInput, 'character' | 'library' | 'consumer' | 'continuity' | 'storyContext'>,
-): string[] => [...new Set(
-  [
-    ...(input.character.mountedWorldbooks || [])
-      .map(mounted => mounted.id?.trim())
-      .filter((id): id is string => Boolean(id))
+): string[] => {
+  const explicitlyMountedBuiltInIds = (input.character.mountedWorldbooks || [])
+    .map(mounted => mounted.id?.trim())
+    .filter((id): id is string => Boolean(id))
+    .filter(id => isBuiltInWorldbook(input.library.find(entry => entry.id === id)))
+    .filter(id => {
+      const pack = builtInStoryEnhancementPackForEntry(id);
+      return !pack || storyEnhancementPackAllowsRuntime({
+        pack,
+        charId: input.character.id,
+        consumer: input.consumer.kind,
+        continuity: input.continuity,
+        context: input.storyContext,
+      });
+    });
+  const directorReferenceIds = input.consumer.kind === 'world_director'
+    ? directorReferenceEntryIdsForMountedStoryEntries(explicitlyMountedBuiltInIds)
       .filter(id => isBuiltInWorldbook(input.library.find(entry => entry.id === id)))
       .filter(id => {
         const pack = builtInStoryEnhancementPackForEntry(id);
-        return !pack || storyEnhancementPackAllowsRuntime({
+        return Boolean(pack && storyEnhancementPackAllowsRuntime({
           pack,
           charId: input.character.id,
           consumer: input.consumer.kind,
           continuity: input.continuity,
           context: input.storyContext,
-        });
-      }),
-    ...input.library
-      .filter(entry => (
-        !isBuiltInWorldbook(entry)
-        && isWorldbookGroupEnabledForCharacter(entry.group, input.character)
-      ))
-      .map(entry => entry.id),
-  ],
-)];
+        }));
+      })
+    : [];
+  const enabledPlayerEntryIds = input.library
+    .filter(entry => (
+      !isBuiltInWorldbook(entry)
+      && isWorldbookGroupEnabledForCharacter(entry.group, input.character)
+    ))
+    .map(entry => entry.id);
+  return [...new Set([
+    ...explicitlyMountedBuiltInIds,
+    ...directorReferenceIds,
+    ...enabledPlayerEntryIds,
+  ])];
+};
 
 /**
  * Render only the already-gated projection. Empty selections deliberately
@@ -81,11 +126,11 @@ export const formatWorldbookRuntimeProjection = (
 ): string => {
   if (!projection.items.length) return '';
   const entries = projection.items.map(item => [
-    `#### ${item.title}${item.category ? ` · ${item.category}` : ''}`,
+    `#### ${item.title}`,
     item.excerpt,
   ].join('\n')).join('\n\n');
-  return `### 本轮相关世界资料
-这些片段已通过当前角色挂载、关系归属、线路与知情范围检查。把它们当作可自然吸收的背景，不必逐条复述，也不要仅为了提到设定而改变角色原本的判断与表达。
+  return `### 当前可参考的世界信息
+以下内容可能描述公共背景、过去经历或一条明确的世界线。只在与眼前话题有关时自然使用，不必逐条复述；过去不等于此刻，世界背景也不会自动改变人物关系、当前动机或已经发生的经历。
 
 ${entries}`;
 };

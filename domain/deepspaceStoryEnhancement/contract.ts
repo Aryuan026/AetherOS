@@ -36,11 +36,31 @@ export const validateDeepspaceStoryEnhancementPack = (
   if (pack.schemaVersion !== DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION) {
     errors.push('schemaVersion is unsupported');
   }
-  ['id', 'worldbookEntryId', 'charId', 'worldlineId', 'routeStage'].forEach(field => {
+  ['id', 'worldbookEntryId', 'worldlineId', 'routeStage'].forEach(field => {
     if (!nonEmpty(pack[field as keyof DeepspaceStoryEnhancementPack])) {
       errors.push(`${field} is required`);
     }
   });
+  if (pack.applicability?.kind === 'character') {
+    if (!nonEmpty(pack.applicability.charId)) errors.push('applicability.charId is required');
+  } else if (pack.applicability?.kind !== 'universal') {
+    errors.push('applicability is invalid');
+  }
+  if (![
+    'canonical_chronology',
+    'playable_if_premise',
+    'canon_ending_reference',
+    'optional_world_expansion',
+  ].includes(pack.continuityClass)) {
+    errors.push('continuityClass is invalid');
+  }
+  if (
+    pack.chronologyOrder !== undefined
+    && (!Number.isInteger(pack.chronologyOrder) || pack.chronologyOrder < 0)
+  ) errors.push('chronologyOrder must be a non-negative integer when present');
+  if (pack.continuityClass === 'canonical_chronology' && pack.chronologyOrder === undefined) {
+    errors.push('canonical_chronology requires chronologyOrder');
+  }
   if (!uniqueNonEmpty(pack.runtimeGate?.allowedConsumers)) {
     errors.push('runtimeGate.allowedConsumers must be a non-empty unique list');
   } else if (pack.runtimeGate.allowedConsumers.some(consumer => !CONSUMERS.has(consumer))) {
@@ -78,12 +98,28 @@ export const storyEnhancementPackAllowsRuntime = (input: {
   context?: DeepspaceStoryRuntimeContext;
 }): boolean => {
   if (validateDeepspaceStoryEnhancementPack(input.pack).length) return false;
-  if (input.pack.charId !== input.charId) return false;
+  if (
+    input.pack.applicability.kind === 'character'
+    && input.pack.applicability.charId !== input.charId
+  ) return false;
   if (!input.pack.runtimeGate.allowedConsumers.includes(input.consumer)) return false;
-  if (input.pack.sourceLane === 'mainline' && input.continuity?.lane !== 'mainline') {
+  const narrativeConsumerNeedsContinuity = [
+    'story_mainline',
+    'story_if',
+    'world_director',
+  ].includes(input.consumer);
+  if (
+    narrativeConsumerNeedsContinuity
+    && input.pack.sourceLane === 'mainline'
+    && input.continuity?.lane !== 'mainline'
+  ) {
     return false;
   }
-  if (input.pack.sourceLane === 'if_line' && input.continuity?.lane !== 'if_line') {
+  if (
+    narrativeConsumerNeedsContinuity
+    && input.pack.sourceLane === 'if_line'
+    && input.continuity?.lane !== 'if_line'
+  ) {
     return false;
   }
   const identityModes = input.pack.runtimeGate.identityModes;

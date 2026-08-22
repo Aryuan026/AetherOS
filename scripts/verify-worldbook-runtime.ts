@@ -15,6 +15,7 @@ import type { CharacterProfile, UserProfile, Worldbook } from '../types.ts';
 import { ContextBuilder } from '../utils/context.ts';
 import { DB } from '../utils/db.ts';
 import {
+  buildWorldbookRecallQuery,
   prepareWorldbookRuntimeProjection,
   recordWorldbookRuntimeProjectionDelivery,
 } from '../utils/worldbookRuntime.ts';
@@ -36,6 +37,23 @@ const scopeWrongCharacter: HistoryScope = {
   personaMaskId: 'mask-a',
   charId: 'char-b',
 };
+
+assert.equal(
+  buildWorldbookRecallQuery({
+    previousQuery: '你在特遣 013 卧底时用了什么名字？',
+    query: '那中文化名呢？目标是谁？',
+  }),
+  '你在特遣 013 卧底时用了什么名字？\n那中文化名呢？目标是谁？',
+  'a short referential follow-up must keep the immediately previous topic for selector-only recall',
+);
+assert.equal(
+  buildWorldbookRecallQuery({
+    previousQuery: '你在特遣 013 卧底时用了什么名字？',
+    query: '今天晚饭想吃什么？',
+  }),
+  '今天晚饭想吃什么？',
+  'an unrelated new turn must not keep the prior Worldbook topic alive',
+);
 const roleGroup = createWorldbookGroupAssignment({
   id: 'worldbook-group:char-a:runtime',
   name: '测试资料',
@@ -215,8 +233,10 @@ assert.ok(!legacyCore.includes('MOUNT_CACHE_POISON:harbor-lore'));
 // Positive path: exact scope + current character knowledge + mounted id + relevant live query.
 const chatHit = prepare({ kind: 'chat', suffix: 'success', query: '雾港的潮汐钟今天响了吗？' });
 assert.deepEqual(chatHit.projection.items.map(item => item.entryId), [relevant.id]);
-assert.ok(chatHit.markdown.includes('本轮相关世界资料'));
+assert.ok(chatHit.markdown.includes('当前可参考的世界信息'));
 assert.ok(chatHit.markdown.includes(relevant.content));
+assert.ok(!chatHit.markdown.includes(relevant.category));
+assert.ok(!chatHit.markdown.includes('当前角色挂载'));
 assert.ok(chatHit.projection.usedChars <= 700);
 assert.equal(chatHit.projection.items.length, 1);
 assert.ok(!`${canonicalCore}\n${chatHit.markdown}`.includes('MOUNT_CACHE_POISON'));
@@ -315,6 +335,7 @@ const callSource = readFileSync(join(root, 'apps/CallApp.tsx'), 'utf8');
 assert.ok(chatPromptSource.includes('buildCanonicalCoreContext'));
 assert.ok(callSource.includes('buildCanonicalCoreContext'));
 assert.ok(!chatSource.includes('buildLegacyCoreContextWithMountedWorldbooks'));
+assert.ok(chatSource.includes('buildWorldbookRecallQuery'));
 assert.ok(!chatPromptSource.includes('buildLegacyCoreContextWithMountedWorldbooks'));
 assert.ok(!callSource.includes('buildLegacyCoreContextWithMountedWorldbooks'));
 assert.ok(chatSource.lastIndexOf('await recordWorldbookRuntimeProjectionDelivery') > chatSource.indexOf('ChatParser.sanitize(aiContent)'));

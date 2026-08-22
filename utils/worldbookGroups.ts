@@ -4,6 +4,7 @@ import type {
     WorldbookGroupAssignment,
     WorldbookGroupOwner,
 } from '../types.ts';
+import { builtInStoryEnhancementPackForEntry } from '../domain/deepspaceStoryEnhancement/index.ts';
 
 export const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 export const UNIVERSAL_WORLDBOOK_GROUP_NAME = '通用资料';
@@ -51,6 +52,127 @@ export interface WorldbookGroupIndex {
     builtInCount: number;
     customCount: number;
 }
+
+export type BuiltInCharacterWorldbookLaneKind =
+    | 'canonical_chronology'
+    | 'playable_if'
+    | 'story_enhancement'
+    | 'expansion_play';
+
+export interface BuiltInCharacterWorldbookLane {
+    id: string;
+    kind: BuiltInCharacterWorldbookLaneKind;
+    label: string;
+    books: Worldbook[];
+}
+
+export interface BuiltInCharacterWorldbookShelf {
+    id: string;
+    characterId: string;
+    characterName: string;
+    booksCount: number;
+    lanes: BuiltInCharacterWorldbookLane[];
+}
+
+export interface BuiltInWorldbookLibraryLayout {
+    characterShelves: BuiltInCharacterWorldbookShelf[];
+    remainingGroups: WorldbookCategoryGroup[];
+}
+
+const compareBuiltInLaneBooks = (
+    kind: BuiltInCharacterWorldbookLaneKind,
+    a: Worldbook,
+    b: Worldbook,
+) => {
+    if (kind === 'canonical_chronology') {
+        const orderA = builtInStoryEnhancementPackForEntry(a.id)?.chronologyOrder;
+        const orderB = builtInStoryEnhancementPackForEntry(b.id)?.chronologyOrder;
+        if (orderA !== undefined || orderB !== undefined) {
+            return (orderA ?? Number.MAX_SAFE_INTEGER) - (orderB ?? Number.MAX_SAFE_INTEGER)
+                || compareWorldbooks(a, b);
+        }
+    }
+    return compareWorldbooks(a, b);
+};
+
+const resolveBuiltInCharacterLaneKind = (
+    category: string,
+): BuiltInCharacterWorldbookLaneKind | null => {
+    if (category.endsWith('现世履历')) return 'canonical_chronology';
+    if (category.endsWith('IF世界')) return 'playable_if';
+    if (category.endsWith('剧情增强')) return 'story_enhancement';
+    if (category.endsWith('拓展玩法')) return 'expansion_play';
+    return null;
+};
+
+/**
+ * Player-facing projection only. Runtime categories and knowledge policies stay untouched.
+ * Character-owned optional material is shown as character → lane → entry, while public
+ * foundations and cross-character packages remain in their ordinary built-in groups.
+ */
+export const buildBuiltInWorldbookLibraryLayout = (
+    groups: readonly WorldbookCategoryGroup[],
+    characters: readonly Pick<CharacterProfile, 'id' | 'name'>[],
+): BuiltInWorldbookLibraryLayout => {
+    const charactersById = new Map(characters.map(character => [character.id, character]));
+    const shelfBooks = new Map<string, Map<BuiltInCharacterWorldbookLaneKind, Worldbook[]>>();
+    const classifiedBookIds = new Set<string>();
+
+    groups.forEach(group => {
+        const kind = resolveBuiltInCharacterLaneKind(group.category);
+        if (!kind) return;
+        group.books.forEach(book => {
+            const visibleIds = book.visibleToCharacterIds || [];
+            if (visibleIds.length !== 1 || !charactersById.has(visibleIds[0])) return;
+            const characterId = visibleIds[0];
+            const lanes = shelfBooks.get(characterId) || new Map<BuiltInCharacterWorldbookLaneKind, Worldbook[]>();
+            lanes.set(kind, [...(lanes.get(kind) || []), book]);
+            shelfBooks.set(characterId, lanes);
+            classifiedBookIds.add(book.id);
+        });
+    });
+
+    const laneOrder: readonly BuiltInCharacterWorldbookLaneKind[] = [
+        'canonical_chronology',
+        'playable_if',
+        'story_enhancement',
+        'expansion_play',
+    ];
+    const laneLabel: Record<BuiltInCharacterWorldbookLaneKind, string> = {
+        canonical_chronology: '现世履历',
+        playable_if: 'IF 世界',
+        story_enhancement: '剧情增强',
+        expansion_play: '拓展玩法',
+    };
+    const characterShelves = characters.flatMap(character => {
+        const lanes = shelfBooks.get(character.id);
+        if (!lanes) return [];
+        const projectedLanes = laneOrder.flatMap(kind => {
+            const books = lanes.get(kind);
+            if (!books?.length) return [];
+            return [{
+                id: `built-in-character:${character.id}:${kind}`,
+                kind,
+                label: laneLabel[kind],
+                books: [...books].sort((a, b) => compareBuiltInLaneBooks(kind, a, b)),
+            } satisfies BuiltInCharacterWorldbookLane];
+        });
+        return [{
+            id: `built-in-character:${character.id}`,
+            characterId: character.id,
+            characterName: character.name,
+            booksCount: projectedLanes.reduce((total, lane) => total + lane.books.length, 0),
+            lanes: projectedLanes,
+        } satisfies BuiltInCharacterWorldbookShelf];
+    });
+
+    const remainingGroups = groups.flatMap(group => {
+        const books = group.books.filter(book => !classifiedBookIds.has(book.id));
+        return books.length ? [{ ...group, books }] : [];
+    });
+
+    return { characterShelves, remainingGroups };
+};
 
 const groupBuiltInBooks = (books: Worldbook[]): WorldbookCategoryGroup[] => {
     const grouped = new Map<string, Worldbook[]>();

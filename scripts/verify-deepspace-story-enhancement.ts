@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
+import { readFileSync } from 'node:fs';
 import {
   BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS,
   DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION,
   XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT,
   XAVIER_REVIEWED_STORY_WORLDBOOKS,
+  XAVIER_REVIEWED_WORLDVIEW,
   storyEnhancementPackAllowsRuntime,
   validateDeepspaceStoryEnhancementPack,
   type DeepspaceStoryEnhancementPack,
@@ -18,8 +20,9 @@ const base: DeepspaceStoryEnhancementPack = {
   schemaVersion: DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION,
   id: 'fixture:xavier:if',
   worldbookEntryId: 'fixture-worldbook:xavier:if',
-  charId: 'builtin-xavier',
+  applicability: { kind: 'character', charId: 'builtin-xavier' },
   sourceLane: 'if_line',
+  continuityClass: 'playable_if_premise',
   worldlineId: 'fixture-if-worldline',
   routeStage: 'opening',
   contentAuthority: 'reviewed_source_projection',
@@ -86,6 +89,20 @@ assert.equal(storyEnhancementPackAllowsRuntime({
   context: { relationshipStageIds: ['fixture:relationship-established'] },
 }), false, 'missing identity evidence fails closed');
 
+assert.equal(storyEnhancementPackAllowsRuntime({
+  pack: {
+    ...base,
+    id: 'fixture:universal:worldline',
+    applicability: { kind: 'universal' },
+    sourceLane: 'world_expansion',
+    continuityClass: 'optional_world_expansion',
+    runtimeGate: { allowedConsumers: ['story_mainline'] },
+  },
+  charId: 'builtin-zayne',
+  consumer: 'story_mainline',
+  continuity: { lane: 'mainline', routeId: 'fixture-mainline' },
+}), true, 'a universal expansion may be explicitly mounted for a different character');
+
 assert.ok(validateDeepspaceStoryEnhancementPack({
   ...base,
   defaultMounted: true as false,
@@ -95,29 +112,139 @@ assert.ok(validateDeepspaceStoryEnhancementPack({
   truthEffect: 'current' as 'none',
 }).includes('truthEffect must be none'));
 
-assert.equal(BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.length, 7);
-assert.equal(XAVIER_REVIEWED_STORY_WORLDBOOKS.length, 7);
+assert.equal(BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.length, 10);
+assert.equal(XAVIER_REVIEWED_STORY_WORLDBOOKS.length, 10);
 assert.equal(
   new Set(BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.map(pack => pack.worldbookEntryId)).size,
-  7,
+  10,
 );
 assert.equal(
   BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.filter(pack => pack.sourceLane === 'world_expansion').length,
   2,
 );
 assert.equal(
-  XAVIER_REVIEWED_STORY_WORLDBOOKS.some(book => book.knowledgePolicy.kind === 'director_only'),
-  false,
-  'explicit optional route and expansion books must remain visible in the player library',
+  XAVIER_REVIEWED_STORY_WORLDBOOKS.filter(book => book.knowledgePolicy.kind === 'director_only').length,
+  2,
+  'source endings remain Director-only references while the eight route/expansion books stay player-visible',
+);
+assert.equal(
+  XAVIER_REVIEWED_STORY_WORLDBOOKS.filter(book => book.knowledgePolicy.kind !== 'director_only').length,
+  8,
 );
 assert.equal(
   XAVIER_REVIEWED_STORY_WORLDBOOKS.some(book => book.id.includes('cosmic')),
   false,
   'an empty cosmic compatibility slot must not become a runtime book',
 );
+const fateExpansion = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-expansion-universal-multi-worldline');
+const governanceExpansion = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-expansion-universal-anomaly-governance');
+assert.match(fateExpansion?.content || '', /量子记录固定带/);
+assert.match(fateExpansion?.content || '', /抑止力/);
+assert.equal(fateExpansion?.title, 'Fate 式多世界线规则');
+assert.doesNotMatch(fateExpansion?.content || '', /例如烬城菲罗斯世界线的 \{\{user\}\}/);
+assert.match(fateExpansion?.content || '', /不会反向说明深空原作/);
+assert.match(governanceExpansion?.content || '', /特殊事件部/);
+assert.match(governanceExpansion?.content || '', /分级协作请求/);
+assert.match(governanceExpansion?.content || '', /时钟塔/);
+assert.equal(fateExpansion?.category, '通用拓展玩法');
+assert.equal(governanceExpansion?.category, '通用拓展玩法');
+assert.deepEqual(fateExpansion?.visibleToCharacterIds, []);
+assert.deepEqual(governanceExpansion?.visibleToCharacterIds, []);
+assert.equal(fateExpansion?.knowledgePolicy.kind, 'public');
+assert.equal(governanceExpansion?.knowledgePolicy.kind, 'public');
+const canonicalChronology = BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS
+  .filter(pack => pack.continuityClass === 'canonical_chronology')
+  .sort((left, right) => (left.chronologyOrder || 0) - (right.chronologyOrder || 0));
+assert.deepEqual(
+  canonicalChronology.map(pack => [pack.worldlineId, pack.routeStage, pack.chronologyOrder]),
+  [
+    ['present_world_xavier_canonical_chronology', 'special-police-013', 100],
+    ['present_world_xavier_canonical_chronology', 'light-hunter-emergence', 200],
+    ['present_world_xavier_canonical_chronology', 'restricted-zone-42-and-concealed-identity', 300],
+    ['present_world_xavier_canonical_chronology', 'resident-hunter-mainline', 400],
+  ],
+  'special police, light hunter, restricted zone 42 and resident hunter are one ordered present-world history, not four IF routes',
+);
+const emberPlayableBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-ember-city-if');
+assert.match(emberPlayableBook?.content || '', /巴别会主教/);
+assert.match(emberPlayableBook?.content || '', /烬河摆渡人/);
+assert.match(emberPlayableBook?.content || '', /双星之剑/);
+assert.match(emberPlayableBook?.content || '', /藏书馆钥匙/);
+assert.doesNotMatch(emberPlayableBook?.content || '', /双死|共同留下|城市崩塌/);
+assert.match(emberPlayableBook?.content || '', /没有被预先决定/);
+assert.equal(emberPlayableBook?.title, '沈星回·烬城世界');
+assert.doesNotMatch(`${emberPlayableBook?.title}\n${emberPlayableBook?.content}`, /可游玩/);
+assert.ok(
+  XAVIER_REVIEWED_STORY_WORLDBOOKS
+    .filter(book => book.category === '沈星回现世履历')
+    .every(book => book.content.length >= 400),
+  'player-visible chronology books must carry concrete people, events, places and causality rather than stage summaries',
+);
+assert.ok(
+  XAVIER_REVIEWED_STORY_WORLDBOOKS
+    .filter(book => book.category === '沈星回IF世界')
+    .every(book => book.content.length >= 600),
+  'player-visible IF books must carry a playable world rather than a fixed ending summary',
+);
 assert.equal(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT.includes('待填写占位卡'), false);
 assert.equal(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT.includes('默认撒娇'), true);
 assert.equal(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT.includes('菲罗斯王储'), false);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /酸奶油青瓜三明治/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /实体钥匙/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /抑制器/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /ST-1101/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /不是你每轮对话的默认状态/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /小闹钟/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /心率也比常人偏低/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /沈一光/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /一枚硬币/);
+assert.match(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /抓娃娃从入门到精通/);
+
+const specialPoliceBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-special-police-anecdote');
+const lightHunterBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-light-hunter-card');
+const zone42Book = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-restricted-zone-42');
+const mainlineBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-mainline-hunter-n109');
+const emberEndingReference = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-ember-city-ending-reference');
+const philosEndingReference = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-philos-ending-reference');
+assert.match(specialPoliceBook?.content || '', /ST-1101/);
+assert.match(specialPoliceBook?.content || '', /SD19940122/);
+assert.match(specialPoliceBook?.content || '', /沈大勇/);
+assert.match(specialPoliceBook?.content || '', /赵老三/);
+assert.match(lightHunterBook?.content || '', /2034 年裂空灾变/);
+assert.match(lightHunterBook?.content || '', /《末日曦光》/);
+assert.match(lightHunterBook?.content || '', /季秉程/);
+assert.match(zone42Book?.content || '', /回溯Ⅱ号飞船/);
+assert.match(zone42Book?.content || '', /休眠舱/);
+assert.match(mainlineBook?.content || '', /第 85 号特令/);
+assert.match(mainlineBook?.content || '', /花苑西路末班地铁/);
+assert.match(mainlineBook?.content || '', /602 室/);
+assert.match(mainlineBook?.content || '', /寰飞金融商务圈/);
+assert.match(mainlineBook?.content || '', /被改造的芯核/);
+assert.match(mainlineBook?.content || '', /蓝色原生磁线/);
+assert.match(mainlineBook?.content || '', /红色异常磁线/);
+assert.match(mainlineBook?.content || '', /携带以太芯核的能量/);
+assert.match(mainlineBook?.content || '', /并不因此等同于以太芯核/);
+assert.doesNotMatch(mainlineBook?.content || '', /以太芯核是一种经过改造/);
+assert.doesNotMatch(mainlineBook?.content || '', /玩家|当前设定|当前剧情选择/);
+assert.match(mainlineBook?.content || '', /原作猎人主线中的女主角/);
+assert.doesNotMatch(mainlineBook?.content || '', /极地调查结束后，\{\{user\}\}/);
+assert.equal(emberEndingReference?.knowledgePolicy.kind, 'director_only');
+assert.equal(philosEndingReference?.knowledgePolicy.kind, 'director_only');
+assert.match(emberEndingReference?.content || '', /不是.*预言|并不知道自己必然走向这里/);
+assert.doesNotMatch(emberEndingReference?.content || '', /双死已经|必然双死/);
+assert.match(philosEndingReference?.content || '', /不是新线路的固定步骤/);
+
+const modelFacingMetaLanguage = /AetherOS|可游玩|玩法用途|使用边界|角色参与|适合展开|这是沈星回.*阶段|需要.*递送|当前挂载|本轮筛选|本轮递送|不应在生成时/;
+assert.ok(
+  XAVIER_REVIEWED_STORY_WORLDBOOKS.every(book => !modelFacingMetaLanguage.test(`${book.title}\n${book.content}`)),
+  'worldbook content must contain story-world facts, never compiler or delivery instructions',
+);
+assert.doesNotMatch(XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT, /AetherOS|当前挂载|本轮递送/);
+assert.doesNotMatch(XAVIER_REVIEWED_WORLDVIEW, /AetherOS|可游玩|世界书|挂载|递送|启用|关闭|玩家/);
+const osContextSource = readFileSync(new URL('../context/OSContext.tsx', import.meta.url), 'utf8');
+assert.match(osContextSource, /普通芯核、改造芯核或出现异常磁线的芯核不会因此自动等同于以太芯核/);
+assert.match(osContextSource, /部分被改造的芯核可以携带来自以太芯核的能量/);
+assert.doesNotMatch(osContextSource, /以太芯核：极特殊的芯核类型，力量远超普通芯核。原作主控线/);
 assert.ok(BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.every(pack => (
   pack.defaultMounted === false
   && pack.activation === 'explicit_opt_in'
@@ -174,13 +301,48 @@ const project = (input: {
 
 const mainlineId = 'builtin-deepspace-story-xavier-mainline-hunter-n109';
 const princeIfId = 'builtin-deepspace-story-xavier-philos-prince-knight-if';
-const fateExpansionId = 'builtin-deepspace-expansion-xavier-fate-worldlines';
+const emberIfId = 'builtin-deepspace-story-xavier-ember-city-if';
+const emberEndingId = 'builtin-deepspace-story-xavier-ember-city-ending-reference';
+const philosEndingId = 'builtin-deepspace-story-xavier-philos-ending-reference';
+const fateExpansionId = 'builtin-deepspace-expansion-universal-multi-worldline';
+const governanceExpansionId = 'builtin-deepspace-expansion-universal-anomaly-governance';
+const mainlineRuntime = prepareWorldbookRuntimeProjection({
+  requestId: 'fixture:chat:model-facing-audit',
+  library: reviewedLibrary,
+  character: runtimeCharacter([mainlineId]),
+  scope,
+  consumer: { kind: 'chat', id: 'fixture:chat', revision: '1' },
+  knowledgeSubjects: [{ kind: 'character', id: 'builtin-xavier' }],
+  query: '7号禁猎区的改造芯核和以太芯核是什么关系？',
+  storyContext: { identityMode: 'canon_hunter' },
+  budget: { maxTotalChars: 700, maxEntries: 1, maxEntryChars: 560 },
+});
+assert.match(mainlineRuntime.markdown, /当前可参考的世界信息/);
+assert.match(mainlineRuntime.markdown, /沈星回·隐姓埋名的常驻猎人与主线调查/);
+assert.match(mainlineRuntime.markdown, /携带以太芯核的能量/);
+assert.match(mainlineRuntime.markdown, /并不因此等同于以太芯核/);
+assert.match(mainlineRuntime.markdown, /协会.*不知道以太芯核/);
+assert.doesNotMatch(mainlineRuntime.markdown, /沈星回现世履历|当前角色挂载|本轮相关世界资料|通用拓展玩法/);
+const compiledModelContext = [
+  XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT,
+  XAVIER_REVIEWED_WORLDVIEW,
+  mainlineRuntime.markdown,
+].join('\n\n');
+assert.match(compiledModelContext, /被改造的芯核/);
+assert.match(compiledModelContext, /携带以太芯核的能量/);
+assert.doesNotMatch(compiledModelContext, /AetherOS|可游玩|当前挂载|本轮递送|通用拓展玩法|以太芯核是一种经过改造/);
 assert.deepEqual(project({
   mountedIds: [mainlineId],
   consumer: 'chat',
   query: 'N109 调查',
   identityMode: 'canon_hunter',
-}), [], 'ordinary Chat must never receive an optional story route');
+}), [mainlineId], 'an explicitly mounted canonical history may answer a topic-relevant Chat turn');
+assert.deepEqual(project({
+  mountedIds: [mainlineId],
+  consumer: 'chat',
+  query: '今天午饭吃什么',
+  identityMode: 'canon_hunter',
+}), [], 'topic relevance must keep detailed history out of unrelated Chat turns');
 assert.deepEqual(project({
   mountedIds: [mainlineId],
   consumer: 'story_mainline',
@@ -214,6 +376,40 @@ assert.deepEqual(project({
   continuity: { lane: 'if_line', routeId: 'player-if', branchId: 'branch-a' },
   query: '菲罗斯王储 骑士 星降森林',
 }), [princeIfId], 'an explicitly mounted IF pack may reach an IF story');
+const philosDirectorItems = project({
+  mountedIds: [princeIfId],
+  consumer: 'world_director',
+  continuity: { lane: 'if_line', routeId: 'player-if', branchId: 'branch-a' },
+  query: '菲罗斯原作终局 女王 首席圣剑骑士 辞行 远航',
+});
+assert.ok(
+  philosDirectorItems.includes(philosEndingId),
+  'mounting the visible Philos premise exposes its source ending only to the IF Director',
+);
+assert.ok(
+  !project({
+    mountedIds: [princeIfId],
+    consumer: 'chat',
+    query: '菲罗斯原作终局 女王 首席圣剑骑士 辞行 远航',
+  }).includes(philosEndingId),
+  'ordinary Chat never receives the paired source ending',
+);
+assert.deepEqual(project({
+  mountedIds: [],
+  consumer: 'world_director',
+  continuity: { lane: 'if_line', routeId: 'player-if', branchId: 'branch-a' },
+  query: '菲罗斯原作终局 女王 首席圣剑骑士 辞行 远航',
+}), [], 'a source ending is not independently active without its visible premise');
+const emberDirectorItems = project({
+  mountedIds: [emberIfId],
+  consumer: 'world_director',
+  continuity: { lane: 'if_line', routeId: 'player-if', branchId: 'branch-a' },
+  query: '烬城原作终局 双星之剑 城市崩塌 共同留下',
+});
+assert.ok(
+  emberDirectorItems.includes(emberEndingId),
+  'mounting the visible Ember premise exposes its cautious source-ending reference to the Director',
+);
 assert.deepEqual(project({
   mountedIds: [fateExpansionId],
   consumer: 'story_mainline',
@@ -224,7 +420,58 @@ assert.deepEqual(project({
   mountedIds: [fateExpansionId],
   consumer: 'chat',
   query: '多世界线 人理维持 时钟塔',
-}), [], 'an expansion must not leak into ordinary Chat');
+}), [fateExpansionId], 'an explicitly assigned expansion may reach a directly relevant Chat turn');
+
+const zayneScope = {
+  progressBundleId: 'fixture-zayne-bundle',
+  personaMaskId: 'fixture-zayne-mask',
+  charId: 'builtin-zayne',
+};
+const universalForZayne = prepareWorldbookRuntimeProjection({
+  requestId: 'fixture:zayne:universal-worldline',
+  library: reviewedLibrary,
+  character: {
+    id: 'builtin-zayne',
+    mountedWorldbooks: reviewedLibrary
+      .filter(book => book.id === fateExpansionId)
+      .map(book => ({ id: book.id, title: book.title, content: book.content })),
+    mountedWorldbookGroupIds: [],
+  },
+  scope: zayneScope,
+  consumer: { kind: 'story_mainline', id: 'fixture:zayne:story-mainline', revision: '1' },
+  knowledgeSubjects: [{ kind: 'character', id: 'builtin-zayne' }],
+  continuity: { lane: 'mainline', routeId: 'fixture-zayne-mainline' },
+  query: '多世界线 人理维持 时钟塔',
+  budget: { maxTotalChars: 1_200, maxEntries: 3, maxEntryChars: 600 },
+}).projection.items.map(item => item.entryId);
+assert.deepEqual(
+  universalForZayne,
+  [fateExpansionId],
+  'the universal multi-worldline package must really project for a different character, not only move in UI',
+);
+
+const universalGovernanceForZayne = prepareWorldbookRuntimeProjection({
+  requestId: 'fixture:zayne:universal-anomaly-governance',
+  library: reviewedLibrary,
+  character: {
+    id: 'builtin-zayne',
+    mountedWorldbooks: reviewedLibrary
+      .filter(book => book.id === governanceExpansionId)
+      .map(book => ({ id: book.id, title: book.title, content: book.content })),
+    mountedWorldbookGroupIds: [],
+  },
+  scope: zayneScope,
+  consumer: { kind: 'story_mainline', id: 'fixture:zayne:story-mainline', revision: '1' },
+  knowledgeSubjects: [{ kind: 'character', id: 'builtin-zayne' }],
+  continuity: { lane: 'mainline', routeId: 'fixture-zayne-mainline' },
+  query: '现代城市出现异常能量，需要跨部门保密调查与组织协作',
+  budget: { maxTotalChars: 1_200, maxEntries: 3, maxEntryChars: 800 },
+}).projection.items.map(item => item.entryId);
+assert.deepEqual(
+  universalGovernanceForZayne,
+  [governanceExpansionId],
+  'modern anomaly governance must really project for a different character after explicit assignment',
+);
 
 await DB.deleteDB();
 const deprecatedBook = createWorldbookEntry({

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { CharacterProfile, Worldbook } from '../types.ts';
 import {
+    buildBuiltInWorldbookLibraryLayout,
     buildWorldbookGroupIndex,
     createWorldbookGroupAssignment,
     DEFAULT_WORLDBOOK_CATEGORY,
@@ -88,6 +89,88 @@ const index = buildWorldbookGroupIndex(fixture, [roleGroup, plotGroup, collision
 assert.equal(index.builtInCount, 2);
 assert.equal(index.customCount, 4);
 assert.deepEqual(index.builtInGroups.map(group => group.category), ['深空世界书', '深空剧情增强']);
+
+const roleProjectedBuiltIns = buildWorldbookGroupIndex([
+    book('builtin-foundation-projection', {
+        title: '基础世界观',
+        category: '深空世界书',
+        isBuiltIn: true,
+        lockEditing: true,
+    }),
+    book('builtin-char-a-story', {
+        title: '03 常驻身份',
+        category: '角色甲现世履历',
+        visibleToCharacterIds: ['char-a'],
+        isBuiltIn: true,
+        lockEditing: true,
+    }),
+    book('builtin-char-a-story-earlier', {
+        title: '01 早期履历',
+        category: '角色甲现世履历',
+        visibleToCharacterIds: ['char-a'],
+        isBuiltIn: true,
+        lockEditing: true,
+    }),
+    book('builtin-char-a-if', {
+        title: '角色甲·可游玩 IF',
+        category: '角色甲IF世界',
+        visibleToCharacterIds: ['char-a'],
+        isBuiltIn: true,
+        lockEditing: true,
+    }),
+    book('builtin-char-a-expansion', {
+        title: '拓展玩法·异能治理',
+        category: '角色甲拓展玩法',
+        visibleToCharacterIds: ['char-a'],
+        isBuiltIn: true,
+        lockEditing: true,
+    }),
+    book('builtin-char-b-story', {
+        title: '角色乙剧情增强',
+        category: '深空剧情增强',
+        visibleToCharacterIds: ['char-b'],
+        isBuiltIn: true,
+        lockEditing: true,
+    }),
+    book('builtin-universal-expansion', {
+        title: '多世界线兼容',
+        category: '通用拓展玩法',
+        visibleToCharacterIds: [],
+        isBuiltIn: true,
+        lockEditing: true,
+    }),
+]).builtInGroups;
+const builtInLayout = buildBuiltInWorldbookLibraryLayout(roleProjectedBuiltIns, [
+    { id: 'char-a', name: '角色甲' },
+    { id: 'char-b', name: '角色乙' },
+]);
+assert.deepEqual(
+    builtInLayout.characterShelves.map(shelf => [
+        shelf.characterName,
+        shelf.booksCount,
+        shelf.lanes.map(lane => lane.label),
+    ]),
+    [
+        ['角色甲', 4, ['现世履历', 'IF 世界', '拓展玩法']],
+        ['角色乙', 1, ['剧情增强']],
+    ],
+    'character-owned optional books should project as character → lane without changing stored categories',
+);
+assert.deepEqual(
+    builtInLayout.remainingGroups.map(group => [group.category, group.books.map(item => item.id)]),
+    [
+        ['深空世界书', ['builtin-foundation-projection']],
+        ['通用拓展玩法', ['builtin-universal-expansion']],
+    ],
+    'public foundations and universal expansions should remain outside character shelves',
+);
+assert.deepEqual(
+    builtInLayout.characterShelves[0]?.lanes
+        .find(lane => lane.kind === 'canonical_chronology')?.books
+        .map(item => item.title),
+    ['01 早期履历', '03 常驻身份'],
+    'present-world history stays visibly ordered instead of looking like interchangeable IF books',
+);
 assert.deepEqual(
     index.customGroups.find(group => group.category === '生活资料')?.books.map(item => item.title),
     ['饮食', '住处'],
@@ -157,6 +240,9 @@ const appSource = readFileSync(new URL('../apps/WorldbookApp.tsx', import.meta.u
 const editorSource = readFileSync(new URL('../components/worldbook/WorldbookEntryEditor.tsx', import.meta.url), 'utf8');
 const pickerSource = readFileSync(new URL('../components/worldbook/WorldbookGroupPicker.tsx', import.meta.url), 'utf8');
 assert.match(appSource, /data-worldbook-built-in-drawer/);
+assert.match(appSource, /data-worldbook-character-shelf/);
+assert.match(appSource, /data-worldbook-character-lane/);
+assert.match(appSource, /data-worldbook-activation-hint/);
 assert.match(appSource, /data-worldbook-custom-groups/);
 assert.match(appSource, /data-worldbook-universal-drawer/);
 assert.match(appSource, /data-worldbook-group-access/);

@@ -278,6 +278,9 @@ try {
   assert.equal(stored.candidates[0].draft.knowledgePolicy.kind, 'public');
   assert.doesNotMatch(JSON.stringify(stored.candidates), /DO_NOT_AUTO_COPY_RECEIPT_FACT/u);
   assert.doesNotMatch(lastPrompt, /DIRECTOR_ONLY_MUST_NOT_ENTER_PROPOSAL_PROMPT/u);
+  assert.match(lastPrompt, /站在仍会继续生活和变化的世界内部说明事实/u);
+  assert.match(lastPrompt, /来源作品中的主角不自动等于当前玩家/u);
+  assert.match(lastPrompt, /自建拓展只增加可能性，不改写原有世界规则/u);
   assert.deepEqual(stored.worldbookProjection.items.map(item => item.entryId), [visibleWorldbook.id]);
   assert.equal((await indexedDbWorldbookPersistence.listGrowthCandidates()).length, 1);
 

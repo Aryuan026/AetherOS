@@ -30,6 +30,7 @@ import { prepareChatConversationContinuity } from '../utils/conversationContinui
 import type { CharacterBehaviorBoundaryRule } from '../domain/characterBehaviorBoundary';
 import type { WorldbookProjectionConsumerRef } from '../domain/worldbook';
 import {
+    buildWorldbookRecallQuery,
     prepareWorldbookRuntimeProjection,
     recordWorldbookRuntimeProjectionDelivery,
     type PreparedWorldbookRuntimeProjection,
@@ -430,6 +431,12 @@ export const useChatAI = ({
             let preparedWorldbookRuntime: PreparedWorldbookRuntimeProjection | null = null;
             if (initiatingRelationshipScope && lastUserMessage) {
                 try {
+                    const worldbookRecallQuery = buildWorldbookRecallQuery({
+                        query: typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
+                        previousQuery: typeof previousUserMessage?.content === 'string'
+                            ? previousUserMessage.content
+                            : undefined,
+                    });
                     preparedWorldbookRuntime = prepareWorldbookRuntimeProjection({
                         requestId: `chat-worldbook:${assistantResponseId}`,
                         library: await indexedDbWorldbookPersistence.listEntries(),
@@ -437,7 +444,7 @@ export const useChatAI = ({
                         scope: initiatingRelationshipScope,
                         consumer: worldbookConsumer,
                         knowledgeSubjects: [{ kind: 'character', id: char.id }],
-                        query: typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
+                        query: worldbookRecallQuery,
                         budget: {
                             maxTotalChars: 700,
                             maxEntries: 1,

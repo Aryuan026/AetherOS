@@ -416,6 +416,18 @@ const persistWorldbookWithMountedCaches = async (
                     if (!existing) throw new Error(`Worldbook ${entry.id} is missing`);
                     const current = normalizeWorldbookEntry(existing);
                     if (current.activeRevisionId !== expectedActiveRevisionId) {
+                        if (
+                            entry.isBuiltIn
+                            && entry.lockEditing
+                            && current.isBuiltIn
+                            && current.lockEditing
+                            && current.builtInVersion === entry.builtInVersion
+                        ) {
+                            // React StrictMode and multiple open tabs may race the same
+                            // code-owned refresh. Once that exact built-in version has
+                            // landed, the second writer is already satisfied.
+                            return;
+                        }
                         throw new Error(`Worldbook ${entry.id} active revision is stale`);
                     }
                 }

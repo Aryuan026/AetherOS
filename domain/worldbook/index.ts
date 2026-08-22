@@ -4,3 +4,4 @@ export * from './contract.ts';
 export * from './projection.ts';
 export * from './narrativeGrowth.ts';
 export * from './narrativeGrowthProposal.ts';
+export * from './authoring.ts';

@@ -129,12 +129,39 @@ const excerptFor = (
   if (!clean || limit <= 0) return '';
   if (clean.length <= limit) return clean;
   const lower = clean.toLocaleLowerCase();
-  const hit = tokens
-    .map(token => lower.indexOf(token))
-    .filter(index => index >= 0)
-    .sort((left, right) => left - right)[0];
-  const center = hit ?? 0;
-  const start = Math.max(0, Math.min(center - Math.floor(limit / 3), clean.length - limit));
+  const maxStart = clean.length - limit;
+  const occurrencesByToken = tokens.map(token => {
+    const occurrences: number[] = [];
+    let cursor = lower.indexOf(token);
+    while (cursor >= 0) {
+      occurrences.push(cursor);
+      cursor = lower.indexOf(token, cursor + Math.max(1, token.length));
+    }
+    return { token, occurrences };
+  }).filter(item => item.occurrences.length);
+  const candidateStarts = new Set<number>([0, maxStart]);
+  occurrencesByToken.forEach(({ occurrences }) => occurrences.forEach(index => {
+    candidateStarts.add(Math.max(0, Math.min(index - Math.floor(limit / 3), maxStart)));
+  }));
+  const scoreWindow = (candidateStart: number): number => {
+    const window = lower.slice(candidateStart, candidateStart + limit);
+    return occurrencesByToken.reduce((total, { token, occurrences }) => {
+      let windowHits = 0;
+      let cursor = window.indexOf(token);
+      while (cursor >= 0) {
+        windowHits += 1;
+        cursor = window.indexOf(token, cursor + Math.max(1, token.length));
+      }
+      if (!windowHits) return total;
+      const specificity = /^[\p{Script=Han}]+$/u.test(token)
+        ? Math.max(1, token.length - 1)
+        : Math.min(8, token.length);
+      return total + ((windowHits * specificity) / Math.sqrt(occurrences.length));
+    }, 0);
+  };
+  const start = [...candidateStarts].reduce((bestStart, candidateStart) => (
+    scoreWindow(candidateStart) > scoreWindow(bestStart) ? candidateStart : bestStart
+  ), 0);
   const prefix = start > 0 ? '…' : '';
   const suffix = start + limit < clean.length ? '…' : '';
   const bodyLimit = Math.max(0, limit - prefix.length - suffix.length);

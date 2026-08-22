@@ -20,6 +20,7 @@ import {
   parseWorldbookImport,
 } from '../utils/worldbookImport.ts';
 import { buildWorldbookGroupIndex, createWorldbookGroupAssignment } from '../utils/worldbookGroups.ts';
+import { buildWorldbookInputAnalysisPrompt } from '../utils/worldbookInputAnalysis.ts';
 import {
   listPlayerVisibleWorldbooks,
   resolveWorldbookSupplementLinks,
@@ -54,6 +55,11 @@ const reviewGroup = createWorldbookGroupAssignment({
 });
 
 await DB.deleteDB();
+
+const authoringPrompt = buildWorldbookInputAnalysisPrompt('原作资料与玩家拓展混合输入。', 'group');
+assert.match(authoringPrompt, /来源作品中的主角不自动等于当前玩家/u);
+assert.match(authoringPrompt, /IF 提供可继续行动的世界前提/u);
+assert.match(authoringPrompt, /不把同一履历误拆成互斥路线/u);
 
 // Parsing stays pure. The import screen may commit immediately after a successful parse.
 const txtDrafts = parseWorldbookImport({ source: '潮汐会倒流。', fileName: '雾港.txt' });

@@ -30,6 +30,7 @@ import WorldGrowthReviewScreen from '../components/worldbook/WorldGrowthReviewSc
 import WorldbookVersionHistoryScreen from '../components/worldbook/WorldbookVersionHistoryScreen';
 import WorldbookGroupPicker from '../components/worldbook/WorldbookGroupPicker';
 import {
+  buildBuiltInWorldbookLibraryLayout,
   buildWorldbookGroupIndex,
   createWorldbookGroupAssignment,
   isBuiltInWorldbook,
@@ -51,7 +52,25 @@ import { resolveAiTaskRoute } from '../utils/aiRuntime';
 const BUILT_IN_ROOT_KEY = 'built-in-root';
 const UNIVERSAL_ROOT_KEY = 'universal-root';
 const builtInCategoryKey = (category: string) => `built-in:${category}`;
+const builtInCharacterKey = (characterId: string) => `built-in-character:${characterId}`;
+const builtInCharacterLaneKey = (characterId: string, laneKind: string) => `built-in-character:${characterId}:${laneKind}`;
 const customCategoryKey = (category: string) => `custom:${category}`;
+
+const builtInBookDisplayTitle = (
+  book: Worldbook,
+  characterName?: string,
+  laneKind?: string,
+) => {
+  if (!characterName) return book.title;
+  if (book.title === `${characterName}剧情增强`) return '剧情资料总览';
+  let title = book.title;
+  const characterPrefix = `${characterName}·`;
+  if (title.startsWith(characterPrefix)) title = title.slice(characterPrefix.length);
+  if (laneKind === 'expansion_play' && title.startsWith('拓展玩法·')) {
+    title = title.slice('拓展玩法·'.length);
+  }
+  return title;
+};
 
 type EditorState =
   | { kind: 'create' }
@@ -138,6 +157,10 @@ const WorldbookApp: React.FC = () => {
   const groupIndex = useMemo(
     () => buildWorldbookGroupIndex(visiblePublished, worldbookGroups),
     [visiblePublished, worldbookGroups],
+  );
+  const builtInLibraryLayout = useMemo(
+    () => buildBuiltInWorldbookLibraryLayout(groupIndex.builtInGroups, characters),
+    [characters, groupIndex.builtInGroups],
   );
   const groupOptions = worldbookGroups;
   const smartInputRoute = useMemo(() => resolveAiTaskRoute({
@@ -497,7 +520,10 @@ const WorldbookApp: React.FC = () => {
     }
   };
 
-  const renderBook = (book: Worldbook) => {
+  const renderBook = (
+    book: Worldbook,
+    options?: { characterName?: string; laneKind?: string },
+  ) => {
     const builtIn = isBuiltInWorldbook(book);
     const mountedCharacterNames = builtIn ? [] : worldbookMountedCharacterNames(book, characters);
     const mountLabel = mountedCharacterNames.length === 0
@@ -513,18 +539,20 @@ const WorldbookApp: React.FC = () => {
       <div
         key={book.id}
         data-worldbook-id={book.id}
-        className="group overflow-hidden rounded-2xl border border-white/70 bg-white/75 shadow-sm backdrop-blur-md"
+        className="group overflow-hidden rounded-[18px] border border-white/70 bg-white/75 shadow-sm backdrop-blur-md"
       >
         <button
           type="button"
           onClick={() => setPreviewBookId(previous => previous === book.id ? null : book.id)}
-          className="flex w-full items-start justify-between gap-3 p-4 text-left"
+          className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left"
           aria-expanded={expanded}
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${expanded ? 'bg-indigo-400' : 'bg-slate-300'}`} />
-              <h4 className={`truncate text-sm font-bold ${expanded ? 'text-indigo-700' : 'text-slate-700'}`}>{book.title}</h4>
+              <h4 className={`truncate text-[13px] font-semibold leading-5 ${expanded ? 'text-indigo-700' : 'text-slate-700'}`}>
+                {builtInBookDisplayTitle(book, options?.characterName, options?.laneKind)}
+              </h4>
             </div>
             <div className="mt-1 pl-3.5 text-[10px] text-slate-400">
               {builtIn
@@ -548,11 +576,17 @@ const WorldbookApp: React.FC = () => {
         </button>
 
         {expanded && (
-          <div className="space-y-4 px-4 pb-4">
+          <div className="space-y-3 px-3 pb-3">
             <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
-            <p className="whitespace-pre-wrap text-xs font-light leading-6 text-slate-600">
+            <p className="whitespace-pre-wrap text-[13px] font-normal leading-6 text-slate-600">
               {book.content || <span className="italic text-slate-400">暂无内容……</span>}
             </p>
+            {builtIn && book.activationHint && (
+              <div className="rounded-xl bg-indigo-50/70 px-3 py-2.5" data-worldbook-activation-hint>
+                <div className="text-[10px] font-semibold text-indigo-500">适合什么时候启用</div>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">{book.activationHint}</p>
+              </div>
+            )}
             {builtIn ? (
               <div className="space-y-3">
                 {relatedSupplements.length > 0 && (
@@ -568,7 +602,7 @@ const WorldbookApp: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setEditorState({ kind: 'supplement', builtIn: book })}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-50 py-3 text-xs font-bold text-indigo-600"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-50 py-2.5 text-[11px] font-semibold text-indigo-600"
                 >
                   <Plus size={15} weight="bold" /> 添加我的补充
                 </button>
@@ -726,7 +760,7 @@ const WorldbookApp: React.FC = () => {
         {expanded && (
           <div className="space-y-2.5 px-3 pb-3 pt-0">
             {group.books.length
-              ? group.books.map(renderBook)
+              ? group.books.map(book => renderBook(book))
               : <div className="rounded-2xl border border-dashed border-violet-100 py-4 text-center text-[10px] text-slate-400">这组还是空的，可以把新条目或副本放进来。</div>}
           </div>
         )}
@@ -1002,7 +1036,7 @@ const WorldbookApp: React.FC = () => {
         )}
       />
 
-      <div className="relative z-0 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-5 pb-[max(6rem,env(safe-area-inset-bottom))] no-scrollbar">
+      <div className="relative z-0 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 pb-[max(6rem,env(safe-area-inset-bottom))] no-scrollbar">
         {growthBatches.length > 0 && (
           <section className="shrink-0" data-world-growth-inbox>
             <div className="mb-3 flex items-end justify-between gap-3 px-1">
@@ -1128,18 +1162,74 @@ const WorldbookApp: React.FC = () => {
               </button>
             </div>
             {builtInRootExpanded && (
-              <div className="space-y-3 border-t border-indigo-100/60 px-3 pb-3 pt-3">
-                {groupIndex.builtInGroups.map(group => {
+              <div className="space-y-2 border-t border-indigo-100/60 px-3 pb-3 pt-3">
+                {builtInLibraryLayout.remainingGroups.map(group => {
                   const key = builtInCategoryKey(group.category);
                   const expanded = expandedSections.has(key);
                   return (
-                    <div key={group.category} className="overflow-hidden rounded-2xl border border-white/80 bg-white/55">
+                    <div key={group.category} className="overflow-hidden rounded-[18px] border border-white/80 bg-white/55">
                       <button type="button" onClick={() => toggleSection(key)} className="flex w-full items-center gap-2 px-3 py-3 text-left" aria-expanded={expanded}>
                         <CaretDown className={`shrink-0 text-indigo-300 transition-transform ${expanded ? 'rotate-180' : ''}`} size={14} weight="bold" />
-                        <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-600">{group.category}</span>
-                        <span className="text-[9px] text-slate-400">{group.books.length}</span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-600">{group.category}</span>
+                        <span className="text-[10px] text-slate-400">{group.books.length}</span>
                       </button>
-                      {expanded && <div className="space-y-3 px-2 pb-2">{group.books.map(renderBook)}</div>}
+                      {expanded && <div className="space-y-2 px-2 pb-2">{group.books.map(book => renderBook(book))}</div>}
+                    </div>
+                  );
+                })}
+                {builtInLibraryLayout.characterShelves.map(shelf => {
+                  const characterKey = builtInCharacterKey(shelf.characterId);
+                  const characterExpanded = expandedSections.has(characterKey);
+                  return (
+                    <div
+                      key={shelf.id}
+                      className="overflow-hidden rounded-[18px] border border-white/80 bg-white/55"
+                      data-worldbook-character-shelf={shelf.characterId}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(characterKey)}
+                        className="flex w-full items-center gap-2.5 px-3 py-3 text-left"
+                        aria-expanded={characterExpanded}
+                      >
+                        <CaretDown className={`shrink-0 text-indigo-300 transition-transform ${characterExpanded ? 'rotate-180' : ''}`} size={14} weight="bold" />
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-700">{shelf.characterName}</span>
+                        <span className="text-[10px] text-slate-400">{shelf.booksCount}</span>
+                      </button>
+                      {characterExpanded && (
+                        <div className="space-y-2 border-t border-white/80 px-2 pb-2 pt-2">
+                          {shelf.lanes.map(lane => {
+                            const laneKey = builtInCharacterLaneKey(shelf.characterId, lane.kind);
+                            const laneExpanded = expandedSections.has(laneKey);
+                            return (
+                              <div
+                                key={lane.id}
+                                className="overflow-hidden rounded-2xl bg-indigo-50/45"
+                                data-worldbook-character-lane={lane.kind}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSection(laneKey)}
+                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                                  aria-expanded={laneExpanded}
+                                >
+                                  <CaretDown className={`shrink-0 text-indigo-300 transition-transform ${laneExpanded ? 'rotate-180' : ''}`} size={12} weight="bold" />
+                                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-indigo-600">{lane.label}</span>
+                                  <span className="text-[9px] text-slate-400">{lane.books.length}</span>
+                                </button>
+                                {laneExpanded && (
+                                  <div className="space-y-2 px-2 pb-2">
+                                    {lane.books.map(book => renderBook(book, {
+                                      characterName: shelf.characterName,
+                                      laneKind: lane.kind,
+                                    }))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

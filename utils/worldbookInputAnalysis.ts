@@ -1,5 +1,6 @@
 import type { APIConfig } from '../types.ts';
 import type { AiTaskProviderRef } from '../domain/aiRuntime/types.ts';
+import { WORLDBOOK_MODEL_BODY_AUTHORING_GUIDANCE } from '../domain/worldbook/authoring.ts';
 import type { WorldbookImportDraft } from './worldbookImport.ts';
 import { extractContent, extractJson, safeFetchJson } from './safeApi.ts';
 
@@ -51,14 +52,19 @@ const normalizeResult = (
   };
 };
 
-const buildPrompt = (source: string, mode: WorldbookInputAnalysisMode): string => `你是 AetherOS 的世界书整理助手。请把玩家提供的文本整理成${mode === 'single' ? '一条完整世界书条目' : '一组互相独立、便于按话题取用的世界书条目'}。
+export const buildWorldbookInputAnalysisPrompt = (
+  source: string,
+  mode: WorldbookInputAnalysisMode,
+): string => `你是 AetherOS 的世界书整理助手。请把玩家提供的文本整理成${mode === 'single' ? '一条完整世界书条目' : '一组互相独立、便于按话题取用的世界书条目'}。
+
+${WORLDBOOK_MODEL_BODY_AUTHORING_GUIDANCE}
 
 整理原则：
 1. 只整理玩家提供的资料，不自行续写剧情、不补充训练知识、不把推测当事实。
-2. 保留专有名词、条件、例外、秘密的知情边界和因果关系；不要为了简短而改变含义。
-3. 正文写成模型容易准确引用的自然说明，不加入命令模型表演的格式要求。
-4. activationHint 只写这条资料何时相关的简短线索；aliases 只收真正可检索的别称。
-5. ${mode === 'single' ? 'entries 必须且只能有 1 条。' : 'entries 最多 16 条；不要把一句话机械拆成很多碎片。'}
+2. 保留专有名词、条件、例外、知情边界与因果关系；不要为了简短而改变含义。
+3. 多条整理按概念归属、连续世界与独立 IF 的边界拆分，不按字数机械切碎，也不把同一履历误拆成互斥路线。
+4. activationHint 只写这条资料何时相关的简短线索；aliases 只收真正可检索的别称。它们不进入正文。
+5. ${mode === 'single' ? 'entries 必须且只能有 1 条。' : 'entries 最多 16 条；资料不足以支撑独立条目时不要硬凑数量。'}
 6. suggestedGroupName 是人类能看懂的短分组名。
 7. 只输出 JSON，不要 Markdown 或解释。
 
@@ -92,7 +98,7 @@ export const analyzeWorldbookInput = async (input: {
     },
     body: JSON.stringify({
       model: input.apiConfig.model,
-      messages: [{ role: 'user', content: buildPrompt(source, input.mode) }],
+      messages: [{ role: 'user', content: buildWorldbookInputAnalysisPrompt(source, input.mode) }],
       temperature: 0.2,
       max_tokens: input.mode === 'single' ? 1_200 : 4_000,
       stream: false,

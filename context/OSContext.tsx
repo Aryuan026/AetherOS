@@ -354,8 +354,8 @@ const defaultUserProfile: UserProfile = normalizeUserPersonaProfile({
     deepspaceIdentityNote: '',
 });
 
-const BUILT_IN_CHARACTER_VERSION = 19;
-const BUILT_IN_WORLDBOOK_VERSION = 13;
+const BUILT_IN_CHARACTER_VERSION = 22;
+const BUILT_IN_WORLDBOOK_VERSION = 19;
 const BUILT_IN_WORLDBOOK_TIMESTAMP = Date.UTC(2026, 6, 3);
 const QIYU_BUILT_IN_ID = 'builtin-daily-companion';
 const XAVIER_BUILT_IN_ID = 'builtin-xavier';
@@ -508,7 +508,7 @@ Evol 是少数人身上显现的特殊能力，拥有 Evol 的人被称为 Evolv
 芯核：高危流浪体被消灭后可能掉落的能量核心。芯核能源可用于电子、生物、航天、武器等高新科技，也会带来芯源介入症、异化者、非法交易与势力争夺等风险。
 芯源介入症：由芯核引发的特殊疾病，会造成人体不同类型、不同程度的损伤，已知存在 A 型、E 型、Y 型等类型。
 异化者：芯源症的一种特殊病变，外表仍保留人类特征，但意识被侵蚀，只剩攻击本能。
-以太芯核：极特殊的芯核类型，力量远超普通芯核。原作主控线或已启用的相关资料包中，{{user}}的心脏与以太芯核秘密有关；若用户采用自设身份，尤其是非猎人身份，不要默认这层身体/宿命关系，除非当前聊天或用户设定明确建立。此信息属于高危秘密，不应在普通闲聊中轻易公开。`
+以太芯核：极特殊的能量核心，已知可存在于人体、形成能量链路，并与多起异常事件相连；它的来源、完整机制与真正能力仍属于主线秘密。普通芯核、改造芯核或出现异常磁线的芯核不会因此自动等同于以太芯核；部分被改造的芯核可以携带来自以太芯核的能量。以太芯核并非公开常识，知道某次异常能量现象，也不等于知道它的全貌。`
     ),
     createBuiltInWorldbook(
         'builtin-deepspace-common-hunter-system',

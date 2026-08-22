@@ -13,6 +13,7 @@ import {
   getActiveWorldbookRevision,
   normalizeWorldbookEntry,
   projectWorldbook,
+  refreshBuiltInWorldbookEntry,
   restoreWorldbookRevision,
   reviseWorldbookEntry,
   type WorldbookBinding,
@@ -363,6 +364,33 @@ assert.equal(
 assert.equal((await DB.getAllCharacters()).every(character => (
   character.mountedWorldbooks?.[0]?.content === persistedV2.content
 )), true, 'aborted stale revision must leave entry and every portability cache unchanged');
+
+const builtInV1 = createWorldbookEntry({
+  book: legacyBook('builtin-concurrent-refresh', {
+    isBuiltIn: true,
+    lockEditing: true,
+    builtInVersion: 1,
+  }),
+  knowledgePolicy: { kind: 'public' },
+});
+await indexedDbWorldbookPersistence.createEntry(builtInV1);
+const builtInV1RevisionId = getActiveWorldbookRevision(builtInV1).id;
+const builtInV2 = refreshBuiltInWorldbookEntry({
+  current: builtInV1,
+  incoming: {
+    ...builtInV1,
+    content: '第二版内置资料',
+    builtInVersion: 2,
+  },
+  refreshedAt: 7_250,
+});
+await indexedDbWorldbookPersistence.updateEntry(builtInV2, builtInV1RevisionId);
+await indexedDbWorldbookPersistence.updateEntry(builtInV2, builtInV1RevisionId);
+assert.equal(
+  (await DB.getAllWorldbooks()).find(book => book.id === builtInV2.id)?.content,
+  '第二版内置资料',
+  'the exact same built-in version may race safely without weakening ordinary stale-write rejection',
+);
 
 const forcedAbortRevision = reviseWorldbookEntry({
   current: persistedV2,

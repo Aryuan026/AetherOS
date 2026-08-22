@@ -22,6 +22,21 @@ export type DeepspaceStoryEvidenceStrength =
   | 'reviewed_single_source'
   | 'unresolved';
 
+export type DeepspaceStoryApplicability =
+  | {
+      kind: 'character';
+      charId: string;
+    }
+  | {
+      kind: 'universal';
+    };
+
+export type DeepspaceStoryContinuityClass =
+  | 'canonical_chronology'
+  | 'playable_if_premise'
+  | 'canon_ending_reference'
+  | 'optional_world_expansion';
+
 export interface DeepspaceStoryRuntimeGate {
   /** Provider surfaces that may receive this mounted Worldbook entry. */
   allowedConsumers: readonly WorldbookProjectionConsumerKind[];
@@ -43,8 +58,13 @@ export interface DeepspaceStoryEnhancementPack {
   schemaVersion: typeof DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION;
   id: string;
   worldbookEntryId: string;
-  charId: string;
+  /** Who may explicitly mount this package. Source provenance does not decide applicability. */
+  applicability: DeepspaceStoryApplicability;
   sourceLane: DeepspaceStorySourceLane;
+  /** Lived canon history, an open playable world, an ending reference, or additive rules. */
+  continuityClass: DeepspaceStoryContinuityClass;
+  /** Ordering inside one canonical chronology. It never makes an entry current state. */
+  chronologyOrder?: number;
   worldlineId: string;
   routeStage: string;
   contentAuthority: DeepspaceStoryContentAuthority;
