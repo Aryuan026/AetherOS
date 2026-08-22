@@ -3808,7 +3808,7 @@
     accept Worldbook growth, write relationship memory, or turn manuscript text
     into confirmed lived experience.
 
-## 2026-08-22 Xavier Reviewed Persona And Story Packages (Local, Unreleased)
+## 2026-08-22 Xavier Reviewed Persona And Story Packages (Published)
 
 - done:
   - Replaced the Xavier placeholder with a reviewed stable persona that keeps
@@ -3833,7 +3833,19 @@
   - `npm run verify:narrative-director-proposals`
   - `npm run verify:worldbook-growth-proposal`
   - `node --import tsx scripts/verify-built-in-deepspace-model-facing-messages.ts`
+  - full `npm run verify:health`
+  - GitHub Pages run `32544457996`
+  - deployed online-first release `aetheros-2.0.0-fe0e61823e5c237f`
   - `git diff --check`
+
+- release:
+  - Public GitHub `main` and the retained feature branch point to runtime commit
+    `770068c`.
+  - The static lab at `https://lab.asherie.cloud/aetheros/` was atomically
+    replaced without restarting Nginx, Home or Bridge. Public GET is `200`,
+    POST remains `403`, and retired `/sullyos/` remains `410`.
+  - Rollback is
+    `/srv/asherie/backups/aetheros-xavier-story-770068c-20260822T015104Z/aetheros-static.previous`.
 
 - boundary:
   - Relationship-stage facts remain withheld because there is no canonical
@@ -3843,5 +3855,5 @@
   - Qi Yu and Zayne's existing aggregate story books are not considered closed;
     all remaining leads must repeat the same private review and public routing
     process before migration.
-  - This checkpoint is local only. It has not been committed, pushed or
-    deployed, and natural roleplay quality is not claimed from static gates.
+  - The code, GitHub and lab release are Green. Natural roleplay quality remains
+    a player/provider observation rather than a deterministic static-gate claim.
