@@ -17,6 +17,7 @@ import {
 import type { WorldbookContinuityRef, WorldbookProjectionConsumerRef } from '../../domain/worldbook';
 import { preparePlainNovelCreativeScheme } from '../../utils/creativeSchemeRuntime';
 import type { PreparedCreativeScheme } from '../../domain/creativeScheme';
+import { resolveDeepSpaceIdentityMode } from '../../utils/deepspaceIdentity';
 
 interface NovelWriterProps {
     activeBook: NovelBook;
@@ -193,6 +194,9 @@ const NovelWriter: React.FC<NovelWriterProps> = ({
                                 userPrompt,
                                 storyContext.slice(-4_000),
                             ].filter(Boolean).join('\n'),
+                            storyContext: {
+                                identityMode: resolveDeepSpaceIdentityMode(userProfile),
+                            },
                             budget: { maxTotalChars: 1_800, maxEntries: 4, maxEntryChars: 650 },
                         });
                     } catch (error) {

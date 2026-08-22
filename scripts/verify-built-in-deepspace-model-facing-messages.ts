@@ -31,6 +31,10 @@ import {
   buildCompanionInteractionQualityProjection,
 } from '../domain/companionMaterial/interactionQuality.ts';
 import {
+  BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS,
+  XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT,
+} from '../domain/deepspaceStoryEnhancement/index.ts';
+import {
   buildCallModelFacingMessages,
   buildCallPrompt,
 } from '../utils/callModelMessages.ts';
@@ -201,6 +205,20 @@ const dateExperienceModule = await import('../utils/dateExperience.ts') as unkno
       userProfile,
       false,
     );
+    if (character.charId === BUILT_IN_DEEPSPACE_SHENXINGHUI_ID) {
+      assert.equal(char.systemPrompt, XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT);
+      assert.equal(String(char.systemPrompt || '').includes('待填写占位卡'), false);
+      assert.equal(String(char.systemPrompt || '').includes('这张卡还在整理中'), false);
+      assert.equal(
+        (char.mountedWorldbooks as readonly { id?: string }[] | undefined)?.some(entry => (
+          entry.id ? BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS.has(entry.id) : false
+        )),
+        false,
+        'Xavier optional route and expansion books must not be mounted by default',
+      );
+      assert.equal(/菲罗斯王储与骑士线|烬城菲罗斯世界线|特遣013逸闻线|N109调查/u.test(coreContext), false);
+      assert.equal(/Fate 式|人理维持|秘务组织/u.test(coreContext), false);
+    }
     const chatRequest = buildChatCompanionMaterialRequest({
       requestId: `model-facing:chat:${character.charId}`,
       scope: scope(character.charId),
@@ -259,6 +277,12 @@ const dateExperienceModule = await import('../utils/dateExperience.ts') as unkno
       systemPrompt: chatSystemWith,
       apiMessages: chatHistory,
     }).messages;
+    if (character.charId === BUILT_IN_DEEPSPACE_SHENXINGHUI_ID) {
+      const modelFacing = chatWith.map(message => String(message.content || '')).join('\n');
+      assert.equal(/菲罗斯王储与骑士线|烬城菲罗斯世界线|特遣013逸闻线|N109调查/u.test(modelFacing), false);
+      assert.equal(/Fate 式|人理维持|秘务组织/u.test(modelFacing), false);
+      assert.equal(modelFacing.includes('当前关系是长期伴侣'), false);
+    }
     assertPair({
       label: `${character.name}:chat`,
       material: chatMaterial.markdown,

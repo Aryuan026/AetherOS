@@ -186,6 +186,7 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
             library: workspace.entries,
             character,
             knowledgeSubjects: [{ kind: 'character', id: scope.charId }],
+            storyContext: { identityMode: writerProps.userProfile.deepspaceIdentityMode },
             apiConfig: route.config,
             provider: route.provider,
         });
@@ -298,6 +299,7 @@ const NovelWorkspace: React.FC<NovelWorkspaceProps> = ({
                 library: workspace.entries,
                 character,
                 knowledgeSubjects: [{ kind: 'character', id: scope.charId }],
+                storyContext: { identityMode: writerProps.userProfile.deepspaceIdentityMode },
                 apiConfig: route.config,
                 provider: route.provider,
             });

@@ -1164,6 +1164,98 @@ const persistArchivedWorldbookDeletion = async (input: {
     });
 };
 
+const removeDeprecatedBuiltInWorldbooks = async (
+    deprecatedEntryIds: readonly string[],
+): Promise<CharacterProfile[]> => {
+    const deprecatedIds = new Set(deprecatedEntryIds.filter(id => id.trim()));
+    if (!deprecatedIds.size) return [];
+
+    const db = await openDB();
+    const transaction = db.transaction([
+        STORE_WORLDBOOKS,
+        STORE_WORLDBOOK_GROWTH_CANDIDATES,
+        STORE_WORLDBOOK_PROJECTION_RECEIPTS,
+        STORE_CHARACTERS,
+    ], 'readwrite');
+    const worldbookStore = transaction.objectStore(STORE_WORLDBOOKS);
+    const candidateStore = transaction.objectStore(STORE_WORLDBOOK_GROWTH_CANDIDATES);
+    const receiptStore = transaction.objectStore(STORE_WORLDBOOK_PROJECTION_RECEIPTS);
+    const characterStore = transaction.objectStore(STORE_CHARACTERS);
+    const entriesRequest = worldbookStore.getAll();
+    const candidatesRequest = candidateStore.getAll();
+    const receiptsRequest = receiptStore.getAll();
+    const charactersRequest = characterStore.getAll();
+
+    return new Promise((resolve, reject) => {
+        let loaded = 0;
+        let writesQueued = false;
+        let failure: Error | undefined;
+        let entries: Worldbook[] = [];
+        let candidates: WorldGrowthCandidate[] = [];
+        let receipts: WorldbookProjectionDeliveryReceipt[] = [];
+        let characters: CharacterProfile[] = [];
+        let changedCharacters: CharacterProfile[] = [];
+        const abortWith = (error: unknown, fallback: string) => {
+            failure = asError(error, fallback);
+            try { transaction.abort(); } catch { reject(failure); }
+        };
+        const markLoaded = () => {
+            loaded += 1;
+            if (loaded !== 4 || writesQueued) return;
+            writesQueued = true;
+            try {
+                const removedEntries = entries
+                    .map(normalizeWorldbookEntry)
+                    .filter(entry => (
+                        deprecatedIds.has(entry.id)
+                        && entry.isBuiltIn === true
+                        && entry.lockEditing === true
+                    ));
+                const removedIds = new Set(removedEntries.map(entry => entry.id));
+                const removedRevisionIds = new Set(removedEntries.flatMap(entry => (
+                    entry.revisionSnapshots || []
+                ).map(revision => revision.id)));
+
+                removedIds.forEach(id => worldbookStore.delete(id));
+                candidates
+                    .filter(candidate => (
+                        Boolean(candidate.targetEntryId && removedIds.has(candidate.targetEntryId))
+                        || Boolean(candidate.acceptedRevisionId && removedRevisionIds.has(candidate.acceptedRevisionId))
+                    ))
+                    .forEach(candidate => candidateStore.delete(candidate.id));
+                receipts
+                    .filter(receipt => receipt.delivered.some(item => removedIds.has(item.entryId)))
+                    .forEach(receipt => receiptStore.delete(receipt.id));
+                changedCharacters = characters.flatMap(character => {
+                    const mountedWorldbooks = (character.mountedWorldbooks || [])
+                        .filter(entry => !removedIds.has(entry.id));
+                    if (mountedWorldbooks.length === (character.mountedWorldbooks || []).length) return [];
+                    return [{ ...character, mountedWorldbooks }];
+                });
+                changedCharacters.forEach(character => characterStore.put(character));
+            } catch (error) {
+                abortWith(error, '旧版内置世界书迁移失败');
+            }
+        };
+
+        entriesRequest.onsuccess = () => { entries = (entriesRequest.result || []) as Worldbook[]; markLoaded(); };
+        entriesRequest.onerror = () => abortWith(entriesRequest.error, '旧版内置世界书读取失败');
+        candidatesRequest.onsuccess = () => { candidates = (candidatesRequest.result || []) as WorldGrowthCandidate[]; markLoaded(); };
+        candidatesRequest.onerror = () => abortWith(candidatesRequest.error, '旧版世界书候选读取失败');
+        receiptsRequest.onsuccess = () => { receipts = (receiptsRequest.result || []) as WorldbookProjectionDeliveryReceipt[]; markLoaded(); };
+        receiptsRequest.onerror = () => abortWith(receiptsRequest.error, '旧版世界书回执读取失败');
+        charactersRequest.onsuccess = () => { characters = (charactersRequest.result || []) as CharacterProfile[]; markLoaded(); };
+        charactersRequest.onerror = () => abortWith(charactersRequest.error, '旧版世界书挂载读取失败');
+        transaction.oncomplete = () => resolve(changedCharacters);
+        transaction.onerror = () => {
+            failure ??= asError(transaction.error, '旧版内置世界书迁移失败');
+        };
+        transaction.onabort = () => reject(
+            failure ?? asError(transaction.error, '旧版内置世界书迁移已取消'),
+        );
+    });
+};
+
 const persistAcceptedWorldGrowthCandidate = async (input: {
     entry: Worldbook;
     candidate: WorldGrowthCandidate;
@@ -1787,6 +1879,10 @@ export const DB = {
       entryIds: readonly string[];
       groupId?: string;
   }): Promise<CharacterProfile[]> => persistArchivedWorldbookDeletion(input),
+
+  removeDeprecatedBuiltInWorldbooks: async (
+      entryIds: readonly string[],
+  ): Promise<CharacterProfile[]> => removeDeprecatedBuiltInWorldbooks(entryIds),
 
   getMessagesByCharId: async (charId: string): Promise<Message[]> => {
     const db = await openDB();

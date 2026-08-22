@@ -32,6 +32,7 @@ import {
   prepareWorldbookRuntimeProjection,
   recordWorldbookRuntimeProjectionDelivery,
 } from './worldbookRuntime.ts';
+import type { DeepspaceStoryRuntimeContext } from '../domain/deepspaceStoryEnhancement/index.ts';
 
 const SCENE_PLAN_WORLD_BUDGET = {
   maxTotalChars: 1_200,
@@ -293,6 +294,7 @@ export interface GenerateNarrativeSceneShellProposalInput {
   character: Pick<CharacterProfile, 'id' | 'mountedWorldbooks'>;
   knowledgeSubjects: readonly WorldbookKnowledgeSubjectRef[];
   explicitWorldbookRefs?: readonly WorldbookProjectionExplicitRef[];
+  storyContext?: DeepspaceStoryRuntimeContext;
   apiConfig: APIConfig;
   provider: AiTaskProviderRef;
   now?: number;
@@ -364,6 +366,7 @@ export const generateNarrativeSceneShellProposal = async (
       .filter(Boolean)
       .join('\n'),
     explicitRefs: input.explicitWorldbookRefs,
+    storyContext: input.storyContext,
     budget: SCENE_PLAN_WORLD_BUDGET,
   });
   const worldbook = prepared.projection.items.map(item => ({

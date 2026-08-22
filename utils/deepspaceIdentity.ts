@@ -1,4 +1,5 @@
 import type { UserDeepSpaceIdentityMode, UserProfile } from '../types';
+import { BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS } from '../domain/deepspaceStoryEnhancement';
 
 export const DEFAULT_DEEPSPACE_USER_IDENTITY_MODE: UserDeepSpaceIdentityMode = 'custom_non_hunter';
 
@@ -6,11 +7,11 @@ export const DEEPSPACE_USER_CIRCLE_WORLDBOOK_ID = 'builtin-deepspace-user-circle
 export const DEEPSPACE_HUNTER_NPC_WORLDBOOK_ID = 'builtin-deepspace-optional-hunter-npc-index';
 
 const DEEPSPACE_STORY_WORLDBOOK_IDS = new Set([
-    'builtin-deepspace-story-xavier',
     'builtin-deepspace-story-zayne',
     'builtin-deepspace-story-qiyu',
     'builtin-deepspace-story-sylus',
     'builtin-deepspace-story-caleb',
+    ...BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS,
 ]);
 
 export const DEEPSPACE_IDENTITY_MODE_LABELS: Record<UserDeepSpaceIdentityMode, string> = {

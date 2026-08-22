@@ -58,18 +58,19 @@ import {
     createWorldbookGroupAssignment,
     isBuiltInWorldbook,
 } from '../utils/worldbookGroups';
+import { BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS } from '../domain/deepspaceStoryEnhancement';
 
 const DEFAULT_WORLDBOOK_CATEGORY = '未分类设定 (General)';
 const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
     'builtin-deepspace-optional-male-leads-npc-index',
     'builtin-deepspace-user-circle',
     'builtin-deepspace-optional-hunter-npc-index',
-    'builtin-deepspace-story-xavier',
     'builtin-deepspace-story-zayne',
     'builtin-deepspace-story-qiyu',
     'builtin-deepspace-story-sylus',
     'builtin-deepspace-story-caleb',
     'builtin-deepspace-story-crossover',
+    ...BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS,
 ]);
 const BUILT_IN_WORLDBOOK_DISPLAY_ORDER = new Map([
     ['builtin-deepspace-optional-male-leads-npc-index', 10],

@@ -59,6 +59,7 @@ import {
     restoreWorldbookRevision,
     reviseWorldbookEntry,
 } from '../domain/worldbook';
+import type { WorldbookBinding, WorldbookKnowledgePolicy } from '../domain/worldbook/types';
 import { indexedDbWorldbookPersistence } from '../utils/worldbookPersistence';
 import { createNovelUpdateCoordinator } from '../utils/novelPersistence';
 import {
@@ -79,6 +80,13 @@ import {
     MAIN_DATABASE_BACKUP_STORES,
     type MainDatabaseBackupStore,
 } from '../utils/systemBackup/mainDatabaseBackupContract';
+import {
+    BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS,
+    DEPRECATED_BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS,
+    XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT,
+    XAVIER_REVIEWED_STORY_WORLDBOOKS,
+    XAVIER_REVIEWED_WORLDVIEW,
+} from '../domain/deepspaceStoryEnhancement';
 
 
 type JSZipLike = {
@@ -346,8 +354,8 @@ const defaultUserProfile: UserProfile = normalizeUserPersonaProfile({
     deepspaceIdentityNote: '',
 });
 
-const BUILT_IN_CHARACTER_VERSION = 18;
-const BUILT_IN_WORLDBOOK_VERSION = 12;
+const BUILT_IN_CHARACTER_VERSION = 19;
+const BUILT_IN_WORLDBOOK_VERSION = 13;
 const BUILT_IN_WORLDBOOK_TIMESTAMP = Date.UTC(2026, 6, 3);
 const QIYU_BUILT_IN_ID = 'builtin-daily-companion';
 const XAVIER_BUILT_IN_ID = 'builtin-xavier';
@@ -393,18 +401,24 @@ const OPTIONAL_BUILT_IN_WORLDBOOK_IDS = new Set([
     'builtin-deepspace-optional-male-leads-npc-index',
     USER_HUNTER_CIRCLE_WORLDBOOK_ID,
     'builtin-deepspace-optional-hunter-npc-index',
-    'builtin-deepspace-story-xavier',
     'builtin-deepspace-story-zayne',
     'builtin-deepspace-story-qiyu',
     'builtin-deepspace-story-sylus',
     'builtin-deepspace-story-caleb',
     'builtin-deepspace-story-crossover',
+    ...BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS,
 ]);
 const LEGACY_BUILT_IN_BUBBLE_STYLES = new Set(['qiyu']);
 const builtInStarterSeedInFlight = new Map<string, Promise<void>>();
 type BuiltInWorldbookEntry = NonNullable<CharacterProfile['mountedWorldbooks']>[number] & {
     activationHint?: string;
     visibleToCharacterIds?: string[];
+    bindings?: readonly WorldbookBinding[];
+    knowledgePolicy?: WorldbookKnowledgePolicy;
+};
+type BuiltInWorldbookRecord = Worldbook & {
+    initialBindings?: readonly WorldbookBinding[];
+    initialKnowledgePolicy?: WorldbookKnowledgePolicy;
 };
 
 const normalizeBuiltInBubbleStyle = (style?: string) => {
@@ -443,10 +457,19 @@ const createBuiltInWorldbook = (
     category: string,
     content: string,
     activationHint?: string,
-    visibleToCharacterIds?: string[]
-): BuiltInWorldbookEntry => ({ id, title, category, content, activationHint, visibleToCharacterIds });
+    visibleToCharacterIds?: string[],
+    delivery?: Pick<BuiltInWorldbookEntry, 'bindings' | 'knowledgePolicy'>,
+): BuiltInWorldbookEntry => ({
+    id,
+    title,
+    category,
+    content,
+    activationHint,
+    visibleToCharacterIds,
+    ...delivery,
+});
 
-const toBuiltInWorldbookRecord = (entry: BuiltInWorldbookEntry): Worldbook => ({
+const toBuiltInWorldbookRecord = (entry: BuiltInWorldbookEntry): BuiltInWorldbookRecord => ({
     id: entry.id,
     title: entry.title,
     content: entry.content,
@@ -458,7 +481,16 @@ const toBuiltInWorldbookRecord = (entry: BuiltInWorldbookEntry): Worldbook => ({
     isBuiltIn: true,
     lockEditing: true,
     builtInVersion: BUILT_IN_WORLDBOOK_VERSION,
+    initialBindings: entry.bindings,
+    initialKnowledgePolicy: entry.knowledgePolicy,
 });
+
+const builtInWorldbookRecordBody = (
+    record: BuiltInWorldbookRecord,
+): Worldbook => {
+    const { initialBindings: _bindings, initialKnowledgePolicy: _knowledge, ...book } = record;
+    return book;
+};
 
 const DEEPSPACE_REQUIRED_WORLDBOOKS: BuiltInWorldbookEntry[] = [
     createBuiltInWorldbook(
@@ -646,24 +678,15 @@ DAA战斗机飞行员/远空舰队执舰官，Evol 为引力控制。原作主�
 ];
 
 const DEEPSPACE_STORY_ENHANCEMENT_WORLDBOOKS: BuiltInWorldbookEntry[] = [
-    createBuiltInWorldbook(
-        'builtin-deepspace-story-xavier',
-        '沈星回剧情增强',
-        '深空剧情增强',
-        `菲罗斯与回溯线：
-沈星回幼年在菲罗斯开始练剑，少年时期进入骑士学院，与{{user}}在天镜盐湖流星雨下许下再看流星的约定，并收到星星剑穗。为寻找能治愈{{user}}的特殊芯核，他付出自由代价，脖颈曾出现限制行动的透明颈环，却仍未能扭转{{user}}死亡。
-师兄妹时期，沈星回是王子，也是逐光骑士团首席圣剑骑士相关的人物。他发现菲罗斯王族长期将强大力量送入星球之心，流浪体正是在这种转化中出现的异化能量；他拒绝成为以牺牲他人换取星球寿命的王。
-沈星回为从根源解决流浪体问题驻扎星降森林，组建回溯小组，改造巡游飞船，准备回溯计划。他与{{user}}之间常围绕守护、错过、寻找、时间回溯、星星剑穗、王座、骑士誓言与牺牲展开。
-
-地球与主线线索：
-2034裂空灾变中，光猎横空出世，成为第一个消灭流浪体的人；灾变初期，邱诺亚曾和沈星回短暂合作，目击沈星回救下并带走一个女孩后再度消失。
-沈星回在地球线中长期隐藏身份，曾被回溯小组旧人追踪并被称为逃兵，也借火灾假死抹除痕迹。2048年前后，他搬入临空市花苑南路391号9栋602室，与猎人任务、邻里日常、深空探测科学研究所、RMFMA、嘉会大学、光猎传闻等线索相连。
-
-核心意象与可用线索：
-星星剑穗、天镜盐湖、回溯飞船、回溯小组、星降森林、逐光骑士团、光猎、时间回溯、隐藏身份、反复寻找、沉默守护。`,
-        '喜欢沈星回原作私线与重度剧透时启用。',
-        [XAVIER_BUILT_IN_ID]
-    ),
+    ...XAVIER_REVIEWED_STORY_WORLDBOOKS.map(draft => createBuiltInWorldbook(
+        draft.id,
+        draft.title,
+        draft.category,
+        draft.content,
+        draft.activationHint,
+        [...draft.visibleToCharacterIds],
+        { knowledgePolicy: draft.knowledgePolicy },
+    )),
     createBuiltInWorldbook(
         'builtin-deepspace-story-zayne',
         '黎深剧情增强',
@@ -759,7 +782,7 @@ A-01/X-02、毁灭与新生、意识剥离、能量置换、哥哥、并蒂双�
     ),
 ];
 
-const DEEPSPACE_BUILT_IN_LIBRARY_WORLDBOOKS: Worldbook[] = [
+const DEEPSPACE_BUILT_IN_LIBRARY_WORLDBOOKS: BuiltInWorldbookRecord[] = [
     ...DEEPSPACE_REQUIRED_WORLDBOOKS,
     ...DEEPSPACE_OPTIONAL_WORLDBOOKS,
     ...DEEPSPACE_STORY_ENHANCEMENT_WORLDBOOKS,
@@ -1121,14 +1144,26 @@ const createBuiltInPlaceholderCharacter = (
 });
 
 const defaultBuiltInCharacters: CharacterProfile[] = [
-  createBuiltInPlaceholderCharacter(
-    XAVIER_BUILT_IN_ID,
-    '沈星回',
-    '内置角色待填写 / 光猎线资料位',
-    '星星会找到回来的路。',
-    '刚结束训练',
-    DEFAULT_XAVIER_AVATAR
-  ),
+  {
+    id: XAVIER_BUILT_IN_ID,
+    name: '沈星回',
+    avatar: DEFAULT_XAVIER_AVATAR,
+    description: '光系 Evol · 深空猎人',
+    chatSignature: '星星会找到回来的路。',
+    chatSignatureAiEditable: true,
+    chatAppearancePreset: 'deep-space',
+    chatPresenceStatus: createInitialCharacterPresence('刚结束训练', 'seed'),
+    systemPrompt: XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT,
+    worldview: XAVIER_REVIEWED_WORLDVIEW,
+    memories: [],
+    contextLimit: 500,
+    bubbleStyle: 'default',
+    emotionConfig: { enabled: true },
+    mountedWorldbooks: BUILT_IN_PLACEHOLDER_WORLDBOOKS,
+    isBuiltIn: true,
+    lockPromptEditing: true,
+    builtInVersion: BUILT_IN_CHARACTER_VERSION,
+  },
   {
     id: ZAYNE_BUILT_IN_ID,
     name: '黎深',
@@ -1693,8 +1728,21 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         const removedOrphanEmojis = dbEmojis.filter(isLegacyPrivateEmojiRecord);
         await Promise.all(removedOrphanEmojis.map(emoji => DB.deleteEmoji(emoji.name)));
 
-        let finalChars = dbChars.filter(c => !isLegacyPrivateCharacterId(c.id));
-        let finalWorldbooks = dbWorldbooks;
+        const migratedBuiltInCharacters = await DB.removeDeprecatedBuiltInWorldbooks(
+            DEPRECATED_BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS,
+        );
+        const migratedBuiltInCharacterById = new Map(
+            migratedBuiltInCharacters.map(character => [character.id, character]),
+        );
+        let finalChars = dbChars
+            .filter(c => !isLegacyPrivateCharacterId(c.id))
+            .map(character => migratedBuiltInCharacterById.get(character.id) || character);
+        const deprecatedBuiltInIds = new Set<string>(DEPRECATED_BUILT_IN_DEEPSPACE_STORY_ENTRY_IDS);
+        let finalWorldbooks = dbWorldbooks.filter(entry => !(
+            deprecatedBuiltInIds.has(entry.id)
+            && entry.isBuiltIn
+            && entry.lockEditing
+        ));
         let finalWorldbookGroups = dbWorldbookGroups;
         const emptyLegacyUniversalGroup = finalWorldbookGroups.find(group => (
             group.id === UNIVERSAL_WORLDBOOK_GROUP_ID
@@ -1712,7 +1760,11 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         for (const builtInWorldbook of DEEPSPACE_BUILT_IN_LIBRARY_WORLDBOOKS) {
             const existingBook = finalWorldbooks.find(wb => wb.id === builtInWorldbook.id);
             if (!existingBook) {
-                const createdBuiltIn = createWorldbookEntry({ book: builtInWorldbook });
+                const createdBuiltIn = createWorldbookEntry({
+                    book: builtInWorldbookRecordBody(builtInWorldbook),
+                    bindings: builtInWorldbook.initialBindings,
+                    knowledgePolicy: builtInWorldbook.initialKnowledgePolicy,
+                });
                 await DB.saveWorldbookRevision(createdBuiltIn, null);
                 finalWorldbooks = [...finalWorldbooks, createdBuiltIn];
             } else if (
@@ -1722,7 +1774,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             ) {
                 const refreshedBuiltIn = refreshBuiltInWorldbookEntry({
                     current: existingBook,
-                    incoming: builtInWorldbook,
+                    incoming: builtInWorldbookRecordBody(builtInWorldbook),
                 });
                 await DB.saveWorldbookRevision(refreshedBuiltIn, existingBook.activeRevisionId!);
                 finalWorldbooks = finalWorldbooks.map(wb => (

@@ -14,6 +14,11 @@ import {
   isBuiltInWorldbook,
   isWorldbookGroupEnabledForCharacter,
 } from './worldbookGroups.ts';
+import {
+  builtInStoryEnhancementPackForEntry,
+  storyEnhancementPackAllowsRuntime,
+  type DeepspaceStoryRuntimeContext,
+} from '../domain/deepspaceStoryEnhancement/index.ts';
 
 export interface WorldbookRuntimeBudget {
   maxTotalChars: number;
@@ -31,6 +36,7 @@ export interface PrepareWorldbookRuntimeProjectionInput {
   continuity?: WorldbookContinuityRef;
   query: string;
   explicitRefs?: readonly WorldbookProjectionExplicitRef[];
+  storyContext?: DeepspaceStoryRuntimeContext;
   budget: WorldbookRuntimeBudget;
 }
 
@@ -40,13 +46,23 @@ export interface PreparedWorldbookRuntimeProjection {
 }
 
 const mountedEntryIdsFor = (
-  input: Pick<PrepareWorldbookRuntimeProjectionInput, 'character' | 'library'>,
+  input: Pick<PrepareWorldbookRuntimeProjectionInput, 'character' | 'library' | 'consumer' | 'continuity' | 'storyContext'>,
 ): string[] => [...new Set(
   [
     ...(input.character.mountedWorldbooks || [])
       .map(mounted => mounted.id?.trim())
       .filter((id): id is string => Boolean(id))
-      .filter(id => isBuiltInWorldbook(input.library.find(entry => entry.id === id))),
+      .filter(id => isBuiltInWorldbook(input.library.find(entry => entry.id === id)))
+      .filter(id => {
+        const pack = builtInStoryEnhancementPackForEntry(id);
+        return !pack || storyEnhancementPackAllowsRuntime({
+          pack,
+          charId: input.character.id,
+          consumer: input.consumer.kind,
+          continuity: input.continuity,
+          context: input.storyContext,
+        });
+      }),
     ...input.library
       .filter(entry => (
         !isBuiltInWorldbook(entry)

@@ -30,6 +30,7 @@ import {
   prepareWorldbookRuntimeProjection,
   recordWorldbookRuntimeProjectionDelivery,
 } from './worldbookRuntime.ts';
+import type { DeepspaceStoryRuntimeContext } from '../domain/deepspaceStoryEnhancement/index.ts';
 import { indexedDbWorldbookPersistence } from './worldbookPersistence.ts';
 import { extractContent, extractJson, safeFetchJson } from './safeApi.ts';
 
@@ -330,6 +331,7 @@ export interface GenerateNarrativeWorldGrowthProposalInput {
   character: Pick<CharacterProfile, 'id' | 'mountedWorldbooks'>;
   knowledgeSubjects: readonly WorldbookKnowledgeSubjectRef[];
   explicitWorldbookRefs?: readonly WorldbookProjectionExplicitRef[];
+  storyContext?: DeepspaceStoryRuntimeContext;
   apiConfig: APIConfig;
   provider: AiTaskProviderRef;
   now?: number;
@@ -439,6 +441,7 @@ export const generateAndStoreNarrativeWorldGrowthProposals = async (
     },
     query: evidence.map(item => item.text).join('\n'),
     explicitRefs: input.explicitWorldbookRefs,
+    storyContext: input.storyContext,
     budget: {
       maxTotalChars: 1_000,
       maxEntries: 2,

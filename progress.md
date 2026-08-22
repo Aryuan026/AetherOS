@@ -3807,3 +3807,41 @@
   - Pure novel is a clean observation surface for prose; it does not silently
     accept Worldbook growth, write relationship memory, or turn manuscript text
     into confirmed lived experience.
+
+## 2026-08-22 Xavier Reviewed Persona And Story Packages (Local, Unreleased)
+
+- done:
+  - Replaced the Xavier placeholder with a reviewed stable persona that keeps
+    human-authored performance control authoritative and adds only two reviewed
+    cross-route native facts.
+  - Split the retired aggregate Xavier story book into five native route books
+    and two additive world-expansion books. All seven are visible in the player
+    library, read-only, explicit opt-in and unmounted by default.
+  - Added one reusable five-lead story-enhancement contract with character,
+    source-lane, worldline, evidence, consumer, identity and relationship-stage
+    gates. Mainline and IF packages now fail closed across lane boundaries.
+  - Passed active identity context through plain-novel prose, scene planning and
+    narrative Worldbook growth. Chat and Call remain excluded consumers.
+  - Added an atomic migration that removes only the retired code-owned Xavier
+    aggregate book, related receipts/candidates and its character mounts. It
+    preserves player books and does not mount replacement routes.
+
+- verified:
+  - `npm run typecheck`
+  - `npm run verify:story-enhancement`
+  - `npm run verify:worldbook-runtime`
+  - `npm run verify:narrative-director-proposals`
+  - `npm run verify:worldbook-growth-proposal`
+  - `node --import tsx scripts/verify-built-in-deepspace-model-facing-messages.ts`
+  - `git diff --check`
+
+- boundary:
+  - Relationship-stage facts remain withheld because there is no canonical
+    current-stage resolver for these reviewed source claims yet.
+  - Calibration examples and companion-material candidates were not promoted.
+    Unresolved native details remain route-local and cannot enter stable canon.
+  - Qi Yu and Zayne's existing aggregate story books are not considered closed;
+    all remaining leads must repeat the same private review and public routing
+    process before migration.
+  - This checkpoint is local only. It has not been committed, pushed or
+    deployed, and natural roleplay quality is not claimed from static gates.
