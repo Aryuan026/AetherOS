@@ -156,6 +156,45 @@ N109 区在十四年前灾难后成为无序禁猎区，暗点、黑市与芯核
     knowledgePolicy: xavierAndDirector,
   },
   {
+    id: 'builtin-deepspace-story-xavier-yicheng-rift',
+    title: '沈星回·伊澄追缉与空中隧道异变',
+    category: '沈星回现世履历',
+    content: `瓦尔疗养院对外宣布暂停接收患者后，沈星回与同行猎人在临空市追缉回溯者伊澄。追踪横跨浮空桥与三十九号区，沈星回驾驶 470HM 接近目标，再以光带完成限制与押解；伊澄失去武器后，他没有继续挥剑，而是把人带到花店暂时看管。疗养院的公开说辞只说明停收结果，没有解释伊澄为何被追缉，也没有证明院内发生了什么。
+
+押解并未结束这一阶段的危机。空中隧道突然封闭，红色检查点与携带异常能量的装甲货车先后出现，弦隙由此打开，把在场者卷入维度战场。沈星回在混乱中迅速判断可行动的节点，既会逼问掌握关键情报却拒绝说明的人，也会在对方已经失去对抗能力时停止追击。陶桃随后提供磁场异常信息，但装甲货车、能量来源和封闭隧道的操作者仍没有得到确认。
+
+普通市民只会接触疗养院停收、交通封闭与检查点等表层现象；伊澄的回溯者身份、临时押解地点、弦隙内的交锋和磁场数据只属于相应行动的参与者。伊澄的完整目的、瓦尔疗养院的内情、装甲货车的归属以及这次异变与回溯小组旧事的联系，仍是后续调查要回答的问题。`,
+    activationHint: '需要伊澄追缉、疗养院疑点或弦隙异变时递送；公共现象与行动内幕分层。',
+    visibleToCharacterIds: [XAVIER_REVIEWED_CHARACTER_ID],
+    knowledgePolicy: xavierAndDirector,
+  },
+  {
+    id: 'builtin-deepspace-story-xavier-outcast-voyage',
+    title: '沈星回·离群者调查与回溯旧队',
+    category: '沈星回现世履历',
+    content: `嘉会大学发生一连串异常：学生短暂失踪后无伤归来，却失去失踪期间的记忆。猎人协会把调查委托给沈星回与同行猎人，两人以校内身份进入新建研究所。物理教授兼猎人江月参与调查，研究仪器 RMFMA 的数据则被人为篡改；学生曾被仪器拖入重叠空间，线索逐渐指向研究所与严颂，而不是普通的校园意外。
+
+调查深入后，两人被卷入受控的重叠空间，随后进入一片由沈星回记忆形成的星球磁场。星降森林与回溯Ⅱ号飞船在其中出现，旧队员称沈星回为队长，也把他来自菲罗斯、曾带领回溯小组的事实带到眼前。沈星回能够重新驾驶飞船，带人突破磁场并脱离研究所；从空间中带回的核心碎片与调查证据交由协会继续分析。
+
+校方与普通学生只知道失踪、失忆和设备异常，协会能够接触调查报告与带回的样本，回溯小组成员则知道更早的队伍关系。沈星回没有因此一次交代回溯小组的完整性质、菲罗斯现状或旧队分裂的原因。严颂篡改数据与制造重叠空间的目的、回溯Ⅱ号当前状况、旧队员各自的立场以及红色颈部信号的意义，仍留在这条现世履历的后续。`,
+    activationHint: '需要校园失踪调查、重叠空间或回溯旧队线索时递送；共同调查需由对应路线建立。',
+    visibleToCharacterIds: [XAVIER_REVIEWED_CHARACTER_ID],
+    knowledgePolicy: xavierAndDirector,
+  },
+  {
+    id: 'builtin-deepspace-story-xavier-philos-transplant-crisis',
+    title: '沈星回·菲罗斯移植危机与回溯重聚',
+    category: '沈星回现世履历',
+    content: `女神圣剑碑在三十九号禁猎区实体化后，回溯小组确认严颂正在利用被改造的引力锚，使菲罗斯与地球发生空间重叠，再把菲罗斯的局部区域切割并移植到地球。移植过程会持续抽走原星球的能量；公众只能看见禁猎区异象与空间异常，完整机制只掌握在追查引力锚的行动者手中。
+
+前回溯小组副队长苏洛维在精神封锁区内保存着引力锚全图。沈星回与邱诺亚、伊澄等旧日同伴围绕是否应牺牲局部、怎样阻止严颂发生冲突，并追到回溯Ⅱ号残骸。行动只剩三小时窗口，飞船能够动用的 Echo 能源也接近最后一份；引力锚地图、女神圣剑碑与飞船残骸共同指向菲罗斯正在被转移的事实。
+
+后续对峙中，沈星回揭出严颂预先藏在能量抑制器中的引爆装置。他选择舍弃并击毁抑制器，以此打破磁场屏障；旧队随后重新确认继续追查的方向。这次重聚没有替所有成员消除分歧，也没有宣告危机已经解决。严颂改造引力锚的最终目的、菲罗斯能否存续、回溯Ⅱ号是否还能修复以及 Echo 是否已经耗尽，仍属于开放线索。`,
+    activationHint: '需要菲罗斯移植危机、引力锚网络或回溯小组重聚时递送；公众与行动者知情层不同。',
+    visibleToCharacterIds: [XAVIER_REVIEWED_CHARACTER_ID],
+    knowledgePolicy: xavierAndDirector,
+  },
+  {
     id: 'builtin-deepspace-expansion-universal-multi-worldline',
     title: 'Fate 式多世界线规则',
     category: '通用拓展玩法',
@@ -400,7 +439,7 @@ export const XAVIER_REVIEWED_STORY_ENHANCEMENT_PACKS: readonly DeepspaceStoryEnh
     worldlineId: 'present_world_xavier_canonical_chronology',
     routeStage: 'resident-hunter-mainline',
     contentAuthority: 'reviewed_source_projection',
-    evidenceStrength: 'unresolved',
+    evidenceStrength: 'reviewed_multi_source',
     runtimeGate: {
       allowedConsumers: ['chat', 'call', 'date', 'story_mainline', 'world_director', 'worldbook_preview'],
       identityModes: ['custom_hunter', 'canon_hunter'],
@@ -414,7 +453,94 @@ export const XAVIER_REVIEWED_STORY_ENHANCEMENT_PACKS: readonly DeepspaceStoryEnh
       '相关 NPC 的完整身份、阵营与时序仍需独立证据。',
       '回溯小组、EVER 与 N109 的精确冲突链尚未完成裁决。',
     ],
-    sourceRefIds: ['review:xavier:mainline-hunter-n109:v1'],
+    sourceRefIds: [
+      'review:xavier:mainline-hunter-n109:v1',
+      'src:bwiki:91bb7d8694fe00fa',
+    ],
+  },
+  {
+    schemaVersion: DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION,
+    id: 'story-pack:xavier:yicheng-rift:v1',
+    worldbookEntryId: 'builtin-deepspace-story-xavier-yicheng-rift',
+    applicability: { kind: 'character', charId: XAVIER_REVIEWED_CHARACTER_ID },
+    sourceLane: 'mainline',
+    continuityClass: 'canonical_chronology',
+    chronologyOrder: 500,
+    worldlineId: 'present_world_xavier_canonical_chronology',
+    routeStage: 'yicheng-pursuit-and-rift',
+    contentAuthority: 'reviewed_source_projection',
+    evidenceStrength: 'reviewed_single_source',
+    runtimeGate: {
+      allowedConsumers: ['chat', 'call', 'date', 'story_mainline', 'world_director', 'worldbook_preview'],
+      identityModes: ['custom_hunter', 'canon_hunter'],
+    },
+    activation: 'explicit_opt_in',
+    defaultMounted: false,
+    truthEffect: 'none',
+    mergePolicy: 'additive_not_rewrite',
+    prohibitedInferences: commonRouteProhibitions,
+    unresolvedClaims: [
+      '伊澄被追缉的完整起因、瓦尔疗养院停收的真因与装甲货车归属仍未揭晓。',
+    ],
+    sourceRefIds: ['src:bwiki:3d4e0ae319f89e74'],
+  },
+  {
+    schemaVersion: DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION,
+    id: 'story-pack:xavier:outcast-voyage:v1',
+    worldbookEntryId: 'builtin-deepspace-story-xavier-outcast-voyage',
+    applicability: { kind: 'character', charId: XAVIER_REVIEWED_CHARACTER_ID },
+    sourceLane: 'mainline',
+    continuityClass: 'canonical_chronology',
+    chronologyOrder: 600,
+    worldlineId: 'present_world_xavier_canonical_chronology',
+    routeStage: 'outcast-voyage-and-retro-team',
+    contentAuthority: 'reviewed_source_projection',
+    evidenceStrength: 'reviewed_single_source',
+    runtimeGate: {
+      allowedConsumers: ['chat', 'call', 'date', 'story_mainline', 'world_director', 'worldbook_preview'],
+      identityModes: ['custom_hunter', 'canon_hunter'],
+    },
+    activation: 'explicit_opt_in',
+    defaultMounted: false,
+    truthEffect: 'none',
+    mergePolicy: 'additive_not_rewrite',
+    prohibitedInferences: commonRouteProhibitions,
+    unresolvedClaims: [
+      '回溯小组的完整性质、菲罗斯现状、严颂动机与红色颈部信号仍未揭晓。',
+    ],
+    sourceRefIds: ['src:bwiki:35bc7aaaf7e19d36'],
+  },
+  {
+    schemaVersion: DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION,
+    id: 'story-pack:xavier:philos-transplant-crisis:v1',
+    worldbookEntryId: 'builtin-deepspace-story-xavier-philos-transplant-crisis',
+    applicability: { kind: 'character', charId: XAVIER_REVIEWED_CHARACTER_ID },
+    sourceLane: 'mainline',
+    continuityClass: 'canonical_chronology',
+    chronologyOrder: 700,
+    worldlineId: 'present_world_xavier_canonical_chronology',
+    routeStage: 'philos-transplant-and-stele-crisis',
+    contentAuthority: 'reviewed_source_projection',
+    evidenceStrength: 'reviewed_multi_source',
+    runtimeGate: {
+      allowedConsumers: ['chat', 'call', 'date', 'story_mainline', 'world_director', 'worldbook_preview'],
+      identityModes: ['custom_hunter', 'canon_hunter'],
+    },
+    activation: 'explicit_opt_in',
+    defaultMounted: false,
+    truthEffect: 'none',
+    mergePolicy: 'additive_not_rewrite',
+    prohibitedInferences: [
+      ...commonRouteProhibitions,
+      'the mixed-source Qiyu bridge must not be attributed to Xavier',
+    ],
+    unresolvedClaims: [
+      '严颂的最终目的、菲罗斯能否存续、回溯Ⅱ号修复与 Echo 余量仍未揭晓。',
+    ],
+    sourceRefIds: [
+      'src:bwiki:9f7db3f89a90fa50',
+      'src:bwiki:978cecf60c01ac9b',
+    ],
   },
   {
     schemaVersion: DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION,

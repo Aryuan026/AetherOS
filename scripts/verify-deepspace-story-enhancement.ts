@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import {
   BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS,
   DEEPSPACE_STORY_ENHANCEMENT_SCHEMA_VERSION,
+  XAVIER_REVIEWED_BEHAVIOR_EVIDENCE_V4,
+  XAVIER_REVIEWED_DATE_THEME_CANDIDATES_V4,
   XAVIER_REVIEWED_STABLE_SYSTEM_PROMPT,
   XAVIER_REVIEWED_STORY_WORLDBOOKS,
   XAVIER_REVIEWED_WORLDVIEW,
@@ -11,6 +13,7 @@ import {
   validateDeepspaceStoryEnhancementPack,
   type DeepspaceStoryEnhancementPack,
 } from '../domain/deepspaceStoryEnhancement/index.ts';
+import { BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL } from '../domain/companionMaterial/index.ts';
 import { createWorldbookEntry } from '../domain/worldbook/index.ts';
 import type { CharacterProfile } from '../types.ts';
 import { DB } from '../utils/db.ts';
@@ -112,11 +115,11 @@ assert.ok(validateDeepspaceStoryEnhancementPack({
   truthEffect: 'current' as 'none',
 }).includes('truthEffect must be none'));
 
-assert.equal(BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.length, 10);
-assert.equal(XAVIER_REVIEWED_STORY_WORLDBOOKS.length, 10);
+assert.equal(BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.length, 13);
+assert.equal(XAVIER_REVIEWED_STORY_WORLDBOOKS.length, 13);
 assert.equal(
   new Set(BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.map(pack => pack.worldbookEntryId)).size,
-  10,
+  13,
 );
 assert.equal(
   BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.filter(pack => pack.sourceLane === 'world_expansion').length,
@@ -125,11 +128,11 @@ assert.equal(
 assert.equal(
   XAVIER_REVIEWED_STORY_WORLDBOOKS.filter(book => book.knowledgePolicy.kind === 'director_only').length,
   2,
-  'source endings remain Director-only references while the eight route/expansion books stay player-visible',
+  'source endings remain Director-only references while the eleven route/expansion books stay player-visible',
 );
 assert.equal(
   XAVIER_REVIEWED_STORY_WORLDBOOKS.filter(book => book.knowledgePolicy.kind !== 'director_only').length,
-  8,
+  11,
 );
 assert.equal(
   XAVIER_REVIEWED_STORY_WORLDBOOKS.some(book => book.id.includes('cosmic')),
@@ -162,8 +165,11 @@ assert.deepEqual(
     ['present_world_xavier_canonical_chronology', 'light-hunter-emergence', 200],
     ['present_world_xavier_canonical_chronology', 'restricted-zone-42-and-concealed-identity', 300],
     ['present_world_xavier_canonical_chronology', 'resident-hunter-mainline', 400],
+    ['present_world_xavier_canonical_chronology', 'yicheng-pursuit-and-rift', 500],
+    ['present_world_xavier_canonical_chronology', 'outcast-voyage-and-retro-team', 600],
+    ['present_world_xavier_canonical_chronology', 'philos-transplant-and-stele-crisis', 700],
   ],
-  'special police, light hunter, restricted zone 42 and resident hunter are one ordered present-world history, not four IF routes',
+  'all seven Xavier stages are one ordered present-world history, not independent IF routes',
 );
 const emberPlayableBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-ember-city-if');
 assert.match(emberPlayableBook?.content || '', /巴别会主教/);
@@ -204,6 +210,9 @@ const specialPoliceBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id 
 const lightHunterBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-light-hunter-card');
 const zone42Book = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-restricted-zone-42');
 const mainlineBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-mainline-hunter-n109');
+const yichengBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-yicheng-rift');
+const outcastBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-outcast-voyage');
+const transplantBook = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-philos-transplant-crisis');
 const emberEndingReference = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-ember-city-ending-reference');
 const philosEndingReference = XAVIER_REVIEWED_STORY_WORLDBOOKS.find(book => book.id === 'builtin-deepspace-story-xavier-philos-ending-reference');
 assert.match(specialPoliceBook?.content || '', /ST-1101/);
@@ -228,6 +237,18 @@ assert.doesNotMatch(mainlineBook?.content || '', /以太芯核是一种经过改
 assert.doesNotMatch(mainlineBook?.content || '', /玩家|当前设定|当前剧情选择/);
 assert.match(mainlineBook?.content || '', /原作猎人主线中的女主角/);
 assert.doesNotMatch(mainlineBook?.content || '', /极地调查结束后，\{\{user\}\}/);
+assert.match(yichengBook?.content || '', /瓦尔疗养院/);
+assert.match(yichengBook?.content || '', /伊澄/);
+assert.match(yichengBook?.content || '', /装甲货车/);
+assert.match(yichengBook?.content || '', /普通市民.*表层现象/);
+assert.match(outcastBook?.content || '', /嘉会大学/);
+assert.match(outcastBook?.content || '', /回溯Ⅱ号/);
+assert.match(outcastBook?.content || '', /普通学生.*设备异常/);
+assert.match(transplantBook?.content || '', /女神圣剑碑/);
+assert.match(transplantBook?.content || '', /苏洛维/);
+assert.match(transplantBook?.content || '', /三小时/);
+assert.match(transplantBook?.content || '', /Echo/);
+assert.doesNotMatch(transplantBook?.content || '', /祁煜|利莫里亚|海神|月升/);
 assert.equal(emberEndingReference?.knowledgePolicy.kind, 'director_only');
 assert.equal(philosEndingReference?.knowledgePolicy.kind, 'director_only');
 assert.match(emberEndingReference?.content || '', /不是.*预言|并不知道自己必然走向这里/);
@@ -251,6 +272,37 @@ assert.ok(BUILT_IN_DEEPSPACE_STORY_ENHANCEMENT_PACKS.every(pack => (
   && pack.truthEffect === 'none'
   && pack.mergePolicy === 'additive_not_rewrite'
 )));
+
+assert.equal(XAVIER_REVIEWED_DATE_THEME_CANDIDATES_V4.length, 5);
+assert.equal(XAVIER_REVIEWED_BEHAVIOR_EVIDENCE_V4.length, 4);
+assert.ok(XAVIER_REVIEWED_DATE_THEME_CANDIDATES_V4.every(candidate => (
+  candidate.status === 'typed_candidate'
+  && candidate.allowedConsumers.length === 1
+  && candidate.allowedConsumers[0] === 'date'
+  && candidate.truthEffect === 'none'
+  && candidate.runtimeDelivery === 'typed_only_not_connected'
+  && candidate.currentFactPolicy.length > 0
+  && candidate.sourceRefIds.every(ref => ref.startsWith('src:bwiki:'))
+)));
+assert.ok(XAVIER_REVIEWED_BEHAVIOR_EVIDENCE_V4.every(candidate => (
+  candidate.status === 'reviewed_revision_evidence'
+  && candidate.runtimeEligible === false
+  && candidate.sourceRefIds.length >= 2
+)));
+const companionMaterialIds = new Set(BUILT_IN_DEEPSPACE_REVIEWED_MATERIAL.map(record => record.id));
+assert.ok(
+  XAVIER_REVIEWED_DATE_THEME_CANDIDATES_V4.every(candidate => !companionMaterialIds.has(candidate.id)),
+  'Date premises remain typed-only until Date supplies an explicit premise consumer',
+);
+assert.ok(
+  XAVIER_REVIEWED_BEHAVIOR_EVIDENCE_V4.every(candidate => !companionMaterialIds.has(candidate.id)),
+  'review evidence must not duplicate stable prompt guidance into CompanionMaterial',
+);
+const xavierDeltaV4Serialized = JSON.stringify({
+  date: XAVIER_REVIEWED_DATE_THEME_CANDIDATES_V4,
+  behavior: XAVIER_REVIEWED_BEHAVIOR_EVIDENCE_V4,
+});
+assert.doesNotMatch(xavierDeltaV4Serialized, /https?:\/\/|\/Users\/|research\/lysk|sourceTitle|currentMotives|relationshipMemory|playedTruth/);
 
 const reviewedLibrary = XAVIER_REVIEWED_STORY_WORLDBOOKS.map((draft, index) => createWorldbookEntry({
   book: {
@@ -300,6 +352,9 @@ const project = (input: {
 }).projection.items.map(item => item.entryId);
 
 const mainlineId = 'builtin-deepspace-story-xavier-mainline-hunter-n109';
+const yichengId = 'builtin-deepspace-story-xavier-yicheng-rift';
+const outcastId = 'builtin-deepspace-story-xavier-outcast-voyage';
+const transplantId = 'builtin-deepspace-story-xavier-philos-transplant-crisis';
 const princeIfId = 'builtin-deepspace-story-xavier-philos-prince-knight-if';
 const emberIfId = 'builtin-deepspace-story-xavier-ember-city-if';
 const emberEndingId = 'builtin-deepspace-story-xavier-ember-city-ending-reference';
@@ -370,6 +425,32 @@ assert.deepEqual(project({
   query: 'N109 调查与深空猎人',
   identityMode: 'canon_hunter',
 }), [], 'a native mainline pack must not cross into an IF lane');
+for (const fixture of [
+  { id: yichengId, query: '伊澄 瓦尔疗养院 空中隧道 装甲货车' },
+  { id: outcastId, query: '嘉会大学 回溯Ⅱ号 重叠空间 严颂' },
+  { id: transplantId, query: '女神圣剑碑 引力锚 菲罗斯 移植 Echo' },
+]) {
+  assert.deepEqual(project({
+    mountedIds: [fixture.id],
+    consumer: 'story_mainline',
+    continuity: { lane: 'mainline', routeId: 'player-mainline' },
+    query: fixture.query,
+    identityMode: 'canon_hunter',
+  }), [fixture.id], `${fixture.id} has a legal relevant mainline path`);
+  assert.deepEqual(project({
+    mountedIds: [fixture.id],
+    consumer: 'chat',
+    query: '午饭想吃烤肉配苏打水',
+    identityMode: 'canon_hunter',
+  }), [], `${fixture.id} stays out of unrelated Chat`);
+  assert.deepEqual(project({
+    mountedIds: [fixture.id],
+    consumer: 'story_if',
+    continuity: { lane: 'if_line', routeId: 'player-if', branchId: 'branch-a' },
+    query: fixture.query,
+    identityMode: 'canon_hunter',
+  }), [], `${fixture.id} does not cross into an IF lane`);
+}
 assert.deepEqual(project({
   mountedIds: [princeIfId],
   consumer: 'story_if',

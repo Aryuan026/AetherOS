@@ -355,7 +355,7 @@ const defaultUserProfile: UserProfile = normalizeUserPersonaProfile({
 });
 
 const BUILT_IN_CHARACTER_VERSION = 22;
-const BUILT_IN_WORLDBOOK_VERSION = 19;
+const BUILT_IN_WORLDBOOK_VERSION = 20;
 const BUILT_IN_WORLDBOOK_TIMESTAMP = Date.UTC(2026, 6, 3);
 const QIYU_BUILT_IN_ID = 'builtin-daily-companion';
 const XAVIER_BUILT_IN_ID = 'builtin-xavier';
