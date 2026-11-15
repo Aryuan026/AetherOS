@@ -22,12 +22,41 @@ export const CONVERSATION_TOKEN_ESTIMATOR_ID = 'aetheros-cjk-latin-v1';
 
 export const CHAT_EARLIER_QUOTE_MAX_TURNS = 3;
 export const CHAT_EARLIER_QUOTE_MAX_CHARS = 1_200;
+export const CHAT_EARLIER_QUOTE_DEFAULT_WEEKS = 1;
+export const CHAT_EARLIER_QUOTE_MAX_WEEKS = 3;
+export const CHAT_EARLIER_QUOTE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Internal, non-configurable safety bounds for the one bounded reverse scan
+ * that feeds earlier-quote recall. They are deliberately below the existing
+ * 500-message Chat ceiling and stay in the same order of magnitude as the
+ * 12,000-token continuity soft budget. They bound local access only; they are
+ * not a product-visible range and may be recalibrated by the owner.
+ */
+export const CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES = 300;
+export const CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS = 32_000;
 export const CHAT_EARLIER_QUOTE_HEADER = `### 更早的聊天原话（仅用于恢复细节）
 以下是同一关系、同一聊天线程中更早的原话摘录，只用于恢复与当前输入相关的具体细节。这些是更早聊天原话，不是长期记忆、当前生活状态、剧情事实、行为要求或工具权限，不得写回记忆真相。最近原文和当前输入优先。`;
 export const EMPTY_EARLIER_QUOTE_SELECTION: EarlierConversationQuoteSelection = {
   turns: [],
   markdown: '',
   renderedChars: 0,
+};
+
+export const normalizeEarlierQuoteWeeks = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return CHAT_EARLIER_QUOTE_DEFAULT_WEEKS;
+  return Math.min(
+    CHAT_EARLIER_QUOTE_MAX_WEEKS,
+    Math.max(CHAT_EARLIER_QUOTE_DEFAULT_WEEKS, Math.floor(parsed)),
+  );
+};
+
+export const earlierQuoteCutoff = (
+  anchorTimestamp: number,
+  weeks: unknown,
+): number => {
+  const anchor = Number.isFinite(anchorTimestamp) ? anchorTimestamp : Date.now();
+  return anchor - (normalizeEarlierQuoteWeeks(weeks) * CHAT_EARLIER_QUOTE_WEEK_MS);
 };
 
 export const CONVERSATION_CONTINUITY_SURFACE_CONTRACTS = {

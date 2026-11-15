@@ -29,6 +29,7 @@ import {
 } from '../utils/companionWakeups';
 import { isDuplicateBuiltInCareRule, isObsoleteHeartbeatRule, mergeDefaultHeartbeatRules, syncBuiltInCareWakeupRules } from '../utils/companionWakeupRules';
 import { resolveAvatarFramePreset } from '../utils/avatarFrames';
+import { normalizeEarlierQuoteWeeks } from '../domain/conversationContinuity';
 import type { HistoryScope } from '../domain/historyImport/types';
 import {
     historySourceMessagesToContext,
@@ -214,6 +215,7 @@ const Chat: React.FC = () => {
     const [emojiImportText, setEmojiImportText] = useState('');
     const [settingsContextLimit, setSettingsContextLimit] = useState(500);
     const [settingsEarlierQuoteRecall, setSettingsEarlierQuoteRecall] = useState(false);
+    const [settingsEarlierQuoteWeeks, setSettingsEarlierQuoteWeeks] = useState(1);
     const [settingsHideSysLogs, setSettingsHideSysLogs] = useState(false);
     const [chatReplyMode, setChatReplyMode] = useState<ChatReplyMode>(DEFAULT_CHAT_REPLY_MODE);
     const [settingsReplyMode, setSettingsReplyMode] = useState<ChatReplyMode>(DEFAULT_CHAT_REPLY_MODE);
@@ -803,6 +805,7 @@ const Chat: React.FC = () => {
             if (char) {
                 setSettingsContextLimit(char.contextLimit || 500);
                 setSettingsEarlierQuoteRecall(char.earlierQuoteRecallEnabled === true);
+                setSettingsEarlierQuoteWeeks(normalizeEarlierQuoteWeeks(char.earlierQuoteRecallWeeks));
                 setSettingsHideSysLogs(char.hideSystemLogs || false);
                 clearUnread(char.id);
             }
@@ -1144,6 +1147,7 @@ const Chat: React.FC = () => {
     const openChatSettings = () => {
         setSettingsReplyMode(chatReplyMode);
         setSettingsEarlierQuoteRecall(char?.earlierQuoteRecallEnabled === true);
+        setSettingsEarlierQuoteWeeks(normalizeEarlierQuoteWeeks(char?.earlierQuoteRecallWeeks));
         setModalType('chat-settings');
     };
 
@@ -1333,6 +1337,7 @@ const Chat: React.FC = () => {
         updateCharacter(char.id, {
             contextLimit: settingsContextLimit,
             earlierQuoteRecallEnabled: settingsEarlierQuoteRecall,
+            earlierQuoteRecallWeeks: normalizeEarlierQuoteWeeks(settingsEarlierQuoteWeeks),
             hideSystemLogs: settingsHideSysLogs
         });
         if (!importedHistoryScope) {
@@ -1791,6 +1796,7 @@ const Chat: React.FC = () => {
                 emojiImportText={emojiImportText} setEmojiImportText={setEmojiImportText}
                 settingsContextLimit={settingsContextLimit} setSettingsContextLimit={setSettingsContextLimit}
                 settingsEarlierQuoteRecall={settingsEarlierQuoteRecall} setSettingsEarlierQuoteRecall={setSettingsEarlierQuoteRecall}
+                settingsEarlierQuoteWeeks={settingsEarlierQuoteWeeks} setSettingsEarlierQuoteWeeks={setSettingsEarlierQuoteWeeks}
                 settingsHideSysLogs={settingsHideSysLogs} setSettingsHideSysLogs={setSettingsHideSysLogs}
                 settingsReplyMode={settingsReplyMode} setSettingsReplyMode={setSettingsReplyMode}
                 preserveContext={preserveContext} setPreserveContext={setPreserveContext}

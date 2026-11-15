@@ -83,6 +83,20 @@ export interface ScheduledMessage {
     deliveryPolicy?: 'fixed' | 'quiet_today';
 }
 
+export type BoundedMessageScanTruncation =
+    | 'day'
+    | 'message_budget'
+    | 'char_budget'
+    | 'none';
+
+export interface BoundedMessageScanResult {
+    messages: Message[];
+    scannedMessages: number;
+    /** Text characters counted before scope filtering. */
+    scannedChars: number;
+    truncatedBy: BoundedMessageScanTruncation;
+}
+
 type PublicEmojiSticker = {
     sticker_id?: string;
     id?: string;
@@ -1931,6 +1945,82 @@ export const DB = {
               // Reverse to chronological order
               resolve(collected.reverse());
           }
+      };
+      cursorReq.onerror = () => reject(cursorReq.error);
+    });
+  },
+
+  // Bounded newest-to-oldest live-message scan for Chat earlier-quote recall.
+  // It intentionally stops at the first day boundary or at the first raw
+  // message/character budget so callers cannot turn it back into a getAll.
+  getBoundedRecentMessagesByCharId: async (input: {
+    charId: string;
+    since: number;
+    maxMessages: number;
+    maxChars: number;
+  }): Promise<BoundedMessageScanResult> => {
+    const db = await openDB();
+    const since = Number.isFinite(input.since) ? input.since : 0;
+    const maxMessages = Math.max(1, Math.floor(input.maxMessages));
+    const maxChars = Math.max(1, Math.floor(input.maxChars));
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_MESSAGES, 'readonly');
+      const store = transaction.objectStore(STORE_MESSAGES);
+      const index = store.index('charId');
+      const collected: Message[] = [];
+      let scannedMessages = 0;
+      let scannedChars = 0;
+      let truncatedBy: BoundedMessageScanTruncation = 'none';
+      const finish = () => {
+        resolve({
+          messages: collected.reverse(),
+          scannedMessages,
+          scannedChars,
+          truncatedBy,
+        });
+      };
+      const cursorReq = index.openCursor(IDBKeyRange.only(input.charId), 'prev');
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result;
+        if (!cursor) {
+          finish();
+          return;
+        }
+        const message = cursor.value as Message;
+        scannedMessages += 1;
+        if (message.groupId) {
+          // Group rows are outside the Chat relationship evidence but still
+          // consume the raw scan bound so one character cannot walk forever.
+          if (scannedMessages >= maxMessages) {
+            truncatedBy = 'message_budget';
+            finish();
+            return;
+          }
+          cursor.continue();
+          return;
+        }
+        if (message.timestamp < since) {
+          truncatedBy = 'day';
+          finish();
+          return;
+        }
+        const messageChars = message.type === 'text' && typeof message.content === 'string'
+          ? message.content.length
+          : 0;
+        if (scannedChars + messageChars > maxChars) {
+          truncatedBy = 'char_budget';
+          finish();
+          return;
+        }
+        collected.push(message);
+        scannedChars += messageChars;
+        if (scannedChars >= maxChars) truncatedBy = 'char_budget';
+        else if (scannedMessages >= maxMessages) truncatedBy = 'message_budget';
+        if (truncatedBy !== 'none') {
+          finish();
+          return;
+        }
+        cursor.continue();
       };
       cursorReq.onerror = () => reject(cursorReq.error);
     });

@@ -1,5 +1,60 @@
 # AetherOS Progress
 
+## 2026-11-16 Earlier Chat Quote Weekly Lookback And Bounded Scan
+
+- done:
+  - Replaced the unbounded earlier-quote candidate source with one local,
+    bounded reverse-cursor read over the same Character's messages. The read
+    stops at the selected week boundary, the raw message budget or the raw
+    text-character budget, whichever comes first.
+  - Added the human-visible `回看范围` for the existing
+    `参考更早的聊天原话` switch: 1, 2 or 3 weeks only, default 1, maximum 3.
+    Missing legacy values read as 1 and runtime normalization clamps abnormal
+    values to 1..3 instead of trusting the UI.
+  - Persisted `earlierQuoteRecallWeeks` through the existing Character record
+    and whole-device backup. No new storage, index, dependency, fetch or
+    localStorage key.
+  - Preserved the exact relationship scope, hidden/proactive/Date/Call/
+    history-import/`hideBeforeMessageId` exclusions, the latest ten complete
+    turns and delivered raw messages. Scan truncation drops a leading partial
+    turn; an over-budget quote turn is skipped whole instead of being clipped.
+  - Diagnostics now expose the normalized weeks, actual raw messages/text
+    characters scanned and whether the window ended by day, message budget or
+    char budget. No message content is logged.
+  - Internal safety bounds are 300 raw messages and 32,000 raw text characters
+    (counted before scope filtering) for this checkpoint. They are deliberately
+    below the existing 500-message Chat ceiling and in the same order of
+    magnitude as the 12,000-token continuity soft budget; the owner may
+    recalibrate them.
+  - Added backup roundtrip assertions and focused verification for weekly
+    ranges, runtime clamping, day boundary, dense-history budgets, ten thousand
+    rows staying bounded, complete-turn boundaries, exclusions, 3-turn/1,200
+    character delivery, provider order, zero extra network fetch and no recall
+    read when the switch is off.
+
+- verification:
+  - Independent main-control review tightened the 32,000-character bound to
+    reject a message before it could cross the cap and added an oversized-row
+    regression fixture.
+  - `npm run verify:health`
+  - `npm run verify:conversation-continuity`
+  - `npm run verify:whole-device-backup`
+  - `npm run verify:chat-reply-mode`
+  - `npm run verify:history-import`
+  - `npm run verify:character-behavior-boundary`
+  - `npm run typecheck`
+  - `npm run build:quiet`
+  - Real browser: default-off, 1/2/3-week selection, save/reopen persistence,
+    44 px week controls and zero horizontal overflow at 390 px and 1024 px.
+
+- boundary:
+  - This only bounds the additional earlier-quote lookback. Chat continuity's
+    existing `fullHistory`/`getAll` long-history path, capsule/fingerprint
+    semantics and summary protocol are unchanged and are still separate debt;
+    this checkpoint does not claim the whole Chat long-history path is fixed.
+  - Chat only. Other surfaces remain on their existing HOLD/exclusion rules.
+  - No commit, push, PR, merge or deployment is part of this local checkpoint.
+
 ## 2026-11-15 Optional Earlier Chat Quote Recall
 
 - done:
