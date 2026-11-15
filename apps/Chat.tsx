@@ -213,6 +213,7 @@ const Chat: React.FC = () => {
     const [transferAmt, setTransferAmt] = useState('');
     const [emojiImportText, setEmojiImportText] = useState('');
     const [settingsContextLimit, setSettingsContextLimit] = useState(500);
+    const [settingsEarlierQuoteRecall, setSettingsEarlierQuoteRecall] = useState(false);
     const [settingsHideSysLogs, setSettingsHideSysLogs] = useState(false);
     const [chatReplyMode, setChatReplyMode] = useState<ChatReplyMode>(DEFAULT_CHAT_REPLY_MODE);
     const [settingsReplyMode, setSettingsReplyMode] = useState<ChatReplyMode>(DEFAULT_CHAT_REPLY_MODE);
@@ -801,6 +802,7 @@ const Chat: React.FC = () => {
             setInput(savedDraft || '');
             if (char) {
                 setSettingsContextLimit(char.contextLimit || 500);
+                setSettingsEarlierQuoteRecall(char.earlierQuoteRecallEnabled === true);
                 setSettingsHideSysLogs(char.hideSystemLogs || false);
                 clearUnread(char.id);
             }
@@ -1141,6 +1143,7 @@ const Chat: React.FC = () => {
 
     const openChatSettings = () => {
         setSettingsReplyMode(chatReplyMode);
+        setSettingsEarlierQuoteRecall(char?.earlierQuoteRecallEnabled === true);
         setModalType('chat-settings');
     };
 
@@ -1329,6 +1332,7 @@ const Chat: React.FC = () => {
         if (!char) return;
         updateCharacter(char.id, {
             contextLimit: settingsContextLimit,
+            earlierQuoteRecallEnabled: settingsEarlierQuoteRecall,
             hideSystemLogs: settingsHideSysLogs
         });
         if (!importedHistoryScope) {
@@ -1786,6 +1790,7 @@ const Chat: React.FC = () => {
                 transferAmt={transferAmt} setTransferAmt={setTransferAmt}
                 emojiImportText={emojiImportText} setEmojiImportText={setEmojiImportText}
                 settingsContextLimit={settingsContextLimit} setSettingsContextLimit={setSettingsContextLimit}
+                settingsEarlierQuoteRecall={settingsEarlierQuoteRecall} setSettingsEarlierQuoteRecall={setSettingsEarlierQuoteRecall}
                 settingsHideSysLogs={settingsHideSysLogs} setSettingsHideSysLogs={setSettingsHideSysLogs}
                 settingsReplyMode={settingsReplyMode} setSettingsReplyMode={setSettingsReplyMode}
                 preserveContext={preserveContext} setPreserveContext={setPreserveContext}

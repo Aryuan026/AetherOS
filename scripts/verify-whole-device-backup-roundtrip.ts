@@ -142,6 +142,7 @@ const backupCharacter: CharacterProfile = {
   description: '',
   systemPrompt: '',
   memories: [],
+  earlierQuoteRecallEnabled: true,
   mountedWorldbooks: [{
     id: backupWorldbookV1.id,
     title: '旧便携标题',
@@ -229,6 +230,7 @@ const exportedWorldbook = exported.worldbooks?.find(book => book.id === backupWo
 assert.equal(exportedWorldbook?.revisionSnapshots?.length, 2);
 assert.equal(exportedWorldbook?.activeRevisionId, backupWorldbookV2.activeRevisionId);
 const exportedCharacter = exported.characters?.find(character => character.id === backupCharacter.id);
+assert.equal(exportedCharacter?.earlierQuoteRecallEnabled, true);
 assert.deepEqual(exportedCharacter?.mountedWorldbooks, [{
   id: backupWorldbookV2.id,
   title: backupWorldbookV2.title,
@@ -317,6 +319,7 @@ assert.equal(restoredWorldbook?.revisionSnapshots?.length, 2);
 assert.equal(restoredWorldbook?.activeRevisionId, backupWorldbookV2.activeRevisionId);
 const restoredCharacter = (await DB.getAllCharacters())
   .find(character => character.id === backupCharacter.id);
+assert.equal(restoredCharacter?.earlierQuoteRecallEnabled, true);
 assert.deepEqual(restoredCharacter?.mountedWorldbooks, exportedCharacter?.mountedWorldbooks);
 
 const osContextSource = readSource('context/OSContext.tsx');

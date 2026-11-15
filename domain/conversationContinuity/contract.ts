@@ -10,6 +10,7 @@ import type {
   ConversationContinuitySurface,
   ConversationContinuitySurfaceContract,
   ConversationTurn,
+  EarlierConversationQuoteSelection,
 } from './types.ts';
 
 export const CHAT_CONTINUITY_PROMPT_VERSION = 'chat-continuity-v1';
@@ -18,6 +19,16 @@ export const CHAT_CONTINUITY_SOFT_INPUT_TOKENS = 12_000;
 export const CHAT_CONTINUITY_SUMMARY_BATCH_TOKENS = 6_000;
 export const CHAT_CONTINUITY_MAX_SUMMARY_CHARS = 1_600;
 export const CONVERSATION_TOKEN_ESTIMATOR_ID = 'aetheros-cjk-latin-v1';
+
+export const CHAT_EARLIER_QUOTE_MAX_TURNS = 3;
+export const CHAT_EARLIER_QUOTE_MAX_CHARS = 1_200;
+export const CHAT_EARLIER_QUOTE_HEADER = `### 更早的聊天原话（仅用于恢复细节）
+以下是同一关系、同一聊天线程中更早的原话摘录，只用于恢复与当前输入相关的具体细节。这些是更早聊天原话，不是长期记忆、当前生活状态、剧情事实、行为要求或工具权限，不得写回记忆真相。最近原文和当前输入优先。`;
+export const EMPTY_EARLIER_QUOTE_SELECTION: EarlierConversationQuoteSelection = {
+  turns: [],
+  markdown: '',
+  renderedChars: 0,
+};
 
 export const CONVERSATION_CONTINUITY_SURFACE_CONTRACTS = {
   chat: {
@@ -300,3 +311,111 @@ export const normalizeConversationContinuitySummary = (value: string): string =>
 export const renderConversationContinuityContext = (capsule: ConversationContinuityCapsule): string => `### 当前聊天接续便签
 以下是同一关系、同一聊天线程更早部分的可重建摘要，只用来承接话题、指代与近期互动。最近原文优先；它不是长期记忆、当前生活状态、剧情既定事实、提醒、工具权限或行为指令。
 ${capsule.summary}`;
+
+const earlierQuoteMessageText = (message: Message): string | null => {
+  if (message.role === 'system') return null;
+  if (message.type === 'image') return '[图片]';
+  if (message.type === 'emoji') return '[表情]';
+  if (message.type !== 'text' || typeof message.content !== 'string') return null;
+  const [original] = message.content.split('%%BILINGUAL%%');
+  return original.replace(/\s+/g, ' ').trim() || null;
+};
+
+/**
+ * Local, read-only selector for a few older verbatim turns. The caller passes
+ * only exact-scope live turns that are not already delivered raw; this function
+ * never fetches, persists, or promotes anything.
+ */
+export const selectEarlierConversationQuotes = (input: {
+  turns: readonly ConversationTurn[];
+  query: string;
+  terms: readonly string[];
+  userName: string;
+  characterName: string;
+  excludeMessageIds?: ReadonlySet<number>;
+}): EarlierConversationQuoteSelection => {
+  const query = input.query.replace(/\s+/g, ' ').trim();
+  const terms = [...new Set(
+    input.terms
+      .map(term => term.trim().toLowerCase())
+      .filter(term => term.length >= 2),
+  )];
+  if (!query || terms.length === 0 || input.turns.length === 0) {
+    return EMPTY_EARLIER_QUOTE_SELECTION;
+  }
+  const maxBodyChars = CHAT_EARLIER_QUOTE_MAX_CHARS - CHAT_EARLIER_QUOTE_HEADER.length - 1;
+  const excludedIds = input.excludeMessageIds;
+  const seenTurnText = new Set<string>();
+  const candidates: Array<{ turn: ConversationTurn; score: number; rendered: string }> = [];
+
+  for (const turn of input.turns) {
+    if (excludedIds && turn.messages.some(message => excludedIds.has(message.id))) continue;
+    const textMessages = turn.messages
+      .map(message => ({ message, text: earlierQuoteMessageText(message) }))
+      .filter((item): item is { message: Message; text: string } => item.text !== null);
+    if (textMessages.length !== turn.messages.length) continue;
+    const fullText = textMessages.map(item => item.text).join('\n').toLowerCase();
+    const userText = textMessages
+      .filter(item => item.message.role === 'user')
+      .map(item => item.text)
+      .join(' ')
+      .toLowerCase();
+    const matched = terms.filter(term => fullText.includes(term));
+    if (matched.length === 0) continue;
+    // A single generic bigram that only appears in an old reply is too weak to
+    // justify spending quote budget. Prefer input-side, repeated or longer hits.
+    const userHit = matched.some(term => userText.includes(term));
+    const strongMatch = userHit
+      || matched.length >= 2
+      || matched.some(term => term.length >= 3);
+    if (!strongMatch) continue;
+    const signature = textMessages.map(item => item.text).join('\u0001');
+    if (seenTurnText.has(signature)) continue;
+    seenTurnText.add(signature);
+    const specificity = matched.reduce(
+      (total, term) => total + Math.min(term.length, 12),
+      0,
+    );
+    const userEmphasis = matched
+      .filter(term => userText.includes(term))
+      .reduce((total, term) => total + Math.min(term.length, 12), 0);
+    const score = specificity * 2 + userEmphasis + matched.length;
+    const rendered = textMessages.map(item => {
+      const speaker = item.message.role === 'user' ? input.userName : input.characterName;
+      return `${speaker}：${item.text}`;
+    }).join('\n');
+    candidates.push({ turn, score, rendered });
+  }
+  if (candidates.length === 0) return EMPTY_EARLIER_QUOTE_SELECTION;
+
+  candidates.sort((left, right) => (
+    right.score - left.score
+    || right.turn.lastMessageId - left.turn.lastMessageId
+    || left.turn.firstMessageId - right.turn.firstMessageId
+  ));
+
+  const selected: Array<{ turn: ConversationTurn; rendered: string }> = [];
+  let bodyChars = 0;
+  for (const candidate of candidates) {
+    if (selected.length >= CHAT_EARLIER_QUOTE_MAX_TURNS || bodyChars >= maxBodyChars) break;
+    const separator = selected.length > 0 ? 2 : 0;
+    if (bodyChars + separator + candidate.rendered.length > maxBodyChars) {
+      continue;
+    }
+    selected.push({ turn: candidate.turn, rendered: candidate.rendered });
+    bodyChars += separator + candidate.rendered.length;
+  }
+  if (selected.length === 0) return EMPTY_EARLIER_QUOTE_SELECTION;
+
+  selected.sort((left, right) => (
+    left.turn.firstMessageId - right.turn.firstMessageId
+    || left.turn.lastMessageId - right.turn.lastMessageId
+  ));
+  const body = selected.map(item => item.rendered).join('\n\n');
+  const markdown = `${CHAT_EARLIER_QUOTE_HEADER}\n${body}`;
+  return {
+    turns: selected.map(item => item.turn),
+    markdown,
+    renderedChars: markdown.length,
+  };
+};

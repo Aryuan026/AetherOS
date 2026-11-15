@@ -592,10 +592,14 @@ export const useChatAI = ({
                         apiConfig: effectiveApi,
                         userName: userProfile.name,
                         characterName: char.name,
+                        earlierQuoteRecall: char.earlierQuoteRecallEnabled === true,
                     });
                     deliveredLiveMessages = continuity.recentMessages;
                     if (continuity.markdown) {
                         systemPrompt += `\n\n${continuity.markdown}\n`;
+                    }
+                    if (continuity.earlierQuoteMarkdown) {
+                        systemPrompt += `\n\n${continuity.earlierQuoteMarkdown}\n`;
                     }
                     console.log(
                         `🧶 [Chat Continuity] trigger=${continuity.diagnostic.trigger}`
@@ -604,7 +608,9 @@ export const useChatAI = ({
                         + ` raw_msgs=${continuity.diagnostic.rawMessageCount}`
                         + ` delivered_msgs=${continuity.diagnostic.deliveredMessageCount}`
                         + ` summary_passes=${continuity.diagnostic.summaryPasses}`
-                        + ` fallback=${continuity.diagnostic.fallback}`,
+                        + ` fallback=${continuity.diagnostic.fallback}`
+                        + ` earlier_quote_turns=${continuity.diagnostic.earlierQuoteTurns}`
+                        + ` earlier_quote_chars=${continuity.diagnostic.earlierQuoteChars}`,
                     );
                 } catch (e) {
                     console.error('Failed to prepare Chat continuity, using the current bounded tail:', e);
