@@ -920,6 +920,8 @@ export interface CharacterProfile {
    * user input is locally relevant. Off by default; never memory or current truth.
    */
   earlierQuoteRecallEnabled?: boolean;
+  /** Human-visible earlier-quote lookback in weeks: 1..3, missing means 1. */
+  earlierQuoteRecallWeeks?: number;
   hideSystemLogs?: boolean; 
   hideBeforeMessageId?: number; 
   

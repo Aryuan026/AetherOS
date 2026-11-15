@@ -2,13 +2,19 @@ import type { APIConfig, Message } from '../types.ts';
 import type { HistoryScope } from '../domain/historyImport/types.ts';
 import {
   CHAT_CONTINUITY_PROMPT_VERSION,
+  CHAT_CONTINUITY_RECENT_TURNS,
+  CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS,
+  CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES,
   CONVERSATION_TOKEN_ESTIMATOR_ID,
   EMPTY_EARLIER_QUOTE_SELECTION,
   buildConversationContinuitySummaryPrompt,
   createConversationContinuityId,
+  earlierQuoteCutoff,
   fingerprintConversationMessages,
+  groupConversationTurns,
   isConversationContinuityCapsuleValid,
   normalizeConversationContinuitySummary,
+  normalizeEarlierQuoteWeeks,
   planConversationContinuity,
   renderConversationContinuityContext,
   selectEarlierConversationQuotes,
@@ -22,8 +28,20 @@ import {
   messageMatchesRelationshipScope,
 } from './messageContext.ts';
 import { extractMemorySearchTerms } from './memoryCore/deliveryProfile';
-import { DB } from './db.ts';
+import {
+  DB,
+  type BoundedMessageScanTruncation,
+} from './db.ts';
 import { safeFetchJson } from './safeApi.ts';
+
+export interface EarlierQuoteRecallWindow {
+  readonly weeks: number;
+  readonly turns: readonly ConversationTurn[];
+  readonly scannedMessages: number;
+  readonly scannedChars: number;
+  readonly truncatedBy: BoundedMessageScanTruncation;
+  readonly windowRead: boolean;
+}
 
 export interface PreparedChatConversationContinuity {
   readonly recentMessages: Message[];
@@ -41,6 +59,11 @@ export interface PreparedChatConversationContinuity {
     readonly compactedThroughMessageId?: number;
     readonly usedExistingCapsule: boolean;
     readonly fallback: boolean;
+    readonly earlierQuoteWeeks: number;
+    readonly earlierQuoteWindowRead: boolean;
+    readonly earlierQuoteScannedMessages: number;
+    readonly earlierQuoteScannedChars: number;
+    readonly earlierQuoteTruncatedBy: BoundedMessageScanTruncation;
     readonly earlierQuoteTurns: number;
     readonly earlierQuoteChars: number;
   };
@@ -127,6 +150,55 @@ const turnsAfter = (turns: readonly ConversationTurn[], throughMessageId: number
   turns.filter(turn => turn.lastMessageId > throughMessageId)
 );
 
+export const buildEarlierQuoteRecallTurns = (input: {
+  messages: readonly Message[];
+  scope: HistoryScope;
+  hideBeforeMessageId?: number;
+}): ConversationTurn[] => {
+  const scopedLiveMessages = input.messages.filter(message => (
+    !isHistoricalContextMessage(message)
+    && messageMatchesRelationshipScope(message, input.scope)
+    && message.metadata?.hidden !== true
+    && message.metadata?.proactiveHint !== true
+    && message.metadata?.source !== 'date'
+    && message.metadata?.source !== 'call'
+    && (!input.hideBeforeMessageId || message.id >= input.hideBeforeMessageId)
+  ));
+  const completeTurns = groupConversationTurns(scopedLiveMessages)
+    .filter(turn => turn.messages[0]?.role === 'user');
+  return completeTurns.slice(
+    0,
+    Math.max(0, completeTurns.length - CHAT_CONTINUITY_RECENT_TURNS),
+  );
+};
+
+export const readEarlierQuoteRecallWindow = async (input: {
+  scope: HistoryScope;
+  weeks?: unknown;
+  anchorTimestamp: number;
+  hideBeforeMessageId?: number;
+}): Promise<EarlierQuoteRecallWindow> => {
+  const weeks = normalizeEarlierQuoteWeeks(input.weeks);
+  const scan = await DB.getBoundedRecentMessagesByCharId({
+    charId: input.scope.charId,
+    since: earlierQuoteCutoff(input.anchorTimestamp, weeks),
+    maxMessages: CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES,
+    maxChars: CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS,
+  });
+  return {
+    weeks,
+    turns: buildEarlierQuoteRecallTurns({
+      messages: scan.messages,
+      scope: input.scope,
+      hideBeforeMessageId: input.hideBeforeMessageId,
+    }),
+    scannedMessages: scan.scannedMessages,
+    scannedChars: scan.scannedChars,
+    truncatedBy: scan.truncatedBy,
+    windowRead: true,
+  };
+};
+
 export const prepareChatConversationContinuity = async (input: {
   scope: HistoryScope;
   messages: readonly Message[];
@@ -137,6 +209,11 @@ export const prepareChatConversationContinuity = async (input: {
   characterName: string;
   /** Chat-only opt-in. Off by default; no fetch and no persistence. */
   earlierQuoteRecall?: boolean;
+  /** Human-visible lookback range; normalized to 1..3 here, not only in UI. */
+  earlierQuoteWeeks?: unknown;
+  /** Prefetched bounded window; production lets this function read it once. */
+  earlierQuoteWindow?: EarlierQuoteRecallWindow;
+  hideBeforeMessageId?: number;
   now?: number;
 }): Promise<PreparedChatConversationContinuity> => {
   const scopedLiveMessages = input.messages.filter(message => (
@@ -152,22 +229,57 @@ export const prepareChatConversationContinuity = async (input: {
     promptText: input.promptText,
     messageLimit: input.messageLimit,
   });
-  const latestUserMessage = input.earlierQuoteRecall
+  const earlierQuoteEnabled = input.earlierQuoteRecall === true;
+  const earlierQuoteWeeks = normalizeEarlierQuoteWeeks(input.earlierQuoteWeeks);
+  const latestUserMessage = earlierQuoteEnabled
     ? [...scopedLiveMessages].reverse().find(message => message.role === 'user')
     : undefined;
   const earlierQuoteQuery = latestUserMessage?.type === 'text'
     && typeof latestUserMessage.content === 'string'
       ? latestUserMessage.content
       : '';
+  const earlierQuoteAnchor = latestUserMessage
+    && Number.isFinite(latestUserMessage.timestamp)
+    ? latestUserMessage.timestamp
+    : (input.now ?? Date.now());
+  let earlierQuoteWindow = earlierQuoteEnabled ? input.earlierQuoteWindow : undefined;
+  let earlierQuoteWindowRead = Boolean(earlierQuoteWindow?.windowRead);
+  if (earlierQuoteEnabled && !earlierQuoteWindow && earlierQuoteQuery.trim()) {
+    earlierQuoteWindowRead = true;
+    try {
+      earlierQuoteWindow = await readEarlierQuoteRecallWindow({
+        scope: input.scope,
+        weeks: earlierQuoteWeeks,
+        anchorTimestamp: earlierQuoteAnchor,
+        hideBeforeMessageId: input.hideBeforeMessageId,
+      });
+    } catch (error) {
+      console.warn(
+        '[Chat Continuity] Earlier quote window unavailable; keeping the normal path:',
+        error,
+      );
+    }
+  }
+  const earlierQuoteCandidates = earlierQuoteWindow?.turns ?? [];
+  const earlierQuoteTruncatedBy: BoundedMessageScanTruncation = (
+    earlierQuoteWindow?.truncatedBy ?? 'none'
+  );
+  const earlierQuoteDiagnostic = {
+    earlierQuoteWeeks,
+    earlierQuoteWindowRead,
+    earlierQuoteScannedMessages: earlierQuoteWindow?.scannedMessages ?? 0,
+    earlierQuoteScannedChars: earlierQuoteWindow?.scannedChars ?? 0,
+    earlierQuoteTruncatedBy,
+  };
   const earlierQuoteFor = (
     deliveredMessages: readonly Message[],
   ): EarlierConversationQuoteSelection => {
-    if (!input.earlierQuoteRecall || !earlierQuoteQuery.trim()) {
+    if (!earlierQuoteEnabled || !earlierQuoteQuery.trim() || earlierQuoteCandidates.length === 0) {
       return EMPTY_EARLIER_QUOTE_SELECTION;
     }
     try {
       return selectEarlierConversationQuotes({
-        turns: plan.compactableTurns,
+        turns: earlierQuoteCandidates,
         query: earlierQuoteQuery,
         terms: extractMemorySearchTerms(earlierQuoteQuery),
         userName: input.userName,
@@ -182,6 +294,11 @@ export const prepareChatConversationContinuity = async (input: {
       return EMPTY_EARLIER_QUOTE_SELECTION;
     }
   };
+  const earlierQuoteResult = (selection: EarlierConversationQuoteSelection) => ({
+    ...earlierQuoteDiagnostic,
+    earlierQuoteTurns: selection.turns.length,
+    earlierQuoteChars: selection.renderedChars,
+  });
   const storedCapsule = await loadChatContinuityCapsule(input.scope);
   const storedSourceMessages = storedCapsule
     ? messagesThrough(scopedLiveMessages, storedCapsule.throughMessageId)
@@ -210,8 +327,7 @@ export const prepareChatConversationContinuity = async (input: {
         summaryPasses: 0,
         usedExistingCapsule: false,
         fallback: false,
-        earlierQuoteTurns: earlierQuote.turns.length,
-        earlierQuoteChars: earlierQuote.renderedChars,
+        ...earlierQuoteResult(earlierQuote),
       },
     };
   }
@@ -233,8 +349,7 @@ export const prepareChatConversationContinuity = async (input: {
         summaryPasses: 0,
         usedExistingCapsule: false,
         fallback: false,
-        earlierQuoteTurns: earlierQuote.turns.length,
-        earlierQuoteChars: earlierQuote.renderedChars,
+        ...earlierQuoteResult(earlierQuote),
       },
     };
   }
@@ -292,8 +407,7 @@ export const prepareChatConversationContinuity = async (input: {
         compactedThroughMessageId: targetThroughMessageId,
         usedExistingCapsule: storedCapsuleIsValid,
         fallback: false,
-        earlierQuoteTurns: earlierQuote.turns.length,
-        earlierQuoteChars: earlierQuote.renderedChars,
+        ...earlierQuoteResult(earlierQuote),
       },
     };
   } catch (error) {
@@ -318,8 +432,7 @@ export const prepareChatConversationContinuity = async (input: {
         compactedThroughMessageId: fallbackCapsule?.throughMessageId,
         usedExistingCapsule: Boolean(fallbackCapsule),
         fallback: true,
-        earlierQuoteTurns: earlierQuote.turns.length,
-        earlierQuoteChars: earlierQuote.renderedChars,
+        ...earlierQuoteResult(earlierQuote),
       },
     };
   }

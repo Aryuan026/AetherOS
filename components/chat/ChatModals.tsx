@@ -23,6 +23,8 @@ interface ChatModalsProps {
     setSettingsContextLimit: (v: number) => void;
     settingsEarlierQuoteRecall: boolean;
     setSettingsEarlierQuoteRecall: (v: boolean) => void;
+    settingsEarlierQuoteWeeks: number;
+    setSettingsEarlierQuoteWeeks: (v: number) => void;
     settingsHideSysLogs: boolean;
     setSettingsHideSysLogs: (v: boolean) => void;
     settingsReplyMode: ChatReplyMode;
@@ -102,6 +104,7 @@ const ChatModals: React.FC<ChatModalsProps> = ({
     emojiImportText, setEmojiImportText,
     settingsContextLimit, setSettingsContextLimit,
     settingsEarlierQuoteRecall, setSettingsEarlierQuoteRecall,
+    settingsEarlierQuoteWeeks, setSettingsEarlierQuoteWeeks,
     settingsHideSysLogs, setSettingsHideSysLogs,
     settingsReplyMode, setSettingsReplyMode,
     preserveContext, setPreserveContext,
@@ -265,6 +268,27 @@ const ChatModals: React.FC<ChatModalsProps> = ({
                          <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
                              默认关闭。开启后，只在与当前话题相关时，从同一关系更早的聊天里取少量完整原话补足具体细节；不是长期记忆，也不会写回记忆。
                          </p>
+                         {settingsEarlierQuoteRecall && (
+                             <div className="mt-3">
+                                 <div className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">回看范围</div>
+                                 <div className="grid grid-cols-3 gap-2">
+                                     {[1, 2, 3].map(weeks => (
+                                         <button
+                                             key={weeks}
+                                             type="button"
+                                             aria-pressed={settingsEarlierQuoteWeeks === weeks}
+                                             onClick={() => setSettingsEarlierQuoteWeeks(weeks)}
+                                             className={`min-h-11 rounded-xl border px-2 py-2 text-xs font-bold transition-all ${settingsEarlierQuoteWeeks === weeks ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 bg-white text-slate-500'}`}
+                                         >
+                                             {weeks} 周
+                                         </button>
+                                     ))}
+                                 </div>
+                                 <p className="mt-2 text-[10px] text-slate-400 leading-relaxed">
+                                     默认 1 周，最多 3 周。只往回看这个范围内的聊天；内部另有不可调整的读取上限，避免一次扫描过多本地历史。
+                                 </p>
+                             </div>
+                         )}
                      </div>
 
                      <div className="pt-2 border-t border-slate-100">
