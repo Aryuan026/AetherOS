@@ -593,6 +593,8 @@ export const useChatAI = ({
                         userName: userProfile.name,
                         characterName: char.name,
                         earlierQuoteRecall: char.earlierQuoteRecallEnabled === true,
+                        earlierQuoteWeeks: char.earlierQuoteRecallWeeks,
+                        hideBeforeMessageId: char.hideBeforeMessageId,
                     });
                     deliveredLiveMessages = continuity.recentMessages;
                     if (continuity.markdown) {
@@ -609,6 +611,10 @@ export const useChatAI = ({
                         + ` delivered_msgs=${continuity.diagnostic.deliveredMessageCount}`
                         + ` summary_passes=${continuity.diagnostic.summaryPasses}`
                         + ` fallback=${continuity.diagnostic.fallback}`
+                        + ` earlier_quote_weeks=${continuity.diagnostic.earlierQuoteWeeks}`
+                        + ` earlier_quote_scan_msgs=${continuity.diagnostic.earlierQuoteScannedMessages}`
+                        + ` earlier_quote_scan_chars=${continuity.diagnostic.earlierQuoteScannedChars}`
+                        + ` earlier_quote_truncated_by=${continuity.diagnostic.earlierQuoteTruncatedBy}`
                         + ` earlier_quote_turns=${continuity.diagnostic.earlierQuoteTurns}`
                         + ` earlier_quote_chars=${continuity.diagnostic.earlierQuoteChars}`,
                     );

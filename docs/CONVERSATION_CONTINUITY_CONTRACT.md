@@ -49,25 +49,44 @@ rebuild them after a summarized message is edited, deleted, restored, or moved.
 ## Optional Earlier Verbatim Quotes
 
 Chat may additionally expose the per-character setting `参考更早的聊天原话`
-(`earlierQuoteRecallEnabled`). It is off by default and is Chat-only. When it is
-on, the runtime locally selects at most three complete earlier live turns whose
-text is relevant to the current user input, and renders an at-most ~1,200
-character quote block. The selector:
+(`earlierQuoteRecallEnabled`) and its human-visible `回看范围`
+(`earlierQuoteRecallWeeks`). The switch is off by default. The range is one,
+two or three weeks only; missing/legacy values read as one week and runtime
+normalization clamps abnormal values to 1..3. The range travels with the
+Character record and whole-device backup.
 
-- reuses the already loaded exact-scope live `fullHistory` and the continuity
-  plan's `compactableTurns`, so the latest ten verbatim turns, hidden messages,
-  proactive hints, Date/Call evidence, imported history tails and
-  `hideBeforeMessageId` stay excluded;
-- never fetches, persists, summarizes, writes memory or promotes anything, and
-  therefore cannot serve stale text after an earlier message is edited;
-- returns only an empty quote block when disabled, unmatched, out of budget or
-  when local selection fails, leaving the existing capsule/fallback path intact.
+When on, one bounded reverse scan (newest message to oldest, existing IndexedDB
+reverse-cursor pattern) feeds the selector. The read stops at the earliest
+allowed time, the raw scanned-message budget, or the raw text-character budget,
+whichever comes first; diagnostics report the weeks, actual scanned
+messages/text characters (before scope filtering), and whether a
+day/message/char budget truncated the window. The internal safety bounds are
+currently 300 raw messages and 32,000 text characters. They are not a
+product-visible range and may be recalibrated by the owner.
 
-The quote block is ordered after the continuity capsule and before the recent
-raw turns. It is explicitly labeled as earlier chat wording for concrete detail
-only, never durable memory, current Character Life, narrative truth, behavior
-requirements or tool permission, and it may not be written back as memory truth.
-Other surfaces remain HOLD and must not borrow this Chat-only block.
+The bounded window is filtered to the exact relationship scope and still
+excludes hidden, historical-import, proactive, Date/Call and
+`hideBeforeMessageId` evidence, non-quotable message types, the latest ten
+complete turns and already-delivered raw messages. Scan truncation drops a
+leading partial turn. A selected turn is never clipped by the 1,200-character
+delivery budget; an over-budget turn is skipped whole. At most three complete
+turns are delivered with the fixed safety boundary text, after the continuity
+capsule and before recent raw turns. The block is explicitly labeled as earlier
+chat wording for concrete detail only, never durable memory, current Character
+Life, narrative truth, behavior requirements or tool permission, and may not be
+written back as memory truth. Other surfaces remain HOLD and must not borrow
+this Chat-only block.
+
+The selector never fetches, persists, summarizes, writes memory or promotes
+anything. Disabled, unmatched, over-budget and local failure paths return an
+empty quote block and leave the existing capsule/fallback path intact. With
+the setting off there is no new bounded recall read; with it on there is at
+most one bounded local read and no extra network fetch.
+
+This bounded recall does not replace or repair Chat continuity's existing
+`fullHistory`/`getAll` long-history path. That debt, the capsule/fingerprint
+semantics and the summary protocol are unchanged; only the additional
+earlier-quote lookback is bounded in this checkpoint.
 
 ## Model-facing Position
 

@@ -3,18 +3,31 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { APIConfig, Message, MessageRelationshipScope } from '../types.ts';
 import {
+  CHAT_EARLIER_QUOTE_DEFAULT_WEEKS,
   CHAT_EARLIER_QUOTE_HEADER,
   CHAT_EARLIER_QUOTE_MAX_CHARS,
   CHAT_EARLIER_QUOTE_MAX_TURNS,
+  CHAT_EARLIER_QUOTE_MAX_WEEKS,
+  CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS,
+  CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES,
+  CHAT_EARLIER_QUOTE_WEEK_MS,
   CONVERSATION_TOKEN_ESTIMATOR_ID,
   CONVERSATION_CONTINUITY_SURFACE_CONTRACTS,
+  earlierQuoteCutoff,
   estimateConversationTokens,
   fingerprintConversationMessages,
   groupConversationTurns,
+  normalizeEarlierQuoteWeeks,
   planConversationContinuity,
   renderConversationContinuityContext,
 } from '../domain/conversationContinuity/index.ts';
-import { prepareChatConversationContinuity } from '../utils/conversationContinuity.ts';
+import {
+  buildEarlierQuoteRecallTurns,
+  readEarlierQuoteRecallWindow,
+  prepareChatConversationContinuity,
+  type EarlierQuoteRecallWindow,
+} from '../utils/conversationContinuity.ts';
+import { DB } from '../utils/db.ts';
 import { ChatPrompts } from '../utils/chatPrompts.ts';
 
 const apiConfig: APIConfig = {
@@ -316,8 +329,35 @@ const scopedFor = (
   targetScope: MessageRelationshipScope,
 ): Message[] => messages.map(item => ({
   ...item,
+  charId: targetScope.charId,
   metadata: { ...item.metadata, relationshipScope: targetScope },
 }));
+
+const earlierQuoteWindowFor = (
+  messages: readonly Message[],
+  targetScope: MessageRelationshipScope,
+  options: {
+    weeks?: number;
+    scannedMessages?: number;
+    scannedChars?: number;
+    truncatedBy?: EarlierQuoteRecallWindow['truncatedBy'];
+    hideBeforeMessageId?: number;
+  } = {},
+): EarlierQuoteRecallWindow => ({
+  weeks: options.weeks ?? CHAT_EARLIER_QUOTE_DEFAULT_WEEKS,
+  turns: buildEarlierQuoteRecallTurns({
+    messages,
+    scope: targetScope,
+    hideBeforeMessageId: options.hideBeforeMessageId,
+  }),
+  scannedMessages: options.scannedMessages ?? messages.length,
+  scannedChars: options.scannedChars ?? messages.reduce(
+    (total, item) => total + (item.type === 'text' ? item.content.length : 0),
+    0,
+  ),
+  truncatedBy: options.truncatedBy ?? 'none',
+  windowRead: true,
+});
 
 const providerMessagesFor = (
   result: Awaited<ReturnType<typeof prepareChatConversationContinuity>>,
@@ -404,9 +444,25 @@ const enabled = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWeeks: 2,
+  earlierQuoteWindow: earlierQuoteWindowFor(
+    scopedFor(quoteMessages, enabledScope),
+    enabledScope,
+    {
+      weeks: 2,
+      scannedMessages: 37,
+      scannedChars: 912,
+      truncatedBy: 'message_budget',
+    },
+  ),
 });
 assert.equal(quoteFetchCount, fetchBeforeEnabled + 1, 'earlier quote recall must not add a fetch');
 assert.equal(enabled.diagnostic.summaryPasses, 1);
+assert.equal(enabled.diagnostic.earlierQuoteWeeks, 2);
+assert.equal(enabled.diagnostic.earlierQuoteWindowRead, true);
+assert.equal(enabled.diagnostic.earlierQuoteScannedMessages, 37);
+assert.equal(enabled.diagnostic.earlierQuoteScannedChars, 912);
+assert.equal(enabled.diagnostic.earlierQuoteTruncatedBy, 'message_budget');
 assert.equal(enabled.diagnostic.earlierQuoteTurns, 2);
 assert.ok(enabled.diagnostic.earlierQuoteChars > 0);
 assert.ok(enabled.diagnostic.earlierQuoteChars <= CHAT_EARLIER_QUOTE_MAX_CHARS);
@@ -457,6 +513,7 @@ const unmatched = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(unmatchedMessages, unmatchedScope),
 });
 assert.equal(unmatched.earlierQuoteMarkdown, '');
 assert.equal(unmatched.diagnostic.earlierQuoteTurns, 0);
@@ -480,6 +537,7 @@ const imageInput = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(imageInputMessages, imageInputScope),
 });
 assert.equal(
   imageInput.earlierQuoteMarkdown,
@@ -506,6 +564,7 @@ const maxTurns = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(maxTurnsMessages, maxTurnsScope),
 });
 assert.equal(maxTurns.diagnostic.earlierQuoteTurns, 3);
 assert.match(maxTurns.earlierQuoteMarkdown, /针线盒-5/);
@@ -544,6 +603,7 @@ const budget = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(budgetMessages, budgetScope),
 });
 assert.ok(budget.diagnostic.earlierQuoteTurns >= 1);
 assert.ok(budget.diagnostic.earlierQuoteTurns <= 3);
@@ -580,6 +640,7 @@ const longTurn = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(longTurnMessages, longTurnScope),
 });
 assert.equal(longTurn.diagnostic.earlierQuoteTurns, 0);
 assert.equal(longTurn.diagnostic.earlierQuoteChars, 0);
@@ -604,6 +665,7 @@ const unsupportedTurn = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(unsupportedTurnMessages, unsupportedTurnScope),
 });
 assert.equal(unsupportedTurn.earlierQuoteMarkdown, '', 'unsupported message types must skip the whole turn');
 assert.doesNotMatch(enabled.earlierQuoteMarkdown, /2026-08-09/, 'the optional quote block must not invent UTC display time');
@@ -616,23 +678,25 @@ const foreignScope: MessageRelationshipScope = {
   ...scope,
   personaMaskId: 'mask-earlier-quote-foreign',
 };
+const isolatedMessages = [
+  ...scopedFor(quoteMessages, scopeIsolation),
+  message(201, 'user', '手术记录在另一个面具的珊瑚原话里', {
+    relationshipScope: foreignScope,
+  }),
+  message(202, 'assistant', '另一个面具的珊瑚原话回答', {
+    relationshipScope: foreignScope,
+  }),
+];
 const isolated = await prepareChatConversationContinuity({
   scope: scopeIsolation,
-  messages: [
-    ...scopedFor(quoteMessages, scopeIsolation),
-    message(201, 'user', '手术记录在另一个面具的珊瑚原话里', {
-      relationshipScope: foreignScope,
-    }),
-    message(202, 'assistant', '另一个面具的珊瑚原话回答', {
-      relationshipScope: foreignScope,
-    }),
-  ],
+  messages: isolatedMessages,
   promptText: '角色底板',
   messageLimit: 30,
   apiConfig,
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(isolatedMessages, scopeIsolation),
 });
 assert.match(isolated.earlierQuoteMarkdown, /蓝色文件夹/);
 assert.doesNotMatch(isolated.earlierQuoteMarkdown, /珊瑚/);
@@ -676,6 +740,10 @@ const excludedQuote = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(
+    [...scopedFor(quoteMessages, exclusionScope), ...exclusionExtras],
+    exclusionScope,
+  ),
 });
 assert.match(excludedQuote.earlierQuoteMarkdown, /蓝色文件夹/);
 for (const marker of [
@@ -693,8 +761,7 @@ const hideBeforeScope: MessageRelationshipScope = {
   ...scope,
   personaMaskId: 'mask-earlier-quote-hide-before',
 };
-const hideBeforeMessages = scopedFor(quoteMessages, hideBeforeScope)
-  .filter(item => item.id >= 7);
+const hideBeforeMessages = scopedFor(quoteMessages, hideBeforeScope);
 const hideBeforeResult = await prepareChatConversationContinuity({
   scope: hideBeforeScope,
   messages: hideBeforeMessages,
@@ -704,6 +771,9 @@ const hideBeforeResult = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(hideBeforeMessages, hideBeforeScope, {
+    hideBeforeMessageId: 7,
+  }),
 });
 assert.doesNotMatch(hideBeforeResult.earlierQuoteMarkdown, /蓝色文件夹/);
 assert.match(hideBeforeResult.earlierQuoteMarkdown, /绿色封面/);
@@ -724,6 +794,10 @@ const failedWithQuote = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(
+    scopedFor(quoteMessages, failureQuoteScope),
+    failureQuoteScope,
+  ),
 });
 assert.equal(failedWithQuote.diagnostic.fallback, true);
 assert.equal(failedWithQuote.markdown, '');
@@ -747,6 +821,7 @@ const beforeEdit = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(beforeEditMessages, editScope),
 });
 assert.match(beforeEdit.earlierQuoteMarkdown, /旧版原话-红色文件夹/);
 const afterEditMessages = beforeEditMessages.map(item => (
@@ -761,25 +836,507 @@ const afterEdit = await prepareChatConversationContinuity({
   userName: '玩家',
   characterName: '角色',
   earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(afterEditMessages, editScope),
 });
 assert.match(afterEdit.earlierQuoteMarkdown, /改后原话-绿色文件夹/);
 assert.doesNotMatch(afterEdit.earlierQuoteMarkdown, /旧版原话-红色文件夹/);
 
 assert.equal(CHAT_EARLIER_QUOTE_MAX_TURNS, 3);
 assert.equal(CHAT_EARLIER_QUOTE_MAX_CHARS, 1_200);
+assert.equal(CHAT_EARLIER_QUOTE_DEFAULT_WEEKS, 1);
+assert.equal(CHAT_EARLIER_QUOTE_MAX_WEEKS, 3);
+assert.equal(CHAT_EARLIER_QUOTE_WEEK_MS, 7 * 24 * 60 * 60 * 1000);
+assert.equal(CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES, 300);
+assert.equal(CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS, 32_000);
 assert.match(CHAT_EARLIER_QUOTE_HEADER, /更早的聊天原话/);
 assert.match(CHAT_EARLIER_QUOTE_HEADER, /不是长期记忆/);
+
+assert.equal(normalizeEarlierQuoteWeeks(undefined), 1);
+assert.equal(normalizeEarlierQuoteWeeks(null), 1);
+assert.equal(normalizeEarlierQuoteWeeks('not-a-number'), 1);
+assert.equal(normalizeEarlierQuoteWeeks(0), 1);
+assert.equal(normalizeEarlierQuoteWeeks(-4), 1);
+assert.equal(normalizeEarlierQuoteWeeks(1), 1);
+assert.equal(normalizeEarlierQuoteWeeks(2), 2);
+assert.equal(normalizeEarlierQuoteWeeks(3), 3);
+assert.equal(normalizeEarlierQuoteWeeks(2.9), 2);
+assert.equal(normalizeEarlierQuoteWeeks('2'), 2);
+assert.equal(normalizeEarlierQuoteWeeks(4), 3);
+assert.equal(normalizeEarlierQuoteWeeks(99), 3);
+const quoteAnchor = Date.UTC(2026, 10, 15, 12, 0, 0);
+assert.equal(
+  earlierQuoteCutoff(quoteAnchor, 1),
+  quoteAnchor - CHAT_EARLIER_QUOTE_WEEK_MS,
+);
+assert.equal(
+  earlierQuoteCutoff(quoteAnchor, 99),
+  quoteAnchor - (CHAT_EARLIER_QUOTE_MAX_WEEKS * CHAT_EARLIER_QUOTE_WEEK_MS),
+);
+
+const seedMessagesDirect = async (messages: readonly Message[]): Promise<void> => {
+  await DB.getMessagesByCharId('__earlier_quote_seed_warmup__');
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open('AetherOS_Data');
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction('messages', 'readwrite');
+      const store = transaction.objectStore('messages');
+      messages.forEach(item => store.put(item));
+      transaction.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    };
+  });
+};
+
+const rangeScope: MessageRelationshipScope = {
+  progressBundleId: 'bundle-earlier-quote-range',
+  personaMaskId: 'mask-earlier-quote-range',
+  charId: 'char-earlier-quote-range',
+};
+const rangeMessages: Message[] = [];
+let rangeMessageId = 1_000_000;
+for (let turn = 1; turn <= 14; turn += 1) {
+  const ageDays = turn === 1 ? 30 : turn === 2 ? 22 : turn === 3 ? 15 : turn === 4 ? 8 : 0;
+  const timestamp = ageDays > 0
+    ? quoteAnchor - (ageDays * 24 * 60 * 60 * 1000)
+    : quoteAnchor - ((14 - turn) * 60_000);
+  const userContent = turn === 14
+    ? '还记得回看范围测试吗？'
+    : (turn >= 2 && turn <= 4 ? `回看范围测试-${turn}` : `最近第${turn}轮`);
+  const assistantContent = turn >= 2 && turn <= 4
+    ? `回看范围测试-${turn} 的原话回复`
+    : `最近第${turn}轮回复`;
+  rangeMessages.push({
+    ...message(rangeMessageId++, 'user', userContent, { relationshipScope: rangeScope }),
+    charId: rangeScope.charId,
+    timestamp,
+  });
+  rangeMessages.push({
+    ...message(rangeMessageId++, 'assistant', assistantContent, {
+      relationshipScope: rangeScope,
+    }),
+    charId: rangeScope.charId,
+    timestamp,
+  });
+}
+await seedMessagesDirect(rangeMessages);
+
+const rangeResults: Record<number, Awaited<ReturnType<typeof prepareChatConversationContinuity>>> = {};
+for (const weeks of [1, 2, 3]) {
+  const window = await readEarlierQuoteRecallWindow({
+    scope: rangeScope,
+    weeks,
+    anchorTimestamp: quoteAnchor,
+  });
+  assert.equal(window.weeks, weeks);
+  assert.equal(window.windowRead, true);
+  assert.equal(window.truncatedBy, 'day');
+  assert.equal(window.turns.length, weeks - 1);
+  assert.ok(window.scannedMessages >= 21);
+  const result = await prepareChatConversationContinuity({
+    scope: rangeScope,
+    messages: rangeMessages,
+    promptText: '角色底板',
+    messageLimit: 20,
+    apiConfig,
+    userName: '玩家',
+    characterName: '角色',
+    earlierQuoteRecall: true,
+    earlierQuoteWeeks: weeks,
+    earlierQuoteWindow: window,
+  });
+  rangeResults[weeks] = result;
+  assert.equal(result.diagnostic.earlierQuoteWeeks, weeks);
+  assert.equal(result.diagnostic.earlierQuoteWindowRead, true);
+  assert.equal(result.diagnostic.earlierQuoteScannedMessages, window.scannedMessages);
+  assert.equal(result.diagnostic.earlierQuoteScannedChars, window.scannedChars);
+  assert.equal(result.diagnostic.earlierQuoteTruncatedBy, 'day');
+  assert.equal(result.diagnostic.earlierQuoteTurns, weeks - 1);
+}
+assert.equal(rangeResults[1].earlierQuoteMarkdown, '');
+assert.match(rangeResults[2].earlierQuoteMarkdown, /回看范围测试-4/);
+assert.doesNotMatch(rangeResults[2].earlierQuoteMarkdown, /回看范围测试-3/);
+assert.match(rangeResults[3].earlierQuoteMarkdown, /回看范围测试-4/);
+assert.match(rangeResults[3].earlierQuoteMarkdown, /回看范围测试-3/);
+assert.doesNotMatch(rangeResults[3].earlierQuoteMarkdown, /回看范围测试-2/);
+
+const productionRead = await prepareChatConversationContinuity({
+  scope: rangeScope,
+  messages: rangeMessages,
+  promptText: '角色底板',
+  messageLimit: 20,
+  apiConfig,
+  userName: '玩家',
+  characterName: '角色',
+  earlierQuoteRecall: true,
+  earlierQuoteWeeks: 2,
+});
+assert.equal(productionRead.diagnostic.earlierQuoteWindowRead, true);
+assert.equal(productionRead.diagnostic.earlierQuoteWeeks, 2);
+assert.match(productionRead.earlierQuoteMarkdown, /回看范围测试-4/);
+assert.doesNotMatch(productionRead.earlierQuoteMarkdown, /回看范围测试-3/);
+
+const clampedReaderWindow = await readEarlierQuoteRecallWindow({
+  scope: rangeScope,
+  weeks: 99,
+  anchorTimestamp: quoteAnchor,
+});
+assert.equal(clampedReaderWindow.weeks, CHAT_EARLIER_QUOTE_MAX_WEEKS);
+assert.equal(clampedReaderWindow.turns.length, 2);
+
+const boundaryScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-boundary',
+  personaMaskId: 'mask-earlier-quote-boundary',
+  charId: 'char-earlier-quote-boundary',
+};
+const boundarySince = quoteAnchor - CHAT_EARLIER_QUOTE_WEEK_MS;
+const boundaryMessages: Message[] = [
+  {
+    ...message(3_000_000, 'user', '边界外的旧原话', { relationshipScope: boundaryScope }),
+    charId: boundaryScope.charId,
+    timestamp: boundarySince - 1,
+  },
+  {
+    ...message(3_000_001, 'assistant', '边界内刚好一周的原话', {
+      relationshipScope: boundaryScope,
+    }),
+    charId: boundaryScope.charId,
+    timestamp: boundarySince,
+  },
+  {
+    ...message(3_000_002, 'user', '边界内的当前消息', { relationshipScope: boundaryScope }),
+    charId: boundaryScope.charId,
+    timestamp: quoteAnchor,
+  },
+];
+await seedMessagesDirect(boundaryMessages);
+const boundaryScan = await DB.getBoundedRecentMessagesByCharId({
+  charId: boundaryScope.charId,
+  since: boundarySince,
+  maxMessages: CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES,
+  maxChars: CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS,
+});
+assert.deepEqual(
+  boundaryScan.messages.map(item => item.content),
+  ['边界内刚好一周的原话', '边界内的当前消息'],
+);
+assert.equal(boundaryScan.truncatedBy, 'day');
+assert.equal(boundaryScan.scannedMessages, 3);
+
+const charBudgetScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-char-budget',
+  personaMaskId: 'mask-earlier-quote-char-budget',
+  charId: 'char-earlier-quote-char-budget',
+};
+const charBudgetMessages: Message[] = Array.from({ length: 100 }, (_, index) => ({
+  ...message(
+    4_000_000 + index,
+    index % 2 === 0 ? 'user' : 'assistant',
+    `字符预算-${index}${'细节'.repeat(485)}`,
+    { relationshipScope: charBudgetScope },
+  ),
+  charId: charBudgetScope.charId,
+  timestamp: quoteAnchor - (index * 1_000),
+}));
+await seedMessagesDirect(charBudgetMessages);
+const charBudgetWindow = await readEarlierQuoteRecallWindow({
+  scope: charBudgetScope,
+  weeks: 1,
+  anchorTimestamp: quoteAnchor,
+});
+assert.equal(charBudgetWindow.truncatedBy, 'char_budget');
+assert.equal(charBudgetWindow.scannedMessages, 33);
+assert.ok(charBudgetWindow.turns.every(turn => turn.messages[0]?.role === 'user'));
+assert.equal(
+  charBudgetWindow.turns.some(turn => turn.messages.some(item => item.id === 4_000_067)),
+  false,
+  'a scan stopping inside a turn must drop the leading partial turn',
+);
+assert.ok(charBudgetWindow.scannedChars <= CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS);
+
+const oversizedMessageScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-oversized-message',
+  personaMaskId: 'mask-earlier-quote-oversized-message',
+  charId: 'char-earlier-quote-oversized-message',
+};
+await seedMessagesDirect([{
+  ...message(4_100_000, 'user', '超长原话'.repeat(CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS), {
+    relationshipScope: oversizedMessageScope,
+  }),
+  charId: oversizedMessageScope.charId,
+  timestamp: quoteAnchor,
+}]);
+const oversizedMessageScan = await DB.getBoundedRecentMessagesByCharId({
+  charId: oversizedMessageScope.charId,
+  since: quoteAnchor - CHAT_EARLIER_QUOTE_WEEK_MS,
+  maxMessages: CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES,
+  maxChars: CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS,
+});
+assert.equal(oversizedMessageScan.truncatedBy, 'char_budget');
+assert.equal(oversizedMessageScan.scannedMessages, 1);
+assert.equal(oversizedMessageScan.scannedChars, 0);
+assert.deepEqual(oversizedMessageScan.messages, []);
+
+const denseScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-dense',
+  personaMaskId: 'mask-earlier-quote-dense',
+  charId: 'char-earlier-quote-dense',
+};
+const denseMessages: Message[] = Array.from({ length: 10_000 }, (_, index) => ({
+  ...message(
+    5_000_000 + index,
+    index % 2 === 0 ? 'user' : 'assistant',
+    `一万条密集历史-${index}`,
+    { relationshipScope: denseScope },
+  ),
+  charId: denseScope.charId,
+  timestamp: quoteAnchor - ((index % 600) * 1_000),
+}));
+await seedMessagesDirect(denseMessages);
+const denseWindow = await readEarlierQuoteRecallWindow({
+  scope: denseScope,
+  weeks: 1,
+  anchorTimestamp: quoteAnchor,
+});
+assert.equal(denseWindow.truncatedBy, 'message_budget');
+assert.equal(denseWindow.scannedMessages, CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES);
+assert.ok(denseWindow.turns.length < 200, 'ten thousand rows must not become an unbounded window');
+
+const boundedScanOriginal = DB.getBoundedRecentMessagesByCharId;
+let boundedScanCalls = 0;
+DB.getBoundedRecentMessagesByCharId = async (input) => {
+  boundedScanCalls += 1;
+  return boundedScanOriginal(input);
+};
+try {
+  const offNoReadScope: MessageRelationshipScope = {
+    ...scope,
+    progressBundleId: 'bundle-earlier-quote-off-no-read',
+    personaMaskId: 'mask-earlier-quote-off-no-read',
+    charId: 'char-earlier-quote-off-no-read',
+  };
+  const offNoRead = await prepareChatConversationContinuity({
+    scope: offNoReadScope,
+    messages: scopedFor(quoteMessages, offNoReadScope),
+    promptText: '角色底板',
+    messageLimit: 30,
+    apiConfig,
+    userName: '玩家',
+    characterName: '角色',
+  });
+  assert.equal(boundedScanCalls, 0, 'the setting being off must not read the recall window');
+  assert.equal(offNoRead.diagnostic.earlierQuoteWindowRead, false);
+
+  const onOneReadScope: MessageRelationshipScope = {
+    ...scope,
+    progressBundleId: 'bundle-earlier-quote-on-one-read',
+    personaMaskId: 'mask-earlier-quote-on-one-read',
+    charId: 'char-earlier-quote-on-one-read',
+  };
+  const onOneRead = await prepareChatConversationContinuity({
+    scope: onOneReadScope,
+    messages: scopedFor(quoteMessages, onOneReadScope),
+    promptText: '角色底板',
+    messageLimit: 30,
+    apiConfig,
+    userName: '玩家',
+    characterName: '角色',
+    earlierQuoteRecall: true,
+    earlierQuoteWeeks: 1,
+  });
+  assert.equal(boundedScanCalls, 1, 'the setting being on must use exactly one bounded recall read');
+  assert.equal(onOneRead.diagnostic.earlierQuoteWindowRead, true);
+  assert.equal(onOneRead.diagnostic.earlierQuoteScannedMessages, 0);
+  assert.equal(onOneRead.earlierQuoteMarkdown, '');
+} finally {
+  DB.getBoundedRecentMessagesByCharId = boundedScanOriginal;
+}
+
+const clampHighScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-clamp-high',
+  personaMaskId: 'mask-earlier-quote-clamp-high',
+  charId: 'char-earlier-quote-clamp-high',
+};
+const clampHigh = await prepareChatConversationContinuity({
+  scope: clampHighScope,
+  messages: scopedFor(quoteMessages, clampHighScope),
+  promptText: '角色底板',
+  messageLimit: 30,
+  apiConfig,
+  userName: '玩家',
+  characterName: '角色',
+  earlierQuoteRecall: true,
+  earlierQuoteWeeks: 99,
+  earlierQuoteWindow: earlierQuoteWindowFor(
+    scopedFor(quoteMessages, clampHighScope),
+    clampHighScope,
+  ),
+});
+assert.equal(clampHigh.diagnostic.earlierQuoteWeeks, 3);
+
+const clampLowScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-clamp-low',
+  personaMaskId: 'mask-earlier-quote-clamp-low',
+  charId: 'char-earlier-quote-clamp-low',
+};
+const clampLow = await prepareChatConversationContinuity({
+  scope: clampLowScope,
+  messages: scopedFor(quoteMessages, clampLowScope),
+  promptText: '角色底板',
+  messageLimit: 30,
+  apiConfig,
+  userName: '玩家',
+  characterName: '角色',
+  earlierQuoteRecall: true,
+  earlierQuoteWeeks: -5,
+  earlierQuoteWindow: earlierQuoteWindowFor(
+    scopedFor(quoteMessages, clampLowScope),
+    clampLowScope,
+  ),
+});
+assert.equal(clampLow.diagnostic.earlierQuoteWeeks, 1);
+
+const defaultWeeksScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-default-weeks',
+  personaMaskId: 'mask-earlier-quote-default-weeks',
+  charId: 'char-earlier-quote-default-weeks',
+};
+const defaultWeeks = await prepareChatConversationContinuity({
+  scope: defaultWeeksScope,
+  messages: scopedFor(quoteMessages, defaultWeeksScope),
+  promptText: '角色底板',
+  messageLimit: 30,
+  apiConfig,
+  userName: '玩家',
+  characterName: '角色',
+  earlierQuoteRecall: true,
+  earlierQuoteWindow: earlierQuoteWindowFor(
+    scopedFor(quoteMessages, defaultWeeksScope),
+    defaultWeeksScope,
+  ),
+});
+assert.equal(defaultWeeks.diagnostic.earlierQuoteWeeks, 1);
+
+const partialTurnScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-partial-turn',
+  personaMaskId: 'mask-earlier-quote-partial-turn',
+  charId: 'char-earlier-quote-partial-turn',
+};
+const partialTurnMessages = scopedFor(quoteMessages, partialTurnScope).slice(1);
+const partialTurnWindow = buildEarlierQuoteRecallTurns({
+  messages: partialTurnMessages,
+  scope: partialTurnScope,
+});
+assert.ok(partialTurnWindow.length > 0);
+for (const turn of partialTurnWindow) {
+  assert.equal(turn.messages[0]?.role, 'user', 'a scan boundary must not emit a half turn');
+}
+assert.equal(
+  partialTurnWindow.some(turn => turn.messages.some(item => item.id === 1)),
+  false,
+);
+
+const mixedBudgetScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-mixed-budget',
+  personaMaskId: 'mask-earlier-quote-mixed-budget',
+  charId: 'char-earlier-quote-mixed-budget',
+};
+const mixedBudgetMessages: Message[] = [];
+let mixedBudgetId = 6_000_000;
+for (let turn = 1; turn <= 12; turn += 1) {
+  const timestamp = quoteAnchor - ((12 - turn) * 60_000);
+  const huge = turn === 1;
+  const short = turn === 2;
+  const userContent = huge
+    ? `大轮标记${'细节'.repeat(1_000)}`
+    : short
+      ? '短轮标记 复查记录'
+      : `最近第${turn}轮`;
+  const assistantContent = huge
+    ? `大轮标记回复${'细节'.repeat(1_000)}`
+    : short
+      ? '短轮标记回复 绿色封面'
+      : `最近第${turn}轮回复`;
+  mixedBudgetMessages.push({
+    ...message(mixedBudgetId++, 'user', userContent, { relationshipScope: mixedBudgetScope }),
+    charId: mixedBudgetScope.charId,
+    timestamp,
+  });
+  mixedBudgetMessages.push({
+    ...message(mixedBudgetId++, 'assistant', assistantContent, {
+      relationshipScope: mixedBudgetScope,
+    }),
+    charId: mixedBudgetScope.charId,
+    timestamp,
+  });
+}
+mixedBudgetMessages.push({
+  ...message(mixedBudgetId, 'user', '还记得大轮标记和短轮标记吗？', {
+    relationshipScope: mixedBudgetScope,
+  }),
+  charId: mixedBudgetScope.charId,
+  timestamp: quoteAnchor,
+});
+mixedBudgetMessages.push({
+  ...message(mixedBudgetId + 1, 'assistant', '最近第12轮回复', {
+    relationshipScope: mixedBudgetScope,
+  }),
+  charId: mixedBudgetScope.charId,
+  timestamp: quoteAnchor,
+});
+const mixedBudgetWindow = earlierQuoteWindowFor(
+  mixedBudgetMessages,
+  mixedBudgetScope,
+);
+const mixedBudget = await prepareChatConversationContinuity({
+  scope: mixedBudgetScope,
+  messages: mixedBudgetMessages,
+  promptText: '角色底板',
+  messageLimit: 20,
+  apiConfig,
+  userName: '玩家',
+  characterName: '角色',
+  earlierQuoteRecall: true,
+  earlierQuoteWindow: mixedBudgetWindow,
+});
+assert.match(mixedBudget.earlierQuoteMarkdown, /短轮标记回复/);
+assert.doesNotMatch(
+  mixedBudget.earlierQuoteMarkdown,
+  /大轮标记/,
+  'an over-budget turn must be skipped whole instead of being clipped',
+);
 
 const chatRuntimeSource = readFileSync(new URL('../hooks/useChatAI.ts', import.meta.url), 'utf8');
 const chatSettingsSource = readFileSync(new URL('../components/chat/ChatModals.tsx', import.meta.url), 'utf8');
 const chatAppSource = readFileSync(new URL('../apps/Chat.tsx', import.meta.url), 'utf8');
 const characterTypeSource = readFileSync(new URL('../types.ts', import.meta.url), 'utf8');
+const continuityUtilitySource = readFileSync(
+  new URL('../utils/conversationContinuity.ts', import.meta.url),
+  'utf8',
+);
+const dbSource = readFileSync(new URL('../utils/db.ts', import.meta.url), 'utf8');
 const continuityContractSource = readFileSync(
   new URL('../docs/CONVERSATION_CONTINUITY_CONTRACT.md', import.meta.url),
   'utf8',
 );
 assert.match(chatRuntimeSource, /prepareChatConversationContinuity/);
 assert.match(chatRuntimeSource, /earlierQuoteRecall: char\.earlierQuoteRecallEnabled === true/);
+assert.match(chatRuntimeSource, /earlierQuoteWeeks: char\.earlierQuoteRecallWeeks/);
+assert.match(chatRuntimeSource, /hideBeforeMessageId: char\.hideBeforeMessageId/);
 assert.match(chatRuntimeSource, /continuity\.markdown/);
 assert.match(chatRuntimeSource, /continuity\.earlierQuoteMarkdown/);
 assert.ok(
@@ -797,14 +1354,38 @@ assert.match(chatSettingsSource, /接续整理上限/);
 assert.match(chatSettingsSource, /保留最近 10 轮原文/);
 assert.match(chatSettingsSource, /参考更早的聊天原话/);
 assert.match(chatSettingsSource, /默认关闭/);
+assert.match(chatSettingsSource, /回看范围/);
+assert.match(chatSettingsSource, /\[1, 2, 3\]/);
 assert.match(
   chatAppSource,
   /const \[settingsEarlierQuoteRecall, setSettingsEarlierQuoteRecall\] = useState\(false\)/,
 );
+assert.match(
+  chatAppSource,
+  /const \[settingsEarlierQuoteWeeks, setSettingsEarlierQuoteWeeks\] = useState\(1\)/,
+);
 assert.match(chatAppSource, /earlierQuoteRecallEnabled: settingsEarlierQuoteRecall/);
+assert.match(
+  chatAppSource,
+  /setSettingsEarlierQuoteWeeks\(normalizeEarlierQuoteWeeks\(char\.earlierQuoteRecallWeeks\)\)/,
+);
+assert.match(
+  chatAppSource,
+  /earlierQuoteRecallWeeks: normalizeEarlierQuoteWeeks\(settingsEarlierQuoteWeeks\)/,
+);
 assert.match(characterTypeSource, /earlierQuoteRecallEnabled\?: boolean/);
+assert.match(characterTypeSource, /earlierQuoteRecallWeeks\?: number/);
+assert.match(continuityUtilitySource, /getBoundedRecentMessagesByCharId/);
+assert.match(continuityUtilitySource, /turns: earlierQuoteCandidates/);
+assert.doesNotMatch(continuityUtilitySource, /turns: plan\.compactableTurns/);
+assert.match(continuityUtilitySource, /CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES/);
+assert.match(continuityUtilitySource, /CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS/);
+assert.match(dbSource, /getBoundedRecentMessagesByCharId/);
+assert.match(dbSource, /index\.openCursor\(IDBKeyRange\.only\(input\.charId\), 'prev'\)/);
 assert.match(continuityContractSource, /Optional Earlier Verbatim Quotes/);
-assert.match(continuityContractSource, /at most three complete earlier live turns/);
+assert.match(continuityContractSource, /at most three complete/i);
+assert.match(continuityContractSource, /one,\s+two or three weeks/);
+assert.match(continuityContractSource, /bounded reverse scan/);
 assert.match(continuityContractSource, /off by default/i);
 
 globalThis.fetch = originalFetch;
