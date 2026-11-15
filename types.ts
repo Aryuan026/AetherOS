@@ -915,6 +915,11 @@ export interface CharacterProfile {
   bubbleStyle?: string;
   chatBackground?: string;
   contextLimit?: number;
+  /**
+   * Chat-only opt-in: deliver a few earlier verbatim turns when the current
+   * user input is locally relevant. Off by default; never memory or current truth.
+   */
+  earlierQuoteRecallEnabled?: boolean;
   hideSystemLogs?: boolean; 
   hideBeforeMessageId?: number; 
   

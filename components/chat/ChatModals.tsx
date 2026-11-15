@@ -21,6 +21,8 @@ interface ChatModalsProps {
     setEmojiImportText: (v: string) => void;
     settingsContextLimit: number;
     setSettingsContextLimit: (v: number) => void;
+    settingsEarlierQuoteRecall: boolean;
+    setSettingsEarlierQuoteRecall: (v: boolean) => void;
     settingsHideSysLogs: boolean;
     setSettingsHideSysLogs: (v: boolean) => void;
     settingsReplyMode: ChatReplyMode;
@@ -99,6 +101,7 @@ const ChatModals: React.FC<ChatModalsProps> = ({
     transferAmt, setTransferAmt,
     emojiImportText, setEmojiImportText,
     settingsContextLimit, setSettingsContextLimit,
+    settingsEarlierQuoteRecall, setSettingsEarlierQuoteRecall,
     settingsHideSysLogs, setSettingsHideSysLogs,
     settingsReplyMode, setSettingsReplyMode,
     preserveContext, setPreserveContext,
@@ -245,6 +248,23 @@ const ChatModals: React.FC<ChatModalsProps> = ({
                          <input type="range" min="20" max="5000" step="10" value={settingsContextLimit} onChange={e => setSettingsContextLimit(parseInt(e.target.value))} className="w-full h-2 bg-slate-200 rounded-full appearance-none accent-primary" />
                          <div className="flex justify-between text-[10px] text-slate-400 mt-1"><span>20（更早整理）</span><span>5000（较晚整理）</span></div>
                          <p className="mt-2 text-[10px] leading-relaxed text-slate-400">输入过长时也会提前整理：保留最近 10 轮原文，更早内容折成接续便签，聊天记录不会删除。</p>
+                     </div>
+
+                     <div className="pt-2 border-t border-slate-100">
+                         <button
+                             type="button"
+                             aria-pressed={settingsEarlierQuoteRecall}
+                             onClick={() => setSettingsEarlierQuoteRecall(!settingsEarlierQuoteRecall)}
+                             className="flex w-full items-center justify-between text-left"
+                         >
+                             <span className="text-xs font-bold text-slate-400 uppercase">参考更早的聊天原话</span>
+                             <span aria-hidden="true" className={`flex h-6 w-10 items-center rounded-full p-1 transition-colors ${settingsEarlierQuoteRecall ? 'bg-primary' : 'bg-slate-200'}`}>
+                                 <span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${settingsEarlierQuoteRecall ? 'translate-x-4' : ''}`}></span>
+                             </span>
+                         </button>
+                         <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
+                             默认关闭。开启后，只在与当前话题相关时，从同一关系更早的聊天里取少量完整原话补足具体细节；不是长期记忆，也不会写回记忆。
+                         </p>
                      </div>
 
                      <div className="pt-2 border-t border-slate-100">

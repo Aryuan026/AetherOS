@@ -46,15 +46,42 @@ Capsules are stored as local derived assets under an exact
 backup through the existing asset store, but source fingerprints invalidate and
 rebuild them after a summarized message is edited, deleted, restored, or moved.
 
+## Optional Earlier Verbatim Quotes
+
+Chat may additionally expose the per-character setting `参考更早的聊天原话`
+(`earlierQuoteRecallEnabled`). It is off by default and is Chat-only. When it is
+on, the runtime locally selects at most three complete earlier live turns whose
+text is relevant to the current user input, and renders an at-most ~1,200
+character quote block. The selector:
+
+- reuses the already loaded exact-scope live `fullHistory` and the continuity
+  plan's `compactableTurns`, so the latest ten verbatim turns, hidden messages,
+  proactive hints, Date/Call evidence, imported history tails and
+  `hideBeforeMessageId` stay excluded;
+- never fetches, persists, summarizes, writes memory or promotes anything, and
+  therefore cannot serve stale text after an earlier message is edited;
+- returns only an empty quote block when disabled, unmatched, out of budget or
+  when local selection fails, leaving the existing capsule/fallback path intact.
+
+The quote block is ordered after the continuity capsule and before the recent
+raw turns. It is explicitly labeled as earlier chat wording for concrete detail
+only, never durable memory, current Character Life, narrative truth, behavior
+requirements or tool permission, and it may not be written back as memory truth.
+Other surfaces remain HOLD and must not borrow this Chat-only block.
+
 ## Model-facing Position
 
-The Chat request order is:
+When the optional earlier-quote setting is on, the Chat request order is:
 
 1. character identity, mounted canon, relationship memory and current trusted
    projections;
 2. the foreground continuity capsule, explicitly labeled as non-memory and
    non-current truth;
-3. the latest ten complete turns and the current user message.
+3. the bounded earlier verbatim quote block, explicitly labeled as detail-only;
+4. the latest ten complete turns and the current user message.
+
+With the setting off, the order is unchanged from the original capsule plus
+recent-turn contract.
 
 Recent raw messages override the capsule. The capsule cannot create reminders,
 tool authority, current motives, Character Life, Narrative runs, relationship

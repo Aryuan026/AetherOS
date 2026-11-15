@@ -3,6 +3,7 @@ import type { HistoryScope } from '../domain/historyImport/types.ts';
 import {
   CHAT_CONTINUITY_PROMPT_VERSION,
   CONVERSATION_TOKEN_ESTIMATOR_ID,
+  EMPTY_EARLIER_QUOTE_SELECTION,
   buildConversationContinuitySummaryPrompt,
   createConversationContinuityId,
   fingerprintConversationMessages,
@@ -10,14 +11,17 @@ import {
   normalizeConversationContinuitySummary,
   planConversationContinuity,
   renderConversationContinuityContext,
+  selectEarlierConversationQuotes,
   splitConversationTurnsForSummary,
   type ConversationContinuityCapsule,
   type ConversationTurn,
+  type EarlierConversationQuoteSelection,
 } from '../domain/conversationContinuity/index.ts';
 import {
   isHistoricalContextMessage,
   messageMatchesRelationshipScope,
 } from './messageContext.ts';
+import { extractMemorySearchTerms } from './memoryCore/deliveryProfile';
 import { DB } from './db.ts';
 import { safeFetchJson } from './safeApi.ts';
 
@@ -25,6 +29,8 @@ export interface PreparedChatConversationContinuity {
   readonly recentMessages: Message[];
   readonly capsule?: ConversationContinuityCapsule;
   readonly markdown: string;
+  /** Optional older verbatim turns. Empty when disabled, unmatched, or skipped. */
+  readonly earlierQuoteMarkdown: string;
   readonly diagnostic: {
     readonly estimatorId: string;
     readonly trigger: 'message_limit' | 'estimated_token_budget' | 'none';
@@ -35,6 +41,8 @@ export interface PreparedChatConversationContinuity {
     readonly compactedThroughMessageId?: number;
     readonly usedExistingCapsule: boolean;
     readonly fallback: boolean;
+    readonly earlierQuoteTurns: number;
+    readonly earlierQuoteChars: number;
   };
 }
 
@@ -127,6 +135,8 @@ export const prepareChatConversationContinuity = async (input: {
   apiConfig: APIConfig;
   userName: string;
   characterName: string;
+  /** Chat-only opt-in. Off by default; no fetch and no persistence. */
+  earlierQuoteRecall?: boolean;
   now?: number;
 }): Promise<PreparedChatConversationContinuity> => {
   const scopedLiveMessages = input.messages.filter(message => (
@@ -142,6 +152,36 @@ export const prepareChatConversationContinuity = async (input: {
     promptText: input.promptText,
     messageLimit: input.messageLimit,
   });
+  const latestUserMessage = input.earlierQuoteRecall
+    ? [...scopedLiveMessages].reverse().find(message => message.role === 'user')
+    : undefined;
+  const earlierQuoteQuery = latestUserMessage?.type === 'text'
+    && typeof latestUserMessage.content === 'string'
+      ? latestUserMessage.content
+      : '';
+  const earlierQuoteFor = (
+    deliveredMessages: readonly Message[],
+  ): EarlierConversationQuoteSelection => {
+    if (!input.earlierQuoteRecall || !earlierQuoteQuery.trim()) {
+      return EMPTY_EARLIER_QUOTE_SELECTION;
+    }
+    try {
+      return selectEarlierConversationQuotes({
+        turns: plan.compactableTurns,
+        query: earlierQuoteQuery,
+        terms: extractMemorySearchTerms(earlierQuoteQuery),
+        userName: input.userName,
+        characterName: input.characterName,
+        excludeMessageIds: new Set(deliveredMessages.map(message => message.id)),
+      });
+    } catch (error) {
+      console.warn(
+        '[Chat Continuity] Earlier quote selection skipped; keeping the normal path:',
+        error,
+      );
+      return EMPTY_EARLIER_QUOTE_SELECTION;
+    }
+  };
   const storedCapsule = await loadChatContinuityCapsule(input.scope);
   const storedSourceMessages = storedCapsule
     ? messagesThrough(scopedLiveMessages, storedCapsule.throughMessageId)
@@ -156,9 +196,11 @@ export const prepareChatConversationContinuity = async (input: {
 
   if (plan.trigger === 'none') {
     if (storedCapsule) await deleteChatContinuityCapsule(input.scope);
+    const earlierQuote = earlierQuoteFor(scopedLiveMessages);
     return {
       recentMessages: [...scopedLiveMessages],
       markdown: '',
+      earlierQuoteMarkdown: earlierQuote.markdown,
       diagnostic: {
         estimatorId: CONVERSATION_TOKEN_ESTIMATOR_ID,
         trigger: 'none',
@@ -168,6 +210,8 @@ export const prepareChatConversationContinuity = async (input: {
         summaryPasses: 0,
         usedExistingCapsule: false,
         fallback: false,
+        earlierQuoteTurns: earlierQuote.turns.length,
+        earlierQuoteChars: earlierQuote.renderedChars,
       },
     };
   }
@@ -175,9 +219,11 @@ export const prepareChatConversationContinuity = async (input: {
   const targetMessages = [...plan.compactableMessages];
   const targetThroughMessageId = targetMessages[targetMessages.length - 1]?.id;
   if (!targetThroughMessageId) {
+    const earlierQuote = earlierQuoteFor(scopedLiveMessages);
     return {
       recentMessages: [...scopedLiveMessages],
       markdown: '',
+      earlierQuoteMarkdown: earlierQuote.markdown,
       diagnostic: {
         estimatorId: CONVERSATION_TOKEN_ESTIMATOR_ID,
         trigger: plan.trigger,
@@ -187,6 +233,8 @@ export const prepareChatConversationContinuity = async (input: {
         summaryPasses: 0,
         usedExistingCapsule: false,
         fallback: false,
+        earlierQuoteTurns: earlierQuote.turns.length,
+        earlierQuoteChars: earlierQuote.renderedChars,
       },
     };
   }
@@ -228,10 +276,12 @@ export const prepareChatConversationContinuity = async (input: {
       updatedAt: input.now ?? Date.now(),
     };
     await saveChatContinuityCapsule(capsule);
+    const earlierQuote = earlierQuoteFor(plan.recentMessages);
     return {
       recentMessages: [...plan.recentMessages],
       capsule,
       markdown: renderConversationContinuityContext(capsule),
+      earlierQuoteMarkdown: earlierQuote.markdown,
       diagnostic: {
         estimatorId: CONVERSATION_TOKEN_ESTIMATOR_ID,
         trigger: plan.trigger,
@@ -242,6 +292,8 @@ export const prepareChatConversationContinuity = async (input: {
         compactedThroughMessageId: targetThroughMessageId,
         usedExistingCapsule: storedCapsuleIsValid,
         fallback: false,
+        earlierQuoteTurns: earlierQuote.turns.length,
+        earlierQuoteChars: earlierQuote.renderedChars,
       },
     };
   } catch (error) {
@@ -250,10 +302,12 @@ export const prepareChatConversationContinuity = async (input: {
     const fallbackMessages = fallbackCapsule
       ? scopedLiveMessages.filter(message => message.id > fallbackCapsule.throughMessageId)
       : scopedLiveMessages.slice(-Math.max(1, input.messageLimit));
+    const earlierQuote = earlierQuoteFor(fallbackMessages);
     return {
       recentMessages: fallbackMessages,
       capsule: fallbackCapsule,
       markdown: fallbackCapsule ? renderConversationContinuityContext(fallbackCapsule) : '',
+      earlierQuoteMarkdown: earlierQuote.markdown,
       diagnostic: {
         estimatorId: CONVERSATION_TOKEN_ESTIMATOR_ID,
         trigger: plan.trigger,
@@ -264,6 +318,8 @@ export const prepareChatConversationContinuity = async (input: {
         compactedThroughMessageId: fallbackCapsule?.throughMessageId,
         usedExistingCapsule: Boolean(fallbackCapsule),
         fallback: true,
+        earlierQuoteTurns: earlierQuote.turns.length,
+        earlierQuoteChars: earlierQuote.renderedChars,
       },
     };
   }

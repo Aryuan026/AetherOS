@@ -57,6 +57,13 @@ export interface ConversationContinuityPlan {
   readonly recentMessages: readonly Message[];
 }
 
+export interface EarlierConversationQuoteSelection {
+  readonly turns: readonly ConversationTurn[];
+  readonly markdown: string;
+  /** Rendered block length, including the fixed safety header. */
+  readonly renderedChars: number;
+}
+
 export interface ConversationContinuityCapsule {
   readonly schemaVersion: 1;
   readonly id: string;

@@ -1,5 +1,47 @@
 # AetherOS Progress
 
+## 2026-11-15 Optional Earlier Chat Quote Recall
+
+- done:
+  - Added the Chat-only, per-character `参考更早的聊天原话` setting
+    (`earlierQuoteRecallEnabled`), persisted through the existing Character
+    record and backup path. It defaults off; with it off, no selector runs and
+    the provider-facing continuity payload is unchanged.
+  - When on, Chat locally selects at most three complete earlier live turns that
+    are relevant to the current user input, renders an at-most ~1,200-character
+    quote block, and inserts it after the continuity capsule and before the
+    latest ten raw turns.
+  - Reused the already loaded exact-scope `fullHistory`, the continuity plan's
+    `compactableTurns`, `groupConversationTurns` and
+    `extractMemorySearchTerms`. Hidden/proactive/Date/Call/history-import/
+    `hideBeforeMessageId` exclusions and the exact
+    `progressBundleId + personaMaskId + charId` scope are unchanged.
+  - The selector performs no fetch, persistence, summary or memory write, so
+    editing an earlier message immediately changes or removes its quote and no
+    stale derived asset exists. Disabled, unmatched, over-budget and local
+    failure paths return an empty quote block without changing the existing
+    capsule/fallback behavior.
+  - The prompt block names the content as earlier chat wording for concrete
+    detail only, not long-term memory, current Life, narrative fact, behavior
+    requirement or tool permission, and forbids writing it back as memory truth.
+
+- verification:
+  - `npm run verify:health`
+  - `npm run verify:conversation-continuity`
+  - `npm run verify:whole-device-backup`
+  - `npm run typecheck`
+  - `npm run build:quiet`
+  - Playwright: default-off, toggle-on, save/reopen persistence, and zero
+    horizontal overflow at 390 px and 1024 px.
+
+- boundary:
+  - Chat only. Proactive/Call/Date/Story/Group/Social slots remain on their
+    existing HOLD or exclusion boundaries and do not read this block.
+  - No new database, Daily Archive path, worker, dependency, service, API or
+    fetch. The setting does not create a new localStorage key or setting system.
+  - Source delivery and deployment receipts remain separate from these local
+    implementation and verification results.
+
 ## 2026-08-11 CreativeScheme And Dreamworld Foundation (release candidate)
 
 - done:
