@@ -57,15 +57,22 @@ Character record and whole-device backup.
 
 When on, one bounded reverse scan (newest message to oldest, existing IndexedDB
 reverse-cursor pattern) feeds the selector. The read stops at the earliest
-allowed time, the raw scanned-message budget, or the raw text-character budget,
-whichever comes first; diagnostics report the weeks, actual scanned
-messages/text characters (before scope filtering), and whether a
-day/message/char budget truncated the window. The internal safety bounds are
-currently 300 raw messages and 32,000 text characters. They are not a
-product-visible range and may be recalibrated by the owner.
+allowed time, the hard raw cursor-visit cap, the hard raw text-character cap, or
+the candidate budgets, whichever comes first. Candidate budgets are charged only
+for rows that pass the exact-scope/exclusion filter: the read rejects hidden,
+historical-import, proactive, Date/Call, `hideBeforeMessageId` and other-scope
+rows before they can consume the 300-message / 32,000-character candidate
+window. Rejected rows therefore cannot starve older relevant rows merely by
+exhausting that candidate window. Raw scan work is separately hard-capped at
+1,800 cursor visits and 64,000 text characters; reaching either cap ends the read with a
+`visit_budget` / `raw_char_budget` diagnostic instead of paging further or
+falling back to `getAll`. Diagnostics report the weeks, raw rows/text characters
+visited, admitted exact-scope rows/text characters, and the truncation reason.
+These bounds are internal safety limits, not a product-visible range, and may be
+recalibrated by the owner.
 
-The bounded window is filtered to the exact relationship scope and still
-excludes hidden, historical-import, proactive, Date/Call and
+The admitted candidate window is filtered to the exact relationship scope and
+still excludes hidden, historical-import, proactive, Date/Call and
 `hideBeforeMessageId` evidence, non-quotable message types, the latest ten
 complete turns and already-delivered raw messages. Scan truncation drops a
 leading partial turn. A selected turn is never clipped by the 1,200-character

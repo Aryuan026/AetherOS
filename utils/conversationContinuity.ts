@@ -5,6 +5,8 @@ import {
   CHAT_CONTINUITY_RECENT_TURNS,
   CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS,
   CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES,
+  CHAT_EARLIER_QUOTE_SCAN_MAX_RAW_CHARS,
+  CHAT_EARLIER_QUOTE_SCAN_MAX_VISITS,
   CONVERSATION_TOKEN_ESTIMATOR_ID,
   EMPTY_EARLIER_QUOTE_SELECTION,
   buildConversationContinuitySummaryPrompt,
@@ -39,6 +41,8 @@ export interface EarlierQuoteRecallWindow {
   readonly turns: readonly ConversationTurn[];
   readonly scannedMessages: number;
   readonly scannedChars: number;
+  readonly admittedMessages: number;
+  readonly admittedChars: number;
   readonly truncatedBy: BoundedMessageScanTruncation;
   readonly windowRead: boolean;
 }
@@ -63,6 +67,8 @@ export interface PreparedChatConversationContinuity {
     readonly earlierQuoteWindowRead: boolean;
     readonly earlierQuoteScannedMessages: number;
     readonly earlierQuoteScannedChars: number;
+    readonly earlierQuoteAdmittedMessages: number;
+    readonly earlierQuoteAdmittedChars: number;
     readonly earlierQuoteTruncatedBy: BoundedMessageScanTruncation;
     readonly earlierQuoteTurns: number;
     readonly earlierQuoteChars: number;
@@ -150,19 +156,28 @@ const turnsAfter = (turns: readonly ConversationTurn[], throughMessageId: number
   turns.filter(turn => turn.lastMessageId > throughMessageId)
 );
 
+const isEarlierQuoteRecallMessage = (
+  message: Message,
+  scope: HistoryScope,
+  hideBeforeMessageId?: number,
+): boolean => (
+  !isHistoricalContextMessage(message)
+  && !message.groupId
+  && messageMatchesRelationshipScope(message, scope)
+  && message.metadata?.hidden !== true
+  && message.metadata?.proactiveHint !== true
+  && message.metadata?.source !== 'date'
+  && message.metadata?.source !== 'call'
+  && (!hideBeforeMessageId || message.id >= hideBeforeMessageId)
+);
+
 export const buildEarlierQuoteRecallTurns = (input: {
   messages: readonly Message[];
   scope: HistoryScope;
   hideBeforeMessageId?: number;
 }): ConversationTurn[] => {
   const scopedLiveMessages = input.messages.filter(message => (
-    !isHistoricalContextMessage(message)
-    && messageMatchesRelationshipScope(message, input.scope)
-    && message.metadata?.hidden !== true
-    && message.metadata?.proactiveHint !== true
-    && message.metadata?.source !== 'date'
-    && message.metadata?.source !== 'call'
-    && (!input.hideBeforeMessageId || message.id >= input.hideBeforeMessageId)
+    isEarlierQuoteRecallMessage(message, input.scope, input.hideBeforeMessageId)
   ));
   const completeTurns = groupConversationTurns(scopedLiveMessages)
     .filter(turn => turn.messages[0]?.role === 'user');
@@ -184,6 +199,13 @@ export const readEarlierQuoteRecallWindow = async (input: {
     since: earlierQuoteCutoff(input.anchorTimestamp, weeks),
     maxMessages: CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES,
     maxChars: CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS,
+    maxVisits: CHAT_EARLIER_QUOTE_SCAN_MAX_VISITS,
+    maxRawChars: CHAT_EARLIER_QUOTE_SCAN_MAX_RAW_CHARS,
+    accept: message => isEarlierQuoteRecallMessage(
+      message,
+      input.scope,
+      input.hideBeforeMessageId,
+    ),
   });
   return {
     weeks,
@@ -194,6 +216,8 @@ export const readEarlierQuoteRecallWindow = async (input: {
     }),
     scannedMessages: scan.scannedMessages,
     scannedChars: scan.scannedChars,
+    admittedMessages: scan.admittedMessages,
+    admittedChars: scan.admittedChars,
     truncatedBy: scan.truncatedBy,
     windowRead: true,
   };
@@ -269,6 +293,8 @@ export const prepareChatConversationContinuity = async (input: {
     earlierQuoteWindowRead,
     earlierQuoteScannedMessages: earlierQuoteWindow?.scannedMessages ?? 0,
     earlierQuoteScannedChars: earlierQuoteWindow?.scannedChars ?? 0,
+    earlierQuoteAdmittedMessages: earlierQuoteWindow?.admittedMessages ?? 0,
+    earlierQuoteAdmittedChars: earlierQuoteWindow?.admittedChars ?? 0,
     earlierQuoteTruncatedBy,
   };
   const earlierQuoteFor = (

@@ -10,6 +10,8 @@ import {
   CHAT_EARLIER_QUOTE_MAX_WEEKS,
   CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS,
   CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES,
+  CHAT_EARLIER_QUOTE_SCAN_MAX_RAW_CHARS,
+  CHAT_EARLIER_QUOTE_SCAN_MAX_VISITS,
   CHAT_EARLIER_QUOTE_WEEK_MS,
   CONVERSATION_TOKEN_ESTIMATOR_ID,
   CONVERSATION_CONTINUITY_SURFACE_CONTRACTS,
@@ -340,6 +342,8 @@ const earlierQuoteWindowFor = (
     weeks?: number;
     scannedMessages?: number;
     scannedChars?: number;
+    admittedMessages?: number;
+    admittedChars?: number;
     truncatedBy?: EarlierQuoteRecallWindow['truncatedBy'];
     hideBeforeMessageId?: number;
   } = {},
@@ -352,6 +356,11 @@ const earlierQuoteWindowFor = (
   }),
   scannedMessages: options.scannedMessages ?? messages.length,
   scannedChars: options.scannedChars ?? messages.reduce(
+    (total, item) => total + (item.type === 'text' ? item.content.length : 0),
+    0,
+  ),
+  admittedMessages: options.admittedMessages ?? messages.length,
+  admittedChars: options.admittedChars ?? messages.reduce(
     (total, item) => total + (item.type === 'text' ? item.content.length : 0),
     0,
   ),
@@ -1000,6 +1009,7 @@ const boundaryMessages: Message[] = [
   {
     ...message(3_000_000, 'user', '边界外的旧原话', { relationshipScope: boundaryScope }),
     charId: boundaryScope.charId,
+    groupId: 'group-before-day-boundary',
     timestamp: boundarySince - 1,
   },
   {
@@ -1110,6 +1120,318 @@ const denseWindow = await readEarlierQuoteRecallWindow({
 assert.equal(denseWindow.truncatedBy, 'message_budget');
 assert.equal(denseWindow.scannedMessages, CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES);
 assert.ok(denseWindow.turns.length < 200, 'ten thousand rows must not become an unbounded window');
+
+// A noisy newest prefix must not consume the exact-scope candidate budget.
+// More than five 300-row pages of other-scope/group/hidden/proactive/date/
+// call/history-import rows sit above one relevant old turn in the same week.
+const noisyScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-noisy',
+  personaMaskId: 'mask-earlier-quote-noisy',
+  charId: 'char-earlier-quote-noisy',
+};
+const otherNoiseScope: MessageRelationshipScope = {
+  progressBundleId: 'bundle-earlier-quote-noisy-other',
+  personaMaskId: 'mask-earlier-quote-noisy-other',
+  charId: noisyScope.charId,
+};
+const noisyMessages: Message[] = [];
+let noisyId = 8_000_000;
+const oldNoisyTimestamp = quoteAnchor - (6 * 24 * 60 * 60 * 1000);
+noisyMessages.push({
+  ...message(noisyId++, 'user', '蓝色文件夹里的复查记录你收好了吗？', {
+    relationshipScope: noisyScope,
+  }),
+  charId: noisyScope.charId,
+  timestamp: oldNoisyTimestamp,
+});
+noisyMessages.push({
+  ...message(noisyId++, 'assistant', '嗯，我放在蓝色文件夹里了。', {
+    relationshipScope: noisyScope,
+  }),
+  charId: noisyScope.charId,
+  timestamp: oldNoisyTimestamp + 1_000,
+});
+const noisyBaseTimestamp = quoteAnchor - (4 * 24 * 60 * 60 * 1000);
+const pushNoise = (
+  count: number,
+  marker: string,
+  metadata: Message['metadata'] = {},
+  extra: Partial<Message> = {},
+): void => {
+  for (let index = 0; index < count; index += 1) {
+    noisyMessages.push({
+      id: noisyId++,
+      charId: noisyScope.charId,
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      type: 'text',
+      content: `${marker}-${index}`,
+      timestamp: noisyBaseTimestamp + (noisyMessages.length * 30_000),
+      metadata: {
+        temporalClass: 'live',
+        relationshipScope: noisyScope,
+        ...metadata,
+      },
+      ...extra,
+    });
+  }
+};
+pushNoise(600, '其他面具噪音', { relationshipScope: otherNoiseScope });
+pushNoise(300, '群聊噪音', {}, { groupId: 'group-earlier-quote-noise' });
+pushNoise(150, '隐藏噪音', { hidden: true });
+pushNoise(150, '主动噪音', { proactiveHint: true });
+pushNoise(100, '约会噪音', { source: 'date' });
+pushNoise(100, '通话噪音', { source: 'call' });
+pushNoise(100, '导入噪音', {
+  source: 'history_import_tail',
+  temporalClass: 'historical',
+});
+pushNoise(200, '同范围闲聊噪音', { relationshipScope: noisyScope });
+const noisyRecentMessages: Message[] = [];
+for (let turn = 1; turn <= 10; turn += 1) {
+  const timestamp = quoteAnchor - ((11 - turn) * 60_000);
+  noisyRecentMessages.push({
+    ...message(noisyId++, 'user', `最近第${turn}轮`, {
+      relationshipScope: noisyScope,
+    }),
+    charId: noisyScope.charId,
+    timestamp,
+  });
+  noisyRecentMessages.push({
+    ...message(noisyId++, 'assistant', `最近第${turn}轮回复`, {
+      relationshipScope: noisyScope,
+      assistantResponseId: `noisy-recent-${turn}`,
+    }),
+    charId: noisyScope.charId,
+    timestamp,
+  });
+}
+noisyRecentMessages.push({
+  ...message(noisyId++, 'user', '你还记得蓝色文件夹里的复查记录吗？', {
+    relationshipScope: noisyScope,
+  }),
+  charId: noisyScope.charId,
+  timestamp: quoteAnchor,
+});
+noisyRecentMessages.push({
+  ...message(noisyId++, 'assistant', '记得。', { relationshipScope: noisyScope }),
+  charId: noisyScope.charId,
+  timestamp: quoteAnchor,
+});
+noisyMessages.push(...noisyRecentMessages);
+await seedMessagesDirect(noisyMessages);
+
+const noisyWindow = await readEarlierQuoteRecallWindow({
+  scope: noisyScope,
+  weeks: 1,
+  anchorTimestamp: quoteAnchor,
+});
+assert.ok(
+  noisyWindow.scannedMessages >= (3 * CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES),
+  'the read must walk past the first three logical pages of noise',
+);
+assert.ok(noisyWindow.scannedMessages < CHAT_EARLIER_QUOTE_SCAN_MAX_VISITS);
+assert.equal(noisyWindow.admittedMessages, 224);
+assert.ok(noisyWindow.admittedChars <= CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS);
+assert.equal(noisyWindow.truncatedBy, 'none');
+assert.ok(
+  noisyWindow.turns.some(turn => turn.messages.some(item => item.content.includes('蓝色文件夹'))),
+  'the relevant old turn behind the noisy prefix must enter the candidates',
+);
+assert.ok(noisyWindow.turns.every(turn => turn.messages.every(item => (
+  item.metadata?.relationshipScope?.personaMaskId === noisyScope.personaMaskId
+))));
+for (const marker of [
+  '其他面具噪音',
+  '群聊噪音',
+  '隐藏噪音',
+  '主动噪音',
+  '约会噪音',
+  '通话噪音',
+  '导入噪音',
+]) {
+  assert.equal(
+    noisyWindow.turns.some(turn => turn.messages.some(item => item.content.includes(marker))),
+    false,
+    `${marker} must not enter the exact-scope candidates`,
+  );
+}
+
+const fetchBeforeNoisyRecall = quoteFetchCount;
+const noisyRecall = await prepareChatConversationContinuity({
+  scope: noisyScope,
+  messages: noisyRecentMessages,
+  promptText: '角色底板',
+  messageLimit: 30,
+  apiConfig,
+  userName: '玩家',
+  characterName: '角色',
+  earlierQuoteRecall: true,
+  earlierQuoteWeeks: 1,
+});
+assert.equal(quoteFetchCount, fetchBeforeNoisyRecall, 'noisy recall must not add a fetch');
+assert.equal(
+  noisyRecall.diagnostic.earlierQuoteScannedMessages,
+  noisyWindow.scannedMessages,
+);
+assert.equal(
+  noisyRecall.diagnostic.earlierQuoteAdmittedMessages,
+  noisyWindow.admittedMessages,
+);
+assert.equal(noisyRecall.diagnostic.earlierQuoteTurns, 1);
+assert.match(noisyRecall.earlierQuoteMarkdown, /蓝色文件夹/);
+for (const marker of [
+  '其他面具噪音',
+  '群聊噪音',
+  '隐藏噪音',
+  '主动噪音',
+  '约会噪音',
+  '通话噪音',
+  '导入噪音',
+  '同范围闲聊噪音',
+]) {
+  assert.doesNotMatch(noisyRecall.earlierQuoteMarkdown, new RegExp(marker));
+}
+const noisyProvider = providerMessagesFor(noisyRecall);
+const noisySystem = String(noisyProvider.messages[0].content);
+assert.match(noisySystem, /蓝色文件夹/);
+for (const marker of [
+  '其他面具噪音',
+  '群聊噪音',
+  '隐藏噪音',
+  '主动噪音',
+  '约会噪音',
+  '通话噪音',
+  '导入噪音',
+  '同范围闲聊噪音',
+]) {
+  assert.doesNotMatch(noisySystem, new RegExp(marker));
+}
+
+// Ten thousand noise rows still stop at the explicit raw cursor cap instead of
+// turning into an unbounded scan; the relevant row beyond that cap is not read.
+const noiseCapScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-noise-cap',
+  personaMaskId: 'mask-earlier-quote-noise-cap',
+  charId: 'char-earlier-quote-noise-cap',
+};
+const noiseCapOtherScope: MessageRelationshipScope = {
+  progressBundleId: 'bundle-earlier-quote-noise-cap-other',
+  personaMaskId: 'mask-earlier-quote-noise-cap-other',
+  charId: noiseCapScope.charId,
+};
+let noiseCapId = 9_000_000;
+const noiseCapMessages: Message[] = [
+  {
+    ...message(noiseCapId++, 'user', '蓝色文件夹硬上限旧原话', {
+      relationshipScope: noiseCapScope,
+    }),
+    charId: noiseCapScope.charId,
+    timestamp: quoteAnchor - (6 * 24 * 60 * 60 * 1000),
+  },
+  {
+    ...message(noiseCapId++, 'assistant', '蓝色文件夹硬上限旧回复', {
+      relationshipScope: noiseCapScope,
+    }),
+    charId: noiseCapScope.charId,
+    timestamp: quoteAnchor - (6 * 24 * 60 * 60 * 1000) + 1_000,
+  },
+];
+for (let index = 0; index < 10_000; index += 1) {
+  noiseCapMessages.push({
+    id: noiseCapId++,
+    charId: noiseCapScope.charId,
+    role: index % 2 === 0 ? 'user' : 'assistant',
+    type: 'text',
+    content: `硬上限噪音-${index}`,
+    timestamp: quoteAnchor - (5 * 24 * 60 * 60 * 1000) + (index * 20_000),
+    metadata: {
+      temporalClass: 'live',
+      relationshipScope: noiseCapOtherScope,
+    },
+  });
+}
+for (let turn = 1; turn <= 10; turn += 1) {
+  const timestamp = quoteAnchor - ((11 - turn) * 60_000);
+  noiseCapMessages.push({
+    ...message(noiseCapId++, 'user', `硬上限最近第${turn}轮`, {
+      relationshipScope: noiseCapScope,
+    }),
+    charId: noiseCapScope.charId,
+    timestamp,
+  });
+  noiseCapMessages.push({
+    ...message(noiseCapId++, 'assistant', `硬上限最近第${turn}轮回复`, {
+      relationshipScope: noiseCapScope,
+      assistantResponseId: `noise-cap-recent-${turn}`,
+    }),
+    charId: noiseCapScope.charId,
+    timestamp,
+  });
+}
+noiseCapMessages.push({
+  ...message(noiseCapId++, 'user', '还记得蓝色文件夹硬上限旧原话吗？', {
+    relationshipScope: noiseCapScope,
+  }),
+  charId: noiseCapScope.charId,
+  timestamp: quoteAnchor,
+});
+await seedMessagesDirect(noiseCapMessages);
+const noiseCapWindow = await readEarlierQuoteRecallWindow({
+  scope: noiseCapScope,
+  weeks: 1,
+  anchorTimestamp: quoteAnchor,
+});
+assert.equal(noiseCapWindow.truncatedBy, 'visit_budget');
+assert.equal(noiseCapWindow.scannedMessages, CHAT_EARLIER_QUOTE_SCAN_MAX_VISITS);
+assert.ok(noiseCapWindow.scannedChars <= CHAT_EARLIER_QUOTE_SCAN_MAX_RAW_CHARS);
+assert.ok(noiseCapWindow.admittedMessages <= 22);
+assert.equal(
+  noiseCapWindow.turns.some(turn => turn.messages.some(item => item.content.includes('蓝色文件夹'))),
+  false,
+  'a row beyond the hard raw cursor cap must not be read',
+);
+
+const rawCharCapScope: MessageRelationshipScope = {
+  ...scope,
+  progressBundleId: 'bundle-earlier-quote-raw-char-cap',
+  personaMaskId: 'mask-earlier-quote-raw-char-cap',
+  charId: 'char-earlier-quote-raw-char-cap',
+};
+const rawCharCapOtherScope: MessageRelationshipScope = {
+  ...rawCharCapScope,
+  personaMaskId: 'mask-earlier-quote-raw-char-cap-other',
+};
+await seedMessagesDirect([
+  {
+    ...message(9_100_000, 'user', '原始字符上限之后的相关旧原话', {
+      relationshipScope: rawCharCapScope,
+    }),
+    charId: rawCharCapScope.charId,
+    timestamp: quoteAnchor - (6 * 24 * 60 * 60 * 1000),
+  },
+  ...[1, 2].map(index => ({
+    ...message(
+      9_100_000 + index,
+      index === 1 ? 'user' : 'assistant',
+      `原始字符上限噪音-${index}-${'x'.repeat(40_000)}`,
+      { relationshipScope: rawCharCapOtherScope },
+    ),
+    charId: rawCharCapScope.charId,
+    timestamp: quoteAnchor - ((3 - index) * 60_000),
+  })),
+]);
+const rawCharCapWindow = await readEarlierQuoteRecallWindow({
+  scope: rawCharCapScope,
+  weeks: 1,
+  anchorTimestamp: quoteAnchor,
+});
+assert.equal(rawCharCapWindow.truncatedBy, 'raw_char_budget');
+assert.equal(rawCharCapWindow.scannedMessages, 2);
+assert.equal(rawCharCapWindow.admittedMessages, 0);
+assert.ok(rawCharCapWindow.scannedChars < CHAT_EARLIER_QUOTE_SCAN_MAX_RAW_CHARS);
+assert.equal(rawCharCapWindow.turns.length, 0);
 
 const boundedScanOriginal = DB.getBoundedRecentMessagesByCharId;
 let boundedScanCalls = 0;
@@ -1380,12 +1702,20 @@ assert.match(continuityUtilitySource, /turns: earlierQuoteCandidates/);
 assert.doesNotMatch(continuityUtilitySource, /turns: plan\.compactableTurns/);
 assert.match(continuityUtilitySource, /CHAT_EARLIER_QUOTE_SCAN_MAX_MESSAGES/);
 assert.match(continuityUtilitySource, /CHAT_EARLIER_QUOTE_SCAN_MAX_CHARS/);
+assert.match(continuityUtilitySource, /CHAT_EARLIER_QUOTE_SCAN_MAX_VISITS/);
+assert.match(continuityUtilitySource, /CHAT_EARLIER_QUOTE_SCAN_MAX_RAW_CHARS/);
+assert.match(continuityUtilitySource, /accept: message => isEarlierQuoteRecallMessage/);
 assert.match(dbSource, /getBoundedRecentMessagesByCharId/);
 assert.match(dbSource, /index\.openCursor\(IDBKeyRange\.only\(input\.charId\), 'prev'\)/);
+assert.match(dbSource, /maxVisits/);
+assert.match(dbSource, /maxRawChars/);
+assert.match(dbSource, /visit_budget/);
+assert.match(dbSource, /raw_char_budget/);
 assert.match(continuityContractSource, /Optional Earlier Verbatim Quotes/);
 assert.match(continuityContractSource, /at most three complete/i);
 assert.match(continuityContractSource, /one,\s+two or three weeks/);
 assert.match(continuityContractSource, /bounded reverse scan/);
+assert.match(continuityContractSource, /1,800 cursor visits/);
 assert.match(continuityContractSource, /off by default/i);
 
 globalThis.fetch = originalFetch;

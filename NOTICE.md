@@ -43,6 +43,22 @@ The original README thanks:
 - ReiStandard / Active Message 2.0 integration:
   https://github.com/Tosd0/ReiStandard/
 
+## Algorithmic Provenance
+
+The optional earlier-chat-quote recall admission split was informed by
+`NousResearch/hermes-agent` main snapshot
+`9dd9421f1dd7be7b629873da7a42fb213d595a54` (verified 2026-11-17; source blob
+`160ac306a9859c510f00539d9567fdedd50bed78`). On 2026-11-20, upstream main was
+`2de9f51b8008a7d49a49221c184f2f11cbfc4af1` and still retained the relevant
+mechanism. Relevant upstream implementation: `tools/session_search_tool.py` (`_DISCOVER_SCAN_LIMIT`,
+demotion before dedupe, `_READ_MAX_CONTENT`) with regressions in
+`tests/tools/test_session_search.py` (`TestCronDemotion` and the temporal-
+narrowing test that requires the bound to apply before the scan is truncated).
+Upstream rationale comments reference #19434 and #114344. Upstream is MIT licensed, Copyright (c)
+2025 Nous Research. AetherOS independently implements the bounded local cursor and
+candidate-admission policy in TypeScript; no upstream source code is copied, and
+upstream remains the authority for its own behavior.
+
 ## Use Boundary
 
 This deployment is intended for non-commercial personal testing with a small
