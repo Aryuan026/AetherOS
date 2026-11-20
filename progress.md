@@ -44,12 +44,25 @@
     controls when enabled, and persists a saved 3-week choice after reopening
     Chat settings. The browser session was closed without touching owner data.
 
+- release:
+  - PR #14 was squash-merged to public `main` as
+    `13338e0a6d0ec204c758ccef323aaf68f01da885`; GitHub Pages run `44760913893`
+    completed successfully.
+  - Pages and the static lab were read back with matching `index.html` SHA-256
+    `9ad09191f4ce5c66126642bb86e9c3687d351554a5b2eff3276990ad69748cbe` and
+    build ID `aetheros-2.0.0-7014c9e93d80b4ac`.
+  - The lab was atomically replaced without restarting Nginx, Home or Bridge.
+    Public GET is `200`, POST remains `403`, retired `/sullyos/` remains `410`,
+    and an isolated public browser reached the AetherOS lock screen with zero
+    console errors.
+  - Rollback is
+    `/srv/asherie/backups/aetheros-recall-quality-13338e0-20261120T231618+0800/aetheros-static.previous`.
+
 - boundary:
   - Chat-only earlier-quote lookback. The existing Chat continuity
     `fullHistory`/`getAll` long-history path, capsule/fingerprint semantics and
     summary protocol are untouched.
-  - No new storage, index, dependency, worker, fetch, localStorage key, commit,
-    push, PR, merge or deployment.
+  - No new storage, index, dependency, worker, fetch or localStorage key.
   - A newest prefix denser than the hard raw caps can still hide a relevant row;
     that is the deliberate bounded-read trade-off, now visible in diagnostics.
   - "Noise" here means rows the exact scope or existing exclusion rules reject
