@@ -87,13 +87,20 @@ export type BoundedMessageScanTruncation =
     | 'day'
     | 'message_budget'
     | 'char_budget'
+    | 'visit_budget'
+    | 'raw_char_budget'
     | 'none';
 
 export interface BoundedMessageScanResult {
     messages: Message[];
+    /** Raw cursor rows visited, including group rows and the day-boundary row. */
     scannedMessages: number;
-    /** Text characters counted before scope filtering. */
+    /** Text characters seen before the relationship-scope filter. */
     scannedChars: number;
+    /** Rows that passed the optional eligibility filter and entered the candidate set. */
+    admittedMessages: number;
+    /** Text characters of admitted rows. */
+    admittedChars: number;
     truncatedBy: BoundedMessageScanTruncation;
 }
 
@@ -1951,18 +1958,31 @@ export const DB = {
   },
 
   // Bounded newest-to-oldest live-message scan for Chat earlier-quote recall.
-  // It intentionally stops at the first day boundary or at the first raw
-  // message/character budget so callers cannot turn it back into a getAll.
+  // The day, candidate-message, candidate-character, raw-visit and raw-character
+  // limits are hard stops: callers cannot turn this back into a getAll. An
+  // optional accept() filter decides which rows enter the candidate budgets.
+  // Rejected rows still consume the raw visit/character caps, so a noisy newest
+  // prefix cannot walk forever, but it also cannot starve older relevant rows by
+  // consuming the candidate budget before the relationship filter is applied.
   getBoundedRecentMessagesByCharId: async (input: {
     charId: string;
     since: number;
     maxMessages: number;
     maxChars: number;
+    /** Hard cap on raw cursor rows visited. Defaults to maxMessages. */
+    maxVisits?: number;
+    /** Hard cap on raw text characters visited. Defaults to maxChars. */
+    maxRawChars?: number;
+    /** Optional local eligibility filter; rejected rows do not consume candidate budgets. */
+    accept?: (message: Message) => boolean;
   }): Promise<BoundedMessageScanResult> => {
     const db = await openDB();
     const since = Number.isFinite(input.since) ? input.since : 0;
     const maxMessages = Math.max(1, Math.floor(input.maxMessages));
     const maxChars = Math.max(1, Math.floor(input.maxChars));
+    const maxVisits = Math.max(1, Math.floor(input.maxVisits ?? maxMessages));
+    const maxRawChars = Math.max(1, Math.floor(input.maxRawChars ?? maxChars));
+    const accept = input.accept;
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_MESSAGES, 'readonly');
       const store = transaction.objectStore(STORE_MESSAGES);
@@ -1970,12 +1990,16 @@ export const DB = {
       const collected: Message[] = [];
       let scannedMessages = 0;
       let scannedChars = 0;
+      let admittedMessages = 0;
+      let admittedChars = 0;
       let truncatedBy: BoundedMessageScanTruncation = 'none';
       const finish = () => {
         resolve({
           messages: collected.reverse(),
           scannedMessages,
           scannedChars,
+          admittedMessages,
+          admittedChars,
           truncatedBy,
         });
       };
@@ -1988,34 +2012,67 @@ export const DB = {
         }
         const message = cursor.value as Message;
         scannedMessages += 1;
+        const messageChars = message.type === 'text' && typeof message.content === 'string'
+          ? message.content.length
+          : 0;
+        if (message.timestamp < since) {
+          truncatedBy = 'day';
+          finish();
+          return;
+        }
         if (message.groupId) {
           // Group rows are outside the Chat relationship evidence but still
-          // consume the raw scan bound so one character cannot walk forever.
-          if (scannedMessages >= maxMessages) {
-            truncatedBy = 'message_budget';
+          // consume the raw scan bounds so one character cannot walk forever.
+          if (scannedChars + messageChars > maxRawChars) {
+            truncatedBy = 'raw_char_budget';
+            finish();
+            return;
+          }
+          scannedChars += messageChars;
+          if (scannedMessages >= maxVisits) {
+            truncatedBy = 'visit_budget';
             finish();
             return;
           }
           cursor.continue();
           return;
         }
-        if (message.timestamp < since) {
-          truncatedBy = 'day';
-          finish();
-          return;
+        let admitted = true;
+        if (accept) {
+          try {
+            admitted = accept(message);
+          } catch (error) {
+            reject(error);
+            return;
+          }
         }
-        const messageChars = message.type === 'text' && typeof message.content === 'string'
-          ? message.content.length
-          : 0;
-        if (scannedChars + messageChars > maxChars) {
+        if (admitted && admittedChars + messageChars > maxChars) {
+          // A candidate that would cross the cap is rejected whole, never clipped.
           truncatedBy = 'char_budget';
           finish();
           return;
         }
-        collected.push(message);
+        if (scannedChars + messageChars > maxRawChars) {
+          truncatedBy = 'raw_char_budget';
+          finish();
+          return;
+        }
         scannedChars += messageChars;
-        if (scannedChars >= maxChars) truncatedBy = 'char_budget';
-        else if (scannedMessages >= maxMessages) truncatedBy = 'message_budget';
+        if (!admitted) {
+          if (scannedMessages >= maxVisits) {
+            truncatedBy = 'visit_budget';
+            finish();
+            return;
+          }
+          cursor.continue();
+          return;
+        }
+        collected.push(message);
+        admittedMessages += 1;
+        admittedChars += messageChars;
+        if (admittedMessages >= maxMessages) truncatedBy = 'message_budget';
+        else if (admittedChars >= maxChars) truncatedBy = 'char_budget';
+        else if (scannedMessages >= maxVisits) truncatedBy = 'visit_budget';
         if (truncatedBy !== 'none') {
           finish();
           return;

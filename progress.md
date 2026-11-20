@@ -1,5 +1,63 @@
 # AetherOS Progress
 
+## 2026-11-17 Earlier Chat Quote Noise-Starvation Repair
+
+- done:
+  - Split the bounded earlier-quote read's candidate budgets from its raw scan
+    work. The 300-message / 32,000-character candidate window is now charged
+    only for rows that pass the exact `progressBundleId + personaMaskId +
+    charId` scope and the existing hidden/history-import/proactive/Date/Call/
+    `hideBeforeMessageId` exclusions.
+  - Added separate hard raw caps of 1,800 cursor visits and 64,000 text
+    characters. They stop the single reverse-cursor read even when the newest
+    pages are entirely noise; the read never pages further and never falls back
+    to `getAll`. New `visit_budget` / `raw_char_budget` diagnostics name which
+    cap ended the read; admitted row/character counts are reported separately.
+  - Kept the switch off by default, 1/2/3-week range, Chat-only scope, one local
+    read, zero network fetch, exact-scope fail-closed filtering, ten-turn and
+    already-delivered exclusions, three-turn/1,200-character delivery and the
+    continuity capsule/fingerprint/summary protocol unchanged.
+  - Added regressions with five pages (1,500 rows) of other-scope, group,
+    hidden, proactive, Date, Call and history-import noise above a relevant old
+    turn in the same week: the relevant turn now enters both candidates and the
+    final quote block, and no noise marker leaks into the provider payload.
+    A 10,000-row noise fixture proves the raw cursor cap keeps the read bounded.
+  - Recorded the technical lineage and MIT license of
+    `NousResearch/hermes-agent` main snapshot
+    `9dd9421f1dd7be7b629873da7a42fb213d595a54` (source blob
+    `160ac306a9859c510f00539d9567fdedd50bed78`) in `NOTICE.md` and the continuity
+    contract constants; upstream main `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`
+    was read back on 2026-11-20 and retained the mechanism. No upstream source
+    code is copied.
+
+- verification:
+  - `npm run verify:conversation-continuity`
+  - `npm run typecheck`
+  - `npm run build:quiet`
+  - `npm run verify:health`
+  - Main-control review on 2026-11-20 moved the day cutoff ahead of the group-row
+    exclusion, added a runtime `raw_char_budget` regression alongside the
+    existing `visit_budget` case, and reran focused continuity plus the full
+    health chain successfully.
+  - On the existing healthy `http://127.0.0.1:5174/` frontstage, an isolated
+    browser profile confirmed the switch starts off, reveals only 1/2/3-week
+    controls when enabled, and persists a saved 3-week choice after reopening
+    Chat settings. The browser session was closed without touching owner data.
+
+- boundary:
+  - Chat-only earlier-quote lookback. The existing Chat continuity
+    `fullHistory`/`getAll` long-history path, capsule/fingerprint semantics and
+    summary protocol are untouched.
+  - No new storage, index, dependency, worker, fetch, localStorage key, commit,
+    push, PR, merge or deployment.
+  - A newest prefix denser than the hard raw caps can still hide a relevant row;
+    that is the deliberate bounded-read trade-off, now visible in diagnostics.
+  - "Noise" here means rows the exact scope or existing exclusion rules reject
+    (other persona/scope, group, hidden, proactive, Date, Call, history-import,
+    `hideBeforeMessageId`). Exact-scope ordinary chatter still shares the
+    300-message / 32,000-character candidate window and is ranked by the
+    selector; this checkpoint does not claim an unbounded relevance index.
+
 ## 2026-11-16 Earlier Chat Quote Weekly Lookback And Bounded Scan
 
 - done:
