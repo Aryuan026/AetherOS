@@ -6,6 +6,23 @@ const normalize = (value: unknown): string => String(value || '').replace(/\s+/g
 
 const has = (text: string, pattern: RegExp): boolean => pattern.test(text);
 
+/**
+ * The shared explicit-recall lexicon. It grants recall intent and can boost an
+ * existing content match, but it can never select a turn by itself.
+ */
+const EXPLICIT_RECALL_CUE_PATTERN = /记得|还记|上次|那天|以前|之前|什么时候|第一次|初次|纪念|生日|约定|说好|忘了|回忆|想起来|想起/i;
+
+const cueTermsFrom = (pattern: RegExp, value: unknown): string[] => {
+  const text = normalize(value);
+  if (!text) return [];
+  const matches = text.match(new RegExp(pattern.source, 'gi')) || [];
+  return [...new Set(matches.map(term => term.toLowerCase()))];
+};
+
+export const extractExplicitRecallCueTerms = (value: unknown): string[] => (
+  cueTermsFrom(EXPLICIT_RECALL_CUE_PATTERN, value)
+);
+
 export const extractMemorySearchTerms = (value: unknown): string[] => {
   const text = normalize(value).toLowerCase();
   if (!text) return [];
@@ -74,7 +91,7 @@ export const classifyWorldlineDelivery = (params: {
     profile.openThreadLimit = 2;
   }
 
-  if (has(text, /记得|还记|上次|那天|以前|之前|什么时候|第一次|初次|纪念|生日|约定|说好|忘了|回忆|想起来|想起/i)) {
+  if (has(text, EXPLICIT_RECALL_CUE_PATTERN)) {
     profile.tier = 'focused_recall';
     profile.reasons.push('explicit_recall');
     profile.candidateLimit = Math.max(profile.candidateLimit, 5);

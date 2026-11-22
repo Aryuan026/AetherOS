@@ -29,7 +29,6 @@ import {
   isHistoricalContextMessage,
   messageMatchesRelationshipScope,
 } from './messageContext.ts';
-import { extractMemorySearchTerms } from './memoryCore/deliveryProfile';
 import {
   DB,
   type BoundedMessageScanTruncation,
@@ -307,7 +306,6 @@ export const prepareChatConversationContinuity = async (input: {
       return selectEarlierConversationQuotes({
         turns: earlierQuoteCandidates,
         query: earlierQuoteQuery,
-        terms: extractMemorySearchTerms(earlierQuoteQuery),
         userName: input.userName,
         characterName: input.characterName,
         excludeMessageIds: new Set(deliveredMessages.map(message => message.id)),
