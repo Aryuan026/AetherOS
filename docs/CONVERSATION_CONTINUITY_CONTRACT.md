@@ -61,7 +61,7 @@ allowed time, the hard raw cursor-visit cap, the hard raw text-character cap, or
 the candidate budgets, whichever comes first. Candidate budgets are charged only
 for rows that pass the exact-scope/exclusion filter: the read rejects hidden,
 historical-import, proactive, Date/Call, `hideBeforeMessageId` and other-scope
-rows before they can consume the 300-message / 32,000-character candidate
+rows before they can consume the 900-message / 32,000-character candidate
 window. Rejected rows therefore cannot starve older relevant rows merely by
 exhausting that candidate window. Raw scan work is separately hard-capped at
 1,800 cursor visits and 64,000 text characters; reaching either cap ends the read with a
@@ -70,6 +70,64 @@ falling back to `getAll`. Diagnostics report the weeks, raw rows/text characters
 visited, admitted exact-scope rows/text characters, and the truncation reason.
 These bounds are internal safety limits, not a product-visible range, and may be
 recalibrated by the owner.
+
+The candidate message budget is calibrated against the character budget rather
+than an arbitrary page: 900 admitted messages at 32,000 admitted characters is
+about 35 characters per message. A six-day-old target behind 150 later complete
+short turns is therefore scanned, while the read still cannot exceed the
+explicit 900-message / 32,000-character candidate budgets, 1,800 raw cursor
+visits or 64,000 raw text characters. The 150-turn case is the failing
+short-message fixture this calibration must keep Green; the 140-turn case is its
+non-regression neighbour.
+
+Selection is local, deterministic and selector-specific. It never depends on
+sentence-final punctuation. The intent gate accepts only a true question, question
+particle, confirmation, recall structure or predicate-free noun fragment.
+Query normalization removes only bounded question
+and recall scaffolds; it preserves proper names, ordinals and entity-internal
+characters. `当时` is an ordinary recall frame; a leading `那/这 + common
+measure` is stripped only as an outer phrase. The current/action gate runs
+before the noun-run fallback, so a current purchase or update cannot open recall.
+
+Each ask goes through one anchored boundary parser: it strips only leading or
+trailing recall/question scaffolds, then cuts at explicit relation or question
+boundaries; short predicate-free noun fragments use the same path. There is no
+second global deletion grammar. The resulting entity must be an exact
+continuous string in one candidate clause. Exact wins. If exact
+fails, one insertion variant is allowed in that clause: query prefix at least
+two characters, query suffix at least one, ordered non-overlapping, raw gap at
+most four characters, content gap after removing `的/之` at most two. The query
+must be fully covered by prefix plus suffix; no query-middle character may be omitted.
+A gap containing punctuation, a coordinator, a pronoun, or a relationship/
+spatial word is rejected. The matcher returns the match span and scans every
+occurrence, so a later valid occurrence is not lost after a rejected prefix.
+Exact receives a higher score than variant. `靛蓝雨伞 -> 靛蓝色的伞` is a known
+lexical-variant abstain because it drops the query character `雨`.
+
+The match span is the only proof anchor. Details, location/time/owner/quantity
+relationships and the answer value must be directly attached to that span in
+the same clause/local fact; the answer may be before or after the span but must
+be a concrete value or relation. Another subject in the same punctuation-free sentence cannot
+lend its slot or value: the gap between the span and the answer must contain no
+other content. A location answer needs an explicit storage/movement relation or
+an explicit spatial ending, not bare `在`, `来` or `留`. An owner answer needs a
+`是/属于/归 ... 的/开的/经营的/创办的` relation, not bare `老板` or `开`. Age
+needs a numeric answer `岁` value, not the word `年龄`; price needs the entity's own
+currency value, not an aggregate; the quantity unit is captured from the query
+and must match. Proper names and ordinals are never collapsed by normalization,
+and the selector no longer takes an unused search-term list. Common numeric entity suffixes such as `-5` do not defeat the
+gap.
+
+There is no message-level fallback, no cross-clause or cross-message slot
+binding, no location continuation, no clause bag, and no unordered character
+bag. The following are explicitly `known_local_cross_clause_abstain`: umbrella
+and place clauses, rain and place clauses, cake and cafe clauses, luggage and
+storage clauses, the natural near wording `旧天文台那次下雨...`, and any other
+positive that only a cross-clause relation could prove. They are not claimed as
+covered by continuity or Hippocove; those remain a separate follow-up validation
+surface. Deep synonym-only paraphrases and category paraphrases may also
+honestly abstain. There is no document-frequency threshold, no topic/synonym
+dictionary, no private-topic list, and no domain blacklist.
 
 The admitted candidate window is filtered to the exact relationship scope and
 still excludes hidden, historical-import, proactive, Date/Call and
